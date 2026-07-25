@@ -37,7 +37,12 @@ export default function RootLayout() {
             headerShown: false,
             contentStyle: { backgroundColor: colors.bg },
           }}
-        />
+        >
+          <Stack.Screen name="(tabs)" />
+          {/* Presented as a sheet so the workout stays visible behind it — picking an
+              exercise is a detour within the session, not a departure from it. */}
+          <Stack.Screen name="exercise-picker" options={{ presentation: 'modal' }} />
+        </Stack>
       </SafeAreaProvider>
     </QueryClientProvider>
   );

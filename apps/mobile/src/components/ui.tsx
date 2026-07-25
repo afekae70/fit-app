@@ -1,10 +1,10 @@
 /**
- * Small shared UI primitives.
+ * Shared UI primitives.
  *
- * RTL rule enforced throughout: only logical layout properties are used
- * (`marginStart`/`marginEnd`, `paddingStart`/`paddingEnd`, `textAlign: 'auto'`) — never
- * `left`/`right`. React Native mirrors the logical ones automatically under RTL, so the same
- * component renders correctly in Hebrew and English without per-language branching.
+ * RTL rule enforced throughout: only logical layout properties (`marginStart`/`marginEnd`,
+ * `paddingStart`/`paddingEnd`) and `textAlign: 'auto'`, never `left`/`right`. React Native
+ * mirrors the logical ones under RTL, so one component renders correctly in Hebrew and
+ * English with no per-language branching.
  */
 
 import type { ReactNode } from 'react';
@@ -19,16 +19,29 @@ import {
   type ViewStyle,
 } from 'react-native';
 
-import { colors, fontSize, radius, spacing } from '../theme.js';
+import { colors, fontSize, fontWeight, lineHeight, radius, spacing } from '../theme.js';
+
+/* -------------------------------------------------------------------------- */
+/* Layout                                                                      */
+/* -------------------------------------------------------------------------- */
 
 export function Card({
   children,
   style,
+  tone = 'default',
 }: {
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
+  /** `accent` marks the one card on screen that is the primary action. */
+  tone?: 'default' | 'accent';
 }) {
-  return <View style={[styles.card, style]}>{children}</View>;
+  return (
+    <View style={[styles.card, tone === 'accent' && styles.cardAccent, style]}>{children}</View>
+  );
+}
+
+export function ScreenTitle({ children }: { children: ReactNode }) {
+  return <Text style={styles.screenTitle}>{children}</Text>;
 }
 
 export function SectionTitle({ children }: { children: ReactNode }) {
@@ -39,17 +52,27 @@ export function Hint({ children }: { children: ReactNode }) {
   return <Text style={styles.hint}>{children}</Text>;
 }
 
-/** A labelled numeric field. `suffix` shows the unit without putting it inside the input. */
+export function Divider() {
+  return <View style={styles.divider} />;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Inputs                                                                      */
+/* -------------------------------------------------------------------------- */
+
 export function NumberField({
   label,
   value,
   suffix,
   onChangeText,
+  onEndEditing,
 }: {
   label: string;
   value: string;
   suffix?: string;
   onChangeText: (next: string) => void;
+  /** Fires on blur — use for writes that should not run per keystroke. */
+  onEndEditing?: () => void;
 }) {
   return (
     <View style={styles.fieldRow}>
@@ -58,10 +81,11 @@ export function NumberField({
         <TextInput
           value={value}
           onChangeText={onChangeText}
+          onEndEditing={onEndEditing}
           keyboardType="numeric"
           inputMode="decimal"
           style={styles.input}
-          placeholderTextColor={colors.textMuted}
+          placeholderTextColor={colors.textFaint}
           selectTextOnFocus
         />
         {suffix ? <Text style={styles.suffix}>{suffix}</Text> : null}
@@ -75,7 +99,6 @@ export interface SegmentedOption<T extends string> {
   label: string;
 }
 
-/** Single-select control. Used for sex / activity level / goal. */
 export function Segmented<T extends string>({
   label,
   options,
@@ -112,7 +135,56 @@ export function Segmented<T extends string>({
   );
 }
 
-/** A single number with a caption — the primary way results are displayed. */
+/* -------------------------------------------------------------------------- */
+/* Actions                                                                     */
+/* -------------------------------------------------------------------------- */
+
+export function Button({
+  label,
+  onPress,
+  variant = 'primary',
+  sublabel,
+}: {
+  label: string;
+  onPress: () => void;
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
+  sublabel?: string;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      style={({ pressed }) => [
+        styles.button,
+        variant === 'primary' && styles.buttonPrimary,
+        variant === 'secondary' && styles.buttonSecondary,
+        variant === 'ghost' && styles.buttonGhost,
+        variant === 'danger' && styles.buttonDanger,
+        // Press feedback via opacity rather than a colour swap — it reads consistently on
+        // every variant without needing four extra pressed-state colours.
+        pressed && styles.buttonPressed,
+      ]}
+    >
+      <Text
+        style={[
+          styles.buttonLabel,
+          variant === 'primary' && styles.buttonLabelPrimary,
+          variant === 'secondary' && styles.buttonLabelSecondary,
+          variant === 'ghost' && styles.buttonLabelGhost,
+          variant === 'danger' && styles.buttonLabelDanger,
+        ]}
+      >
+        {label}
+      </Text>
+      {sublabel ? <Text style={styles.buttonSublabel}>{sublabel}</Text> : null}
+    </Pressable>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Data display                                                                */
+/* -------------------------------------------------------------------------- */
+
 export function Stat({
   label,
   value,
@@ -148,19 +220,46 @@ export function Stat({
   );
 }
 
+/** Compact figure for a row of three or four — used in workout and history summaries. */
+export function MetricTile({
+  value,
+  label,
+  color,
+}: {
+  value: string;
+  label: string;
+  color?: string;
+}) {
+  return (
+    <View style={styles.tile}>
+      <Text style={[styles.tileValue, color ? { color } : null]}>{value}</Text>
+      <Text style={styles.tileLabel}>{label}</Text>
+    </View>
+  );
+}
+
 export function Banner({
   tone,
   children,
 }: {
-  tone: 'info' | 'warning';
+  tone: 'info' | 'warning' | 'success';
   children: ReactNode;
 }) {
   return (
-    <View style={[styles.banner, tone === 'warning' ? styles.bannerWarning : styles.bannerInfo]}>
+    <View
+      style={[
+        styles.banner,
+        tone === 'warning' && styles.bannerWarning,
+        tone === 'info' && styles.bannerInfo,
+        tone === 'success' && styles.bannerSuccess,
+      ]}
+    >
       <Text
         style={[
           styles.bannerText,
-          tone === 'warning' ? styles.bannerTextWarning : styles.bannerTextInfo,
+          tone === 'warning' && styles.bannerTextWarning,
+          tone === 'info' && styles.bannerTextInfo,
+          tone === 'success' && styles.bannerTextSuccess,
         ]}
       >
         {children}
@@ -169,17 +268,31 @@ export function Banner({
   );
 }
 
-/**
- * Explicit per-key style types.
- *
- * Without them, `StyleSheet.create` infers `ViewStyle | TextStyle | ImageStyle` for every key
- * in a mixed stylesheet, and passing e.g. `styles.card` to a `View` then fails to typecheck
- * because the union might be a TextStyle. Naming the type per key keeps the inference precise.
- */
+export function EmptyState({
+  emoji,
+  title,
+  hint,
+}: {
+  emoji: string;
+  title: string;
+  hint?: string;
+}) {
+  return (
+    <View style={styles.empty}>
+      <Text style={styles.emptyEmoji}>{emoji}</Text>
+      <Text style={styles.emptyTitle}>{title}</Text>
+      {hint ? <Text style={styles.emptyHint}>{hint}</Text> : null}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create<{
   card: ViewStyle;
+  cardAccent: ViewStyle;
+  screenTitle: TextStyle;
   sectionTitle: TextStyle;
   hint: TextStyle;
+  divider: ViewStyle;
   fieldRow: ViewStyle;
   fieldLabel: TextStyle;
   inputWrap: ViewStyle;
@@ -191,6 +304,18 @@ const styles = StyleSheet.create<{
   segmentActive: ViewStyle;
   segmentText: TextStyle;
   segmentTextActive: TextStyle;
+  button: ViewStyle;
+  buttonPrimary: ViewStyle;
+  buttonSecondary: ViewStyle;
+  buttonGhost: ViewStyle;
+  buttonDanger: ViewStyle;
+  buttonPressed: ViewStyle;
+  buttonLabel: TextStyle;
+  buttonLabelPrimary: TextStyle;
+  buttonLabelSecondary: TextStyle;
+  buttonLabelGhost: TextStyle;
+  buttonLabelDanger: TextStyle;
+  buttonSublabel: TextStyle;
   stat: ViewStyle;
   statLabel: TextStyle;
   statValueRow: ViewStyle;
@@ -198,12 +323,21 @@ const styles = StyleSheet.create<{
   statValueEmphasis: TextStyle;
   statUnit: TextStyle;
   statHint: TextStyle;
+  tile: ViewStyle;
+  tileValue: TextStyle;
+  tileLabel: TextStyle;
   banner: ViewStyle;
   bannerInfo: ViewStyle;
   bannerWarning: ViewStyle;
+  bannerSuccess: ViewStyle;
   bannerText: TextStyle;
   bannerTextInfo: TextStyle;
   bannerTextWarning: TextStyle;
+  bannerTextSuccess: TextStyle;
+  empty: ViewStyle;
+  emptyEmoji: TextStyle;
+  emptyTitle: TextStyle;
+  emptyHint: TextStyle;
 }>({
   card: {
     backgroundColor: colors.surface,
@@ -211,22 +345,34 @@ const styles = StyleSheet.create<{
     borderWidth: 1,
     borderColor: colors.border,
     padding: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  cardAccent: { borderColor: colors.accentBorder, backgroundColor: colors.accentSoft },
+
+  screenTitle: {
+    color: colors.text,
+    fontSize: fontSize.xxl,
+    fontWeight: fontWeight.bold,
+    letterSpacing: -0.5,
     marginBottom: spacing.lg,
+    textAlign: 'auto',
   },
   sectionTitle: {
     color: colors.text,
-    fontSize: fontSize.lg,
-    fontWeight: '700',
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.bold,
     marginBottom: spacing.xs,
     textAlign: 'auto',
   },
   hint: {
     color: colors.textMuted,
     fontSize: fontSize.sm,
-    lineHeight: 20,
+    lineHeight: lineHeight.tight,
     marginBottom: spacing.md,
     textAlign: 'auto',
   },
+  divider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.md },
+
   fieldRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -234,8 +380,9 @@ const styles = StyleSheet.create<{
     paddingVertical: spacing.sm,
   },
   fieldLabel: {
-    color: colors.text,
-    fontSize: fontSize.md,
+    color: colors.textSecondary,
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.medium,
     textAlign: 'auto',
   },
   inputWrap: {
@@ -246,30 +393,21 @@ const styles = StyleSheet.create<{
     borderWidth: 1,
     borderColor: colors.border,
     paddingHorizontal: spacing.md,
-    minWidth: 108,
+    minWidth: 112,
   },
   input: {
     flex: 1,
     color: colors.text,
     fontSize: fontSize.md,
+    fontWeight: fontWeight.medium,
     paddingVertical: spacing.sm,
-    // Numbers read left-to-right even in Hebrew, so this stays 'center' rather than 'start'.
+    // Numerals read left-to-right in Hebrew too, so centring beats a logical alignment here.
     textAlign: 'center',
   },
-  suffix: {
-    color: colors.textMuted,
-    fontSize: fontSize.sm,
-    marginStart: spacing.xs,
-  },
-  segmentedBlock: {
-    paddingVertical: spacing.sm,
-  },
-  segmentedRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    marginTop: spacing.sm,
-  },
+  suffix: { color: colors.textMuted, fontSize: fontSize.xs, marginStart: spacing.xs },
+
+  segmentedBlock: { paddingVertical: spacing.sm },
+  segmentedRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
   segment: {
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
@@ -278,74 +416,86 @@ const styles = StyleSheet.create<{
     borderColor: colors.border,
     backgroundColor: colors.surfaceRaised,
   },
-  segmentActive: {
-    backgroundColor: colors.accentMuted,
-    borderColor: colors.accent,
+  segmentActive: { backgroundColor: colors.accentSoft, borderColor: colors.accentBorder },
+  segmentText: { color: colors.textMuted, fontSize: fontSize.sm },
+  segmentTextActive: { color: colors.accent, fontWeight: fontWeight.bold },
+
+  button: {
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    alignItems: 'center',
+    borderWidth: 1,
   },
-  segmentText: {
+  buttonPrimary: { backgroundColor: colors.accentSoft, borderColor: colors.accentBorder },
+  buttonSecondary: { backgroundColor: colors.surfaceRaised, borderColor: colors.borderStrong },
+  buttonGhost: { backgroundColor: 'transparent', borderColor: colors.border },
+  buttonDanger: { backgroundColor: 'transparent', borderColor: 'transparent' },
+  buttonPressed: { opacity: 0.6 },
+  buttonLabel: { fontSize: fontSize.md, fontWeight: fontWeight.bold },
+  buttonLabelPrimary: { color: colors.accent },
+  buttonLabelSecondary: { color: colors.text },
+  buttonLabelGhost: { color: colors.textSecondary },
+  buttonLabelDanger: { color: colors.danger, fontWeight: fontWeight.medium },
+  buttonSublabel: {
     color: colors.textMuted,
-    fontSize: fontSize.sm,
+    fontSize: fontSize.xxs,
+    marginTop: spacing.xxs,
+    textAlign: 'center',
   },
-  segmentTextActive: {
-    color: colors.accent,
-    fontWeight: '700',
-  },
-  stat: {
-    paddingVertical: spacing.sm,
-  },
+
+  stat: { paddingVertical: spacing.sm },
   statLabel: {
     color: colors.textMuted,
-    fontSize: fontSize.sm,
-    textAlign: 'auto',
-  },
-  statValueRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    marginTop: spacing.xs,
-  },
-  statValue: {
-    color: colors.text,
-    fontSize: fontSize.lg,
-    fontWeight: '700',
-  },
-  statValueEmphasis: {
-    fontSize: fontSize.xxl,
-    color: colors.accent,
-  },
-  statUnit: {
-    color: colors.textMuted,
-    fontSize: fontSize.sm,
-    marginStart: spacing.xs,
-  },
-  statHint: {
-    color: colors.textMuted,
     fontSize: fontSize.xs,
-    marginTop: 2,
+    fontWeight: fontWeight.medium,
     textAlign: 'auto',
   },
+  statValueRow: { flexDirection: 'row', alignItems: 'baseline', marginTop: spacing.xxs },
+  statValue: { color: colors.text, fontSize: fontSize.lg, fontWeight: fontWeight.bold },
+  statValueEmphasis: {
+    fontSize: fontSize.display,
+    color: colors.accent,
+    letterSpacing: -1,
+  },
+  statUnit: { color: colors.textMuted, fontSize: fontSize.sm, marginStart: spacing.xs },
+  statHint: {
+    color: colors.textFaint,
+    fontSize: fontSize.xxs,
+    marginTop: spacing.xxs,
+    lineHeight: 16,
+    textAlign: 'auto',
+  },
+
+  tile: { flex: 1, alignItems: 'center', paddingVertical: spacing.sm },
+  tileValue: { color: colors.text, fontSize: fontSize.xl, fontWeight: fontWeight.bold },
+  tileLabel: { color: colors.textMuted, fontSize: fontSize.xxs, marginTop: spacing.xxs },
+
   banner: {
     borderRadius: radius.md,
     borderWidth: 1,
     padding: spacing.md,
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
   },
-  bannerInfo: {
-    backgroundColor: '#12212E',
-    borderColor: '#1E3A52',
+  bannerInfo: { backgroundColor: colors.infoSoft, borderColor: '#1E3E56' },
+  bannerWarning: { backgroundColor: colors.warningSoft, borderColor: '#5C4614' },
+  bannerSuccess: { backgroundColor: colors.accentSoft, borderColor: colors.accentBorder },
+  bannerText: { fontSize: fontSize.sm, lineHeight: lineHeight.tight, textAlign: 'auto' },
+  bannerTextInfo: { color: colors.info },
+  bannerTextWarning: { color: colors.warning },
+  bannerTextSuccess: { color: colors.accent },
+
+  empty: { alignItems: 'center', paddingVertical: spacing.xxl },
+  emptyEmoji: { fontSize: 44, marginBottom: spacing.md },
+  emptyTitle: {
+    color: colors.textSecondary,
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.medium,
   },
-  bannerWarning: {
-    backgroundColor: '#2A2010',
-    borderColor: '#6B5518',
-  },
-  bannerText: {
+  emptyHint: {
+    color: colors.textMuted,
     fontSize: fontSize.sm,
-    lineHeight: 20,
-    textAlign: 'auto',
-  },
-  bannerTextInfo: {
-    color: '#9DC7EA',
-  },
-  bannerTextWarning: {
-    color: colors.warning,
+    marginTop: spacing.xs,
+    textAlign: 'center',
   },
 });

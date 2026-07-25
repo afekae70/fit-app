@@ -8,7 +8,7 @@
  * Once auth lands, these inputs come from the user's stored profile instead of local state.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Pressable,
@@ -35,9 +35,41 @@ import {
   type Goal,
 } from '@fit/shared/calculations';
 
-import { Banner, Card, Hint, NumberField, Segmented, SectionTitle, Stat } from '../../src/components/ui.js';
+import {
+  Banner,
+  Card,
+  Hint,
+  NumberField,
+  Segmented,
+  SectionTitle,
+  Stat,
+} from '../../src/components/ui.js';
+import { getLatestWeight, getProfile, recordBodyMetric, saveProfile } from '../../src/db/metrics.js';
+import { getExecutor, newId } from '../../src/db/provider.js';
 import { setAppLanguage, type Language } from '../../src/i18n/index.js';
 import { colors, fontSize, spacing } from '../../src/theme.js';
+
+/**
+ * Convert an entered age to a date of birth.
+ *
+ * The profile stores a birth date rather than an age so the value cannot go stale — a stored
+ * age silently becomes wrong on the user's birthday and skews every BMR calculation from then
+ * on. Anchoring to today's month and day keeps the derived age correct for a full year.
+ */
+function birthDateFromAge(ageYears: number, today = new Date()): string {
+  const birth = new Date(
+    Date.UTC(today.getUTCFullYear() - ageYears, today.getUTCMonth(), today.getUTCDate()),
+  );
+  return birth.toISOString().slice(0, 10);
+}
+
+function ageFromBirthDate(birthDate: string, today = new Date()): number {
+  const birth = new Date(birthDate);
+  let age = today.getUTCFullYear() - birth.getUTCFullYear();
+  const monthDelta = today.getUTCMonth() - birth.getUTCMonth();
+  if (monthDelta < 0 || (monthDelta === 0 && today.getUTCDate() < birth.getUTCDate())) age -= 1;
+  return age;
+}
 
 type SexChoice = 'male' | 'female';
 
@@ -60,6 +92,47 @@ export default function TodayScreen() {
   const [activityLevel, setActivityLevel] = useState<ActivityLevel>('moderate');
   const [goal, setGoal] = useState<Goal>('cut');
   const [reloadNeeded, setReloadNeeded] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+
+  // Load the saved profile and latest weight once. Until this completes, the fields show
+  // defaults; writing those defaults back would overwrite real saved values, hence `hydrated`.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const db = await getExecutor();
+      const [profile, latest] = await Promise.all([getProfile(db), getLatestWeight(db)]);
+      if (cancelled) return;
+
+      if (profile?.height_cm) setHeightRaw(String(profile.height_cm));
+      if (profile?.birth_date) setAgeRaw(String(ageFromBirthDate(profile.birth_date)));
+      if (profile?.sex === 'male' || profile?.sex === 'female') setSex(profile.sex);
+      if (profile?.activity_level) setActivityLevel(profile.activity_level as ActivityLevel);
+      if (profile?.goal) setGoal(profile.goal as Goal);
+      if (latest?.weight_kg) setWeightRaw(String(latest.weight_kg));
+
+      setHydrated(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Persist profile edits so the metrics tab (and later the AI coach) can read them.
+  useEffect(() => {
+    if (!hydrated) return;
+    const ageYears = parseNumber(ageRaw);
+    const heightCm = parseNumber(heightRaw);
+    void (async () => {
+      const db = await getExecutor();
+      await saveProfile(db, {
+        heightCm,
+        birthDate: ageYears === null ? null : birthDateFromAge(ageYears),
+        sex,
+        activityLevel,
+        goal,
+      });
+    })();
+  }, [hydrated, ageRaw, heightRaw, sex, activityLevel, goal]);
 
   const results = useMemo(() => {
     const weightKg = parseNumber(weightRaw);
@@ -130,6 +203,18 @@ export default function TodayScreen() {
           value={weightRaw}
           suffix={t('common.kg')}
           onChangeText={setWeightRaw}
+          // Committed on blur rather than per keystroke: typing "80" passes through "8",
+          // and recording that would put a phantom 8 kg weigh-in in the history.
+          onEndEditing={() => {
+            const value = parseNumber(weightRaw);
+            if (value === null || !hydrated) return;
+            void (async () => {
+              const db = await getExecutor();
+              const latest = await getLatestWeight(db);
+              if (latest?.weight_kg === value) return; // no change, no duplicate row
+              await recordBodyMetric(db, newId, { weightKg: value, source: 'manual' });
+            })();
+          }}
         />
         <NumberField
           label={t('profile.height')}

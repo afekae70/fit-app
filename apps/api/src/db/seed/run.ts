@@ -10,12 +10,11 @@
  *   DATABASE_URL="postgres://...:5432/postgres" npm run db:seed --workspace @fit/api
  */
 
+import { EQUIPMENT_SEED, EXERCISE_SEED } from '@fit/shared/catalog';
 import { sql } from 'drizzle-orm';
 
 import { createDb } from '../client.js';
 import { equipment, exercises } from '../schema.js';
-import { EQUIPMENT_SEED } from './equipment.js';
-import { EXERCISE_SEED } from './exercises.js';
 
 async function main() {
   const url = process.env.DATABASE_URL;

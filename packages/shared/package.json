@@ -8,6 +8,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./calculations": "./src/calculations/index.ts",
+    "./catalog": "./src/catalog/index.ts",
     "./schemas": "./src/schemas/index.ts"
   },
   "scripts": {

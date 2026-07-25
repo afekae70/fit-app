@@ -11,6 +11,10 @@ import { describe, expect, it } from 'vitest';
 import { EQUIPMENT_SEED } from './equipment.js';
 import { EXERCISE_SEED, MUSCLE_GROUPS } from './exercises.js';
 
+// Note: this catalogue is bundled into the mobile app, so these checks guard the offline
+// experience too — a bad equipmentSlug here means an exercise that can never be matched
+// during equipment substitution, on device, with no server round-trip to blame.
+
 const equipmentSlugs = new Set(EQUIPMENT_SEED.map((e) => e.slug));
 const muscles = new Set<string>(MUSCLE_GROUPS);
 
