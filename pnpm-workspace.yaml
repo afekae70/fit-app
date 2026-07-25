@@ -1,0 +1,6 @@
+# Used once Node >= 22.13 is installed (pnpm's current minimum).
+# Until then the root package.json "workspaces" field lets npm drive the same layout,
+# so switching to pnpm is `pnpm install` with no restructuring.
+packages:
+  - "apps/*"
+  - "packages/*"

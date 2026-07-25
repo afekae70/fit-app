@@ -1,0 +1,36 @@
+{
+  "expo": {
+    "name": "Fit",
+    "slug": "fit-app",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "scheme": "fitapp",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.afeka.fitapp"
+    },
+    "android": {
+      "package": "com.afeka.fitapp",
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": ["expo-router", "expo-localization"],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "//": "SUPABASE_URL and SUPABASE_ANON_KEY are read from app.config.ts at build time.",
+      "//2": "The anon key is safe to ship: Row Level Security protects the data, not key secrecy."
+    }
+  }
+}

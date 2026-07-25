@@ -1,0 +1,34 @@
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# Secrets — never commit. The LLM API keys in particular must stay server-side only.
+.env
+.env.*
+!.env.example
+
+# Expo
+.expo/
+android/
+ios/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Per-developer local overrides — the shared .claude/settings.json is committed, this is not.
+.claude/settings.local.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# Drizzle introspection output (generated migrations ARE committed)
+drizzle/meta/_journal.json.bak

@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "types": ["node"]
+  },
+  // drizzle.config.ts sits outside rootDir and is loaded by drizzle-kit's own transpiler,
+  // so it is typechecked separately via tsconfig.tools.json rather than built into dist/.
+  "include": ["src/**/*"]
+}

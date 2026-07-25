@@ -1,0 +1,32 @@
+{
+  "name": "fit-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Personal training, nutrition tracking, and AI coaching app",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint .",
+    "db:generate": "npm run db:generate --workspace @fit/api",
+    "db:migrate": "npm run db:migrate --workspace @fit/api",
+    "db:seed": "npm run db:seed --workspace @fit/api"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "overridesReason": "React Native tolerates exactly ONE copy of React. @expo/ui declares react 19.2.8 as a direct dependency while Expo SDK 57 pins 19.2.3, so npm installs both — and two React instances cause 'Invalid hook call' crashes at runtime, not a build error. The overrides below collapse the tree to a single copy. Re-check on every Expo SDK upgrade.",
+  "overrides": {
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  }
+}
