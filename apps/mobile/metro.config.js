@@ -20,7 +20,10 @@ const workspaceRoot = path.resolve(projectRoot, '../..');
 const config = getDefaultConfig(projectRoot);
 
 // Watch the whole workspace so edits to packages/shared trigger a rebuild.
-config.watchFolders = [workspaceRoot];
+// Append rather than assign: Expo seeds watchFolders with entries of its own, and replacing
+// the array drops them (expo-doctor flags this as "does not contain all entries from Expo's
+// defaults").
+config.watchFolders = [...(config.watchFolders ?? []), workspaceRoot];
 
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, 'node_modules'),

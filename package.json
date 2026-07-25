@@ -24,9 +24,9 @@
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
   },
-  "overridesReason": "React Native tolerates exactly ONE copy of React. @expo/ui declares react 19.2.8 as a direct dependency while Expo SDK 57 pins 19.2.3, so npm installs both — and two React instances cause 'Invalid hook call' crashes at runtime, not a build error. The overrides below collapse the tree to a single copy. Re-check on every Expo SDK upgrade.",
+  "overridesReason": "React Native tolerates exactly ONE copy of React; two instances cause 'Invalid hook call' crashes at runtime rather than a build failure. Transitive deps regularly pull a second React version, so this pins the tree to one copy. The version must track the Expo SDK — 19.1.0 for SDK 54 (React Native 0.81). Update it in lockstep whenever the SDK moves.",
   "overrides": {
-    "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
   }
 }
