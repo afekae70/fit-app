@@ -32,7 +32,9 @@
         "android.permission.health.READ_HEART_RATE",
         "android.permission.health.READ_ACTIVE_CALORIES_BURNED",
         "android.permission.health.READ_TOTAL_CALORIES_BURNED",
-        "android.permission.health.READ_WEIGHT"
+        "android.permission.health.READ_WEIGHT",
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN"
       ]
     },
     "web": {
@@ -46,7 +48,9 @@
         "react-native-ble-plx",
         {
           "isBackgroundEnabled": false,
-          "modes": ["peripheral"],
+          "modes": [
+            "peripheral"
+          ],
           "bluetoothAlwaysPermission": "Connect to a smart scale to record your weight automatically.",
           "neverForLocation": true
         }
@@ -60,7 +64,13 @@
       "//": "SUPABASE_URL and SUPABASE_ANON_KEY are read from app.config.ts at build time.",
       "//2": "The anon key is safe to ship: Row Level Security protects the data, not key secrecy.",
       "//blePermissions": "neverForLocation is set on BLUETOOTH_SCAN so Android 12+ does not require the user to grant location just to find a scale. ACCESS_FINE_LOCATION remains declared because Android 11 and below have no BLUETOOTH_SCAN and genuinely gate BLE discovery behind location.",
-      "//healthPermissions": "Health Connect permissions are android.permission.health.* and are granted per data type inside the Health Connect app, not by a standard runtime prompt."
-    }
+      "//blePermissionsLegacy": "BLUETOOTH and BLUETOOTH_ADMIN were added by the react-native-ble-plx config plugin, not by hand. They are the pre-Android-12 equivalents of BLUETOOTH_CONNECT and BLUETOOTH_SCAN, scoped by the manifest merger to older API levels — inert on Android 12+, required below it.",
+      "//healthPermissions": "Health Connect permissions are android.permission.health.* and are granted per data type inside the Health Connect app, not by a standard runtime prompt.",
+      "router": {},
+      "eas": {
+        "projectId": "7b28dabc-5925-470d-a775-2abf7e699b90"
+      }
+    },
+    "owner": "afekae70"
   }
 }
