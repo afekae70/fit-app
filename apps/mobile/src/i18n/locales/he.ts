@@ -145,7 +145,11 @@ export const he = {
     dayHint: 'היעדים כאן הם המלצה בלבד. באימון עצמו אפשר לעשות יותר או פחות.',
     dayEmptyHint: 'אין עדיין תרגילים ביום הזה',
     exercise: 'תרגיל',
-    exercises: 'תרגילים',
+    // Only one/other, matching English. Hebrew has a dual form ("שני תרגילים"), but the count
+    // is rendered as a numeral here, so "2 תרגילים" is correct and the dual would add nothing
+    // — while forcing English to declare a plural category it does not have.
+    exercises_one: 'תרגיל אחד',
+    exercises_other: '{{count}} תרגילים',
     sets: 'סטים',
     repsFrom: 'מ־',
     repsTo: 'עד',

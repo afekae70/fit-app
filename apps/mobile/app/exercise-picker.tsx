@@ -77,7 +77,7 @@ export default function ExercisePickerScreen() {
   const choose = (exercise: ExerciseSeed) => {
     // exercise_key is always the English name — the stable catalogue key, independent of UI
     // language. Storing the localised name would break history when the language changes.
-    router.replace({
+    const target = {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- returnTo is a runtime
       // string, so it cannot satisfy expo-router's generated union of literal route types.
       pathname: (params.returnTo ?? '/(tabs)/workouts') as any,
@@ -86,7 +86,17 @@ export default function ExercisePickerScreen() {
         planDayId: params.planDayId ?? '',
         addExercise: exercise.nameEn,
       },
-    });
+    };
+
+    // `dismissTo`, not `replace`. The caller is still on the stack below this modal, so
+    // replacing would leave two copies of it — and Back would land on the older one, which
+    // never reloaded and so appears to have lost the exercise just added. `dismissTo` pops
+    // back to the existing screen instead of stacking a second.
+    if (params.returnTo) {
+      router.dismissTo(target);
+    } else {
+      router.replace(target);
+    }
   };
 
   return (

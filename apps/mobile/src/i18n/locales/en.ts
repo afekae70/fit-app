@@ -152,7 +152,10 @@ export const en = {
     dayHint: 'These targets are a guide. The workout itself can do more or fewer.',
     dayEmptyHint: 'No exercises in this day yet',
     exercise: 'Exercise',
-    exercises: 'exercises',
+    // Pluralised via i18next's count suffixes rather than a bare noun, so a one-exercise day
+    // does not read "1 exercises".
+    exercises_one: '{{count}} exercise',
+    exercises_other: '{{count}} exercises',
     sets: 'Sets',
     repsFrom: 'From',
     repsTo: 'To',

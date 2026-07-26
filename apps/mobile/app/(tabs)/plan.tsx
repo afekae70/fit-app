@@ -209,7 +209,7 @@ export default function PlanScreen() {
                     <View style={styles.dayHeaderMain}>
                       <Text style={styles.dayName}>{label}</Text>
                       <Text style={styles.dayMeta}>
-                        {day.exercise_count} {t('plan.exercises')}
+                        {t('plan.exercises', { count: day.exercise_count })}
                         {day.last_trained_at
                           ? ` · ${t('plan.trained')} ${daysSince(day.last_trained_at, nowMs)} ${t('plan.daysAgo')}`
                           : ` · ${t('plan.neverTrained')}`}
