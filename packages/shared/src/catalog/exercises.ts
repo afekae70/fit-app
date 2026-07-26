@@ -146,13 +146,35 @@ export const EXERCISE_SEED: readonly ExerciseSeed[] = [
   { nameEn: 'Dumbbell Shrug', nameHe: 'כיווץ כתפיים במשקולות', primaryMuscle: 'traps', movementPattern: 'isolation', equipmentSlug: 'dumbbell' },
 
   /* ------------------------------------------------------------------ isolation: arms */
+  // Biceps. Hebrew names follow Israeli gym vernacular rather than literal translation —
+  // "כיסא כומר" is what lifters actually say for a preacher bench, so a literal "כוהן" would
+  // fail the search box for the term people type.
   { nameEn: 'Barbell Curl', nameHe: 'כפיפת מרפקים במוט', primaryMuscle: 'biceps', movementPattern: 'isolation', equipmentSlug: 'barbell' },
   { nameEn: 'EZ Bar Curl', nameHe: 'כפיפת מרפקים במוט EZ', primaryMuscle: 'biceps', movementPattern: 'isolation', equipmentSlug: 'ez_bar' },
+  { nameEn: 'Wide-Grip Barbell Curl', nameHe: 'כפיפת מרפקים באחיזה רחבה', primaryMuscle: 'biceps', movementPattern: 'isolation', equipmentSlug: 'barbell' },
+  { nameEn: 'Close-Grip Barbell Curl', nameHe: 'כפיפת מרפקים באחיזה צרה', primaryMuscle: 'biceps', movementPattern: 'isolation', equipmentSlug: 'barbell' },
   { nameEn: 'Dumbbell Curl', nameHe: 'כפיפת מרפקים במשקולות', primaryMuscle: 'biceps', movementPattern: 'isolation', equipmentSlug: 'dumbbell' },
+  { nameEn: 'Alternating Dumbbell Curl', nameHe: 'כפיפת מרפקים לסירוגין', primaryMuscle: 'biceps', movementPattern: 'isolation', equipmentSlug: 'dumbbell', isUnilateral: true },
   { nameEn: 'Hammer Curl', nameHe: 'כפיפת פטיש', primaryMuscle: 'biceps', secondaryMuscles: ['forearms'], movementPattern: 'isolation', equipmentSlug: 'dumbbell' },
+  { nameEn: 'Cross-Body Hammer Curl', nameHe: 'כפיפת פטיש חוצה גוף', primaryMuscle: 'biceps', secondaryMuscles: ['forearms'], movementPattern: 'isolation', equipmentSlug: 'dumbbell', isUnilateral: true },
   { nameEn: 'Incline Dumbbell Curl', nameHe: 'כפיפת מרפקים בשיפוע', primaryMuscle: 'biceps', movementPattern: 'isolation', equipmentSlug: 'adjustable_bench' },
-  { nameEn: 'Preacher Curl', nameHe: 'כפיפת כוהן', primaryMuscle: 'biceps', movementPattern: 'isolation', equipmentSlug: 'preacher_bench' },
+  { nameEn: 'Incline Hammer Curl', nameHe: 'כפיפת פטיש בשיפוע', primaryMuscle: 'biceps', secondaryMuscles: ['forearms'], movementPattern: 'isolation', equipmentSlug: 'adjustable_bench' },
+
+  { nameEn: 'Preacher Curl', nameHe: 'כפיפת מרפקים בכיסא כומר', primaryMuscle: 'biceps', movementPattern: 'isolation', equipmentSlug: 'preacher_bench' },
+  { nameEn: 'EZ Bar Preacher Curl', nameHe: 'כפיפת מרפקים בכיסא כומר במוט EZ', primaryMuscle: 'biceps', movementPattern: 'isolation', equipmentSlug: 'preacher_bench' },
+  { nameEn: 'Single-Arm Preacher Curl', nameHe: 'כפיפת מרפקים בכיסא כומר ביד אחת', primaryMuscle: 'biceps', movementPattern: 'isolation', equipmentSlug: 'preacher_bench', isUnilateral: true },
+  { nameEn: 'Machine Preacher Curl', nameHe: 'כפיפת מרפקים בכיסא כומר במכונה', primaryMuscle: 'biceps', movementPattern: 'isolation', equipmentSlug: 'preacher_bench' },
+
+  { nameEn: 'Concentration Curl', nameHe: 'כפיפת ריכוז', primaryMuscle: 'biceps', movementPattern: 'isolation', equipmentSlug: 'dumbbell', isUnilateral: true },
+  { nameEn: 'Spider Curl', nameHe: 'כפיפת עכביש', primaryMuscle: 'biceps', movementPattern: 'isolation', equipmentSlug: 'adjustable_bench' },
+  { nameEn: 'Drag Curl', nameHe: 'כפיפת גרירה', primaryMuscle: 'biceps', movementPattern: 'isolation', equipmentSlug: 'barbell' },
+  { nameEn: 'Zottman Curl', nameHe: 'כפיפת זוטמן', primaryMuscle: 'biceps', secondaryMuscles: ['forearms'], movementPattern: 'isolation', equipmentSlug: 'dumbbell' },
+  { nameEn: 'Reverse Curl', nameHe: 'כפיפת מרפקים באחיזה הפוכה', primaryMuscle: 'forearms', secondaryMuscles: ['biceps'], movementPattern: 'isolation', equipmentSlug: 'ez_bar' },
+
   { nameEn: 'Cable Curl', nameHe: 'כפיפת מרפקים בכבל', primaryMuscle: 'biceps', movementPattern: 'isolation', equipmentSlug: 'cable_machine' },
+  { nameEn: 'High Cable Curl', nameHe: 'כפיפת מרפקים בכבל עליון', primaryMuscle: 'biceps', movementPattern: 'isolation', equipmentSlug: 'cable_machine' },
+  { nameEn: 'Bayesian Cable Curl', nameHe: 'כפיפת מרפקים בכבל מאחורי הגוף', primaryMuscle: 'biceps', movementPattern: 'isolation', equipmentSlug: 'cable_machine', isUnilateral: true },
+  { nameEn: 'Rope Hammer Curl', nameHe: 'כפיפת פטיש בחבל', primaryMuscle: 'biceps', secondaryMuscles: ['forearms'], movementPattern: 'isolation', equipmentSlug: 'cable_machine' },
   { nameEn: 'Machine Bicep Curl', nameHe: 'כפיפת מרפקים במכונה', primaryMuscle: 'biceps', movementPattern: 'isolation', equipmentSlug: 'cable_machine' },
   { nameEn: 'Band Curl', nameHe: 'כפיפת מרפקים בגומייה', primaryMuscle: 'biceps', movementPattern: 'isolation', equipmentSlug: 'resistance_band' },
   { nameEn: 'Cable Tricep Pushdown', nameHe: 'פשיטת מרפקים בכבל', primaryMuscle: 'triceps', movementPattern: 'isolation', equipmentSlug: 'cable_machine' },

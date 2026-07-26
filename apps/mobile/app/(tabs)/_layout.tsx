@@ -55,7 +55,7 @@ export default function TabsLayout() {
         name="coach"
         options={{
           title: t('tabs.coach'),
-          tabBarIcon: ({ focused }) => <TabIcon emoji="🤖" focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabIcon emoji="📈" focused={focused} />,
         }}
       />
     </Tabs>

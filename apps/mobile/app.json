@@ -9,7 +9,11 @@
     "scheme": "fitapp",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.afeka.fitapp"
+      "bundleIdentifier": "com.afeka.fitapp",
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "Connect to a smart scale to record your weight automatically.",
+        "NSBluetoothPeripheralUsageDescription": "Connect to a smart scale to record your weight automatically."
+      }
     },
     "android": {
       "package": "com.afeka.fitapp",
@@ -19,7 +23,17 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.health.READ_EXERCISE",
+        "android.permission.health.READ_HEART_RATE",
+        "android.permission.health.READ_ACTIVE_CALORIES_BURNED",
+        "android.permission.health.READ_TOTAL_CALORIES_BURNED",
+        "android.permission.health.READ_WEIGHT"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -27,14 +41,26 @@
     "plugins": [
       "expo-router",
       "expo-localization",
-      "expo-sqlite"
+      "expo-sqlite",
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": false,
+          "modes": ["peripheral"],
+          "bluetoothAlwaysPermission": "Connect to a smart scale to record your weight automatically.",
+          "neverForLocation": true
+        }
+      ],
+      "react-native-health-connect"
     ],
     "experiments": {
       "typedRoutes": true
     },
     "extra": {
       "//": "SUPABASE_URL and SUPABASE_ANON_KEY are read from app.config.ts at build time.",
-      "//2": "The anon key is safe to ship: Row Level Security protects the data, not key secrecy."
+      "//2": "The anon key is safe to ship: Row Level Security protects the data, not key secrecy.",
+      "//blePermissions": "neverForLocation is set on BLUETOOTH_SCAN so Android 12+ does not require the user to grant location just to find a scale. ACCESS_FINE_LOCATION remains declared because Android 11 and below have no BLUETOOTH_SCAN and genuinely gate BLE discovery behind location.",
+      "//healthPermissions": "Health Connect permissions are android.permission.health.* and are granted per data type inside the Health Connect app, not by a standard runtime prompt."
     }
   }
 }

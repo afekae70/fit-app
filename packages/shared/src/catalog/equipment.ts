@@ -28,7 +28,7 @@ export const EQUIPMENT_SEED: readonly EquipmentSeed[] = [
   { slug: 'adjustable_bench', nameEn: 'Adjustable Bench', nameHe: 'ספסל מתכוונן' },
   { slug: 'squat_rack', nameEn: 'Squat Rack', nameHe: 'כלוב סקוואט' },
   { slug: 'power_cage', nameEn: 'Power Cage', nameHe: 'כלוב כוח' },
-  { slug: 'preacher_bench', nameEn: 'Preacher Bench', nameHe: 'ספסל כוהן' },
+  { slug: 'preacher_bench', nameEn: 'Preacher Bench', nameHe: 'כיסא כומר' },
 
   // Cables and machines
   { slug: 'cable_machine', nameEn: 'Cable Machine', nameHe: 'מכונת כבלים' },
