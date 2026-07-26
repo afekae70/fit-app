@@ -4,6 +4,10 @@
  * Reads the catalogue straight from `@fit/shared` — it ships in the bundle, so searching works
  * with no network and no prior sync. The chosen exercise is returned to the caller through the
  * router's params rather than a callback, since expo-router screens cannot pass functions.
+ *
+ * The caller supplies `returnTo`, so the same picker serves the active workout, editing a past
+ * session, and building a plan day. It defaults to the active workout, which is where the
+ * overwhelming majority of picks happen.
  */
 
 import { EXERCISE_SEED, type ExerciseSeed } from '@fit/shared/catalog';
@@ -44,7 +48,11 @@ const FILTER_MUSCLES = [
 export default function ExercisePickerScreen() {
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ sessionId?: string }>();
+  const params = useLocalSearchParams<{
+    sessionId?: string;
+    returnTo?: string;
+    planDayId?: string;
+  }>();
   const isHebrew = i18n.language === 'he';
 
   const [query, setQuery] = useState('');
@@ -70,8 +78,14 @@ export default function ExercisePickerScreen() {
     // exercise_key is always the English name — the stable catalogue key, independent of UI
     // language. Storing the localised name would break history when the language changes.
     router.replace({
-      pathname: '/(tabs)/workouts',
-      params: { sessionId: params.sessionId ?? '', addExercise: exercise.nameEn },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- returnTo is a runtime
+      // string, so it cannot satisfy expo-router's generated union of literal route types.
+      pathname: (params.returnTo ?? '/(tabs)/workouts') as any,
+      params: {
+        sessionId: params.sessionId ?? '',
+        planDayId: params.planDayId ?? '',
+        addExercise: exercise.nameEn,
+      },
     });
   };
 

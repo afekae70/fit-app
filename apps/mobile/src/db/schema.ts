@@ -18,7 +18,7 @@
  * TEXT (lexicographically sortable, which is what the history queries rely on).
  */
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 /**
  * Incremental migrations, keyed by the version they upgrade TO.
@@ -30,6 +30,41 @@ export const SCHEMA_VERSION = 3;
  */
 export const MIGRATIONS: Record<number, string> = {
   3: `ALTER TABLE workout_sessions ADD COLUMN name TEXT;`,
+  // The plan tables are also in CREATE_SCHEMA_SQL for fresh installs. Repeating them here is
+  // what upgrades a device that already has data: CREATE_SCHEMA_SQL only runs on a new
+  // database, so without this migration an existing user would never get these tables.
+  4: `
+    CREATE TABLE IF NOT EXISTS plans (
+      id          TEXT PRIMARY KEY NOT NULL,
+      name        TEXT NOT NULL,
+      is_active   INTEGER NOT NULL DEFAULT 0,
+      created_at  TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS plan_days (
+      id         TEXT PRIMARY KEY NOT NULL,
+      plan_id    TEXT NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
+      day_index  INTEGER NOT NULL,
+      name       TEXT,
+      UNIQUE (plan_id, day_index)
+    );
+
+    CREATE TABLE IF NOT EXISTS plan_day_exercises (
+      id               TEXT PRIMARY KEY NOT NULL,
+      plan_day_id      TEXT NOT NULL REFERENCES plan_days(id) ON DELETE CASCADE,
+      exercise_key     TEXT NOT NULL,
+      order_index      INTEGER NOT NULL,
+      target_sets      INTEGER,
+      target_reps_min  INTEGER,
+      target_reps_max  INTEGER,
+      notes            TEXT,
+      UNIQUE (plan_day_id, order_index)
+    );
+
+    CREATE INDEX IF NOT EXISTS plan_days_plan_idx ON plan_days (plan_id, day_index);
+    CREATE INDEX IF NOT EXISTS plan_day_exercises_day_idx
+      ON plan_day_exercises (plan_day_id, order_index);
+  `,
 };
 
 export const CREATE_SCHEMA_SQL = `
@@ -143,6 +178,51 @@ CREATE TABLE IF NOT EXISTS sets (
 
 CREATE INDEX IF NOT EXISTS sets_exercise_idx
   ON sets (session_exercise_id, set_index);
+
+-- The weekly programme: plan → day → prescribed exercise.
+--
+-- Targets live here and ONLY here. A plan day saying "3 sets of 8-10" is a prescription, never
+-- a constraint on the log: the session it starts can end up with 2 sets or 5, and the sets
+-- table neither knows nor cares. That separation is what lets the app show "prescribed vs
+-- actual" instead of quietly rewriting one to match the other.
+--
+-- No plan_variants table yet. The server schema has one, for the same plan adapted to a
+-- different location (commercial gym vs. military base). Adding it later means a new table and
+-- a foreign key on plan_days, not a reshape of these rows.
+CREATE TABLE IF NOT EXISTS plans (
+  id          TEXT PRIMARY KEY NOT NULL,
+  name        TEXT NOT NULL,
+  -- Exactly one plan drives the week. Enforced in the repository rather than by a constraint,
+  -- since SQLite cannot express "at most one row with is_active = 1".
+  is_active   INTEGER NOT NULL DEFAULT 0,
+  created_at  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS plan_days (
+  id         TEXT PRIMARY KEY NOT NULL,
+  plan_id    TEXT NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
+  -- Position in the training week (1..N), not a weekday. A 4-day split does not map onto
+  -- Sunday-Saturday, and pinning days to dates makes a missed session cascade into the rest.
+  day_index  INTEGER NOT NULL,
+  name       TEXT,
+  UNIQUE (plan_id, day_index)
+);
+
+CREATE TABLE IF NOT EXISTS plan_day_exercises (
+  id               TEXT PRIMARY KEY NOT NULL,
+  plan_day_id      TEXT NOT NULL REFERENCES plan_days(id) ON DELETE CASCADE,
+  exercise_key     TEXT NOT NULL,
+  order_index      INTEGER NOT NULL,
+  target_sets      INTEGER,
+  target_reps_min  INTEGER,
+  target_reps_max  INTEGER,
+  notes            TEXT,
+  UNIQUE (plan_day_id, order_index)
+);
+
+CREATE INDEX IF NOT EXISTS plan_days_plan_idx ON plan_days (plan_id, day_index);
+CREATE INDEX IF NOT EXISTS plan_day_exercises_day_idx
+  ON plan_day_exercises (plan_day_id, order_index);
 
 CREATE TABLE IF NOT EXISTS outbox (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -1,14 +1,19 @@
 /**
- * Past-session detail: what was done, plus rename / repeat / delete.
+ * Past-session detail: what was done, plus edit / rename / repeat / delete.
  *
  * Naming lives here rather than only in the finish flow because `Alert.prompt` is iOS-only —
  * this screen gives Android a real text field, so the template feature is not silently
  * unusable on half the platforms.
+ *
+ * Editing is behind an explicit toggle rather than always-on. Every field here writes straight
+ * to SQLite on blur, so an always-editable history screen would turn a mistyped tap while
+ * scrolling into a silent corruption of a workout logged weeks ago. Read is the default; edit
+ * is a decision.
  */
 
 import { EXERCISE_SEED, type ExerciseSeed } from '@fit/shared/catalog';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Alert,
@@ -23,13 +28,20 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ExerciseCard, type PreviousSet } from '../../src/components/ExerciseCard.js';
 import { getExecutor, newId } from '../../src/db/provider.js';
 import {
+  addExerciseToSession,
+  addSetCopyingPrevious,
   deleteSession,
   getActiveSession,
+  getPreviousSessionSets,
   getSessionDetail,
+  removeExerciseFromSession,
+  removeSet,
   renameSession,
   repeatSession,
+  updateSet,
   type SessionExerciseWithSets,
   type WorkoutSessionRow,
 } from '../../src/db/workouts.js';
@@ -42,13 +54,15 @@ const EXERCISE_BY_KEY = new Map<string, ExerciseSeed>(
 export default function SessionDetailScreen() {
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, addExercise } = useLocalSearchParams<{ id: string; addExercise?: string }>();
   const isHebrew = i18n.language === 'he';
 
   const [session, setSession] = useState<WorkoutSessionRow | null>(null);
   const [exercises, setExercises] = useState<SessionExerciseWithSets[]>([]);
+  const [previous, setPrevious] = useState<Record<string, PreviousSet[] | null>>({});
   const [nameDraft, setNameDraft] = useState('');
   const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -57,12 +71,88 @@ export default function SessionDetailScreen() {
     setSession(detail.session);
     setExercises(detail.exercises);
     setNameDraft(detail.session?.name ?? '');
+
+    const nextPrevious: Record<string, PreviousSet[] | null> = {};
+    for (const exercise of detail.exercises) {
+      const sets = await getPreviousSessionSets(db, exercise.exercise_key, id);
+      nextPrevious[exercise.exercise_key] = sets.length > 0 ? sets : null;
+    }
+    setPrevious(nextPrevious);
     setLoading(false);
   }, [id]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Returning from the picker carries the chosen exercise in a param. The ref stops an
+  // unrelated re-render from replaying it and adding the same exercise twice.
+  const handledParam = useRef<string | null>(null);
+  useEffect(() => {
+    if (!addExercise || !id || handledParam.current === addExercise) return;
+    handledParam.current = addExercise;
+    void (async () => {
+      const db = await getExecutor();
+      const exerciseId = await addExerciseToSession(db, newId, id, addExercise);
+      await addSetCopyingPrevious(db, newId, exerciseId);
+      await load();
+      setEditing(true);
+      router.setParams({ addExercise: '' });
+    })();
+  }, [addExercise, id, load]);
+
+  const patchSet = useCallback(
+    (setId: string, patch: Record<string, number | boolean | null>) => {
+      void (async () => {
+        const db = await getExecutor();
+        await updateSet(db, setId, patch);
+        await load();
+      })();
+    },
+    [load],
+  );
+
+  const addSetTo = useCallback(
+    (sessionExerciseId: string) => {
+      void (async () => {
+        const db = await getExecutor();
+        await addSetCopyingPrevious(db, newId, sessionExerciseId);
+        await load();
+      })();
+    },
+    [load],
+  );
+
+  const deleteSet = useCallback(
+    (setId: string) => {
+      void (async () => {
+        const db = await getExecutor();
+        await removeSet(db, setId);
+        await load();
+      })();
+    },
+    [load],
+  );
+
+  const dropExercise = useCallback(
+    (sessionExerciseId: string) => {
+      Alert.alert('', t('workout.confirmRemoveExercise'), [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('workout.removeExercise'),
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              const db = await getExecutor();
+              await removeExerciseFromSession(db, sessionExerciseId);
+              await load();
+            })();
+          },
+        },
+      ]);
+    },
+    [load, t],
+  );
 
   const saveName = async () => {
     if (!id) return;
@@ -181,34 +271,81 @@ export default function SessionDetailScreen() {
         ) : null}
       </View>
 
-      <Pressable onPress={repeat} style={styles.repeatButton} accessibilityRole="button">
-        <Text style={styles.repeatButtonText}>↻ {t('history.repeat')}</Text>
-        <Text style={styles.repeatHint}>{t('history.repeatHint')}</Text>
+      <Pressable
+        onPress={() => setEditing((current) => !current)}
+        style={[styles.editButton, editing && styles.editButtonActive]}
+        accessibilityRole="button"
+      >
+        <Text style={[styles.editButtonText, editing && styles.editButtonTextActive]}>
+          {editing ? `✓ ${t('history.editDone')}` : `✎ ${t('history.edit')}`}
+        </Text>
+        {!editing ? <Text style={styles.repeatHint}>{t('history.editHint')}</Text> : null}
       </Pressable>
 
-      {exercises.map((exercise) => {
-        const seed = EXERCISE_BY_KEY.get(exercise.exercise_key);
-        const label = seed ? (isHebrew ? seed.nameHe : seed.nameEn) : exercise.exercise_key;
-        return (
-          <View key={exercise.id} style={styles.exerciseCard}>
-            <Text style={styles.exerciseTitle}>{label}</Text>
-            {exercise.sets.map((set) => (
-              <View key={set.id} style={styles.setLine}>
-                <Text style={styles.setIndex}>
-                  {set.is_warmup === 1 ? t('workout.warmupShort') : set.set_index}
-                </Text>
-                <Text style={styles.setValue}>
-                  {set.weight_kg !== null ? `${set.weight_kg} ${t('common.kg')}` : ''}
-                  {set.weight_kg !== null && set.reps !== null ? ' × ' : ''}
-                  {set.reps !== null ? `${set.reps}` : ''}
-                  {set.duration_seconds !== null ? `${set.duration_seconds} ${t('workout.seconds')}` : ''}
-                  {set.distance_m !== null ? `${set.distance_m} ${t('workout.meters')}` : ''}
-                </Text>
+      {!editing ? (
+        <Pressable onPress={repeat} style={styles.repeatButton} accessibilityRole="button">
+          <Text style={styles.repeatButtonText}>↻ {t('history.repeat')}</Text>
+          <Text style={styles.repeatHint}>{t('history.repeatHint')}</Text>
+        </Pressable>
+      ) : null}
+
+      {editing
+        ? exercises.map((exercise) => {
+            const seed = EXERCISE_BY_KEY.get(exercise.exercise_key);
+            if (!seed) return null;
+            return (
+              <ExerciseCard
+                key={exercise.id}
+                exercise={seed}
+                sets={exercise.sets}
+                previousSets={previous[exercise.exercise_key] ?? null}
+                onAddSet={() => addSetTo(exercise.id)}
+                onRemoveSet={deleteSet}
+                onUpdateSet={patchSet}
+                onRemoveExercise={() => dropExercise(exercise.id)}
+              />
+            );
+          })
+        : exercises.map((exercise) => {
+            const seed = EXERCISE_BY_KEY.get(exercise.exercise_key);
+            const label = seed ? (isHebrew ? seed.nameHe : seed.nameEn) : exercise.exercise_key;
+            return (
+              <View key={exercise.id} style={styles.exerciseCard}>
+                <Text style={styles.exerciseTitle}>{label}</Text>
+                {exercise.sets.map((set) => (
+                  <View key={set.id} style={styles.setLine}>
+                    <Text style={styles.setIndex}>
+                      {set.is_warmup === 1 ? t('workout.warmupShort') : set.set_index}
+                    </Text>
+                    <Text style={styles.setValue}>
+                      {set.weight_kg !== null ? `${set.weight_kg} ${t('common.kg')}` : ''}
+                      {set.weight_kg !== null && set.reps !== null ? ' × ' : ''}
+                      {set.reps !== null ? `${set.reps}` : ''}
+                      {set.duration_seconds !== null
+                        ? `${set.duration_seconds} ${t('workout.seconds')}`
+                        : ''}
+                      {set.distance_m !== null ? `${set.distance_m} ${t('workout.meters')}` : ''}
+                    </Text>
+                  </View>
+                ))}
               </View>
-            ))}
-          </View>
-        );
-      })}
+            );
+          })}
+
+      {editing ? (
+        <Pressable
+          onPress={() =>
+            router.push({
+              pathname: '/exercise-picker',
+              params: { returnTo: `/session/${id}`, sessionId: id },
+            })
+          }
+          style={styles.addExerciseButton}
+          accessibilityRole="button"
+        >
+          <Text style={styles.addExerciseText}>+ {t('workout.addExercise')}</Text>
+        </Pressable>
+      ) : null}
 
       <Pressable onPress={remove} style={styles.deleteButton} accessibilityRole="button">
         <Text style={styles.deleteButtonText}>{t('history.delete')}</Text>
@@ -232,6 +369,12 @@ const styles = StyleSheet.create<{
   repeatButton: ViewStyle;
   repeatButtonText: TextStyle;
   repeatHint: TextStyle;
+  editButton: ViewStyle;
+  editButtonActive: ViewStyle;
+  editButtonText: TextStyle;
+  editButtonTextActive: TextStyle;
+  addExerciseButton: ViewStyle;
+  addExerciseText: TextStyle;
   exerciseCard: ViewStyle;
   exerciseTitle: TextStyle;
   setLine: ViewStyle;
@@ -275,6 +418,28 @@ const styles = StyleSheet.create<{
   },
   repeatButtonText: { color: colors.accent, fontSize: fontSize.md, fontWeight: '700' },
   repeatHint: { color: colors.textMuted, fontSize: fontSize.xs, marginTop: 2, textAlign: 'center' },
+  editButton: {
+    marginTop: spacing.lg,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+  },
+  editButtonActive: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
+  editButtonText: { color: colors.textSecondary, fontSize: fontSize.md, fontWeight: '700' },
+  editButtonTextActive: { color: colors.accent },
+  addExerciseButton: {
+    marginTop: spacing.md,
+    paddingVertical: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+    alignItems: 'center',
+  },
+  addExerciseText: { color: colors.accent, fontSize: fontSize.sm, fontWeight: '700' },
   exerciseCard: {
     marginTop: spacing.md,
     backgroundColor: colors.surface,

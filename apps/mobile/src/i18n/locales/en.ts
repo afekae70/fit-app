@@ -150,6 +150,9 @@ export const en = {
     repeat: 'Repeat workout',
     repeatHint:
       'Starts a new workout with the same exercises and sets — fields blank, last time shown as the target',
+    edit: 'Edit workout',
+    editHint: 'Fix weights, reps or exercises logged by mistake',
+    editDone: 'Done editing',
     rename: 'Rename',
     namePrompt: 'Workout name',
     namePlaceholder: 'e.g. Push A',
