@@ -4,16 +4,20 @@
  * Hebrew is the default, so RTL is the default layout direction. Two things about RTL on React
  * Native that shape this file:
  *
- *  1. `I18nManager.forceRTL()` only takes effect after the JS bundle reloads. Toggling language
- *     at runtime therefore cannot re-lay-out the current screen — `setAppLanguage` reports
- *     whether a reload is required so the caller can prompt for it instead of silently doing
- *     nothing visible.
+ *  1. `I18nManager.forceRTL()` only takes effect after the JS bundle reloads. There is no way to
+ *     mirror the current screen in place, so `setAppLanguage` performs the reload itself rather
+ *     than leaving the user on a half-switched screen: strings in the new language, layout still
+ *     in the old direction.
  *  2. Layout mirroring is driven by `I18nManager.isRTL`, NOT by which i18next language is
- *     active. Those can disagree (i18next switches instantly, RTL needs the reload), which is
- *     exactly the state `needsReloadForRtl` describes.
+ *     active. Those can disagree (i18next switches instantly, RTL needs the reload), and that
+ *     disagreement is precisely the state the reload exists to close.
+ *
+ * Reloading is safe here because every workout edit is written to SQLite as it happens — there
+ * is no in-memory draft to lose. The only casualty is a field mid-keystroke.
  */
 
 import { getLocales } from 'expo-localization';
+import * as Updates from 'expo-updates';
 import i18next from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import { I18nManager } from 'react-native';
@@ -81,24 +85,44 @@ export function initI18n(language: Language = detectDeviceLanguage()): typeof i1
 export interface LanguageChangeResult {
   language: Language;
   /**
-   * True when the native layout direction no longer matches the active language. The strings
-   * have already switched; the mirroring has not, and cannot until the bundle reloads.
+   * True when the layout direction had to change, meaning a reload was triggered. Callers can
+   * use it to show a brief "switching…" state; on success the reload replaces the UI before
+   * anything rendered from it is visible for long.
    */
-  needsReloadForRtl: boolean;
+  directionChanged: boolean;
+  /**
+   * Set only when the reload could not be performed. The direction is queued for the next
+   * launch, so the caller must fall back to asking the user to restart the app manually.
+   */
+  reloadFailed?: boolean;
 }
 
+/**
+ * Switch language, and flip the layout direction with it.
+ *
+ * `forceRTL` writes a native flag read at startup, so the running UI keeps the old direction
+ * until the bundle reloads. Rather than surface that as a "please restart the app" banner, this
+ * reloads immediately — the user taps once and the app comes back fully mirrored.
+ *
+ * If the reload fails (`reloadAsync` throws when no updates-capable runtime is present), the
+ * direction flag is already written, so restarting by hand still applies it. That is reported
+ * back rather than swallowed, so the caller can show the manual-restart hint instead.
+ */
 export async function setAppLanguage(language: Language): Promise<LanguageChangeResult> {
   await i18next.changeLanguage(language);
 
   const shouldBeRtl = isRtlLanguage(language);
-  const needsReloadForRtl = I18nManager.isRTL !== shouldBeRtl;
+  const directionChanged = I18nManager.isRTL !== shouldBeRtl;
 
-  if (needsReloadForRtl) {
-    // Queued for the next launch — deliberately not paired with an automatic reload here,
-    // which would discard unsaved input mid-workout.
-    I18nManager.allowRTL(shouldBeRtl);
-    I18nManager.forceRTL(shouldBeRtl);
+  if (!directionChanged) return { language, directionChanged: false };
+
+  I18nManager.allowRTL(shouldBeRtl);
+  I18nManager.forceRTL(shouldBeRtl);
+
+  try {
+    await Updates.reloadAsync();
+    return { language, directionChanged: true };
+  } catch {
+    return { language, directionChanged: true, reloadFailed: true };
   }
-
-  return { language, needsReloadForRtl };
 }

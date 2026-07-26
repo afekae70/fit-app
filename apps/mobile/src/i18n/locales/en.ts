@@ -148,14 +148,16 @@ export const en = {
     inProgress: 'In progress',
     unnamed: 'Unnamed workout',
     repeat: 'Repeat workout',
-    repeatHint: 'Starts a new workout with the same exercises and weights',
+    repeatHint:
+      'Starts a new workout with the same exercises and sets — fields blank, last time shown as the target',
     rename: 'Rename',
     namePrompt: 'Workout name',
     namePlaceholder: 'e.g. Push A',
     delete: 'Delete workout',
     confirmDelete: 'Delete this workout permanently?',
     templates: 'Start from a template',
-    templatesHint: 'Workouts you named — tapping one starts a new session with the same exercises',
+    templatesHint:
+      'Workouts you named — tapping one starts a new session with the same exercises, empty to fill in',
     activeWarning: 'A workout is already in progress. Finish it before starting another.',
     viewDetail: 'Details',
   },
@@ -232,5 +234,6 @@ export const en = {
     noBackend: 'Not connected to Supabase yet',
     noBackendHint: 'Sign-in, saving workouts, and the AI coach all need the backend.',
     languageToggle: 'עברית',
+    reloadForRtl: 'Language changed. Reopen the app to switch layout direction too.',
   },
 } as const;

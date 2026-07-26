@@ -163,10 +163,12 @@ export default function TodayScreen() {
     };
   }, [weightRaw, heightRaw, ageRaw, sex, activityLevel, goal]);
 
+  // On a direction change this never returns — setAppLanguage reloads the bundle, and the app
+  // comes back mirrored. The banner below is only reached if that reload was refused.
   const toggleLanguage = async () => {
     const next: Language = i18n.language === 'he' ? 'en' : 'he';
     const result = await setAppLanguage(next);
-    setReloadNeeded(result.needsReloadForRtl);
+    setReloadNeeded(result.reloadFailed === true);
   };
 
   return (
@@ -185,14 +187,9 @@ export default function TodayScreen() {
         </Pressable>
       </View>
 
-      {reloadNeeded ? (
-        <Banner tone="warning">
-          {/* forceRTL only applies on the next bundle load — see src/i18n/index.ts */}
-          {i18n.language === 'he'
-            ? 'השפה הוחלפה. סגור ופתח את האפליקציה כדי להחליף גם את כיוון הפריסה.'
-            : 'Language changed. Reopen the app to switch layout direction too.'}
-        </Banner>
-      ) : null}
+      {/* Only shown when the automatic reload failed; normally the app has already restarted
+          mirrored by this point and this branch is never rendered. */}
+      {reloadNeeded ? <Banner tone="warning">{t('dev.reloadForRtl')}</Banner> : null}
 
       <Card>
         <SectionTitle>{t('profile.title')}</SectionTitle>

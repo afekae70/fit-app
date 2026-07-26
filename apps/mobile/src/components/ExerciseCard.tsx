@@ -26,10 +26,20 @@ import {
 import type { SetRow } from '../db/workouts.js';
 import { colors, fontSize, radius, spacing } from '../theme.js';
 
+export interface PreviousSet {
+  set_index: number;
+  weight_kg: number | null;
+  reps: number | null;
+  duration_seconds: number | null;
+  distance_m: number | null;
+  is_warmup: number;
+}
+
 export interface ExerciseCardProps {
   exercise: ExerciseSeed;
   sets: SetRow[];
-  previousBest: { weight_kg: number; reps: number } | null;
+  /** Last session's sets for this exercise, in set order — the numbers to beat or match. */
+  previousSets: PreviousSet[] | null;
   onAddSet: () => void;
   onRemoveSet: (setId: string) => void;
   onUpdateSet: (setId: string, patch: Record<string, number | boolean | null>) => void;
@@ -44,10 +54,14 @@ function parseField(raw: string): number | null {
   return Number.isFinite(value) && value >= 0 ? value : null;
 }
 
+/** Render a previous value as placeholder text, or the em-dash when there is nothing to show. */
+const hint = (value: number | null | undefined): string =>
+  value === null || value === undefined ? '—' : String(value);
+
 function ExerciseCardImpl({
   exercise,
   sets,
-  previousBest,
+  previousSets,
   onAddSet,
   onRemoveSet,
   onUpdateSet,
@@ -68,14 +82,33 @@ function ExerciseCardImpl({
     0,
   );
 
+  // Keyed by set_index so row N lines up with what row N was last time. A plain array index
+  // would drift the moment a warmup set is added or removed on either side.
+  const previousByIndex = new Map<number, PreviousSet>(
+    (previousSets ?? []).map((set) => [set.set_index, set]),
+  );
+
+  /** Last session's working sets as "80×8 · 80×8 · 75×6" — the whole session at a glance. */
+  const previousSummary = (previousSets ?? [])
+    .filter((set) => set.is_warmup === 0)
+    .map((set) => {
+      if (set.duration_seconds !== null) return `${set.duration_seconds}${t('workout.seconds')}`;
+      if (set.distance_m !== null) return `${set.distance_m}${t('workout.meters')}`;
+      if (set.weight_kg === null && set.reps === null) return null;
+      if (set.weight_kg === null) return `${set.reps}`;
+      return `${set.weight_kg}×${set.reps ?? '?'}`;
+    })
+    .filter((entry): entry is string => entry !== null)
+    .join(' · ');
+
   return (
     <View style={styles.card}>
       <View style={styles.header}>
         <View style={styles.headerMain}>
           <Text style={styles.title}>{isHebrew ? exercise.nameHe : exercise.nameEn}</Text>
           <Text style={styles.subtitle}>
-            {previousBest
-              ? `${t('workout.lastTime')}: ${previousBest.weight_kg}${t('common.kg')} × ${previousBest.reps}`
+            {previousSummary
+              ? `${t('workout.lastTime')}: ${previousSummary}`
               : t('workout.noHistory')}
           </Text>
         </View>
@@ -108,7 +141,13 @@ function ExerciseCardImpl({
         </View>
       ) : null}
 
-      {sets.map((set) => (
+      {sets.map((set) => {
+        // The placeholder carries last session's number for THIS set. It is deliberately a
+        // placeholder and not a value: it disappears the moment the user types, and an
+        // untouched field still saves as empty rather than as a weight that was never lifted.
+        const previous = previousByIndex.get(set.set_index);
+
+        return (
         <View key={set.id} style={styles.setRow}>
           <Pressable
             onPress={() => onUpdateSet(set.id, { isWarmup: set.is_warmup === 0 })}
@@ -131,8 +170,8 @@ function ExerciseCardImpl({
               inputMode="decimal"
               style={styles.input}
               selectTextOnFocus
-              placeholder="—"
-              placeholderTextColor={colors.textMuted}
+              placeholder={hint(previous?.weight_kg)}
+              placeholderTextColor={colors.textFaint}
             />
           ) : null}
 
@@ -144,8 +183,8 @@ function ExerciseCardImpl({
               inputMode="numeric"
               style={styles.input}
               selectTextOnFocus
-              placeholder="—"
-              placeholderTextColor={colors.textMuted}
+              placeholder={hint(previous?.reps)}
+              placeholderTextColor={colors.textFaint}
             />
           ) : null}
 
@@ -159,8 +198,12 @@ function ExerciseCardImpl({
               inputMode="numeric"
               style={styles.input}
               selectTextOnFocus
-              placeholder={t('workout.seconds')}
-              placeholderTextColor={colors.textMuted}
+              placeholder={
+                previous?.duration_seconds === null || previous?.duration_seconds === undefined
+                  ? t('workout.seconds')
+                  : String(previous.duration_seconds)
+              }
+              placeholderTextColor={colors.textFaint}
             />
           ) : null}
 
@@ -174,8 +217,12 @@ function ExerciseCardImpl({
               inputMode="decimal"
               style={styles.input}
               selectTextOnFocus
-              placeholder={t('workout.meters')}
-              placeholderTextColor={colors.textMuted}
+              placeholder={
+                previous?.distance_m === null || previous?.distance_m === undefined
+                  ? t('workout.meters')
+                  : String(previous.distance_m)
+              }
+              placeholderTextColor={colors.textFaint}
             />
           ) : null}
 
@@ -189,7 +236,8 @@ function ExerciseCardImpl({
             <Text style={styles.deleteText}>✕</Text>
           </Pressable>
         </View>
-      ))}
+        );
+      })}
 
       <Pressable onPress={onAddSet} style={styles.addSet} accessibilityRole="button">
         <Text style={styles.addSetText}>+ {t('workout.addSet')}</Text>

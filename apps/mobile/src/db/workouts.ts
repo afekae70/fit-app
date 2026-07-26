@@ -480,17 +480,29 @@ export async function listSessionSummaries(
 }
 
 /**
- * Start a new session from a previous one, copying its exercises and set structure.
+ * Start a new session from a previous one, copying its *structure* but none of its numbers.
  *
  * This is what turns any past workout into a reusable template: rather than re-picking eight
- * exercises and typing every weight, the new session opens pre-filled and the user adjusts.
+ * exercises, the new session opens with the same exercises and the same number of sets, all
+ * blank and waiting to be filled in.
  *
- * What is copied and what is not is a deliberate split:
- *  - exercises, their order, and each set's weight / reps / duration / distance ARE copied,
- *    because they are the starting point you want to beat;
- *  - RPE and to-failure flags are NOT, because they describe how that particular performance
- *    felt and carrying them forward would fabricate data the user never entered;
- *  - warmup flags ARE copied, since warmup structure repeats between sessions.
+ * The numbers are deliberately NOT carried over. Pre-filling last week's weights means a set
+ * left untouched silently records itself as performed at that weight — the log then contains
+ * numbers the user never actually lifted, and every downstream figure (e1RM, volume, the
+ * stalling flag, whatever the AI coach is told) inherits the fiction. A blank field that stays
+ * blank records nothing, which is the truth.
+ *
+ * The previous numbers are not lost, just moved: `getPreviousSessionSets` surfaces them
+ * alongside each set as a target to beat or match. Reference, not default.
+ *
+ * What is copied:
+ *  - exercises and their order;
+ *  - the number of sets per exercise, and which of them were warmups, since that structure is
+ *    what makes the template worth reusing.
+ *
+ * What is not:
+ *  - weight, reps, duration, distance — see above;
+ *  - RPE and to-failure flags, which describe how one particular performance felt.
  */
 export async function repeatSession(
   db: SqlExecutor,
@@ -524,10 +536,10 @@ export async function repeatSession(
         newId,
         newExerciseId,
         {
-          weightKg: set.weight_kg,
-          reps: set.reps,
-          durationSeconds: set.duration_seconds,
-          distanceM: set.distance_m,
+          weightKg: null,
+          reps: null,
+          durationSeconds: null,
+          distanceM: null,
           isWarmup: set.is_warmup === 1,
         },
         clock,
@@ -536,6 +548,60 @@ export async function repeatSession(
   }
 
   return sessionId;
+}
+
+/**
+ * Every set of an exercise as performed in the most recent *other* session containing it.
+ *
+ * This is the reference that replaces pre-filled values: set 1 shows what set 1 was last time,
+ * so the decision to add weight or hold it is made against the real number rather than from
+ * memory. Returned in `set_index` order so callers can line rows up positionally.
+ *
+ * "Most recent other session" is resolved in a subquery rather than by taking the newest sets
+ * directly, because a single session's rows must not be mixed with an older one's — showing
+ * set 1 from Monday next to set 3 from the week before would be a meaningless comparison.
+ */
+export async function getPreviousSessionSets(
+  db: SqlExecutor,
+  exerciseKey: string,
+  excludeSessionId?: string,
+): Promise<
+  {
+    set_index: number;
+    weight_kg: number | null;
+    reps: number | null;
+    duration_seconds: number | null;
+    distance_m: number | null;
+    is_warmup: number;
+    started_at: string;
+  }[]
+> {
+  const exclude = excludeSessionId ?? null;
+  return db.all(
+    `SELECT s.set_index, s.weight_kg, s.reps, s.duration_seconds, s.distance_m,
+            s.is_warmup, ws.started_at
+       FROM sets s
+       JOIN session_exercises se ON se.id = s.session_exercise_id
+       JOIN workout_sessions ws  ON ws.id = se.session_id
+      WHERE se.exercise_key = ?
+        AND ws.id = (
+          SELECT prev_ws.id
+            FROM workout_sessions prev_ws
+            JOIN session_exercises prev_se ON prev_se.session_id = prev_ws.id
+           WHERE prev_se.exercise_key = ?
+             AND (? IS NULL OR prev_ws.id <> ?)
+             AND EXISTS (
+               SELECT 1 FROM sets prev_s
+                WHERE prev_s.session_exercise_id = prev_se.id
+                  AND (prev_s.weight_kg IS NOT NULL OR prev_s.reps IS NOT NULL
+                       OR prev_s.duration_seconds IS NOT NULL OR prev_s.distance_m IS NOT NULL)
+             )
+           ORDER BY prev_ws.started_at DESC
+           LIMIT 1
+        )
+      ORDER BY s.set_index`,
+    [exerciseKey, exerciseKey, exclude, exclude],
+  );
 }
 
 /**

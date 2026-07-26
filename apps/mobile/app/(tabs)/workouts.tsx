@@ -26,7 +26,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ExerciseCard } from '../../src/components/ExerciseCard.js';
+import { ExerciseCard, type PreviousSet } from '../../src/components/ExerciseCard.js';
 import { FinishSummary } from '../../src/components/FinishSummary.js';
 import { WorkoutHome, type TemplateEntry } from '../../src/components/WorkoutHome.js';
 import { getExecutor, newId } from '../../src/db/provider.js';
@@ -35,7 +35,7 @@ import {
   addSetCopyingPrevious,
   finishSession,
   getActiveSession,
-  getPreviousBest,
+  getPreviousSessionSets,
   getSessionDetail,
   listNamedTemplates,
   listSessionSummaries,
@@ -73,7 +73,7 @@ export default function WorkoutsScreen() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [startedAt, setStartedAt] = useState<string | null>(null);
   const [exercises, setExercises] = useState<SessionExerciseWithSets[]>([]);
-  const [bests, setBests] = useState<Record<string, { weight_kg: number; reps: number } | null>>(
+  const [previous, setPrevious] = useState<Record<string, PreviousSet[] | null>>(
     {},
   );
   const [loading, setLoading] = useState(true);
@@ -97,11 +97,14 @@ export default function WorkoutsScreen() {
     setStartedAt(session?.started_at ?? null);
     setSessionName(session?.name ?? null);
 
-    const nextBests: Record<string, { weight_kg: number; reps: number } | null> = {};
+    // Excluding the current session matters: without it, the sets being typed right now would
+    // come back as their own "last time" the instant they are saved.
+    const nextPrevious: Record<string, PreviousSet[] | null> = {};
     for (const exercise of loaded) {
-      nextBests[exercise.exercise_key] = await getPreviousBest(db, exercise.exercise_key, id);
+      const sets = await getPreviousSessionSets(db, exercise.exercise_key, id);
+      nextPrevious[exercise.exercise_key] = sets.length > 0 ? sets : null;
     }
-    setBests(nextBests);
+    setPrevious(nextPrevious);
   }, []);
 
   // Resume whatever session was left open — being backgrounded mid-workout is the normal
@@ -152,7 +155,7 @@ export default function WorkoutsScreen() {
     await reload(id);
   };
 
-  /** Clone a previous session — exercises and weights already filled in. */
+  /** Clone a previous session's structure — same exercises and set counts, all values blank. */
   const useTemplate = (sourceSessionId: string) => {
     void (async () => {
       const db = await getExecutor();
@@ -329,7 +332,7 @@ export default function WorkoutsScreen() {
                 key={exercise.id}
                 exercise={seed}
                 sets={exercise.sets}
-                previousBest={bests[exercise.exercise_key] ?? null}
+                previousSets={previous[exercise.exercise_key] ?? null}
                 onAddSet={() => addSet(exercise.id)}
                 onRemoveSet={deleteSet}
                 onUpdateSet={patchSet}

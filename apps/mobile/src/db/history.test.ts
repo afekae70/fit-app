@@ -12,6 +12,7 @@ import {
   addSet,
   finishSession,
   getActiveSession,
+  getPreviousSessionSets,
   getSessionDetail,
   listNamedTemplates,
   listSessionSummaries,
@@ -169,14 +170,19 @@ describe('repeating a session as a template', () => {
     expect(exercises.map((e) => e.sets.length)).toEqual([3, 1]);
   });
 
-  it('carries weights and reps forward so nothing has to be retyped', async () => {
+  it('leaves every value blank rather than pre-filling last time', async () => {
     const sourceId = await buildSource();
     const newSessionId = await repeatSession(db, newId, sourceId, clock);
 
     const { exercises } = await getSessionDetail(db, newSessionId as string);
     const pressSets = exercises[0]?.sets ?? [];
-    expect(pressSets.map((s) => s.weight_kg)).toEqual([60, 80, 80]);
-    expect(pressSets.map((s) => s.reps)).toEqual([10, 8, 7]);
+
+    // The source had 60×10, 80×8, 80×7. Carrying those over would mean a set the user never
+    // touched still records itself as performed at that weight — the log would contain lifts
+    // that never happened, and e1RM/volume/stall detection would all inherit the fiction.
+    expect(pressSets.map((s) => s.weight_kg)).toEqual([null, null, null]);
+    expect(pressSets.map((s) => s.reps)).toEqual([null, null, null]);
+    expect(exercises[1]?.sets.map((s) => s.weight_kg)).toEqual([null]);
   });
 
   it('carries warmup flags forward', async () => {
@@ -233,6 +239,112 @@ describe('repeating a session as a template', () => {
     const { exercises } = await getSessionDetail(db, newSessionId as string);
     expect(exercises[0]?.sets.map((s) => s.set_index)).toEqual([1, 2, 3]);
     expect(exercises[1]?.sets.map((s) => s.set_index)).toEqual([1]);
+  });
+});
+
+describe('previous session reference', () => {
+  /** Log one press session at a given weight/reps, on its own day. */
+  async function logPress(
+    tick: () => string,
+    sets: { weightKg: number; reps: number; isWarmup?: boolean }[],
+  ): Promise<string> {
+    const sessionId = await startSession(db, newId, {}, tick);
+    const press = await addExerciseToSession(db, newId, sessionId, 'Barbell Bench Press', tick);
+    for (const set of sets) await addSet(db, newId, press, set, tick);
+    await finishSession(db, sessionId, {}, tick);
+    return sessionId;
+  }
+
+  it('returns the sets of the most recent session, in set order', async () => {
+    const tick = tickingClock();
+    await logPress(tick, [{ weightKg: 70, reps: 10 }]);
+    await logPress(tick, [
+      { weightKg: 80, reps: 8 },
+      { weightKg: 80, reps: 7 },
+      { weightKg: 75, reps: 6 },
+    ]);
+
+    const previous = await getPreviousSessionSets(db, 'Barbell Bench Press');
+    expect(previous.map((s) => s.set_index)).toEqual([1, 2, 3]);
+    expect(previous.map((s) => s.weight_kg)).toEqual([80, 80, 75]);
+    expect(previous.map((s) => s.reps)).toEqual([8, 7, 6]);
+  });
+
+  it('never mixes sets from two different sessions', async () => {
+    const tick = tickingClock();
+    // An older session with MORE sets than the newer one. Taking "the newest sets" per index
+    // rather than the newest session would leak set 3 from July in beside July's successor.
+    await logPress(tick, [
+      { weightKg: 70, reps: 10 },
+      { weightKg: 70, reps: 10 },
+      { weightKg: 70, reps: 9 },
+    ]);
+    await logPress(tick, [{ weightKg: 85, reps: 5 }]);
+
+    const previous = await getPreviousSessionSets(db, 'Barbell Bench Press');
+    expect(previous).toHaveLength(1);
+    expect(previous[0]?.weight_kg).toBe(85);
+  });
+
+  it('excludes the session being logged right now', async () => {
+    const tick = tickingClock();
+    await logPress(tick, [{ weightKg: 80, reps: 8 }]);
+
+    // The session currently open must not become its own reference the moment a set is saved.
+    const currentId = await startSession(db, newId, {}, tick);
+    const press = await addExerciseToSession(db, newId, currentId, 'Barbell Bench Press', tick);
+    await addSet(db, newId, press, { weightKg: 100, reps: 1 }, tick);
+
+    const previous = await getPreviousSessionSets(db, 'Barbell Bench Press', currentId);
+    expect(previous.map((s) => s.weight_kg)).toEqual([80]);
+  });
+
+  it('skips sessions where the exercise was added but never logged', async () => {
+    const tick = tickingClock();
+    await logPress(tick, [{ weightKg: 80, reps: 8 }]);
+
+    // Exactly what repeatSession now produces: structure with no numbers. An abandoned repeat
+    // must not blank out the reference for the next real session.
+    const emptyId = await startSession(db, newId, {}, tick);
+    const press = await addExerciseToSession(db, newId, emptyId, 'Barbell Bench Press', tick);
+    await addSet(db, newId, press, {}, tick);
+    await finishSession(db, emptyId, {}, tick);
+
+    const previous = await getPreviousSessionSets(db, 'Barbell Bench Press');
+    expect(previous.map((s) => s.weight_kg)).toEqual([80]);
+  });
+
+  it('returns warmup flags so rows line up with the same structure', async () => {
+    const tick = tickingClock();
+    await logPress(tick, [
+      { weightKg: 40, reps: 12, isWarmup: true },
+      { weightKg: 80, reps: 8 },
+    ]);
+
+    const previous = await getPreviousSessionSets(db, 'Barbell Bench Press');
+    expect(previous.map((s) => s.is_warmup)).toEqual([1, 0]);
+  });
+
+  it('returns an empty list for an exercise with no history', async () => {
+    expect(await getPreviousSessionSets(db, 'Nordic Hamstring Curl')).toEqual([]);
+  });
+
+  it('pairs with repeatSession: blank sets, previous numbers still available', async () => {
+    const tick = tickingClock();
+    const sourceId = await logPress(tick, [
+      { weightKg: 80, reps: 8 },
+      { weightKg: 80, reps: 7 },
+    ]);
+
+    const repeatedId = (await repeatSession(db, newId, sourceId, tick)) as string;
+    const { exercises } = await getSessionDetail(db, repeatedId);
+
+    // Same structure, nothing filled in...
+    expect(exercises[0]?.sets.map((s) => s.weight_kg)).toEqual([null, null]);
+    // ...and last time's numbers are still there to aim at.
+    const previous = await getPreviousSessionSets(db, 'Barbell Bench Press', repeatedId);
+    expect(previous.map((s) => s.weight_kg)).toEqual([80, 80]);
+    expect(previous.map((s) => s.reps)).toEqual([8, 7]);
   });
 });
 
