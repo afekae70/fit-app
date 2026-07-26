@@ -35,11 +35,24 @@ export interface PreviousSet {
   is_warmup: number;
 }
 
+export interface ExerciseTarget {
+  target_sets: number | null;
+  target_reps_min: number | null;
+  target_reps_max: number | null;
+}
+
 export interface ExerciseCardProps {
   exercise: ExerciseSeed;
   sets: SetRow[];
   /** Last session's sets for this exercise, in set order — the numbers to beat or match. */
   previousSets: PreviousSet[] | null;
+  /**
+   * What the plan prescribed, when this session was started from a plan day.
+   *
+   * Shown alongside last time's actuals, never instead of them: the target says what to aim
+   * for, the history says what you managed, and improving requires seeing both.
+   */
+  target?: ExerciseTarget | null;
   onAddSet: () => void;
   onRemoveSet: (setId: string) => void;
   onUpdateSet: (setId: string, patch: Record<string, number | boolean | null>) => void;
@@ -58,10 +71,21 @@ function parseField(raw: string): number | null {
 const hint = (value: number | null | undefined): string =>
   value === null || value === undefined ? '—' : String(value);
 
+/** "3 × 8-12", collapsing to "3 × 8" when the range has no spread and omitting absent parts. */
+function formatTarget(target: ExerciseTarget): string | null {
+  const { target_sets: sets, target_reps_min: min, target_reps_max: max } = target;
+  const reps = min === null ? (max === null ? null : `${max}`) : max === null || max === min ? `${min}` : `${min}-${max}`;
+  if (sets === null && reps === null) return null;
+  if (sets === null) return reps;
+  if (reps === null) return `${sets}`;
+  return `${sets} × ${reps}`;
+}
+
 function ExerciseCardImpl({
   exercise,
   sets,
   previousSets,
+  target,
   onAddSet,
   onRemoveSet,
   onUpdateSet,
@@ -101,11 +125,22 @@ function ExerciseCardImpl({
     .filter((entry): entry is string => entry !== null)
     .join(' · ');
 
+  const targetLabel = target ? formatTarget(target) : null;
+
   return (
     <View style={styles.card}>
       <View style={styles.header}>
         <View style={styles.headerMain}>
-          <Text style={styles.title}>{isHebrew ? exercise.nameHe : exercise.nameEn}</Text>
+          <View style={styles.titleRow}>
+            <Text style={styles.title}>{isHebrew ? exercise.nameHe : exercise.nameEn}</Text>
+            {targetLabel ? (
+              <View style={styles.targetBadge}>
+                <Text style={styles.targetBadgeText}>
+                  {t('plan.target')} {targetLabel}
+                </Text>
+              </View>
+            ) : null}
+          </View>
           <Text style={styles.subtitle}>
             {previousSummary
               ? `${t('workout.lastTime')}: ${previousSummary}`
@@ -259,7 +294,10 @@ const styles = StyleSheet.create<{
   card: ViewStyle;
   header: ViewStyle;
   headerMain: ViewStyle;
+  titleRow: ViewStyle;
   title: TextStyle;
+  targetBadge: ViewStyle;
+  targetBadgeText: TextStyle;
   subtitle: TextStyle;
   removeExercise: ViewStyle;
   removeExerciseText: TextStyle;
@@ -293,7 +331,17 @@ const styles = StyleSheet.create<{
   },
   header: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: spacing.sm },
   headerMain: { flex: 1 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' },
   title: { color: colors.text, fontSize: fontSize.md, fontWeight: '700', textAlign: 'auto' },
+  targetBadge: {
+    paddingVertical: 1,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.accentBorder,
+    backgroundColor: colors.accentSoft,
+  },
+  targetBadgeText: { color: colors.accent, fontSize: fontSize.xxs, fontWeight: '700' },
   subtitle: { color: colors.textMuted, fontSize: fontSize.xs, marginTop: 2, textAlign: 'auto' },
   removeExercise: { padding: spacing.xs, marginStart: spacing.sm },
   removeExerciseText: { color: colors.textMuted, fontSize: fontSize.sm },

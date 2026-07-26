@@ -26,7 +26,12 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ExerciseCard, type PreviousSet } from '../../src/components/ExerciseCard.js';
+import {
+  ExerciseCard,
+  type ExerciseTarget,
+  type PreviousSet,
+} from '../../src/components/ExerciseCard.js';
+import { listPlanDayExercises } from '../../src/db/plans.js';
 import { FinishSummary } from '../../src/components/FinishSummary.js';
 import { WorkoutHome, type TemplateEntry } from '../../src/components/WorkoutHome.js';
 import { getExecutor, newId } from '../../src/db/provider.js';
@@ -73,6 +78,7 @@ export default function WorkoutsScreen() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [startedAt, setStartedAt] = useState<string | null>(null);
   const [exercises, setExercises] = useState<SessionExerciseWithSets[]>([]);
+  const [targets, setTargets] = useState<Record<string, ExerciseTarget>>({});
   const [previous, setPrevious] = useState<Record<string, PreviousSet[] | null>>(
     {},
   );
@@ -105,6 +111,20 @@ export default function WorkoutsScreen() {
       nextPrevious[exercise.exercise_key] = sets.length > 0 ? sets : null;
     }
     setPrevious(nextPrevious);
+
+    // Targets exist only for a session started from a plan day. A freestyle session leaves this
+    // empty and the cards simply show no target badge.
+    const nextTargets: Record<string, ExerciseTarget> = {};
+    if (session?.plan_day_id) {
+      for (const prescription of await listPlanDayExercises(db, session.plan_day_id)) {
+        nextTargets[prescription.exercise_key] = {
+          target_sets: prescription.target_sets,
+          target_reps_min: prescription.target_reps_min,
+          target_reps_max: prescription.target_reps_max,
+        };
+      }
+    }
+    setTargets(nextTargets);
   }, []);
 
   // Resume whatever session was left open — being backgrounded mid-workout is the normal
@@ -333,6 +353,7 @@ export default function WorkoutsScreen() {
                 exercise={seed}
                 sets={exercise.sets}
                 previousSets={previous[exercise.exercise_key] ?? null}
+                target={targets[exercise.exercise_key] ?? null}
                 onAddSet={() => addSet(exercise.id)}
                 onRemoveSet={deleteSet}
                 onUpdateSet={patchSet}
