@@ -4,7 +4,7 @@ import type { Env } from '../config/env.js';
 import { ClaudeProvider } from './claude-provider.js';
 import { createCoachProvider } from './factory.js';
 import { OpenAiProvider } from './openai-provider.js';
-import { CoachProviderNotImplementedError } from './provider.js';
+import { CoachRefusalError } from './provider.js';
 
 const baseEnv = {
   NODE_ENV: 'test',
@@ -41,35 +41,39 @@ describe('createCoachProvider', () => {
   });
 });
 
-describe('provider stubs (Phase 5 not yet implemented)', () => {
-  const claude = new ClaudeProvider({ apiKey: 'sk-ant-test', model: 'claude-opus-5' });
-  const openai = new OpenAiProvider({ apiKey: 'sk-test', model: 'gpt-4o' });
-
-  it('both providers throw a typed error from streamChat, not a generic one', () => {
-    expect(() => claude.streamChat({ userId: 'u', systemPrompt: '' }, [])).toThrow(
-      CoachProviderNotImplementedError,
-    );
-    expect(() => openai.streamChat({ userId: 'u', systemPrompt: '' }, [])).toThrow(
-      CoachProviderNotImplementedError,
-    );
+describe('provider construction', () => {
+  // Constructed eagerly on purpose: a missing or malformed key should fail when the factory
+  // builds the provider at startup, not on a user's first chat message.
+  it('both providers construct without touching the network', () => {
+    expect(
+      () => new ClaudeProvider({ apiKey: 'sk-ant-test', model: 'claude-opus-5' }),
+    ).not.toThrow();
+    expect(() => new OpenAiProvider({ apiKey: 'sk-test', model: 'gpt-4o' })).not.toThrow();
   });
 
-  it('both providers throw a typed error from generatePlan', async () => {
-    await expect(
-      claude.generatePlan({ userId: 'u', systemPrompt: '' }, {}, 'prompt'),
-    ).rejects.toThrow(CoachProviderNotImplementedError);
-    await expect(
-      openai.generatePlan({ userId: 'u', systemPrompt: '' }, {}, 'prompt'),
-    ).rejects.toThrow(CoachProviderNotImplementedError);
-  });
-
-  it('error message names which provider and method are unimplemented', () => {
-    try {
-      claude.streamChat({ userId: 'u', systemPrompt: '' }, []);
-      expect.unreachable();
-    } catch (error) {
-      expect((error as Error).message).toContain('claude');
-      expect((error as Error).message).toContain('streamChat');
+  it('both satisfy the adapter surface the routes depend on', () => {
+    // The point of the adapter: routes call these two methods and never import a vendor SDK.
+    for (const provider of [
+      new ClaudeProvider({ apiKey: 'sk-ant-test', model: 'claude-opus-5' }),
+      new OpenAiProvider({ apiKey: 'sk-test', model: 'gpt-4o' }),
+    ]) {
+      expect(typeof provider.streamChat).toBe('function');
+      expect(typeof provider.generatePlan).toBe('function');
     }
+  });
+});
+
+describe('CoachRefusalError', () => {
+  it('carries the refusal category so the route can distinguish it from a fault', () => {
+    const error = new CoachRefusalError('cyber');
+    expect(error.category).toBe('cyber');
+    expect(error).toBeInstanceOf(Error);
+    expect(error.name).toBe('CoachRefusalError');
+  });
+
+  it('tolerates a null category', () => {
+    // `stop_details` can be absent even on a refusal — branching on stop_reason is what
+    // matters, and a null category must not become the string "null" in the message.
+    expect(new CoachRefusalError(null).message).not.toContain('null');
   });
 });

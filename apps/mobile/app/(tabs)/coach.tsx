@@ -8,9 +8,18 @@
  */
 
 import { EXERCISE_SEED, type ExerciseSeed } from '@fit/shared/catalog';
+import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ScrollView, StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  type TextStyle,
+  type ViewStyle,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Banner, Card, EmptyState, Hint, ScreenTitle } from '../../src/components/ui.js';
@@ -73,6 +82,17 @@ export default function ProgressScreen() {
       ]}
     >
       <ScreenTitle>{t('progress.title')}</ScreenTitle>
+
+      {/* Sits above the figures deliberately: the numbers below are exactly what the coach is
+          handed, so asking about them is the natural next action after reading them. */}
+      <Pressable
+        onPress={() => router.push('/coach-chat')}
+        style={styles.askButton}
+        accessibilityRole="button"
+      >
+        <Text style={styles.askButtonText}>💬 {t('coach.open')}</Text>
+        <Text style={styles.askButtonHint}>{t('coach.openHint')}</Text>
+      </Pressable>
 
       {summaries.length === 0 ? (
         <EmptyState emoji="📈" title={t('progress.empty')} hint={t('progress.emptyHint')} />
@@ -174,6 +194,9 @@ const styles = StyleSheet.create<{
   figureValue: TextStyle;
   figureLabel: TextStyle;
   meta: TextStyle;
+  askButton: ViewStyle;
+  askButtonText: TextStyle;
+  askButtonHint: TextStyle;
 }>({
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { paddingHorizontal: spacing.lg },
@@ -210,4 +233,19 @@ const styles = StyleSheet.create<{
     textAlign: 'auto',
   },
   meta: { color: colors.textMuted, fontSize: fontSize.xs, marginTop: spacing.md, textAlign: 'auto' },
+  askButton: {
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.accentBorder,
+    backgroundColor: colors.accentSoft,
+    marginBottom: spacing.lg,
+  },
+  askButtonText: { color: colors.accent, fontSize: fontSize.md, fontWeight: fontWeight.bold },
+  askButtonHint: {
+    color: colors.textSecondary,
+    fontSize: fontSize.xs,
+    marginTop: 2,
+    textAlign: 'auto',
+  },
 });

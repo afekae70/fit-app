@@ -70,6 +70,8 @@
     },
     "extra": {
       "//": "SUPABASE_URL and SUPABASE_ANON_KEY are read from app.config.ts at build time.",
+      "//apiBaseUrl": "Base URL of the Fastify service that holds the LLM key. Empty until deployed; the coach screen then says it is not configured rather than failing on a bad fetch. For local development use the machine's LAN address, or run 'adb reverse tcp:3000 tcp:3000' and set http://127.0.0.1:3000 — 'localhost' from a phone means the phone.",
+      "apiBaseUrl": "",
       "//2": "The anon key is safe to ship: Row Level Security protects the data, not key secrecy.",
       "//blePermissions": "neverForLocation is set on BLUETOOTH_SCAN so Android 12+ does not require the user to grant location just to find a scale. ACCESS_FINE_LOCATION remains declared because Android 11 and below have no BLUETOOTH_SCAN and genuinely gate BLE discovery behind location.",
       "//blePermissionsLegacy": "BLUETOOTH and BLUETOOTH_ADMIN were added by the react-native-ble-plx config plugin, not by hand. They are the pre-Android-12 equivalents of BLUETOOTH_CONNECT and BLUETOOTH_SCAN, scoped by the manifest merger to older API levels — inert on Android 12+, required below it.",

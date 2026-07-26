@@ -15,6 +15,7 @@ import type { CoachProvider } from './ai/provider.js';
 import type { Env } from './config/env.js';
 import { createDb, type Database } from './db/client.js';
 import authPlugin from './plugins/auth.js';
+import coachRoutes from './routes/coach.js';
 import healthRoutes from './routes/health.js';
 
 declare module 'fastify' {
@@ -57,6 +58,7 @@ export async function buildApp({ env }: BuildAppOptions): Promise<FastifyInstanc
   app.decorate('coachProvider', createCoachProvider(env));
 
   await app.register(healthRoutes);
+  await app.register(coachRoutes);
 
   return app;
 }

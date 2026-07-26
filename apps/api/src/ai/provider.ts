@@ -16,14 +16,20 @@ export interface CoachMessage {
 }
 
 /**
- * Everything a provider call needs to know about the request beyond the message history.
- * Deliberately minimal today — `userId` and `systemPrompt` only. The Phase 5 context
- * builder assembles the real system prompt (profile, TDEE, stalling flags, equipment) and
- * passes it through here; this interface does not change shape when that lands.
+ * Everything a provider call needs beyond the message history.
+ *
+ * `systemPrompt` and `userContext` are separate fields rather than one concatenated string
+ * because the split is load-bearing for prompt caching: the persona is identical across every
+ * request and is what gets cached, the per-athlete context is not. Joining them here would
+ * make the cacheable prefix per-user and silently destroy the hit rate — the provider needs
+ * to see the boundary to place the cache breakpoint on it.
  */
 export interface CoachContext {
   userId: string;
+  /** Stable across all requests and users. Cacheable. */
   systemPrompt: string;
+  /** This athlete, this moment. Never cacheable. */
+  userContext: string;
 }
 
 export interface CoachProvider {
@@ -41,13 +47,29 @@ export interface CoachProvider {
 }
 
 /**
- * Thrown by both stub providers for every real call. Phase 5 replaces the throwing bodies
- * with actual implementations — this type exists so calling code and tests can assert on
- * "not built yet" specifically, rather than treating it as a generic failure.
+ * Thrown when a provider is selected but not implemented. Retained so the factory's tests can
+ * assert on "not built" specifically rather than treating it as a generic failure.
  */
 export class CoachProviderNotImplementedError extends Error {
   constructor(provider: string, method: string) {
-    super(`${provider} provider: ${method}() is not implemented yet (Phase 5).`);
+    super(`${provider} provider: ${method}() is not implemented yet.`);
     this.name = 'CoachProviderNotImplementedError';
+  }
+}
+
+/**
+ * The model declined the request.
+ *
+ * A distinct type because it is not a failure of ours and must not be retried or reported as a
+ * server error: the request was well-formed and the model answered by refusing. The route maps
+ * it to a message the user can act on rather than a 500.
+ *
+ * A refusal can also arrive mid-stream, after some text has already been sent — so a caller
+ * that catches this must treat whatever it has already emitted as truncated, not complete.
+ */
+export class CoachRefusalError extends Error {
+  constructor(public readonly category: string | null) {
+    super(`The model declined to answer${category ? ` (${category})` : ''}.`);
+    this.name = 'CoachRefusalError';
   }
 }
