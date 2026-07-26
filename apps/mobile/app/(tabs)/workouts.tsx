@@ -31,10 +31,11 @@ import {
   type ExerciseTarget,
   type PreviousSet,
 } from '../../src/components/ExerciseCard.js';
-import { listPlanDayExercises } from '../../src/db/plans.js';
 import { FinishSummary } from '../../src/components/FinishSummary.js';
 import { WorkoutHome, type TemplateEntry } from '../../src/components/WorkoutHome.js';
+import { listPlanDayExercises } from '../../src/db/plans.js';
 import { getExecutor, newId } from '../../src/db/provider.js';
+import { checkHealthAvailability, importForSession, requestHealthPermissions } from '../../src/health/reader.js';
 import {
   addExerciseToSession,
   addSetCopyingPrevious,
@@ -78,6 +79,8 @@ export default function WorkoutsScreen() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [startedAt, setStartedAt] = useState<string | null>(null);
   const [exercises, setExercises] = useState<SessionExerciseWithSets[]>([]);
+  const [watchAvailable, setWatchAvailable] = useState(false);
+  const [watchDuration, setWatchDuration] = useState<number | null>(null);
   const [targets, setTargets] = useState<Record<string, ExerciseTarget>>({});
   const [previous, setPrevious] = useState<Record<string, PreviousSet[] | null>>(
     {},
@@ -195,6 +198,33 @@ export default function WorkoutsScreen() {
     handledParam.current = null;
     await reloadHome();
   }, [reloadHome]);
+
+  // Whether the watch can be read at all. Checked once on mount: it depends on the build and on
+  // Health Connect being installed, neither of which changes while the app is open.
+  useEffect(() => {
+    void (async () => {
+      setWatchAvailable((await checkHealthAvailability()).available);
+    })();
+  }, []);
+
+  /**
+   * Pull duration and heart rate from the watch for the session being finished.
+   *
+   * Only the duration is adopted, and only as a display value in the summary — the watch is a
+   * better clock than the app (it was started at the first rep, not when the screen was opened),
+   * but it is not authoritative about what was lifted. Nothing here touches a `sets` row.
+   */
+  const importFromWatch = useCallback(() => {
+    if (!startedAt) return;
+    void (async () => {
+      await requestHealthPermissions();
+      const imported = await importForSession({
+        startedAt,
+        endedAt: new Date().toISOString(),
+      });
+      setWatchDuration(imported?.durationMinutes ?? null);
+    })();
+  }, [startedAt]);
 
   /** Confirm through the summary sheet — the name is captured in the same step. */
   const confirmFinish = (name: string | null) => {
@@ -324,11 +354,17 @@ export default function WorkoutsScreen() {
 
       <FinishSummary
         visible={summaryOpen}
-        durationMinutes={startedAt ? elapsedMinutes(startedAt, Date.now()) : 0}
+        // The watch's duration wins when imported: it was started at the first rep rather than
+        // whenever this screen happened to be opened.
+        durationMinutes={
+          watchDuration ?? (startedAt ? elapsedMinutes(startedAt, Date.now()) : 0)
+        }
         exerciseCount={exercises.length}
         setCount={totals.sets}
         volumeKg={totals.volume}
         initialName={sessionName}
+        watchAvailable={watchAvailable}
+        onImportFromWatch={importFromWatch}
         onConfirm={confirmFinish}
         onCancel={() => setSummaryOpen(false)}
       />

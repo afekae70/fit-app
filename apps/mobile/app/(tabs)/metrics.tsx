@@ -1,8 +1,9 @@
 /**
  * Weight tracking and derived targets.
  *
- * Manual entry works today; Bluetooth needs a development build (Expo Go cannot do BLE at
- * all), so the scale section explains that rather than offering a button that silently fails.
+ * Manual entry always works. Bluetooth needs a development build — Expo Go cannot do BLE at all
+ * — so the scale section checks at runtime and either offers a scan button or explains exactly
+ * what is missing, rather than showing a button that silently fails.
  *
  * All physiology comes from `@fit/shared` — the same functions the API and the AI coach use,
  * so the number shown here is the number the coach will reason about.
@@ -28,6 +29,12 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import {
+  checkScanAvailability,
+  scanForReading,
+  ScanError,
+  type ScanUnavailableReason,
+} from '../../src/ble/scanner.js';
 import { Banner, Card, Hint, SectionTitle, Stat } from '../../src/components/ui.js';
 import { WeightSparkline } from '../../src/components/WeightSparkline.js';
 import {
@@ -54,6 +61,18 @@ const GAP_MESSAGE: Record<TargetsGap, string> = {
   needs_bmr_formula_sex: 'metrics.missingFormulaSex',
 };
 
+/**
+ * Each failure gets its own message, because each has a different remedy: install a development
+ * build, turn Bluetooth on, or grant a permission. A single "scan failed" would leave the user
+ * with nothing to act on.
+ */
+const BLE_REASON_MESSAGE: Record<ScanUnavailableReason, string> = {
+  no_native_module: 'metrics.bleUnavailable',
+  bluetooth_off: 'metrics.bleOff',
+  permission_denied: 'metrics.blePermission',
+  not_supported_platform: 'metrics.bleUnavailable',
+};
+
 const SOURCE_LABEL: Record<string, string> = {
   manual: 'metrics.sourceManual',
   ble_scale: 'metrics.sourceScale',
@@ -70,6 +89,12 @@ export default function MetricsScreen() {
   const [entry, setEntry] = useState('');
   const [loading, setLoading] = useState(true);
 
+  const [bleState, setBleState] = useState<'checking' | 'ready' | 'scanning' | 'unavailable'>(
+    'checking',
+  );
+  const [bleReason, setBleReason] = useState<ScanUnavailableReason | null>(null);
+  const [bleError, setBleError] = useState<string | null>(null);
+
   const reload = useCallback(async () => {
     const db = await getExecutor();
     setMetrics(await listBodyMetrics(db));
@@ -82,6 +107,68 @@ export default function MetricsScreen() {
       setLoading(false);
     })();
   }, [reload]);
+
+  // Availability is re-checked on mount rather than cached: Bluetooth can be switched off
+  // between visits, and a stale "ready" would give a button that fails when pressed.
+  const refreshBleAvailability = useCallback(async () => {
+    const availability = await checkScanAvailability();
+    if (availability.available) {
+      setBleState('ready');
+      setBleReason(null);
+    } else {
+      setBleState('unavailable');
+      setBleReason(availability.reason);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshBleAvailability();
+  }, [refreshBleAvailability]);
+
+  /**
+   * Scan, and record whatever the scale reports.
+   *
+   * `raw_payload` is stored alongside the decoded values because consumer scale protocols are
+   * reverse-engineered: keeping the frame means a later parser fix can reprocess this reading
+   * instead of it being lost.
+   */
+  const scanForScale = () => {
+    setBleError(null);
+    setBleState('scanning');
+
+    void (async () => {
+      try {
+        const result = await scanForReading({ timeoutMs: 25_000 });
+
+        if (!result) {
+          setBleError(t('metrics.bleNoScale'));
+          setBleState('ready');
+          return;
+        }
+
+        const db = await getExecutor();
+        await recordBodyMetric(db, newId, {
+          weightKg: result.reading.weightKg,
+          bodyFatPct: result.reading.bodyFatPct ?? null,
+          muscleMassKg: result.reading.muscleMassKg ?? null,
+          waterPct: result.reading.waterPct ?? null,
+          boneMassKg: result.reading.boneMassKg ?? null,
+          visceralFat: result.reading.visceralFat ?? null,
+          source: 'ble_scale',
+          deviceId: result.deviceId,
+          rawPayload: result.rawPayload,
+        });
+
+        await reload();
+        setBleState('ready');
+      } catch (error) {
+        const reason = error instanceof ScanError ? error.reason : 'no_native_module';
+        setBleReason(reason);
+        setBleState(reason === 'bluetooth_off' || reason === 'permission_denied' ? 'ready' : 'unavailable');
+        setBleError(t(BLE_REASON_MESSAGE[reason]));
+      }
+    })();
+  };
 
   const save = async () => {
     const value = Number(entry.replace(',', '.').trim());
@@ -276,8 +363,31 @@ export default function MetricsScreen() {
 
       <Card>
         <SectionTitle>{t('metrics.bleTitle')}</SectionTitle>
-        <Banner tone="warning">{t('metrics.bleUnavailable')}</Banner>
-        <Hint>{t('metrics.bleExplain')}</Hint>
+
+        {bleState === 'unavailable' ? (
+          <>
+            <Banner tone="warning">{t(BLE_REASON_MESSAGE[bleReason ?? 'no_native_module'])}</Banner>
+            <Hint>{t('metrics.bleExplain')}</Hint>
+          </>
+        ) : bleState === 'checking' ? (
+          <Hint>{t('common.loading')}</Hint>
+        ) : (
+          <>
+            <Pressable
+              onPress={scanForScale}
+              disabled={bleState === 'scanning'}
+              style={styles.scanButton}
+              accessibilityRole="button"
+            >
+              <Text style={styles.scanButtonText}>
+                {bleState === 'scanning' ? `⏳ ${t('metrics.bleScanning')}` : `⚖ ${t('metrics.bleScan')}`}
+              </Text>
+            </Pressable>
+            <Hint>{bleState === 'scanning' ? t('metrics.bleStepOn') : t('metrics.bleScanHint')}</Hint>
+            {bleError ? <Banner tone="warning">{bleError}</Banner> : null}
+          </>
+        )}
+
         <Text style={styles.bleSupported}>{t('metrics.bleSupported')}</Text>
       </Card>
 
@@ -323,6 +433,8 @@ const styles = StyleSheet.create<{
   saveButtonText: TextStyle;
   divider: ViewStyle;
   macroRow: ViewStyle;
+  scanButton: ViewStyle;
+  scanButtonText: TextStyle;
   bleSupported: TextStyle;
   historyRow: ViewStyle;
   historyMain: ViewStyle;
@@ -367,6 +479,16 @@ const styles = StyleSheet.create<{
   saveButtonText: { color: colors.accent, fontSize: fontSize.md, fontWeight: '700' },
   divider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.md },
   macroRow: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.md },
+  scanButton: {
+    paddingVertical: spacing.md,
+    borderRadius: radius.sm,
+    backgroundColor: colors.accentSoft,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  scanButtonText: { color: colors.accent, fontSize: fontSize.md, fontWeight: '700' },
   bleSupported: {
     color: colors.textMuted,
     fontSize: fontSize.xs,

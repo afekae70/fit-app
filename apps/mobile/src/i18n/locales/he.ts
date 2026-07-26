@@ -252,6 +252,13 @@ export const he = {
     bleExplain:
       'בלוטות׳ דורש Development Build — הוא לא עובד ב-Expo Go בשום צורה. המפענחים למשקלים כבר כתובים ונבדקו.',
     bleSupported: 'נתמכים: Mi Body Composition Scale 2, וכל משקל תקני (0x181D)',
+    bleScan: 'סרוק משקל',
+    bleScanning: 'מחפש משקל…',
+    bleScanHint: 'לחץ, ואז עלה על המשקל',
+    bleStepOn: 'עלה על המשקל ועמוד עד שהמספר מתייצב',
+    bleNoScale: 'לא נמצא משקל. ודא שהוא דלוק ובטווח, ונסה שוב.',
+    bleOff: 'הבלוטות׳ כבוי. הפעל אותו ונסה שוב.',
+    blePermission: 'נדרשת הרשאת בלוטות׳ כדי לסרוק.',
   },
   dev: {
     statusTitle: 'מצב הפיתוח',

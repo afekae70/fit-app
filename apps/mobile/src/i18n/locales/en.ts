@@ -261,6 +261,13 @@ export const en = {
     bleExplain:
       'Bluetooth requires a development build — it does not work in Expo Go at all. The scale parsers are already written and tested.',
     bleSupported: 'Supported: Mi Body Composition Scale 2, and any standard scale (0x181D)',
+    bleScan: 'Scan for scale',
+    bleScanning: 'Looking for a scale…',
+    bleScanHint: 'Tap, then step on the scale',
+    bleStepOn: 'Step on the scale and wait for the reading to settle',
+    bleNoScale: 'No scale found. Check it is powered and in range, then try again.',
+    bleOff: 'Bluetooth is off. Turn it on and try again.',
+    blePermission: 'Bluetooth permission is required to scan.',
   },
   dev: {
     statusTitle: 'Development status',
