@@ -69,6 +69,35 @@ describe('buildApp', () => {
     expect(app.coachProvider.name).toBe('claude');
   });
 
+  it('rejects /coach/chat without a token', async () => {
+    // The route that actually spends money on every call must never be reachable by an
+    // anonymous caller who merely has the deployed URL.
+    const res = await app.inject({
+      method: 'POST',
+      url: '/coach/chat',
+      payload: { context: {}, messages: [] },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('rejects /coach/chat with a valid token but a malformed body, before touching the provider', async () => {
+    const token = await new SignJWT({ sub: 'user-e2e-test', role: 'authenticated' })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setExpirationTime('1h')
+      .sign(new TextEncoder().encode(JWT_SECRET));
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/coach/chat',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { context: {}, messages: [] },
+    });
+    // Confirms auth passed (not 401) and validation caught the malformed context (not 500) —
+    // together they pin that authenticate runs before the body schema check, in that order.
+    expect(res.statusCode).toBe(400);
+  });
+
   it('exposes a db handle without having connected to it', () => {
     expect(app.db).toBeDefined();
   });

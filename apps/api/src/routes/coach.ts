@@ -23,7 +23,10 @@ function sendEvent(reply: FastifyReply, event: string, data: unknown): void {
 }
 
 export default async function coachRoutes(app: FastifyInstance): Promise<void> {
-  app.post('/coach/chat', async (request, reply) => {
+  // Gated on a verified Supabase session. Without this, anyone who has the deployed URL — the
+  // whole reason a URL is public — can run requests against the LLM key at the account's
+  // expense; the 100/min rate limit alone does not stop that.
+  app.post('/coach/chat', { preHandler: app.authenticate }, async (request, reply) => {
     const parsed = coachChatRequestSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({
@@ -66,9 +69,9 @@ export default async function coachRoutes(app: FastifyInstance): Promise<void> {
     try {
       const stream = app.coachProvider.streamChat(
         {
-          // Set by the auth plugin when a bearer token was verified. Optional today because
-          // the route is not yet behind `authenticate` — see the deployment note in README.
-          userId: request.userId ?? 'anonymous',
+          // Guaranteed set: `authenticate` runs as this route's preHandler and 401s before
+          // this handler body executes if the token were missing or invalid.
+          userId: request.userId!,
           systemPrompt: COACH_PERSONA,
           userContext: renderContext(context),
         },

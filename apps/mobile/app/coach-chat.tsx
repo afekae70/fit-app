@@ -29,6 +29,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AuthGate } from '../src/auth/AuthGate.js';
+import { useAuth } from '../src/auth/AuthProvider.js';
 import { buildCoachPayload } from '../src/coach/payload.js';
 import { streamCoachChat, type CancelStream } from '../src/coach/stream.js';
 import { Banner, EmptyState } from '../src/components/ui.js';
@@ -48,6 +50,8 @@ export default function CoachChatScreen() {
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
   const isHebrew = i18n.language === 'he';
+  const { session, isConfigured, signOut } = useAuth();
+  const canChat = API_BASE_URL !== null && isConfigured && session != null;
 
   const [bubbles, setBubbles] = useState<ChatBubble[]>([]);
   const [draft, setDraft] = useState('');
@@ -81,7 +85,10 @@ export default function CoachChatScreen() {
 
   const send = () => {
     const question = draft.trim();
-    if (!question || streaming || !API_BASE_URL) return;
+    // The AuthGate below stands in for the composer whenever session is falsy, so reaching
+    // send() with no session should not happen — but the check stays as a hard backstop: this
+    // is the call that reaches the paid model, and it must never fire without a token.
+    if (!question || streaming || !API_BASE_URL || !session) return;
 
     setDraft('');
     setStreaming(true);
@@ -106,6 +113,7 @@ export default function CoachChatScreen() {
 
         cancelRef.current = streamCoachChat({
           baseUrl: API_BASE_URL,
+          accessToken: session.access_token,
           body: { context, messages: history },
           handlers: {
             onDelta: appendToLast,
@@ -137,6 +145,11 @@ export default function CoachChatScreen() {
           <Text style={styles.back}>{isHebrew ? '›' : '‹'}</Text>
         </Pressable>
         <Text style={styles.title}>{t('coach.title')}</Text>
+        {session ? (
+          <Pressable onPress={() => void signOut()} accessibilityRole="button" hitSlop={8}>
+            <Text style={styles.signOut}>{t('auth.signOut')}</Text>
+          </Pressable>
+        ) : null}
       </View>
 
       <ScrollView
@@ -151,6 +164,14 @@ export default function CoachChatScreen() {
             <EmptyState emoji="🔌" title={t('coach.notConfigured')} hint={t('coach.notConfiguredHint')} />
             <Banner tone="info">{t('coach.keyNote')}</Banner>
           </>
+        ) : !isConfigured ? (
+          // Distinct from the API-not-configured state above: the server is reachable, but
+          // there is no Supabase project wired up yet to mint a token it would accept.
+          <EmptyState emoji="🔐" title={t('coach.authNotConfigured')} hint={t('coach.authNotConfiguredHint')} />
+        ) : session === undefined ? (
+          <ActivityIndicator color={colors.accent} style={styles.authLoading} />
+        ) : session === null ? (
+          <AuthGate />
         ) : bubbles.length === 0 ? (
           <>
             <EmptyState emoji="🧠" title={t('coach.empty')} hint={t('coach.emptyHint')} />
@@ -188,29 +209,33 @@ export default function CoachChatScreen() {
         )}
       </ScrollView>
 
-      <View style={[styles.composer, { paddingBottom: insets.bottom + spacing.md }]}>
-        <TextInput
-          value={draft}
-          onChangeText={setDraft}
-          placeholder={t('coach.placeholder')}
-          placeholderTextColor={colors.textMuted}
-          style={styles.input}
-          multiline
-          editable={API_BASE_URL !== null && !streaming}
-        />
-        <Pressable
-          onPress={send}
-          disabled={streaming || draft.trim().length === 0 || !API_BASE_URL}
-          style={[
-            styles.sendButton,
-            (streaming || draft.trim().length === 0 || !API_BASE_URL) && styles.sendButtonDisabled,
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel={t('coach.send')}
-        >
-          <Text style={styles.sendButtonText}>{isHebrew ? '↑' : '↑'}</Text>
-        </Pressable>
-      </View>
+      {/* Hidden rather than merely disabled while signed out: showing a composer for a message
+          that cannot be sent invites a tap that silently does nothing. */}
+      {canChat ? (
+        <View style={[styles.composer, { paddingBottom: insets.bottom + spacing.md }]}>
+          <TextInput
+            value={draft}
+            onChangeText={setDraft}
+            placeholder={t('coach.placeholder')}
+            placeholderTextColor={colors.textMuted}
+            style={styles.input}
+            multiline
+            editable={!streaming}
+          />
+          <Pressable
+            onPress={send}
+            disabled={streaming || draft.trim().length === 0}
+            style={[
+              styles.sendButton,
+              (streaming || draft.trim().length === 0) && styles.sendButtonDisabled,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={t('coach.send')}
+          >
+            <Text style={styles.sendButtonText}>{isHebrew ? '↑' : '↑'}</Text>
+          </Pressable>
+        </View>
+      ) : null}
     </KeyboardAvoidingView>
   );
 }
@@ -220,6 +245,8 @@ const styles = StyleSheet.create<{
   header: ViewStyle;
   back: TextStyle;
   title: TextStyle;
+  signOut: TextStyle;
+  authLoading: ViewStyle;
   thread: ViewStyle;
   threadContent: ViewStyle;
   bubble: ViewStyle;
@@ -247,7 +274,9 @@ const styles = StyleSheet.create<{
     borderBottomColor: colors.border,
   },
   back: { color: colors.accent, fontSize: fontSize.xl, fontWeight: fontWeight.bold },
-  title: { color: colors.text, fontSize: fontSize.lg, fontWeight: fontWeight.bold },
+  title: { flex: 1, color: colors.text, fontSize: fontSize.lg, fontWeight: fontWeight.bold },
+  signOut: { color: colors.textMuted, fontSize: fontSize.xs },
+  authLoading: { marginTop: spacing.xxl },
   thread: { flex: 1 },
   threadContent: { padding: spacing.lg, gap: spacing.md },
   bubble: {
