@@ -26,7 +26,7 @@
  * TEXT (lexicographically sortable, which is what the history queries rely on).
  */
 
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 /**
  * Incremental migrations, keyed by the version they upgrade TO.
@@ -221,8 +221,12 @@ CREATE TABLE IF NOT EXISTS body_metrics (
   -- The raw Bluetooth frame, kept deliberately: consumer scale protocols are
   -- reverse-engineered and body-composition fields are sometimes decoded wrongly. Keeping the
   -- bytes means a parser fix can reprocess history instead of discarding it.
-  raw_payload     TEXT
+  raw_payload     TEXT,
+  updated_at      TEXT,
+  deleted_at      TEXT
 );
+
+CREATE INDEX IF NOT EXISTS body_metrics_updated_idx ON body_metrics (updated_at);
 
 CREATE INDEX IF NOT EXISTS body_metrics_measured_idx
   ON body_metrics (measured_at DESC);
@@ -270,11 +274,16 @@ CREATE TABLE IF NOT EXISTS workout_sessions (
   session_rpe    REAL,
   notes          TEXT,
   server_id      TEXT,
-  created_at     TEXT NOT NULL
+  created_at     TEXT NOT NULL,
+  -- Sync bookkeeping. See migration 7 for why deletion is a value rather than an absence.
+  updated_at     TEXT,
+  deleted_at     TEXT
 );
 
 CREATE INDEX IF NOT EXISTS workout_sessions_started_idx
   ON workout_sessions (started_at DESC);
+CREATE INDEX IF NOT EXISTS workout_sessions_updated_idx
+  ON workout_sessions (updated_at);
 -- See the comment on body_metrics above — the user_id index lives only in migration 5.
 
 CREATE TABLE IF NOT EXISTS session_exercises (
@@ -283,8 +292,13 @@ CREATE TABLE IF NOT EXISTS session_exercises (
   exercise_key  TEXT NOT NULL,
   order_index   INTEGER NOT NULL,
   notes         TEXT,
+  updated_at    TEXT,
+  deleted_at    TEXT,
   UNIQUE (session_id, order_index)
 );
+
+CREATE INDEX IF NOT EXISTS session_exercises_updated_idx
+  ON session_exercises (updated_at);
 
 CREATE INDEX IF NOT EXISTS session_exercises_session_idx
   ON session_exercises (session_id);
@@ -303,8 +317,12 @@ CREATE TABLE IF NOT EXISTS sets (
   is_warmup            INTEGER NOT NULL DEFAULT 0,
   to_failure           INTEGER NOT NULL DEFAULT 0,
   completed_at         TEXT NOT NULL,
+  updated_at           TEXT,
+  deleted_at           TEXT,
   UNIQUE (session_exercise_id, set_index)
 );
+
+CREATE INDEX IF NOT EXISTS sets_updated_idx ON sets (updated_at);
 
 CREATE INDEX IF NOT EXISTS sets_exercise_idx
   ON sets (session_exercise_id, set_index);
@@ -328,9 +346,12 @@ CREATE TABLE IF NOT EXISTS plans (
   -- is_active = 1" — every query/update against is_active must be scoped by user_id or it
   -- reaches across people sharing this device.
   is_active   INTEGER NOT NULL DEFAULT 0,
-  created_at  TEXT NOT NULL
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT,
+  deleted_at  TEXT
 );
 
+CREATE INDEX IF NOT EXISTS plans_updated_idx ON plans (updated_at);
 -- The user_id index lives only in migration 5 — see the comment on body_metrics above.
 
 CREATE TABLE IF NOT EXISTS plan_days (
@@ -340,6 +361,8 @@ CREATE TABLE IF NOT EXISTS plan_days (
   -- Sunday-Saturday, and pinning days to dates makes a missed session cascade into the rest.
   day_index  INTEGER NOT NULL,
   name       TEXT,
+  updated_at TEXT,
+  deleted_at TEXT,
   UNIQUE (plan_id, day_index)
 );
 
@@ -352,6 +375,8 @@ CREATE TABLE IF NOT EXISTS plan_day_exercises (
   target_reps_min  INTEGER,
   target_reps_max  INTEGER,
   notes            TEXT,
+  updated_at       TEXT,
+  deleted_at       TEXT,
   UNIQUE (plan_day_id, order_index)
 );
 
@@ -380,5 +405,14 @@ CREATE TABLE IF NOT EXISTS coach_briefs (
   text        TEXT NOT NULL,
   created_at  TEXT NOT NULL,
   UNIQUE (user_id, brief_date)
+);
+
+-- One row per user, holding how far the last successful pull got. Deliberately not a single
+-- global row: two people sharing a device have independent cloud accounts and must not inherit
+-- each other's cursor, which would silently skip rows for whoever synced second.
+CREATE TABLE IF NOT EXISTS sync_state (
+  user_id        TEXT PRIMARY KEY NOT NULL,
+  last_pulled_at TEXT,
+  last_synced_at TEXT
 );
 `;

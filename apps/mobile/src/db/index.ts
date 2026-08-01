@@ -87,6 +87,7 @@ export async function resetDb(): Promise<void> {
   const db = await getDb();
   await db.execAsync(`
     PRAGMA foreign_keys = OFF;
+    DROP TABLE IF EXISTS sync_state;
     DROP TABLE IF EXISTS coach_briefs;
     DROP TABLE IF EXISTS outbox;
     DROP TABLE IF EXISTS sets;
