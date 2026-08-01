@@ -24,7 +24,7 @@ const { DatabaseSync } = nodeRequire('node:sqlite') as {
 
 import { describe, expect, it } from 'vitest';
 
-import { MIGRATIONS, SCHEMA_VERSION } from './schema.js';
+import { CREATE_SCHEMA_SQL, MIGRATIONS, SCHEMA_VERSION } from './schema.js';
 
 /**
  * The pre-v7 shape, trimmed to the tables migration 7 touches. Written out literally rather
@@ -102,6 +102,70 @@ function seededV6Database() {
   `);
   return db;
 }
+
+/**
+ * The real startup sequence from `db/index.ts`: CREATE_SCHEMA_SQL as a single batch, then the
+ * migrations. Both halves matter, and the order is the whole point.
+ *
+ * `execAsync` stops a batch at the first failing statement, so anything in CREATE_SCHEMA_SQL
+ * that assumes a migration has already run takes the entire startup down with it — and because
+ * `getDb()` caches the rejected promise, every screen that touches the database then fails to
+ * load. That is not hypothetical: an index declared there on a column that only migration 7
+ * adds shipped once and bricked three tabs on an upgraded device.
+ */
+function startUpLikeTheApp(db: { exec(sql: string): void }): void {
+  db.exec(CREATE_SCHEMA_SQL.replace(/PRAGMA journal_mode = WAL;/, ''));
+  for (const version of Object.keys(MIGRATIONS).map(Number).sort((a, b) => a - b)) {
+    applyMigration(db, MIGRATIONS[version] ?? '');
+  }
+}
+
+describe('startup on an already-populated device', () => {
+  it('survives CREATE_SCHEMA_SQL running before the migrations', () => {
+    const db = seededV6Database();
+
+    // The regression: this threw "no such column: updated_at" and aborted the whole batch.
+    expect(() => startUpLikeTheApp(db)).not.toThrow();
+
+    const set = db.prepare(`SELECT weight_kg FROM sets WHERE id = 't1'`).get() as {
+      weight_kg: number;
+    };
+    expect(set.weight_kg).toBe(100);
+    db.close();
+  });
+
+  it('leaves every table the screens read from queryable with the new columns', () => {
+    const db = seededV6Database();
+    startUpLikeTheApp(db);
+
+    // Each of these is what a tab actually runs. Before the fix these threw, which is why the
+    // plan, workouts and metrics screens showed nothing at all.
+    const queries = [
+      `SELECT * FROM workout_sessions WHERE deleted_at IS NULL`,
+      `SELECT * FROM session_exercises WHERE deleted_at IS NULL`,
+      `SELECT * FROM sets WHERE deleted_at IS NULL`,
+      `SELECT * FROM body_metrics WHERE deleted_at IS NULL`,
+      `SELECT * FROM plans WHERE deleted_at IS NULL`,
+      `SELECT * FROM plan_days WHERE deleted_at IS NULL`,
+      `SELECT * FROM plan_day_exercises WHERE deleted_at IS NULL`,
+      `SELECT * FROM sync_state`,
+      `SELECT * FROM coach_briefs`,
+    ];
+    for (const sql of queries) {
+      expect(() => db.prepare(sql).all(), sql).not.toThrow();
+    }
+    db.close();
+  });
+
+  it('works the same on a fresh install', () => {
+    const db = new DatabaseSync(':memory:');
+    expect(() => startUpLikeTheApp(db)).not.toThrow();
+
+    db.exec(`INSERT INTO sync_state (user_id) VALUES ('u1')`);
+    expect(db.prepare(`SELECT * FROM sync_state`).all()).toHaveLength(1);
+    db.close();
+  });
+});
 
 describe('migration 7 — sync columns', () => {
   it('is the version the app actually ships', () => {

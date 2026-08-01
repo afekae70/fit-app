@@ -226,10 +226,10 @@ CREATE TABLE IF NOT EXISTS body_metrics (
   deleted_at      TEXT
 );
 
-CREATE INDEX IF NOT EXISTS body_metrics_updated_idx ON body_metrics (updated_at);
-
 CREATE INDEX IF NOT EXISTS body_metrics_measured_idx
   ON body_metrics (measured_at DESC);
+-- The updated_at index lives only in migration 7, for the same reason the user_id one lives
+-- only in migration 5 — see the note below.
 -- The user_id index is NOT declared here. On a device upgrading from an older schema, this
 -- whole block runs via CREATE_SCHEMA_SQL BEFORE migrate() has added the user_id column to the
 -- pre-existing table — an index on a not-yet-existing column would fail immediately with
@@ -282,9 +282,8 @@ CREATE TABLE IF NOT EXISTS workout_sessions (
 
 CREATE INDEX IF NOT EXISTS workout_sessions_started_idx
   ON workout_sessions (started_at DESC);
-CREATE INDEX IF NOT EXISTS workout_sessions_updated_idx
-  ON workout_sessions (updated_at);
--- See the comment on body_metrics above — the user_id index lives only in migration 5.
+-- See the comment on body_metrics above — the user_id and updated_at indexes live only in
+-- migrations 5 and 7.
 
 CREATE TABLE IF NOT EXISTS session_exercises (
   id            TEXT PRIMARY KEY NOT NULL,
@@ -296,9 +295,6 @@ CREATE TABLE IF NOT EXISTS session_exercises (
   deleted_at    TEXT,
   UNIQUE (session_id, order_index)
 );
-
-CREATE INDEX IF NOT EXISTS session_exercises_updated_idx
-  ON session_exercises (updated_at);
 
 CREATE INDEX IF NOT EXISTS session_exercises_session_idx
   ON session_exercises (session_id);
@@ -321,8 +317,6 @@ CREATE TABLE IF NOT EXISTS sets (
   deleted_at           TEXT,
   UNIQUE (session_exercise_id, set_index)
 );
-
-CREATE INDEX IF NOT EXISTS sets_updated_idx ON sets (updated_at);
 
 CREATE INDEX IF NOT EXISTS sets_exercise_idx
   ON sets (session_exercise_id, set_index);
@@ -351,8 +345,8 @@ CREATE TABLE IF NOT EXISTS plans (
   deleted_at  TEXT
 );
 
-CREATE INDEX IF NOT EXISTS plans_updated_idx ON plans (updated_at);
--- The user_id index lives only in migration 5 — see the comment on body_metrics above.
+-- The user_id and updated_at indexes live only in migrations 5 and 7 — see the comment on
+-- body_metrics above.
 
 CREATE TABLE IF NOT EXISTS plan_days (
   id         TEXT PRIMARY KEY NOT NULL,
