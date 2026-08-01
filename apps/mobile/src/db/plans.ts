@@ -71,14 +71,16 @@ export async function createPlan(
   // Scoped by user_id: without it, a second person's first plan would see the first person's
   // plans already in the table and never auto-activate.
   const existing = await db.get<{ count: number }>(
-    `SELECT COUNT(*) AS count FROM plans WHERE user_id = ?`,
+    `SELECT COUNT(*) AS count FROM plans WHERE user_id = ? AND deleted_at IS NULL`,
     [userId],
   );
   const isFirst = (existing?.count ?? 0) === 0;
 
+  const now = clock();
   await db.run(
-    `INSERT INTO plans (id, user_id, name, is_active, created_at) VALUES (?, ?, ?, ?, ?)`,
-    [id, userId, name.trim(), isFirst ? 1 : 0, clock()],
+    `INSERT INTO plans (id, user_id, name, is_active, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [id, userId, name.trim(), isFirst ? 1 : 0, now, now],
   );
   return id;
 }
@@ -94,22 +96,33 @@ export async function activatePlan(
   db: SqlExecutor,
   userId: string,
   planId: string,
+  clock: Clock = defaultClock,
 ): Promise<void> {
   // Both steps scoped by user_id: without it, activating user B's plan would deactivate
   // user A's active plan too — a real cross-user bug, not just a missing filter.
-  await db.run(`UPDATE plans SET is_active = 0 WHERE is_active = 1 AND user_id = ?`, [userId]);
-  await db.run(`UPDATE plans SET is_active = 1 WHERE id = ? AND user_id = ?`, [planId, userId]);
-}
-
-export async function getActivePlan(db: SqlExecutor, userId: string): Promise<PlanRow | null> {
-  return db.get<PlanRow>(`SELECT * FROM plans WHERE user_id = ? AND is_active = 1 LIMIT 1`, [
+  const now = clock();
+  await db.run(
+    `UPDATE plans SET is_active = 0, updated_at = ? WHERE is_active = 1 AND user_id = ?`,
+    [now, userId],
+  );
+  await db.run(`UPDATE plans SET is_active = 1, updated_at = ? WHERE id = ? AND user_id = ?`, [
+    now,
+    planId,
     userId,
   ]);
 }
 
+export async function getActivePlan(db: SqlExecutor, userId: string): Promise<PlanRow | null> {
+  return db.get<PlanRow>(
+    `SELECT * FROM plans WHERE user_id = ? AND is_active = 1 AND deleted_at IS NULL LIMIT 1`,
+    [userId],
+  );
+}
+
 export async function listPlans(db: SqlExecutor, userId: string): Promise<PlanRow[]> {
   return db.all<PlanRow>(
-    `SELECT * FROM plans WHERE user_id = ? ORDER BY is_active DESC, created_at DESC`,
+    `SELECT * FROM plans WHERE user_id = ? AND deleted_at IS NULL
+      ORDER BY is_active DESC, created_at DESC`,
     [userId],
   );
 }
@@ -119,9 +132,11 @@ export async function renamePlan(
   userId: string,
   planId: string,
   name: string,
+  clock: Clock = defaultClock,
 ): Promise<void> {
-  await db.run(`UPDATE plans SET name = ? WHERE id = ? AND user_id = ?`, [
+  await db.run(`UPDATE plans SET name = ?, updated_at = ? WHERE id = ? AND user_id = ?`, [
     name.trim(),
+    clock(),
     planId,
     userId,
   ]);
@@ -135,8 +150,30 @@ export async function renamePlan(
  * not a foreign key for exactly this reason — it becomes a dangling reference, which is the
  * correct outcome.
  */
-export async function deletePlan(db: SqlExecutor, userId: string, planId: string): Promise<void> {
-  await db.run(`DELETE FROM plans WHERE id = ? AND user_id = ?`, [planId, userId]);
+export async function deletePlan(
+  db: SqlExecutor,
+  userId: string,
+  planId: string,
+  clock: Clock = defaultClock,
+): Promise<void> {
+  // Manual cascade — ON DELETE CASCADE fires only for a real DELETE, so soft-deleting the plan
+  // alone would leave its days and prescriptions live and syncing as orphans. Indexes move to
+  // -rowid so the freed slots cannot collide with the surviving rows' renumbering.
+  const at = clock();
+  await db.run(
+    `UPDATE plan_day_exercises SET deleted_at = ?, updated_at = ?, order_index = -rowid
+      WHERE deleted_at IS NULL AND plan_day_id IN (SELECT id FROM plan_days WHERE plan_id = ?)`,
+    [at, at, planId],
+  );
+  await db.run(
+    `UPDATE plan_days SET deleted_at = ?, updated_at = ?, day_index = -rowid
+      WHERE deleted_at IS NULL AND plan_id = ?`,
+    [at, at, planId],
+  );
+  await db.run(
+    `UPDATE plans SET deleted_at = ?, updated_at = ?, is_active = 0 WHERE id = ? AND user_id = ?`,
+    [at, at, planId, userId],
+  );
 
   // Promote another plan so the user is never left with plans but no active one. Scoped by
   // user_id: unscoped, this user could get no promotion at all (or, without activatePlan's own
@@ -144,10 +181,11 @@ export async function deletePlan(db: SqlExecutor, userId: string, planId: string
   const active = await getActivePlan(db, userId);
   if (!active) {
     const next = await db.get<{ id: string }>(
-      `SELECT id FROM plans WHERE user_id = ? ORDER BY created_at DESC LIMIT 1`,
+      `SELECT id FROM plans WHERE user_id = ? AND deleted_at IS NULL
+        ORDER BY created_at DESC LIMIT 1`,
       [userId],
     );
-    if (next) await activatePlan(db, userId, next.id);
+    if (next) await activatePlan(db, userId, next.id, clock);
   }
 }
 
@@ -161,18 +199,18 @@ export async function addPlanDay(
   newId: IdFactory,
   planId: string,
   name: string | null = null,
+  clock: Clock = defaultClock,
 ): Promise<string> {
   const row = await db.get<{ next: number }>(
-    `SELECT COALESCE(MAX(day_index), 0) + 1 AS next FROM plan_days WHERE plan_id = ?`,
+    `SELECT COALESCE(MAX(day_index), 0) + 1 AS next FROM plan_days
+      WHERE plan_id = ? AND deleted_at IS NULL`,
     [planId],
   );
   const id = newId();
-  await db.run(`INSERT INTO plan_days (id, plan_id, day_index, name) VALUES (?, ?, ?, ?)`, [
-    id,
-    planId,
-    row?.next ?? 1,
-    name?.trim() || null,
-  ]);
+  await db.run(
+    `INSERT INTO plan_days (id, plan_id, day_index, name, updated_at) VALUES (?, ?, ?, ?, ?)`,
+    [id, planId, row?.next ?? 1, name?.trim() || null, clock()],
+  );
   return id;
 }
 
@@ -180,8 +218,13 @@ export async function renamePlanDay(
   db: SqlExecutor,
   planDayId: string,
   name: string,
+  clock: Clock = defaultClock,
 ): Promise<void> {
-  await db.run(`UPDATE plan_days SET name = ? WHERE id = ?`, [name.trim() || null, planDayId]);
+  await db.run(`UPDATE plan_days SET name = ?, updated_at = ? WHERE id = ?`, [
+    name.trim() || null,
+    clock(),
+    planDayId,
+  ]);
 }
 
 /**
@@ -192,14 +235,32 @@ export async function renamePlanDay(
  * survivors at a high offset first sidesteps the collision, since SQLite has no deferrable
  * constraints.
  */
-export async function removePlanDay(db: SqlExecutor, planDayId: string): Promise<void> {
-  const day = await db.get<PlanDayRow>(`SELECT * FROM plan_days WHERE id = ?`, [planDayId]);
+export async function removePlanDay(
+  db: SqlExecutor,
+  planDayId: string,
+  clock: Clock = defaultClock,
+): Promise<void> {
+  const day = await db.get<PlanDayRow>(
+    `SELECT * FROM plan_days WHERE id = ? AND deleted_at IS NULL`,
+    [planDayId],
+  );
   if (!day) return;
 
-  await db.run(`DELETE FROM plan_days WHERE id = ?`, [planDayId]);
+  const at = clock();
+  // Prescriptions first, for the same reason sets go before their exercise: they must not stay
+  // live under a deleted parent and sync as orphans.
+  await db.run(
+    `UPDATE plan_day_exercises SET deleted_at = ?, updated_at = ?, order_index = -rowid
+      WHERE deleted_at IS NULL AND plan_day_id = ?`,
+    [at, at, planDayId],
+  );
+  await db.run(
+    `UPDATE plan_days SET deleted_at = ?, updated_at = ?, day_index = -rowid WHERE id = ?`,
+    [at, at, planDayId],
+  );
 
   const remaining = await db.all<{ id: string }>(
-    `SELECT id FROM plan_days WHERE plan_id = ? ORDER BY day_index`,
+    `SELECT id FROM plan_days WHERE plan_id = ? AND deleted_at IS NULL ORDER BY day_index`,
     [day.plan_id],
   );
 
@@ -213,9 +274,10 @@ export async function removePlanDay(db: SqlExecutor, planDayId: string): Promise
 }
 
 export async function listPlanDays(db: SqlExecutor, planId: string): Promise<PlanDayRow[]> {
-  return db.all<PlanDayRow>(`SELECT * FROM plan_days WHERE plan_id = ? ORDER BY day_index`, [
-    planId,
-  ]);
+  return db.all<PlanDayRow>(
+    `SELECT * FROM plan_days WHERE plan_id = ? AND deleted_at IS NULL ORDER BY day_index`,
+    [planId],
+  );
 }
 
 /** A whole plan in one call — days in order, each with its prescribed exercises. */
@@ -223,7 +285,10 @@ export async function getPlanDetail(
   db: SqlExecutor,
   planId: string,
 ): Promise<{ plan: PlanRow | null; days: PlanDayWithExercises[] }> {
-  const plan = await db.get<PlanRow>(`SELECT * FROM plans WHERE id = ?`, [planId]);
+  const plan = await db.get<PlanRow>(
+    `SELECT * FROM plans WHERE id = ? AND deleted_at IS NULL`,
+    [planId],
+  );
   if (!plan) return { plan: null, days: [] };
 
   const days = await listPlanDays(db, planId);
@@ -238,7 +303,10 @@ export async function getPlanDay(
   db: SqlExecutor,
   planDayId: string,
 ): Promise<PlanDayWithExercises | null> {
-  const day = await db.get<PlanDayRow>(`SELECT * FROM plan_days WHERE id = ?`, [planDayId]);
+  const day = await db.get<PlanDayRow>(
+    `SELECT * FROM plan_days WHERE id = ? AND deleted_at IS NULL`,
+    [planDayId],
+  );
   if (!day) return null;
   return { ...day, exercises: await listPlanDayExercises(db, planDayId) };
 }
@@ -260,17 +328,19 @@ export async function addPlanDayExercise(
   planDayId: string,
   exerciseKey: string,
   input: PrescriptionInput = {},
+  clock: Clock = defaultClock,
 ): Promise<string> {
   const row = await db.get<{ next: number }>(
-    `SELECT COALESCE(MAX(order_index), 0) + 1 AS next FROM plan_day_exercises WHERE plan_day_id = ?`,
+    `SELECT COALESCE(MAX(order_index), 0) + 1 AS next FROM plan_day_exercises
+      WHERE plan_day_id = ? AND deleted_at IS NULL`,
     [planDayId],
   );
   const id = newId();
   await db.run(
     `INSERT INTO plan_day_exercises
        (id, plan_day_id, exercise_key, order_index, target_sets, target_reps_min,
-        target_reps_max, notes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        target_reps_max, notes, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       planDayId,
@@ -285,6 +355,7 @@ export async function addPlanDayExercise(
       'targetRepsMin' in input ? input.targetRepsMin : 8,
       'targetRepsMax' in input ? input.targetRepsMax : 12,
       input.notes ?? null,
+      clock(),
     ],
   );
   return id;
@@ -294,6 +365,7 @@ export async function updatePlanDayExercise(
   db: SqlExecutor,
   id: string,
   input: PrescriptionInput,
+  clock: Clock = defaultClock,
 ): Promise<void> {
   const sets: string[] = [];
   const params: unknown[] = [];
@@ -311,22 +383,34 @@ export async function updatePlanDayExercise(
   if ('notes' in input) assign('notes', input.notes ?? null);
   if (sets.length === 0) return;
 
+  assign('updated_at', clock());
+
   params.push(id);
   await db.run(`UPDATE plan_day_exercises SET ${sets.join(', ')} WHERE id = ?`, params);
 }
 
 /** Remove a prescribed exercise, closing the gap in `order_index` (see removePlanDay). */
-export async function removePlanDayExercise(db: SqlExecutor, id: string): Promise<void> {
+export async function removePlanDayExercise(
+  db: SqlExecutor,
+  id: string,
+  clock: Clock = defaultClock,
+): Promise<void> {
   const row = await db.get<PlanDayExerciseRow>(
-    `SELECT * FROM plan_day_exercises WHERE id = ?`,
+    `SELECT * FROM plan_day_exercises WHERE id = ? AND deleted_at IS NULL`,
     [id],
   );
   if (!row) return;
 
-  await db.run(`DELETE FROM plan_day_exercises WHERE id = ?`, [id]);
+  const at = clock();
+  await db.run(
+    `UPDATE plan_day_exercises SET deleted_at = ?, updated_at = ?, order_index = -rowid
+      WHERE id = ?`,
+    [at, at, id],
+  );
 
   const remaining = await db.all<{ id: string }>(
-    `SELECT id FROM plan_day_exercises WHERE plan_day_id = ? ORDER BY order_index`,
+    `SELECT id FROM plan_day_exercises WHERE plan_day_id = ? AND deleted_at IS NULL
+      ORDER BY order_index`,
     [row.plan_day_id],
   );
 
@@ -350,7 +434,8 @@ export async function listPlanDayExercises(
   planDayId: string,
 ): Promise<PlanDayExerciseRow[]> {
   return db.all<PlanDayExerciseRow>(
-    `SELECT * FROM plan_day_exercises WHERE plan_day_id = ? ORDER BY order_index`,
+    `SELECT * FROM plan_day_exercises WHERE plan_day_id = ? AND deleted_at IS NULL
+      ORDER BY order_index`,
     [planDayId],
   );
 }
@@ -421,9 +506,10 @@ export async function getNextPlanDay(
   return db.get<PlanDayRow & { last_trained_at: string | null }>(
     `SELECT pd.id, pd.plan_id, pd.day_index, pd.name,
             (SELECT MAX(ws.started_at) FROM workout_sessions ws
-              WHERE ws.plan_day_id = pd.id AND ws.user_id = ?) AS last_trained_at
+              WHERE ws.plan_day_id = pd.id AND ws.user_id = ? AND ws.deleted_at IS NULL)
+              AS last_trained_at
        FROM plan_days pd
-      WHERE pd.plan_id = ?
+      WHERE pd.plan_id = ? AND pd.deleted_at IS NULL
       ORDER BY last_trained_at IS NOT NULL, last_trained_at ASC, pd.day_index ASC
       LIMIT 1`,
     [userId, planId],
@@ -448,13 +534,15 @@ export async function listPlanDayStatus(
   return db.all(
     `SELECT pd.id, pd.day_index, pd.name,
             (SELECT COUNT(*) FROM plan_day_exercises pde
-              WHERE pde.plan_day_id = pd.id) AS exercise_count,
+              WHERE pde.plan_day_id = pd.id AND pde.deleted_at IS NULL) AS exercise_count,
             (SELECT MAX(ws.started_at) FROM workout_sessions ws
-              WHERE ws.plan_day_id = pd.id AND ws.user_id = ?) AS last_trained_at,
+              WHERE ws.plan_day_id = pd.id AND ws.user_id = ? AND ws.deleted_at IS NULL)
+              AS last_trained_at,
             (SELECT COUNT(*) FROM workout_sessions ws
-              WHERE ws.plan_day_id = pd.id AND ws.user_id = ? AND ws.ended_at IS NOT NULL) AS session_count
+              WHERE ws.plan_day_id = pd.id AND ws.user_id = ? AND ws.ended_at IS NOT NULL
+                AND ws.deleted_at IS NULL) AS session_count
        FROM plan_days pd
-      WHERE pd.plan_id = ?
+      WHERE pd.plan_id = ? AND pd.deleted_at IS NULL
       ORDER BY pd.day_index`,
     [userId, userId, planId],
   );
@@ -495,12 +583,13 @@ export async function getSessionAdherence(
             MAX(CASE WHEN s.is_warmup = 0 THEN s.weight_kg END) AS best_weight_kg,
             MAX(CASE WHEN s.is_warmup = 0 THEN s.reps END)      AS best_reps
        FROM session_exercises se
-       JOIN workout_sessions ws ON ws.id = se.session_id
-       LEFT JOIN sets s ON s.session_exercise_id = se.id
+       JOIN workout_sessions ws ON ws.id = se.session_id AND ws.deleted_at IS NULL
+       LEFT JOIN sets s ON s.session_exercise_id = se.id AND s.deleted_at IS NULL
        LEFT JOIN plan_day_exercises pde
               ON pde.plan_day_id = ws.plan_day_id
              AND pde.exercise_key = se.exercise_key
-      WHERE se.session_id = ? AND ws.user_id = ?
+             AND pde.deleted_at IS NULL
+      WHERE se.session_id = ? AND ws.user_id = ? AND se.deleted_at IS NULL
       GROUP BY se.id, se.exercise_key, pde.target_sets, pde.target_reps_min, pde.target_reps_max
       ORDER BY se.order_index`,
     [sessionId, userId],

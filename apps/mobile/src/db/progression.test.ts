@@ -19,7 +19,13 @@ import {
   toCoachDigest,
 } from './progression.js';
 import { createTestExecutor } from './testUtils.js';
-import { addExerciseToSession, addSet, finishSession, startSession } from './workouts.js';
+import {
+  addExerciseToSession,
+  addSet,
+  deleteSession,
+  finishSession,
+  startSession,
+} from './workouts.js';
 
 const USER = 'user-1';
 
@@ -239,5 +245,32 @@ describe('toCoachDigest', () => {
     // 60 set rows collapse to one line.
     expect(digest).toHaveLength(1);
     expect(JSON.stringify(digest).length).toBeLessThan(400);
+  });
+});
+
+describe('deleted sessions are excluded from progression', () => {
+  it('drops a deleted session from an exercise history', async () => {
+    await logSession(0, 'Barbell Curl', [{ weightKg: 30, reps: 10 }]);
+    const wrong = await logSession(1, 'Barbell Curl', [{ weightKg: 200, reps: 10 }]);
+
+    expect(await getExerciseProgression(db, USER, 'Barbell Curl')).toHaveLength(2);
+
+    await deleteSession(db, USER, wrong);
+
+    // A mistyped 200kg curl that was deleted must not keep inflating the e1RM, the best-ever
+    // figure, or the digest the coach reasons about.
+    const remaining = await getExerciseProgression(db, USER, 'Barbell Curl');
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0]?.best_e1rm_kg).toBeCloseTo(epley1RM(30, 10), 6);
+  });
+
+  it('drops an exercise entirely once its only session is deleted', async () => {
+    const only = await logSession(0, 'Barbell Curl', [{ weightKg: 30, reps: 10 }]);
+    expect(await listTrainedExercises(db, USER)).toHaveLength(1);
+
+    await deleteSession(db, USER, only);
+
+    expect(await listTrainedExercises(db, USER)).toHaveLength(0);
+    expect(await summariseAllProgress(db, USER)).toHaveLength(0);
   });
 });

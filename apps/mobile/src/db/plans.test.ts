@@ -20,6 +20,7 @@ import {
   getPlanDay,
   getPlanDetail,
   getSessionAdherence,
+  listPlanDayExercises,
   listPlanDayStatus,
   listPlanDays,
   listPlans,
@@ -153,9 +154,44 @@ describe('plan days', () => {
 
     await deletePlan(db, USER, plan);
 
+    // Gone from every read path: the cascade is manual now, because ON DELETE CASCADE only
+    // fires for a real DELETE and a soft-deleted plan would otherwise strand its children.
     expect(await getPlanDay(db, day)).toBeNull();
-    const orphans = await db.all(`SELECT * FROM plan_day_exercises`);
-    expect(orphans).toHaveLength(0);
+    expect(await getPlanDetail(db, plan)).toEqual({ plan: null, days: [] });
+    expect(await listPlanDays(db, plan)).toHaveLength(0);
+    expect(await listPlanDayExercises(db, day)).toHaveLength(0);
+    expect(await listPlans(db, USER)).toHaveLength(0);
+  });
+
+  it('leaves tombstones so the deletion can reach another device', async () => {
+    const plan = await createPlan(db, USER, newId, 'PPL', clock);
+    const day = await addPlanDay(db, newId, plan, 'Push');
+    await addPlanDayExercise(db, newId, day, 'Barbell Bench Press');
+
+    await deletePlan(db, USER, plan);
+
+    // Still on disk and marked. A row that simply vanished would be invisible to the next sync,
+    // and the server would hand it back on the following pull.
+    for (const table of ['plans', 'plan_days', 'plan_day_exercises']) {
+      const rows = await db.all<{ deleted_at: string | null }>(
+        `SELECT deleted_at FROM ${table}`,
+      );
+      expect(rows, table).toHaveLength(1);
+      expect(rows[0]?.deleted_at, table).not.toBeNull();
+    }
+  });
+
+  it('does not resurrect a deleted plan as the promoted active one', async () => {
+    const first = await createPlan(db, USER, newId, 'PPL', clock);
+    const second = await createPlan(db, USER, newId, 'Upper/Lower', clock);
+
+    await deletePlan(db, USER, second);
+    await deletePlan(db, USER, first);
+
+    // Both are gone, so there is nothing left to promote — the deleted rows must not be
+    // eligible, or deleting every plan would silently reactivate one of them.
+    expect(await getActivePlan(db, USER)).toBeNull();
+    expect(await listPlans(db, USER)).toHaveLength(0);
   });
 });
 

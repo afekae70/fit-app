@@ -55,11 +55,12 @@ export async function getExerciseProgression(
        MAX(s.weight_kg)                                     AS top_weight_kg,
        MAX(s.reps)                                          AS top_reps
      FROM sets s
-     JOIN session_exercises se ON se.id = s.session_exercise_id
-     JOIN workout_sessions ws  ON ws.id = se.session_id
+     JOIN session_exercises se ON se.id = s.session_exercise_id AND se.deleted_at IS NULL
+     JOIN workout_sessions ws  ON ws.id = se.session_id AND ws.deleted_at IS NULL
      WHERE ws.user_id = ?
        AND se.exercise_key = ?
        AND s.is_warmup = 0
+       AND s.deleted_at IS NULL
        AND s.weight_kg IS NOT NULL
        AND s.reps IS NOT NULL
        AND s.reps BETWEEN 1 AND 12
@@ -95,9 +96,10 @@ export async function listTrainedExercises(
        COUNT(DISTINCT ws.id)          AS session_count,
        MAX(ws.started_at)             AS last_performed_at
      FROM session_exercises se
-     JOIN workout_sessions ws ON ws.id = se.session_id
-     JOIN sets s              ON s.session_exercise_id = se.id
+     JOIN workout_sessions ws ON ws.id = se.session_id AND ws.deleted_at IS NULL
+     JOIN sets s              ON s.session_exercise_id = se.id AND s.deleted_at IS NULL
      WHERE ws.user_id = ?
+       AND se.deleted_at IS NULL
        AND s.is_warmup = 0
        AND s.weight_kg IS NOT NULL
        AND s.reps IS NOT NULL
