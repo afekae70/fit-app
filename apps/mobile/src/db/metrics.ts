@@ -159,8 +159,8 @@ export async function recordBodyMetric(
   await db.run(
     `INSERT INTO body_metrics
        (id, user_id, measured_at, weight_kg, body_fat_pct, muscle_mass_kg, water_pct, bone_mass_kg,
-        visceral_fat, source, device_id, raw_payload)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        visceral_fat, source, device_id, raw_payload, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       userId,
@@ -174,6 +174,7 @@ export async function recordBodyMetric(
       input.source,
       input.deviceId ?? null,
       input.rawPayload === undefined ? null : JSON.stringify(input.rawPayload),
+      clock(),
     ],
   );
 
@@ -191,7 +192,8 @@ export async function listBodyMetrics(
   limit = 180,
 ): Promise<BodyMetricRow[]> {
   return db.all<BodyMetricRow>(
-    `SELECT * FROM body_metrics WHERE user_id = ? AND weight_kg IS NOT NULL
+    `SELECT * FROM body_metrics
+      WHERE user_id = ? AND weight_kg IS NOT NULL AND deleted_at IS NULL
       ORDER BY measured_at DESC LIMIT ?`,
     [userId, limit],
   );
@@ -199,7 +201,8 @@ export async function listBodyMetrics(
 
 export async function getLatestWeight(db: SqlExecutor, userId: string): Promise<BodyMetricRow | null> {
   return db.get<BodyMetricRow>(
-    `SELECT * FROM body_metrics WHERE user_id = ? AND weight_kg IS NOT NULL
+    `SELECT * FROM body_metrics
+      WHERE user_id = ? AND weight_kg IS NOT NULL AND deleted_at IS NULL
       ORDER BY measured_at DESC LIMIT 1`,
     [userId],
   );
@@ -211,7 +214,13 @@ export async function deleteBodyMetric(
   id: string,
   clock: Clock = defaultClock,
 ): Promise<void> {
-  await db.run(`DELETE FROM body_metrics WHERE id = ? AND user_id = ?`, [id, userId]);
+  // Marked, not removed: a row that simply vanished would be invisible to the next sync, and
+  // the server would hand it straight back on the following pull.
+  const at = clock();
+  await db.run(
+    `UPDATE body_metrics SET deleted_at = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
+    [at, at, id, userId],
+  );
   await db.run(
     `INSERT INTO outbox (user_id, entity, entity_id, op, payload, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
     [userId, 'body_metric', id, 'delete', null, clock()],

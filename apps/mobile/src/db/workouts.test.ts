@@ -298,7 +298,36 @@ describe('exercise ordering', () => {
 
     await removeExerciseFromSession(db, press, clock);
 
-    expect(await db.all('SELECT * FROM sets')).toHaveLength(0);
+    // Gone from every read path...
+    expect(await listSets(db, press)).toHaveLength(0);
+    const { exercises } = await getSessionDetail(db, sessionId);
+    expect(exercises).toHaveLength(0);
+  });
+
+  it('keeps deleted rows as tombstones so the deletion can reach another device', async () => {
+    const sessionId = await startSession(db, USER, newId, {}, clock);
+    const press = await addExerciseToSession(db, newId, sessionId, 'Barbell Bench Press', clock);
+    await addSet(db, newId, press, { weightKg: 80, reps: 8 }, clock);
+
+    await removeExerciseFromSession(db, press, clock);
+
+    // ...but still present and marked, because a row that simply vanished would be invisible to
+    // the next sync and would come straight back from the server.
+    const rows = await db.all<{ deleted_at: string | null }>('SELECT deleted_at FROM sets');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.deleted_at).not.toBeNull();
+  });
+
+  it('frees the index slot so a replacement exercise does not collide', async () => {
+    const sessionId = await startSession(db, USER, newId, {}, clock);
+    const press = await addExerciseToSession(db, newId, sessionId, 'Barbell Bench Press', clock);
+    await removeExerciseFromSession(db, press, clock);
+
+    // UNIQUE (session_id, order_index) would reject this if the deleted row still held slot 1.
+    const replacement = await addExerciseToSession(db, newId, sessionId, 'Back Squat', clock);
+    const { exercises } = await getSessionDetail(db, sessionId);
+    expect(exercises.map((e) => e.id)).toEqual([replacement]);
+    expect(exercises[0]?.order_index).toBe(1);
   });
 });
 

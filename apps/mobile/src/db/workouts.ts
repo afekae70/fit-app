@@ -102,9 +102,9 @@ export async function startSession(
   const now = clock();
   await db.run(
     `INSERT INTO workout_sessions
-       (id, user_id, location_id, plan_day_id, started_at, bodyweight_kg, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [id, userId, options.locationId ?? null, options.planDayId ?? null, now, options.bodyweightKg ?? null, now],
+       (id, user_id, location_id, plan_day_id, started_at, bodyweight_kg, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, userId, options.locationId ?? null, options.planDayId ?? null, now, options.bodyweightKg ?? null, now, now],
   );
   await enqueue(db, 'workout_session', id, 'insert', { id, startedAt: now }, clock);
   return id;
@@ -119,8 +119,9 @@ export async function finishSession(
 ): Promise<void> {
   const endedAt = clock();
   await db.run(
-    `UPDATE workout_sessions SET ended_at = ?, session_rpe = ?, notes = ? WHERE id = ? AND user_id = ?`,
-    [endedAt, options.sessionRpe ?? null, options.notes ?? null, sessionId, userId],
+    `UPDATE workout_sessions SET ended_at = ?, session_rpe = ?, notes = ?, updated_at = ?
+      WHERE id = ? AND user_id = ?`,
+    [endedAt, options.sessionRpe ?? null, options.notes ?? null, endedAt, sessionId, userId],
   );
   await enqueue(db, 'workout_session', sessionId, 'update', { endedAt }, clock);
 }
@@ -131,7 +132,8 @@ export async function getActiveSession(
   userId: string,
 ): Promise<WorkoutSessionRow | null> {
   return db.get<WorkoutSessionRow>(
-    `SELECT * FROM workout_sessions WHERE user_id = ? AND ended_at IS NULL
+    `SELECT * FROM workout_sessions
+      WHERE user_id = ? AND ended_at IS NULL AND deleted_at IS NULL
       ORDER BY started_at DESC LIMIT 1`,
     [userId],
   );
@@ -143,7 +145,8 @@ export async function listSessions(
   limit = 50,
 ): Promise<WorkoutSessionRow[]> {
   return db.all<WorkoutSessionRow>(
-    `SELECT * FROM workout_sessions WHERE user_id = ? ORDER BY started_at DESC LIMIT ?`,
+    `SELECT * FROM workout_sessions WHERE user_id = ? AND deleted_at IS NULL
+      ORDER BY started_at DESC LIMIT ?`,
     [userId, limit],
   );
 }
@@ -158,23 +161,50 @@ export async function renameSession(
 ): Promise<void> {
   const trimmed = name?.trim() ?? '';
   const value = trimmed === '' ? null : trimmed;
-  await db.run(`UPDATE workout_sessions SET name = ? WHERE id = ? AND user_id = ?`, [
+  await db.run(`UPDATE workout_sessions SET name = ?, updated_at = ? WHERE id = ? AND user_id = ?`, [
     value,
+    clock(),
     sessionId,
     userId,
   ]);
   await enqueue(db, 'workout_session', sessionId, 'update', { name: value }, clock);
 }
 
+/**
+ * Marks a session and everything under it as deleted, rather than removing the rows.
+ *
+ * Two things are load-bearing here and both are easy to get wrong:
+ *
+ *  - **The cascade is manual.** `ON DELETE CASCADE` fires only for a real DELETE. A soft-deleted
+ *    session would otherwise leave its exercises and sets live, and they would sync to another
+ *    device as orphans that never disappear.
+ *  - **Indexes move out of the way.** `sets` is UNIQUE on (session_exercise_id, set_index) and
+ *    `session_exercises` on (session_id, order_index). A deleted row keeps occupying its slot,
+ *    so renumbering the surviving rows would collide with it. `-rowid` is negative (never a
+ *    real index) and unique per table, so it frees the slot and can never clash.
+ */
 export async function deleteSession(
   db: SqlExecutor,
   userId: string,
   sessionId: string,
   clock: Clock = defaultClock,
 ): Promise<void> {
-  // Children go via ON DELETE CASCADE — which only fires if PRAGMA foreign_keys is ON for
-  // this connection (see db/index.ts).
-  await db.run(`DELETE FROM workout_sessions WHERE id = ? AND user_id = ?`, [sessionId, userId]);
+  const at = clock();
+  await db.run(
+    `UPDATE sets SET deleted_at = ?, updated_at = ?, set_index = -rowid
+      WHERE deleted_at IS NULL
+        AND session_exercise_id IN (SELECT id FROM session_exercises WHERE session_id = ?)`,
+    [at, at, sessionId],
+  );
+  await db.run(
+    `UPDATE session_exercises SET deleted_at = ?, updated_at = ?, order_index = -rowid
+      WHERE deleted_at IS NULL AND session_id = ?`,
+    [at, at, sessionId],
+  );
+  await db.run(
+    `UPDATE workout_sessions SET deleted_at = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
+    [at, at, sessionId, userId],
+  );
   await enqueue(db, 'workout_session', sessionId, 'delete', undefined, clock);
 }
 
@@ -190,16 +220,17 @@ export async function addExerciseToSession(
   clock: Clock = defaultClock,
 ): Promise<string> {
   const row = await db.get<{ next: number }>(
-    `SELECT COALESCE(MAX(order_index), 0) + 1 AS next FROM session_exercises WHERE session_id = ?`,
+    `SELECT COALESCE(MAX(order_index), 0) + 1 AS next FROM session_exercises
+      WHERE session_id = ? AND deleted_at IS NULL`,
     [sessionId],
   );
   const orderIndex = row?.next ?? 1;
 
   const id = newId();
   await db.run(
-    `INSERT INTO session_exercises (id, session_id, exercise_key, order_index)
-     VALUES (?, ?, ?, ?)`,
-    [id, sessionId, exerciseKey, orderIndex],
+    `INSERT INTO session_exercises (id, session_id, exercise_key, order_index, updated_at)
+     VALUES (?, ?, ?, ?, ?)`,
+    [id, sessionId, exerciseKey, orderIndex, clock()],
   );
   await enqueue(db, 'session_exercise', id, 'insert', { sessionId, exerciseKey, orderIndex }, clock);
   return id;
@@ -210,7 +241,8 @@ export async function listSessionExercises(
   sessionId: string,
 ): Promise<SessionExerciseRow[]> {
   return db.all<SessionExerciseRow>(
-    `SELECT * FROM session_exercises WHERE session_id = ? ORDER BY order_index`,
+    `SELECT * FROM session_exercises WHERE session_id = ? AND deleted_at IS NULL
+      ORDER BY order_index`,
     [sessionId],
   );
 }
@@ -224,7 +256,18 @@ export async function removeExerciseFromSession(
     `SELECT session_id FROM session_exercises WHERE id = ?`,
     [sessionExerciseId],
   );
-  await db.run(`DELETE FROM session_exercises WHERE id = ?`, [sessionExerciseId]);
+  const at = clock();
+  // Sets first: once the parent's order_index has moved, this exercise is no longer easy to
+  // identify by position, and its sets must not stay live under a deleted parent.
+  await db.run(
+    `UPDATE sets SET deleted_at = ?, updated_at = ?, set_index = -rowid
+      WHERE deleted_at IS NULL AND session_exercise_id = ?`,
+    [at, at, sessionExerciseId],
+  );
+  await db.run(
+    `UPDATE session_exercises SET deleted_at = ?, updated_at = ?, order_index = -rowid WHERE id = ?`,
+    [at, at, sessionExerciseId],
+  );
   if (row) await renumberExercises(db, row.session_id);
   await enqueue(db, 'session_exercise', sessionExerciseId, 'delete', undefined, clock);
 }
@@ -248,7 +291,8 @@ export async function addSet(
   clock: Clock = defaultClock,
 ): Promise<string> {
   const row = await db.get<{ next: number }>(
-    `SELECT COALESCE(MAX(set_index), 0) + 1 AS next FROM sets WHERE session_exercise_id = ?`,
+    `SELECT COALESCE(MAX(set_index), 0) + 1 AS next FROM sets
+      WHERE session_exercise_id = ? AND deleted_at IS NULL`,
     [sessionExerciseId],
   );
   const setIndex = row?.next ?? 1;
@@ -258,8 +302,8 @@ export async function addSet(
   await db.run(
     `INSERT INTO sets
        (id, session_exercise_id, set_index, weight_kg, reps, duration_seconds, distance_m,
-        rpe, is_warmup, to_failure, completed_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        rpe, is_warmup, to_failure, completed_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       sessionExerciseId,
@@ -271,6 +315,7 @@ export async function addSet(
       input.rpe ?? null,
       input.isWarmup ? 1 : 0,
       input.toFailure ? 1 : 0,
+      now,
       now,
     ],
   );
@@ -293,7 +338,8 @@ export async function addSetCopyingPrevious(
   clock: Clock = defaultClock,
 ): Promise<string> {
   const previous = await db.get<SetRow>(
-    `SELECT * FROM sets WHERE session_exercise_id = ? ORDER BY set_index DESC LIMIT 1`,
+    `SELECT * FROM sets WHERE session_exercise_id = ? AND deleted_at IS NULL
+      ORDER BY set_index DESC LIMIT 1`,
     [sessionExerciseId],
   );
 
@@ -354,6 +400,11 @@ export async function updateSet(
   }
   if (assignments.length === 0) return;
 
+  // Always stamped, never conditional: an edit the sync engine cannot see is an edit that
+  // silently loses to whatever the other device wrote.
+  assignments.push('updated_at = ?');
+  params.push(clock());
+
   params.push(setId);
   await db.run(`UPDATE sets SET ${assignments.join(', ')} WHERE id = ?`, params);
   await enqueue(db, 'set', setId, 'update', input, clock);
@@ -379,25 +430,34 @@ export async function removeSet(
   );
   if (!row) return;
 
-  await db.run(`DELETE FROM sets WHERE id = ?`, [setId]);
+  const at = clock();
+  await db.run(
+    `UPDATE sets SET deleted_at = ?, updated_at = ?, set_index = -rowid WHERE id = ?`,
+    [at, at, setId],
+  );
   await renumberSets(db, row.session_exercise_id);
   await enqueue(db, 'set', setId, 'delete', undefined, clock);
 }
 
-/** Reassign contiguous 1..n set indices for one exercise. Safe to call when already contiguous. */
+/**
+ * Reassign contiguous 1..n set indices for one exercise. Safe to call when already contiguous.
+ *
+ * Only live rows are renumbered. Soft-deleted rows were parked at `-rowid` when they were
+ * deleted, so they sit outside the positive range entirely and cannot collide.
+ */
 export async function renumberSets(
   db: SqlExecutor,
   sessionExerciseId: string,
 ): Promise<void> {
   const remaining = await db.all<{ id: string }>(
-    `SELECT id FROM sets WHERE session_exercise_id = ? ORDER BY set_index`,
+    `SELECT id FROM sets WHERE session_exercise_id = ? AND deleted_at IS NULL ORDER BY set_index`,
     [sessionExerciseId],
   );
   if (remaining.length === 0) return;
 
   const OFFSET = 100000;
   await db.run(
-    `UPDATE sets SET set_index = set_index + ? WHERE session_exercise_id = ?`,
+    `UPDATE sets SET set_index = set_index + ? WHERE session_exercise_id = ? AND deleted_at IS NULL`,
     [OFFSET, sessionExerciseId],
   );
   for (const [i, r] of remaining.entries()) {
@@ -405,17 +465,17 @@ export async function renumberSets(
   }
 }
 
-/** Same two-phase approach for exercise ordering within a session. */
+/** Same two-phase approach for exercise ordering within a session, live rows only. */
 export async function renumberExercises(db: SqlExecutor, sessionId: string): Promise<void> {
   const remaining = await db.all<{ id: string }>(
-    `SELECT id FROM session_exercises WHERE session_id = ? ORDER BY order_index`,
+    `SELECT id FROM session_exercises WHERE session_id = ? AND deleted_at IS NULL ORDER BY order_index`,
     [sessionId],
   );
   if (remaining.length === 0) return;
 
   const OFFSET = 100000;
   await db.run(
-    `UPDATE session_exercises SET order_index = order_index + ? WHERE session_id = ?`,
+    `UPDATE session_exercises SET order_index = order_index + ? WHERE session_id = ? AND deleted_at IS NULL`,
     [OFFSET, sessionId],
   );
   for (const [i, r] of remaining.entries()) {
@@ -428,7 +488,7 @@ export async function listSets(
   sessionExerciseId: string,
 ): Promise<SetRow[]> {
   return db.all<SetRow>(
-    `SELECT * FROM sets WHERE session_exercise_id = ? ORDER BY set_index`,
+    `SELECT * FROM sets WHERE session_exercise_id = ? AND deleted_at IS NULL ORDER BY set_index`,
     [sessionExerciseId],
   );
 }
@@ -447,7 +507,7 @@ export async function getSessionDetail(
   sessionId: string,
 ): Promise<{ session: WorkoutSessionRow | null; exercises: SessionExerciseWithSets[] }> {
   const session = await db.get<WorkoutSessionRow>(
-    `SELECT * FROM workout_sessions WHERE id = ?`,
+    `SELECT * FROM workout_sessions WHERE id = ? AND deleted_at IS NULL`,
     [sessionId],
   );
   if (!session) return { session: null, exercises: [] };
@@ -493,9 +553,9 @@ export async function listSessionSummaries(
                          THEN COALESCE(s.weight_kg, 0) * COALESCE(s.reps, 0)
                          ELSE 0 END), 0)                        AS volume_load
      FROM workout_sessions ws
-     LEFT JOIN session_exercises se ON se.session_id = ws.id
-     LEFT JOIN sets s               ON s.session_exercise_id = se.id
-     WHERE ws.user_id = ?
+     LEFT JOIN session_exercises se ON se.session_id = ws.id AND se.deleted_at IS NULL
+     LEFT JOIN sets s               ON s.session_exercise_id = se.id AND s.deleted_at IS NULL
+     WHERE ws.user_id = ? AND ws.deleted_at IS NULL
      GROUP BY ws.id
      ORDER BY ws.started_at DESC
      LIMIT ?`,
@@ -528,7 +588,7 @@ export async function getWorkoutStreak(db: SqlExecutor, userId: string): Promise
   const rows = await db.all<{ day: string }>(
     `SELECT DISTINCT date(started_at, 'localtime') AS day
      FROM workout_sessions
-     WHERE user_id = ? AND ended_at IS NOT NULL
+     WHERE user_id = ? AND ended_at IS NOT NULL AND deleted_at IS NULL
      ORDER BY day DESC`,
     [userId],
   );
@@ -582,7 +642,7 @@ export async function repeatSession(
   clock: Clock = defaultClock,
 ): Promise<string | null> {
   const source = await db.get<WorkoutSessionRow>(
-    `SELECT * FROM workout_sessions WHERE id = ? AND user_id = ?`,
+    `SELECT * FROM workout_sessions WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
     [sourceSessionId, userId],
   );
   if (!source) return null;
@@ -653,20 +713,24 @@ export async function getPreviousSessionSets(
     `SELECT s.set_index, s.weight_kg, s.reps, s.duration_seconds, s.distance_m,
             s.is_warmup, ws.started_at
        FROM sets s
-       JOIN session_exercises se ON se.id = s.session_exercise_id
-       JOIN workout_sessions ws  ON ws.id = se.session_id
+       JOIN session_exercises se ON se.id = s.session_exercise_id AND se.deleted_at IS NULL
+       JOIN workout_sessions ws  ON ws.id = se.session_id AND ws.deleted_at IS NULL
       WHERE ws.user_id = ?
         AND se.exercise_key = ?
+        AND s.deleted_at IS NULL
         AND ws.id = (
           SELECT prev_ws.id
             FROM workout_sessions prev_ws
-            JOIN session_exercises prev_se ON prev_se.session_id = prev_ws.id
+            JOIN session_exercises prev_se
+              ON prev_se.session_id = prev_ws.id AND prev_se.deleted_at IS NULL
            WHERE prev_ws.user_id = ?
              AND prev_se.exercise_key = ?
+             AND prev_ws.deleted_at IS NULL
              AND (? IS NULL OR prev_ws.id <> ?)
              AND EXISTS (
                SELECT 1 FROM sets prev_s
                 WHERE prev_s.session_exercise_id = prev_se.id
+                  AND prev_s.deleted_at IS NULL
                   AND (prev_s.weight_kg IS NOT NULL OR prev_s.reps IS NOT NULL
                        OR prev_s.duration_seconds IS NOT NULL OR prev_s.distance_m IS NOT NULL)
              )
@@ -690,12 +754,14 @@ export async function listNamedTemplates(
   return db.all(
     `SELECT ws.id, ws.name, ws.started_at, COUNT(DISTINCT se.id) AS exercise_count
        FROM workout_sessions ws
-       LEFT JOIN session_exercises se ON se.session_id = ws.id
+       LEFT JOIN session_exercises se ON se.session_id = ws.id AND se.deleted_at IS NULL
       WHERE ws.user_id = ?
         AND ws.name IS NOT NULL
+        AND ws.deleted_at IS NULL
         AND ws.id = (
           SELECT inner_ws.id FROM workout_sessions inner_ws
            WHERE inner_ws.user_id = ? AND inner_ws.name = ws.name
+             AND inner_ws.deleted_at IS NULL
            ORDER BY inner_ws.started_at DESC LIMIT 1
         )
       GROUP BY ws.id
@@ -719,11 +785,12 @@ export async function getPreviousBest(
   return db.get<{ weight_kg: number; reps: number; started_at: string }>(
     `SELECT s.weight_kg, s.reps, ws.started_at
        FROM sets s
-       JOIN session_exercises se ON se.id = s.session_exercise_id
-       JOIN workout_sessions ws  ON ws.id = se.session_id
+       JOIN session_exercises se ON se.id = s.session_exercise_id AND se.deleted_at IS NULL
+       JOIN workout_sessions ws  ON ws.id = se.session_id AND ws.deleted_at IS NULL
       WHERE ws.user_id = ?
         AND se.exercise_key = ?
         AND s.is_warmup = 0
+        AND s.deleted_at IS NULL
         AND s.weight_kg IS NOT NULL
         AND s.reps IS NOT NULL
         AND (? IS NULL OR ws.id <> ?)
@@ -746,8 +813,8 @@ export async function listRecentExerciseKeys(
   const rows = await db.all<{ exercise_key: string }>(
     `SELECT se.exercise_key, MAX(ws.started_at) AS last_used
        FROM session_exercises se
-       JOIN workout_sessions ws ON ws.id = se.session_id
-      WHERE ws.user_id = ?
+       JOIN workout_sessions ws ON ws.id = se.session_id AND ws.deleted_at IS NULL
+      WHERE ws.user_id = ? AND se.deleted_at IS NULL
       GROUP BY se.exercise_key
       ORDER BY last_used DESC
       LIMIT ?`,
