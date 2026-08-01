@@ -134,6 +134,56 @@ export const MIGRATIONS: Record<number, string> = {
       UNIQUE (user_id, brief_date)
     );
   `,
+  /**
+   * Cloud sync bookkeeping.
+   *
+   * `updated_at` is the conflict-resolution clock: the sync engine compares it against the
+   * server's column of the same name and the newer write wins, per row. `deleted_at` makes
+   * deletion a value rather than an absence — a hard DELETE is invisible to the next pull, so
+   * the row would simply come back from the server. Both are nullable rather than NOT NULL
+   * because SQLite cannot add a NOT NULL column without a constant default, and "now" is not
+   * one.
+   *
+   * Existing rows are backfilled with the current time on purpose, not with their creation
+   * date: nothing on this device has ever been uploaded, so every row must look "changed"
+   * to the first sync and go up.
+   */
+  7: `
+    ALTER TABLE workout_sessions   ADD COLUMN updated_at TEXT;
+    ALTER TABLE workout_sessions   ADD COLUMN deleted_at TEXT;
+    ALTER TABLE session_exercises  ADD COLUMN updated_at TEXT;
+    ALTER TABLE session_exercises  ADD COLUMN deleted_at TEXT;
+    ALTER TABLE sets               ADD COLUMN updated_at TEXT;
+    ALTER TABLE sets               ADD COLUMN deleted_at TEXT;
+    ALTER TABLE body_metrics       ADD COLUMN updated_at TEXT;
+    ALTER TABLE body_metrics       ADD COLUMN deleted_at TEXT;
+    ALTER TABLE plans              ADD COLUMN updated_at TEXT;
+    ALTER TABLE plans              ADD COLUMN deleted_at TEXT;
+    ALTER TABLE plan_days          ADD COLUMN updated_at TEXT;
+    ALTER TABLE plan_days          ADD COLUMN deleted_at TEXT;
+    ALTER TABLE plan_day_exercises ADD COLUMN updated_at TEXT;
+    ALTER TABLE plan_day_exercises ADD COLUMN deleted_at TEXT;
+
+    UPDATE workout_sessions   SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE updated_at IS NULL;
+    UPDATE session_exercises  SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE updated_at IS NULL;
+    UPDATE sets               SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE updated_at IS NULL;
+    UPDATE body_metrics       SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE updated_at IS NULL;
+    UPDATE plans              SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE updated_at IS NULL;
+    UPDATE plan_days          SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE updated_at IS NULL;
+    UPDATE plan_day_exercises SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE updated_at IS NULL;
+
+    CREATE INDEX IF NOT EXISTS workout_sessions_updated_idx ON workout_sessions (updated_at);
+    CREATE INDEX IF NOT EXISTS session_exercises_updated_idx ON session_exercises (updated_at);
+    CREATE INDEX IF NOT EXISTS sets_updated_idx ON sets (updated_at);
+    CREATE INDEX IF NOT EXISTS body_metrics_updated_idx ON body_metrics (updated_at);
+    CREATE INDEX IF NOT EXISTS plans_updated_idx ON plans (updated_at);
+
+    CREATE TABLE IF NOT EXISTS sync_state (
+      user_id        TEXT PRIMARY KEY NOT NULL,
+      last_pulled_at TEXT,
+      last_synced_at TEXT
+    );
+  `,
 };
 
 export const CREATE_SCHEMA_SQL = `
