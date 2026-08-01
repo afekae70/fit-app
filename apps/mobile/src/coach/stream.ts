@@ -17,6 +17,8 @@
  * than reproducibly.
  */
 
+import type { AiNutritionMenu, AiWorkoutPlan } from '@fit/shared/schemas';
+
 export interface SseFrame {
   event: string;
   data: unknown;
@@ -60,8 +62,37 @@ export function parseSseChunk(buffer: string): { frames: SseFrame[]; rest: strin
   return { frames, rest };
 }
 
+/**
+ * Structural checks, not full schema validation. The server already validated the tool call's
+ * JSON against `aiWorkoutPlanSchema`/`aiNutritionMenuSchema` before ever emitting the event (see
+ * `ClaudeProvider.parseToolCall`) — a malformed payload cannot leave the API. This just guards
+ * against a corrupt frame the same way the `delta`/`refusal` cases already do, without pulling
+ * zod and the exercise catalogue into the mobile bundle for a check that can't actually fire.
+ */
+function isPlanShaped(value: unknown): value is AiWorkoutPlan {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { planName?: unknown }).planName === 'string' &&
+    Array.isArray((value as { days?: unknown }).days)
+  );
+}
+
+function isMenuShaped(value: unknown): value is AiNutritionMenu {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { summary?: unknown }).summary === 'string' &&
+    Array.isArray((value as { meals?: unknown }).meals)
+  );
+}
+
 export interface StreamHandlers {
   onDelta: (text: string) => void;
+  /** The model proposed a full workout plan — a card to review, never applied automatically. */
+  onPlanProposal: (plan: AiWorkoutPlan) => void;
+  /** The model proposed a nutrition menu — display-only, nothing to persist it into. */
+  onNutritionProposal: (menu: AiNutritionMenu) => void;
   onDone: () => void;
   /** The model declined. Not a fault — and any text already delivered is truncated. */
   onRefusal: (category: string | null) => void;
@@ -117,6 +148,16 @@ export function streamCoachChat({
         case 'delta': {
           const text = (frame.data as { text?: unknown }).text;
           if (typeof text === 'string') handlers.onDelta(text);
+          break;
+        }
+        case 'plan_proposal': {
+          const plan = (frame.data as { plan?: unknown }).plan;
+          if (isPlanShaped(plan)) handlers.onPlanProposal(plan);
+          break;
+        }
+        case 'nutrition_proposal': {
+          const menu = (frame.data as { menu?: unknown }).menu;
+          if (isMenuShaped(menu)) handlers.onNutritionProposal(menu);
           break;
         }
         case 'refusal': {

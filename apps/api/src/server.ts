@@ -3,6 +3,10 @@
  * All actual wiring lives in app.ts, which is what tests exercise instead of this file.
  */
 
+// Loads apps/api/.env into process.env — local-dev-only. A real deployment (Railway/Fly/etc.)
+// injects env vars directly and has no .env file to find, so this is a harmless no-op there.
+import 'dotenv/config';
+
 import { buildApp } from './app.js';
 import { EnvValidationError, loadEnv } from './config/env.js';
 

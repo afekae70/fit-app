@@ -122,6 +122,12 @@ export const EXERCISE_SEED: readonly ExerciseSeed[] = [
   { nameEn: 'Nordic Hamstring Curl', nameHe: 'כפיפת ירך נורדית', primaryMuscle: 'hamstrings', movementPattern: 'hinge', equipmentSlug: 'none', loadType: 'bodyweight' },
   { nameEn: 'Back Extension', nameHe: 'פשיטת גב', primaryMuscle: 'lower_back', secondaryMuscles: ['glutes', 'hamstrings'], movementPattern: 'hinge', equipmentSlug: 'gh_bench', loadType: 'bodyweight_plus' },
   { nameEn: 'Good Morning', nameHe: 'גוד מורנינג', primaryMuscle: 'hamstrings', secondaryMuscles: ['lower_back', 'glutes'], movementPattern: 'hinge', equipmentSlug: 'barbell' },
+  { nameEn: 'Superman', nameHe: 'סופרמן', primaryMuscle: 'lower_back', secondaryMuscles: ['glutes'], movementPattern: 'hinge', equipmentSlug: 'none', loadType: 'bodyweight' },
+  { nameEn: 'Reverse Hyperextension', nameHe: 'פשיטת גב הפוכה', primaryMuscle: 'lower_back', secondaryMuscles: ['glutes', 'hamstrings'], movementPattern: 'hinge', equipmentSlug: 'gh_bench', loadType: 'bodyweight_plus' },
+  { nameEn: 'Bird Dog', nameHe: 'כלב-ציפור', primaryMuscle: 'lower_back', secondaryMuscles: ['core', 'glutes'], movementPattern: 'hinge', equipmentSlug: 'none', loadType: 'bodyweight', isUnilateral: true },
+  { nameEn: 'Rack Pull', nameHe: 'משיכת מדף', primaryMuscle: 'traps', secondaryMuscles: ['lats', 'lower_back', 'hamstrings'], movementPattern: 'hinge', equipmentSlug: 'barbell' },
+  { nameEn: 'Cable Kickback', nameHe: 'בעיטה אחורית בכבל', primaryMuscle: 'glutes', movementPattern: 'hinge', equipmentSlug: 'cable_machine', isUnilateral: true },
+  { nameEn: 'Single-Leg Hip Thrust', nameHe: 'היפ תראסט על רגל אחת', primaryMuscle: 'glutes', secondaryMuscles: ['hamstrings'], movementPattern: 'hinge', equipmentSlug: 'none', loadType: 'bodyweight_plus', isUnilateral: true },
 
   /* ------------------------------------------------------------------------- lunge */
   { nameEn: 'Walking Lunge', nameHe: 'מספריים בהליכה', primaryMuscle: 'quads', secondaryMuscles: ['glutes', 'hamstrings'], movementPattern: 'lunge', equipmentSlug: 'dumbbell', isUnilateral: true },
@@ -133,17 +139,26 @@ export const EXERCISE_SEED: readonly ExerciseSeed[] = [
   /* ------------------------------------------------------------------------- carry */
   { nameEn: "Farmer's Carry", nameHe: 'הליכת החקלאי', primaryMuscle: 'traps', secondaryMuscles: ['forearms', 'core'], movementPattern: 'carry', equipmentSlug: 'dumbbell', loadType: 'distance' },
   { nameEn: 'Suitcase Carry', nameHe: 'הליכת מזוודה', primaryMuscle: 'core', secondaryMuscles: ['forearms', 'traps'], movementPattern: 'carry', equipmentSlug: 'kettlebell', loadType: 'distance', isUnilateral: true },
+  { nameEn: 'Plate Pinch Carry', nameHe: 'הליכה עם צביטת צלחת', primaryMuscle: 'forearms', secondaryMuscles: ['core'], movementPattern: 'carry', equipmentSlug: 'weight_plate', loadType: 'distance' },
 
   /* ------------------------------------------------------------- isolation: shoulders */
   { nameEn: 'Dumbbell Lateral Raise', nameHe: 'הרחקת כתפיים במשקולות', primaryMuscle: 'side_delts', movementPattern: 'isolation', equipmentSlug: 'dumbbell' },
   { nameEn: 'Cable Lateral Raise', nameHe: 'הרחקת כתפיים בכבל', primaryMuscle: 'side_delts', movementPattern: 'isolation', equipmentSlug: 'cable_machine', isUnilateral: true },
+  { nameEn: 'Seated Dumbbell Lateral Raise', nameHe: 'הרחקת כתפיים במשקולות בישיבה', primaryMuscle: 'side_delts', movementPattern: 'isolation', equipmentSlug: 'adjustable_bench' },
+  { nameEn: 'Band Lateral Raise', nameHe: 'הרחקת כתפיים בגומייה', primaryMuscle: 'side_delts', movementPattern: 'isolation', equipmentSlug: 'resistance_band' },
+  { nameEn: 'Cable Y-Raise', nameHe: 'הרמת Y בכבל', primaryMuscle: 'side_delts', secondaryMuscles: ['rear_delts', 'traps'], movementPattern: 'isolation', equipmentSlug: 'cable_machine' },
+  { nameEn: 'Upright Row', nameHe: 'חתירה זקופה', primaryMuscle: 'side_delts', secondaryMuscles: ['traps'], movementPattern: 'isolation', equipmentSlug: 'barbell' },
   { nameEn: 'Face Pull', nameHe: 'פייס פול', primaryMuscle: 'rear_delts', secondaryMuscles: ['mid_back', 'traps'], movementPattern: 'isolation', equipmentSlug: 'cable_machine' },
   { nameEn: 'Band Face Pull', nameHe: 'פייס פול בגומייה', primaryMuscle: 'rear_delts', secondaryMuscles: ['mid_back'], movementPattern: 'isolation', equipmentSlug: 'resistance_band' },
   { nameEn: 'Reverse Pec Deck', nameHe: 'פרפר הפוך במכונה', primaryMuscle: 'rear_delts', movementPattern: 'isolation', equipmentSlug: 'pec_deck' },
   { nameEn: 'Bent-Over Dumbbell Rear Delt Raise', nameHe: 'הרחקה אחורית בהטיה', primaryMuscle: 'rear_delts', movementPattern: 'isolation', equipmentSlug: 'dumbbell' },
+  { nameEn: 'Cable Rear Delt Fly', nameHe: 'פרפר אחורי בכבל', primaryMuscle: 'rear_delts', movementPattern: 'isolation', equipmentSlug: 'cable_machine', isUnilateral: true },
+  { nameEn: 'Incline Rear Delt Raise', nameHe: 'הרחקה אחורית בשיפוע', primaryMuscle: 'rear_delts', movementPattern: 'isolation', equipmentSlug: 'adjustable_bench' },
   { nameEn: 'Front Raise', nameHe: 'הרמה קדמית', primaryMuscle: 'front_delts', movementPattern: 'isolation', equipmentSlug: 'dumbbell' },
   { nameEn: 'Barbell Shrug', nameHe: 'כיווץ כתפיים במוט', primaryMuscle: 'traps', movementPattern: 'isolation', equipmentSlug: 'barbell' },
   { nameEn: 'Dumbbell Shrug', nameHe: 'כיווץ כתפיים במשקולות', primaryMuscle: 'traps', movementPattern: 'isolation', equipmentSlug: 'dumbbell' },
+  { nameEn: 'Cable Shrug', nameHe: 'כיווץ כתפיים בכבל', primaryMuscle: 'traps', movementPattern: 'isolation', equipmentSlug: 'cable_machine' },
+  { nameEn: 'Trap Bar Shrug', nameHe: 'כיווץ כתפיים במוט טראפ', primaryMuscle: 'traps', movementPattern: 'isolation', equipmentSlug: 'trap_bar' },
 
   /* ------------------------------------------------------------------ isolation: arms */
   // Biceps. Hebrew names follow Israeli gym vernacular rather than literal translation —
@@ -184,6 +199,8 @@ export const EXERCISE_SEED: readonly ExerciseSeed[] = [
   { nameEn: 'Close-Grip Bench Press', nameHe: 'לחיצת חזה באחיזה צרה', primaryMuscle: 'triceps', secondaryMuscles: ['chest'], movementPattern: 'horizontal_push', equipmentSlug: 'barbell' },
   { nameEn: 'Bench Dip', nameHe: 'מקבילים על ספסל', primaryMuscle: 'triceps', movementPattern: 'vertical_push', equipmentSlug: 'flat_bench', loadType: 'bodyweight_plus' },
   { nameEn: 'Wrist Curl', nameHe: 'כפיפת שורש כף יד', primaryMuscle: 'forearms', movementPattern: 'isolation', equipmentSlug: 'dumbbell' },
+  { nameEn: 'Reverse Wrist Curl', nameHe: 'פשיטת שורש כף יד', primaryMuscle: 'forearms', movementPattern: 'isolation', equipmentSlug: 'dumbbell' },
+  { nameEn: 'Dead Hang', nameHe: 'תלייה סטטית', primaryMuscle: 'forearms', secondaryMuscles: ['lats'], movementPattern: 'isolation', equipmentSlug: 'pullup_bar', loadType: 'time' },
 
   /* ------------------------------------------------------------------ isolation: legs */
   { nameEn: 'Leg Extension', nameHe: 'פשיטת רגליים', primaryMuscle: 'quads', movementPattern: 'isolation', equipmentSlug: 'leg_extension' },
@@ -192,6 +209,9 @@ export const EXERCISE_SEED: readonly ExerciseSeed[] = [
   { nameEn: 'Standing Calf Raise', nameHe: 'הרמת עקבים בעמידה', primaryMuscle: 'calves', movementPattern: 'isolation', equipmentSlug: 'calf_raise_machine' },
   { nameEn: 'Seated Calf Raise', nameHe: 'הרמת עקבים בישיבה', primaryMuscle: 'calves', movementPattern: 'isolation', equipmentSlug: 'calf_raise_machine' },
   { nameEn: 'Bodyweight Calf Raise', nameHe: 'הרמת עקבים משקל גוף', primaryMuscle: 'calves', movementPattern: 'isolation', equipmentSlug: 'none', loadType: 'bodyweight_plus' },
+  { nameEn: 'Leg Press Calf Raise', nameHe: 'הרמת עקבים במכונת רגליים', primaryMuscle: 'calves', movementPattern: 'isolation', equipmentSlug: 'leg_press' },
+  { nameEn: 'Donkey Calf Raise', nameHe: 'הרמת עקבים בהטיה', primaryMuscle: 'calves', movementPattern: 'isolation', equipmentSlug: 'none', loadType: 'bodyweight_plus' },
+  { nameEn: 'Single-Leg Calf Raise', nameHe: 'הרמת עקבים על רגל אחת', primaryMuscle: 'calves', movementPattern: 'isolation', equipmentSlug: 'none', loadType: 'bodyweight_plus', isUnilateral: true },
   { nameEn: 'Cable Hip Abduction', nameHe: 'הרחקת ירך בכבל', primaryMuscle: 'glutes', movementPattern: 'isolation', equipmentSlug: 'cable_machine', isUnilateral: true },
 
   /* -------------------------------------------------------------------------- core */
@@ -206,6 +226,9 @@ export const EXERCISE_SEED: readonly ExerciseSeed[] = [
   { nameEn: 'Dead Bug', nameHe: 'חיפושית מתה', primaryMuscle: 'core', movementPattern: 'core', equipmentSlug: 'none', loadType: 'bodyweight' },
   { nameEn: 'Hollow Body Hold', nameHe: 'החזקת גוף חלול', primaryMuscle: 'core', movementPattern: 'core', equipmentSlug: 'none', loadType: 'time' },
   { nameEn: 'Pallof Press', nameHe: 'לחיצת פאלוף', primaryMuscle: 'obliques', movementPattern: 'core', equipmentSlug: 'cable_machine', isUnilateral: true },
+  { nameEn: 'Cable Woodchopper', nameHe: 'חוטב עצים בכבל', primaryMuscle: 'obliques', secondaryMuscles: ['core'], movementPattern: 'core', equipmentSlug: 'cable_machine', isUnilateral: true },
+  { nameEn: 'Hanging Oblique Raise', nameHe: 'הרמת רגליים אלכסונית בתלייה', primaryMuscle: 'obliques', secondaryMuscles: ['core'], movementPattern: 'core', equipmentSlug: 'pullup_bar', loadType: 'bodyweight_plus' },
+  { nameEn: 'Bicycle Crunch', nameHe: 'כפיפת בטן אופניים', primaryMuscle: 'obliques', secondaryMuscles: ['core'], movementPattern: 'core', equipmentSlug: 'none', loadType: 'bodyweight_plus' },
 
   /* ------------------------------------------------------------------------ cardio */
   { nameEn: 'Treadmill Run', nameHe: 'ריצה על הליכון', primaryMuscle: 'cardio', movementPattern: 'cardio', equipmentSlug: 'treadmill', loadType: 'distance' },

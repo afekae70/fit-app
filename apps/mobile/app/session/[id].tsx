@@ -13,7 +13,7 @@
 
 import { EXERCISE_SEED, type ExerciseSeed } from '@fit/shared/catalog';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Alert,
@@ -28,7 +28,9 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
 import { ExerciseCard, type PreviousSet } from '../../src/components/ExerciseCard.js';
+import { SkeletonScreen } from '../../src/components/ui.js';
 import { getExecutor, newId } from '../../src/db/provider.js';
 import {
   addExerciseToSession,
@@ -45,7 +47,8 @@ import {
   type SessionExerciseWithSets,
   type WorkoutSessionRow,
 } from '../../src/db/workouts.js';
-import { colors, fontSize, radius, spacing } from '../../src/theme.js';
+import { useTheme } from '../../src/ThemeProvider.js';
+import { fontSize, radius, spacing, type ColorPalette } from '../../src/theme.js';
 
 const EXERCISE_BY_KEY = new Map<string, ExerciseSeed>(
   EXERCISE_SEED.map((exercise) => [exercise.nameEn, exercise]),
@@ -56,6 +59,9 @@ export default function SessionDetailScreen() {
   const insets = useSafeAreaInsets();
   const { id, addExercise } = useLocalSearchParams<{ id: string; addExercise?: string }>();
   const isHebrew = i18n.language === 'he';
+  const userId = useCurrentUserId();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [session, setSession] = useState<WorkoutSessionRow | null>(null);
   const [exercises, setExercises] = useState<SessionExerciseWithSets[]>([]);
@@ -74,12 +80,12 @@ export default function SessionDetailScreen() {
 
     const nextPrevious: Record<string, PreviousSet[] | null> = {};
     for (const exercise of detail.exercises) {
-      const sets = await getPreviousSessionSets(db, exercise.exercise_key, id);
+      const sets = await getPreviousSessionSets(db, userId, exercise.exercise_key, id);
       nextPrevious[exercise.exercise_key] = sets.length > 0 ? sets : null;
     }
     setPrevious(nextPrevious);
     setLoading(false);
-  }, [id]);
+  }, [id, userId]);
 
   useEffect(() => {
     void load();
@@ -157,7 +163,7 @@ export default function SessionDetailScreen() {
   const saveName = async () => {
     if (!id) return;
     const db = await getExecutor();
-    await renameSession(db, id, nameDraft);
+    await renameSession(db, userId, id, nameDraft);
     await load();
   };
 
@@ -168,13 +174,13 @@ export default function SessionDetailScreen() {
 
       // Repeating creates a new OPEN session, and only one can be active at a time —
       // silently starting a second would strand whichever was already in progress.
-      const active = await getActiveSession(db);
+      const active = await getActiveSession(db, userId);
       if (active) {
         Alert.alert('', t('history.activeWarning'));
         return;
       }
 
-      const created = await repeatSession(db, newId, id);
+      const created = await repeatSession(db, userId, newId, id);
       if (created) router.replace('/(tabs)/workouts');
     })();
   };
@@ -189,7 +195,7 @@ export default function SessionDetailScreen() {
         onPress: () => {
           void (async () => {
             const db = await getExecutor();
-            await deleteSession(db, id);
+            await deleteSession(db, userId, id);
             router.back();
           })();
         },
@@ -198,11 +204,7 @@ export default function SessionDetailScreen() {
   };
 
   if (loading) {
-    return (
-      <View style={[styles.centered, { paddingTop: insets.top }]}>
-        <Text style={styles.muted}>{t('common.loading')}</Text>
-      </View>
-    );
+    return <SkeletonScreen paddingTop={insets.top + spacing.lg} />;
   }
 
   if (!session) {
@@ -354,37 +356,38 @@ export default function SessionDetailScreen() {
   );
 }
 
-const styles = StyleSheet.create<{
-  screen: ViewStyle;
-  content: ViewStyle;
-  centered: ViewStyle;
-  muted: TextStyle;
-  header: ViewStyle;
-  back: TextStyle;
-  date: TextStyle;
-  nameRow: ViewStyle;
-  nameInput: TextStyle;
-  statsRow: ViewStyle;
-  stat: TextStyle;
-  repeatButton: ViewStyle;
-  repeatButtonText: TextStyle;
-  repeatHint: TextStyle;
-  editButton: ViewStyle;
-  editButtonActive: ViewStyle;
-  editButtonText: TextStyle;
-  editButtonTextActive: TextStyle;
-  addExerciseButton: ViewStyle;
-  addExerciseText: TextStyle;
-  exerciseCard: ViewStyle;
-  exerciseTitle: TextStyle;
-  setLine: ViewStyle;
-  setIndex: TextStyle;
-  setValue: TextStyle;
-  deleteButton: ViewStyle;
-  deleteButtonText: TextStyle;
-  secondaryButton: ViewStyle;
-  secondaryButtonText: TextStyle;
-}>({
+const createStyles = (colors: ColorPalette) =>
+  StyleSheet.create<{
+    screen: ViewStyle;
+    content: ViewStyle;
+    centered: ViewStyle;
+    muted: TextStyle;
+    header: ViewStyle;
+    back: TextStyle;
+    date: TextStyle;
+    nameRow: ViewStyle;
+    nameInput: TextStyle;
+    statsRow: ViewStyle;
+    stat: TextStyle;
+    repeatButton: ViewStyle;
+    repeatButtonText: TextStyle;
+    repeatHint: TextStyle;
+    editButton: ViewStyle;
+    editButtonActive: ViewStyle;
+    editButtonText: TextStyle;
+    editButtonTextActive: TextStyle;
+    addExerciseButton: ViewStyle;
+    addExerciseText: TextStyle;
+    exerciseCard: ViewStyle;
+    exerciseTitle: TextStyle;
+    setLine: ViewStyle;
+    setIndex: TextStyle;
+    setValue: TextStyle;
+    deleteButton: ViewStyle;
+    deleteButtonText: TextStyle;
+    secondaryButton: ViewStyle;
+    secondaryButtonText: TextStyle;
+  }>({
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { paddingHorizontal: spacing.lg },
   centered: { flex: 1, backgroundColor: colors.bg, alignItems: 'center' },

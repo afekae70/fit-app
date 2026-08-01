@@ -9,7 +9,7 @@
 
 import { EXERCISE_SEED, type ExerciseSeed } from '@fit/shared/catalog';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Alert,
@@ -24,7 +24,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Hint } from '../../src/components/ui.js';
+import { Hint, SkeletonScreen } from '../../src/components/ui.js';
 import {
   addPlanDayExercise,
   getPlanDay,
@@ -35,7 +35,8 @@ import {
   type PlanDayWithExercises,
 } from '../../src/db/plans.js';
 import { getExecutor, newId } from '../../src/db/provider.js';
-import { colors, fontSize, fontWeight, radius, spacing } from '../../src/theme.js';
+import { useTheme } from '../../src/ThemeProvider.js';
+import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../../src/theme.js';
 
 const EXERCISE_BY_KEY = new Map<string, ExerciseSeed>(
   EXERCISE_SEED.map((exercise) => [exercise.nameEn, exercise]),
@@ -54,6 +55,8 @@ export default function PlanDayScreen() {
   const insets = useSafeAreaInsets();
   const { id, addExercise } = useLocalSearchParams<{ id: string; addExercise?: string }>();
   const isHebrew = i18n.language === 'he';
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [day, setDay] = useState<PlanDayWithExercises | null>(null);
   const [nameDraft, setNameDraft] = useState('');
@@ -131,11 +134,7 @@ export default function PlanDayScreen() {
   };
 
   if (loading) {
-    return (
-      <View style={[styles.centered, { paddingTop: insets.top + spacing.xxl }]}>
-        <Text style={styles.muted}>{t('common.loading')}</Text>
-      </View>
-    );
+    return <SkeletonScreen paddingTop={insets.top + spacing.xxl} />;
   }
 
   if (!day) {
@@ -278,30 +277,31 @@ export default function PlanDayScreen() {
   );
 }
 
-const styles = StyleSheet.create<{
-  screen: ViewStyle;
-  content: ViewStyle;
-  centered: ViewStyle;
-  muted: TextStyle;
-  header: ViewStyle;
-  back: TextStyle;
-  dayIndex: TextStyle;
-  nameInput: TextStyle;
-  emptyText: TextStyle;
-  columnHeader: ViewStyle;
-  columnLabel: TextStyle;
-  colName: TextStyle;
-  colField: TextStyle;
-  colActions: ViewStyle;
-  row: ViewStyle;
-  exerciseName: TextStyle;
-  input: TextStyle;
-  deleteText: TextStyle;
-  addButton: ViewStyle;
-  addButtonText: TextStyle;
-  deleteDayButton: ViewStyle;
-  deleteDayText: TextStyle;
-}>({
+const createStyles = (colors: ColorPalette) =>
+  StyleSheet.create<{
+    screen: ViewStyle;
+    content: ViewStyle;
+    centered: ViewStyle;
+    muted: TextStyle;
+    header: ViewStyle;
+    back: TextStyle;
+    dayIndex: TextStyle;
+    nameInput: TextStyle;
+    emptyText: TextStyle;
+    columnHeader: ViewStyle;
+    columnLabel: TextStyle;
+    colName: TextStyle;
+    colField: TextStyle;
+    colActions: ViewStyle;
+    row: ViewStyle;
+    exerciseName: TextStyle;
+    input: TextStyle;
+    deleteText: TextStyle;
+    addButton: ViewStyle;
+    addButtonText: TextStyle;
+    deleteDayButton: ViewStyle;
+    deleteDayText: TextStyle;
+  }>({
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { paddingHorizontal: spacing.lg },
   centered: { flex: 1, backgroundColor: colors.bg, alignItems: 'center' },

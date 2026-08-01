@@ -57,12 +57,13 @@ export interface BuildPayloadOptions {
 
 export async function buildCoachPayload(
   db: SqlExecutor,
+  userId: string,
   { locale, today = new Date() }: BuildPayloadOptions,
 ): Promise<CoachContextPayload> {
   const [profile, metrics, progress] = await Promise.all([
-    getProfile(db),
-    listBodyMetrics(db),
-    summariseAllProgress(db),
+    getProfile(db, userId),
+    listBodyMetrics(db, userId),
+    summariseAllProgress(db, userId),
   ]);
 
   const latestWeight = metrics.find((m: BodyMetricRow) => m.weight_kg !== null)?.weight_kg ?? null;
@@ -72,11 +73,11 @@ export async function buildCoachPayload(
 
   // Adherence only exists for a session that came from a plan day. A freestyle session has no
   // prescription to compare against, so the section is simply absent rather than zero-filled.
-  const activePlan = await getActivePlan(db);
-  const recentSessions = await listSessionSummaries(db, 10);
+  const activePlan = await getActivePlan(db, userId);
+  const recentSessions = await listSessionSummaries(db, userId, 10);
   const lastPlanned = recentSessions.find((session) => session.plan_day_id !== null);
   const adherence = lastPlanned
-    ? (await getSessionAdherence(db, lastPlanned.id)).map((row) => ({
+    ? (await getSessionAdherence(db, userId, lastPlanned.id)).map((row) => ({
         exerciseKey: row.exercise_key,
         targetSets: row.target_sets,
         targetRepsMin: row.target_reps_min,

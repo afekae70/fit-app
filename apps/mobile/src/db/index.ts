@@ -37,13 +37,28 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
   for (const version of pending) {
     const sql = MIGRATIONS[version];
     if (!sql) continue;
-    try {
-      await db.execAsync(sql);
-    } catch (error) {
-      // A fresh install already has the column from CREATE_SCHEMA_SQL, so ALTER TABLE fails
-      // with "duplicate column". That is expected and harmless; anything else is not.
-      const message = error instanceof Error ? error.message : String(error);
-      if (!/duplicate column/i.test(message)) throw error;
+
+    // Run statement-by-statement rather than the whole migration as one execAsync call. A
+    // fresh install already has some columns from CREATE_SCHEMA_SQL, so an ALTER TABLE further
+    // down a migration can legitimately fail with "duplicate column" — but execAsync treats a
+    // multi-statement string as one batch that stops at the first error, so running it whole
+    // would silently skip every statement after that point (including unrelated tables' own
+    // ALTER/INDEX statements later in the same migration). None of the current migrations put a
+    // semicolon inside a string literal, so splitting on `;` is safe.
+    const statements = sql
+      .split(';')
+      .map((statement) => statement.trim())
+      .filter((statement) => statement.length > 0);
+
+    for (const statement of statements) {
+      try {
+        await db.execAsync(`${statement};`);
+      } catch (error) {
+        // Expected and harmless: this exact column/table already exists because CREATE_SCHEMA_SQL
+        // (fresh install) or an earlier migration got there first. Anything else is not.
+        const message = error instanceof Error ? error.message : String(error);
+        if (!/duplicate column|already exists/i.test(message)) throw error;
+      }
     }
   }
 
@@ -72,13 +87,18 @@ export async function resetDb(): Promise<void> {
   const db = await getDb();
   await db.execAsync(`
     PRAGMA foreign_keys = OFF;
+    DROP TABLE IF EXISTS coach_briefs;
     DROP TABLE IF EXISTS outbox;
     DROP TABLE IF EXISTS sets;
     DROP TABLE IF EXISTS session_exercises;
     DROP TABLE IF EXISTS workout_sessions;
+    DROP TABLE IF EXISTS plan_day_exercises;
+    DROP TABLE IF EXISTS plan_days;
+    DROP TABLE IF EXISTS plans;
     DROP TABLE IF EXISTS nutrition_targets;
     DROP TABLE IF EXISTS body_metrics;
     DROP TABLE IF EXISTS profile;
+    DROP TABLE IF EXISTS profile_v4;
     PRAGMA foreign_keys = ON;
   `);
   await db.execAsync(CREATE_SCHEMA_SQL);

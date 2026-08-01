@@ -15,10 +15,23 @@
  *    than us parsing hopefully and repairing.
  */
 
+import {
+  aiNutritionMenuSchema,
+  aiWorkoutPlanSchema,
+  PROPOSE_NUTRITION_MENU_TOOL,
+  PROPOSE_WORKOUT_PLAN_TOOL,
+} from '@fit/shared/schemas';
 import Anthropic from '@anthropic-ai/sdk';
 
 import { CoachRefusalError } from './provider.js';
-import type { CoachContext, CoachMessage, CoachProvider } from './provider.js';
+import type { CoachContext, CoachMessage, CoachProvider, CoachStreamEvent } from './provider.js';
+
+// The shared package types `input_schema` as `Record<string, unknown>` — it has no reason to
+// depend on the Anthropic SDK's types for a schema shape OpenAI's tool-calling could equally
+// consume. The actual value is always a `zodToJsonSchema` object schema (`type: 'object'`,
+// `properties`, `required`, `additionalProperties: false`), which is what `Anthropic.Tool`
+// requires; the cast bridges the two without re-typing the shared schema for one consumer.
+const TOOLS = [PROPOSE_WORKOUT_PLAN_TOOL, PROPOSE_NUTRITION_MENU_TOOL] as Anthropic.Tool[];
 
 export interface ClaudeProviderOptions {
   apiKey: string;
@@ -63,21 +76,47 @@ export class ClaudeProvider implements CoachProvider {
     ];
   }
 
-  async *streamChat(ctx: CoachContext, messages: CoachMessage[]): AsyncIterable<string> {
+  async *streamChat(ctx: CoachContext, messages: CoachMessage[]): AsyncIterable<CoachStreamEvent> {
     const stream = this.client.messages.stream({
       model: this.model,
       max_tokens: 4096,
       system: this.systemBlocks(ctx),
       output_config: { effort: CHAT_EFFORT },
+      tools: TOOLS,
       messages: messages.map((message) => ({
         role: message.role,
         content: message.content,
       })),
     });
 
+    // Keyed by content-block index: the model can write prose and then propose a plan in the
+    // same turn, so a tool_use block's index is not necessarily 0, and `input_json_delta`
+    // chunks carry only a partial JSON fragment — the tool name is only on this block's own
+    // `content_block_start` event, so it has to be remembered here rather than re-read per delta.
+    const pendingTools = new Map<number, { name: string; json: string }>();
+
     for await (const event of stream) {
-      if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-        yield event.delta.text;
+      if (event.type === 'content_block_start' && event.content_block.type === 'tool_use') {
+        pendingTools.set(event.index, { name: event.content_block.name, json: '' });
+        continue;
+      }
+
+      if (event.type === 'content_block_delta') {
+        if (event.delta.type === 'text_delta') {
+          yield { type: 'text', text: event.delta.text };
+        } else if (event.delta.type === 'input_json_delta') {
+          const pending = pendingTools.get(event.index);
+          if (pending) pending.json += event.delta.partial_json;
+        }
+        continue;
+      }
+
+      if (event.type === 'content_block_stop') {
+        const pending = pendingTools.get(event.index);
+        if (pending) {
+          pendingTools.delete(event.index);
+          yield this.parseToolCall(pending.name, pending.json);
+        }
       }
     }
 
@@ -88,6 +127,25 @@ export class ClaudeProvider implements CoachProvider {
     if (final.stop_reason === 'refusal') {
       throw new CoachRefusalError(final.stop_details?.category ?? null);
     }
+  }
+
+  /**
+   * The tool's `input_schema` is generated from the same Zod schema this parses with (see
+   * `packages/shared/schemas/aiPlan.ts`), so the model's JSON should already conform — this
+   * validates anyway rather than trusting that a schema shown to a model is a schema it always
+   * obeys. A malformed payload here throws, which the coach route already turns into a generic
+   * `error` SSE event rather than a partial, unvalidated plan reaching the UI.
+   */
+  private parseToolCall(toolName: string, json: string): CoachStreamEvent {
+    const raw: unknown = JSON.parse(json);
+
+    if (toolName === PROPOSE_WORKOUT_PLAN_TOOL.name) {
+      return { type: 'plan_proposal', plan: aiWorkoutPlanSchema.parse(raw) };
+    }
+    if (toolName === PROPOSE_NUTRITION_MENU_TOOL.name) {
+      return { type: 'nutrition_proposal', menu: aiNutritionMenuSchema.parse(raw) };
+    }
+    throw new Error(`Unknown tool call from model: ${toolName}`);
   }
 
   /**

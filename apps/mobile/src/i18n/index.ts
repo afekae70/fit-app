@@ -4,20 +4,24 @@
  * Hebrew is the default, so RTL is the default layout direction. Two things about RTL on React
  * Native that shape this file:
  *
- *  1. `I18nManager.forceRTL()` only takes effect after the JS bundle reloads. There is no way to
- *     mirror the current screen in place, so `setAppLanguage` performs the reload itself rather
- *     than leaving the user on a half-switched screen: strings in the new language, layout still
- *     in the old direction.
+ *  1. `I18nManager.forceRTL()` only takes effect after the JS bundle reloads. There is no
+ *     in-place way to mirror the current screen, so a direction change always needs a restart.
  *  2. Layout mirroring is driven by `I18nManager.isRTL`, NOT by which i18next language is
  *     active. Those can disagree (i18next switches instantly, RTL needs the reload), and that
- *     disagreement is precisely the state the reload exists to close.
+ *     disagreement is exactly what `directionChanged` below asks the caller to resolve.
  *
- * Reloading is safe here because every workout edit is written to SQLite as it happens — there
- * is no in-memory draft to lose. The only casualty is a field mid-keystroke.
+ * `setAppLanguage` deliberately does NOT call `Updates.reloadAsync()` to restart automatically.
+ * This app doesn't use EAS Update (no channel configured, so the call would always be a no-op
+ * at best) — and `expo-updates` was removed from the project entirely after it was identified
+ * as the cause of an unrelated, far worse bug: any crash anywhere in the app, on Android with
+ * the New Architecture, left the screen permanently blank instead of recovering, with
+ * expo-updates' own crash-recovery machinery implicated (see the pinned upstream issue:
+ * https://github.com/expo/expo/issues/41543 — "any crash JS or Native result in blank screen").
+ * A manual "please reopen the app" prompt is a worse UX than an automatic reload, but it doesn't
+ * carry that risk.
  */
 
 import { getLocales } from 'expo-localization';
-import * as Updates from 'expo-updates';
 import i18next from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import { I18nManager } from 'react-native';
@@ -85,28 +89,20 @@ export function initI18n(language: Language = detectDeviceLanguage()): typeof i1
 export interface LanguageChangeResult {
   language: Language;
   /**
-   * True when the layout direction had to change, meaning a reload was triggered. Callers can
-   * use it to show a brief "switching…" state; on success the reload replaces the UI before
-   * anything rendered from it is visible for long.
+   * True when the layout direction had to change. The native RTL flag is already written by
+   * the time this returns — only the *running* UI hasn't picked it up yet, since that requires
+   * a bundle reload this function deliberately doesn't attempt (see the file header). The
+   * caller shows a "reopen the app" hint whenever this is true.
    */
   directionChanged: boolean;
-  /**
-   * Set only when the reload could not be performed. The direction is queued for the next
-   * launch, so the caller must fall back to asking the user to restart the app manually.
-   */
-  reloadFailed?: boolean;
 }
 
 /**
- * Switch language, and flip the layout direction with it.
+ * Switch language, and flip the stored layout-direction flag with it.
  *
- * `forceRTL` writes a native flag read at startup, so the running UI keeps the old direction
- * until the bundle reloads. Rather than surface that as a "please restart the app" banner, this
- * reloads immediately — the user taps once and the app comes back fully mirrored.
- *
- * If the reload fails (`reloadAsync` throws when no updates-capable runtime is present), the
- * direction flag is already written, so restarting by hand still applies it. That is reported
- * back rather than swallowed, so the caller can show the manual-restart hint instead.
+ * `forceRTL` writes a native flag read at startup — the change is real and persisted the
+ * instant this returns, it just doesn't paint until the app restarts. See the file header for
+ * why this doesn't attempt that restart itself.
  */
 export async function setAppLanguage(language: Language): Promise<LanguageChangeResult> {
   await i18next.changeLanguage(language);
@@ -114,15 +110,10 @@ export async function setAppLanguage(language: Language): Promise<LanguageChange
   const shouldBeRtl = isRtlLanguage(language);
   const directionChanged = I18nManager.isRTL !== shouldBeRtl;
 
-  if (!directionChanged) return { language, directionChanged: false };
-
-  I18nManager.allowRTL(shouldBeRtl);
-  I18nManager.forceRTL(shouldBeRtl);
-
-  try {
-    await Updates.reloadAsync();
-    return { language, directionChanged: true };
-  } catch {
-    return { language, directionChanged: true, reloadFailed: true };
+  if (directionChanged) {
+    I18nManager.allowRTL(shouldBeRtl);
+    I18nManager.forceRTL(shouldBeRtl);
   }
+
+  return { language, directionChanged };
 }

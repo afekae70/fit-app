@@ -1,5 +1,5 @@
 {
-  "id": "2182b732-6b11-43a9-8f26-84113464d619",
+  "id": "f080beb5-2584-407c-a807-1409de998b86",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -192,7 +192,7 @@
       "checkConstraints": {
         "ai_generated_plans_kind_check": {
           "name": "ai_generated_plans_kind_check",
-          "value": "\"ai_generated_plans\".\"kind\" in ($1, $2)"
+          "value": "\"ai_generated_plans\".\"kind\" in ('workout', 'nutrition')"
         }
       },
       "isRLSEnabled": false
@@ -308,7 +308,7 @@
       "checkConstraints": {
         "ai_messages_role_check": {
           "name": "ai_messages_role_check",
-          "value": "\"ai_messages\".\"role\" in ($1, $2)"
+          "value": "\"ai_messages\".\"role\" in ('user', 'assistant')"
         }
       },
       "isRLSEnabled": false
@@ -445,7 +445,7 @@
       "checkConstraints": {
         "body_metrics_source_check": {
           "name": "body_metrics_source_check",
-          "value": "\"body_metrics\".\"source\" in ($1, $2, $3, $4)"
+          "value": "\"body_metrics\".\"source\" in ('ble_scale', 'manual', 'ai_assistant', 'health_platform')"
         },
         "body_metrics_weight_check": {
           "name": "body_metrics_weight_check",
@@ -648,7 +648,7 @@
       "checkConstraints": {
         "exercises_load_type_check": {
           "name": "exercises_load_type_check",
-          "value": "\"exercises\".\"load_type\" in ($1, $2, $3, $4, $5)"
+          "value": "\"exercises\".\"load_type\" in ('weight_reps', 'bodyweight', 'bodyweight_plus', 'time', 'distance')"
         }
       },
       "isRLSEnabled": false
@@ -794,7 +794,7 @@
       "checkConstraints": {
         "locations_kind_check": {
           "name": "locations_kind_check",
-          "value": "\"locations\".\"kind\" is null or \"locations\".\"kind\" in ($1, $2, $3, $4, $5)"
+          "value": "\"locations\".\"kind\" is null or \"locations\".\"kind\" in ('commercial_gym', 'home', 'military_base', 'outdoor', 'other')"
         }
       },
       "isRLSEnabled": false
@@ -947,11 +947,11 @@
       "checkConstraints": {
         "nutrition_targets_goal_check": {
           "name": "nutrition_targets_goal_check",
-          "value": "\"nutrition_targets\".\"goal\" in ($1, $2, $3)"
+          "value": "\"nutrition_targets\".\"goal\" in ('cut', 'maintain', 'bulk')"
         },
         "nutrition_targets_computed_by_check": {
           "name": "nutrition_targets_computed_by_check",
-          "value": "\"nutrition_targets\".\"computed_by\" in ($1, $2, $3)"
+          "value": "\"nutrition_targets\".\"computed_by\" in ('system_weekly', 'ai', 'manual')"
         },
         "nutrition_targets_date_order_check": {
           "name": "nutrition_targets_date_order_check",
@@ -1326,7 +1326,7 @@
       "checkConstraints": {
         "plans_goal_check": {
           "name": "plans_goal_check",
-          "value": "\"plans\".\"goal\" is null or \"plans\".\"goal\" in ($1, $2, $3)"
+          "value": "\"plans\".\"goal\" is null or \"plans\".\"goal\" in ('cut', 'maintain', 'bulk')"
         },
         "plans_days_per_week_check": {
           "name": "plans_days_per_week_check",
@@ -1424,7 +1424,7 @@
       "checkConstraints": {
         "profiles_sex_check": {
           "name": "profiles_sex_check",
-          "value": "\"profiles\".\"sex\" is null or \"profiles\".\"sex\" in ($1, $2, $3)"
+          "value": "\"profiles\".\"sex\" is null or \"profiles\".\"sex\" in ('male', 'female', 'other')"
         },
         "profiles_bmr_formula_sex_check": {
           "name": "profiles_bmr_formula_sex_check",
@@ -1432,15 +1432,15 @@
         },
         "profiles_activity_level_check": {
           "name": "profiles_activity_level_check",
-          "value": "\"profiles\".\"activity_level\" is null or \"profiles\".\"activity_level\" in ($1, $2, $3, $4, $5)"
+          "value": "\"profiles\".\"activity_level\" is null or \"profiles\".\"activity_level\" in ('sedentary', 'light', 'moderate', 'active', 'very_active')"
         },
         "profiles_goal_check": {
           "name": "profiles_goal_check",
-          "value": "\"profiles\".\"goal\" is null or \"profiles\".\"goal\" in ($1, $2, $3)"
+          "value": "\"profiles\".\"goal\" is null or \"profiles\".\"goal\" in ('cut', 'maintain', 'bulk')"
         },
         "profiles_unit_preference_check": {
           "name": "profiles_unit_preference_check",
-          "value": "\"profiles\".\"unit_preference\" in ($1, $2)"
+          "value": "\"profiles\".\"unit_preference\" in ('metric', 'imperial')"
         },
         "profiles_height_range_check": {
           "name": "profiles_height_range_check",

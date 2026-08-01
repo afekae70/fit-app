@@ -11,7 +11,7 @@
  */
 
 import type { ExerciseSeed } from '@fit/shared/catalog';
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Pressable,
@@ -19,12 +19,15 @@ import {
   Text,
   TextInput,
   View,
+  type StyleProp,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
 
 import type { SetRow } from '../db/workouts.js';
-import { colors, fontSize, radius, spacing } from '../theme.js';
+import { hapticLight } from '../haptics.js';
+import { useTheme } from '../ThemeProvider.js';
+import { fontSize, radius, spacing, type ColorPalette } from '../theme.js';
 
 export interface PreviousSet {
   set_index: number;
@@ -81,6 +84,69 @@ function formatTarget(target: ExerciseTarget): string | null {
   return `${sets} × ${reps}`;
 }
 
+/**
+ * A numeric field flanked by −/+ buttons, so a set can be logged without opening the keyboard
+ * at all — the common case is nudging last time's weight or reps by one increment, not typing a
+ * new number from scratch.
+ *
+ * The `TextInput` stays `defaultValue`-based (uncontrolled) like every other field on this card
+ * — typing must not re-render on every keystroke. A stepper press writes straight to `onCommit`
+ * (bypassing the field), so the input is re-keyed on the committed value to force it to pick up
+ * the new number; typing and blurring changes the committed value too, which harmlessly re-keys
+ * the same way right as the field loses focus anyway.
+ */
+function SteppedField({
+  value,
+  step,
+  decimals,
+  placeholder,
+  onCommit,
+  colors,
+  inputStyle,
+  groupStyle,
+  buttonStyle,
+  buttonTextStyle,
+}: {
+  value: number | null;
+  step: number;
+  decimals: number;
+  placeholder: string;
+  onCommit: (next: number | null) => void;
+  colors: ColorPalette;
+  inputStyle: StyleProp<TextStyle>;
+  groupStyle: StyleProp<ViewStyle>;
+  buttonStyle: StyleProp<ViewStyle>;
+  buttonTextStyle: StyleProp<TextStyle>;
+}) {
+  const adjust = (delta: number) => {
+    hapticLight();
+    const next = Math.max(0, Number(((value ?? 0) + delta).toFixed(decimals)));
+    onCommit(next);
+  };
+
+  return (
+    <View style={groupStyle}>
+      <Pressable onPress={() => adjust(-step)} style={buttonStyle} hitSlop={6} accessibilityRole="button">
+        <Text style={buttonTextStyle}>−</Text>
+      </Pressable>
+      <TextInput
+        key={value ?? 'empty'}
+        defaultValue={value === null ? '' : String(value)}
+        onEndEditing={(e) => onCommit(parseField(e.nativeEvent.text))}
+        keyboardType={decimals > 0 ? 'numeric' : 'number-pad'}
+        inputMode={decimals > 0 ? 'decimal' : 'numeric'}
+        style={inputStyle}
+        selectTextOnFocus
+        placeholder={placeholder}
+        placeholderTextColor={colors.textFaint}
+      />
+      <Pressable onPress={() => adjust(step)} style={buttonStyle} hitSlop={6} accessibilityRole="button">
+        <Text style={buttonTextStyle}>+</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 function ExerciseCardImpl({
   exercise,
   sets,
@@ -93,6 +159,8 @@ function ExerciseCardImpl({
 }: ExerciseCardProps) {
   const { t, i18n } = useTranslation();
   const isHebrew = i18n.language === 'he';
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const loadType = exercise.loadType ?? 'weight_reps';
 
   const showsWeight = loadType === 'weight_reps' || loadType === 'bodyweight_plus';
@@ -196,30 +264,32 @@ function ExerciseCardImpl({
           </Pressable>
 
           {showsWeight ? (
-            <TextInput
-              defaultValue={set.weight_kg === null ? '' : String(set.weight_kg)}
-              onEndEditing={(e) =>
-                onUpdateSet(set.id, { weightKg: parseField(e.nativeEvent.text) })
-              }
-              keyboardType="numeric"
-              inputMode="decimal"
-              style={styles.input}
-              selectTextOnFocus
+            <SteppedField
+              value={set.weight_kg}
+              step={2.5}
+              decimals={2}
               placeholder={hint(previous?.weight_kg)}
-              placeholderTextColor={colors.textFaint}
+              onCommit={(weightKg) => onUpdateSet(set.id, { weightKg })}
+              colors={colors}
+              inputStyle={styles.input}
+              groupStyle={styles.stepperGroup}
+              buttonStyle={styles.stepperBtn}
+              buttonTextStyle={styles.stepperBtnText}
             />
           ) : null}
 
           {showsReps ? (
-            <TextInput
-              defaultValue={set.reps === null ? '' : String(set.reps)}
-              onEndEditing={(e) => onUpdateSet(set.id, { reps: parseField(e.nativeEvent.text) })}
-              keyboardType="number-pad"
-              inputMode="numeric"
-              style={styles.input}
-              selectTextOnFocus
+            <SteppedField
+              value={set.reps}
+              step={1}
+              decimals={0}
               placeholder={hint(previous?.reps)}
-              placeholderTextColor={colors.textFaint}
+              onCommit={(reps) => onUpdateSet(set.id, { reps })}
+              colors={colors}
+              inputStyle={styles.input}
+              groupStyle={styles.stepperGroup}
+              buttonStyle={styles.stepperBtn}
+              buttonTextStyle={styles.stepperBtnText}
             />
           ) : null}
 
@@ -274,7 +344,14 @@ function ExerciseCardImpl({
         );
       })}
 
-      <Pressable onPress={onAddSet} style={styles.addSet} accessibilityRole="button">
+      <Pressable
+        onPress={() => {
+          hapticLight();
+          onAddSet();
+        }}
+        style={styles.addSet}
+        accessibilityRole="button"
+      >
         <Text style={styles.addSetText}>+ {t('workout.addSet')}</Text>
       </Pressable>
 
@@ -290,37 +367,41 @@ function ExerciseCardImpl({
 
 export const ExerciseCard = memo(ExerciseCardImpl);
 
-const styles = StyleSheet.create<{
-  card: ViewStyle;
-  header: ViewStyle;
-  headerMain: ViewStyle;
-  titleRow: ViewStyle;
-  title: TextStyle;
-  targetBadge: ViewStyle;
-  targetBadgeText: TextStyle;
-  subtitle: TextStyle;
-  removeExercise: ViewStyle;
-  removeExerciseText: TextStyle;
-  columnHeader: ViewStyle;
-  columnLabel: TextStyle;
-  // The header labels are <Text> and the row cells are <View>/<TextInput>. RN's TextStyle is
-  // not assignable to ViewStyle, so the same column width needs an entry of each type rather
-  // than one shared entry.
-  headerIndex: TextStyle;
-  headerInput: TextStyle;
-  colIndex: ViewStyle;
-  colActions: ViewStyle;
-  setRow: ViewStyle;
-  indexBadge: ViewStyle;
-  indexBadgeWarmup: ViewStyle;
-  indexText: TextStyle;
-  indexTextWarmup: TextStyle;
-  input: TextStyle;
-  deleteText: TextStyle;
-  addSet: ViewStyle;
-  addSetText: TextStyle;
-  volume: TextStyle;
-}>({
+const createStyles = (colors: ColorPalette) =>
+  StyleSheet.create<{
+    card: ViewStyle;
+    header: ViewStyle;
+    headerMain: ViewStyle;
+    titleRow: ViewStyle;
+    title: TextStyle;
+    targetBadge: ViewStyle;
+    targetBadgeText: TextStyle;
+    subtitle: TextStyle;
+    removeExercise: ViewStyle;
+    removeExerciseText: TextStyle;
+    columnHeader: ViewStyle;
+    columnLabel: TextStyle;
+    // The header labels are <Text> and the row cells are <View>/<TextInput>. RN's TextStyle is
+    // not assignable to ViewStyle, so the same column width needs an entry of each type rather
+    // than one shared entry.
+    headerIndex: TextStyle;
+    headerInput: TextStyle;
+    colIndex: ViewStyle;
+    colActions: ViewStyle;
+    setRow: ViewStyle;
+    indexBadge: ViewStyle;
+    indexBadgeWarmup: ViewStyle;
+    indexText: TextStyle;
+    indexTextWarmup: TextStyle;
+    input: TextStyle;
+    stepperGroup: ViewStyle;
+    stepperBtn: ViewStyle;
+    stepperBtnText: TextStyle;
+    deleteText: TextStyle;
+    addSet: ViewStyle;
+    addSetText: TextStyle;
+    volume: TextStyle;
+  }>({
   card: {
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
@@ -369,7 +450,7 @@ const styles = StyleSheet.create<{
     alignItems: 'center',
     justifyContent: 'center',
   },
-  indexBadgeWarmup: { backgroundColor: '#3A2E10' },
+  indexBadgeWarmup: { backgroundColor: colors.warningSoft },
   indexText: { color: colors.textMuted, fontSize: fontSize.sm, fontWeight: '700' },
   indexTextWarmup: { color: colors.warning },
   input: {
@@ -385,6 +466,18 @@ const styles = StyleSheet.create<{
     fontSize: fontSize.md,
     textAlign: 'center',
   },
+  stepperGroup: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  stepperBtn: {
+    width: 28,
+    height: 40,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surfaceRaised,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepperBtnText: { color: colors.textMuted, fontSize: fontSize.md, fontWeight: '700' },
   deleteText: { color: colors.textMuted, fontSize: fontSize.sm },
   addSet: {
     marginTop: spacing.xs,

@@ -4,6 +4,10 @@
  * i18n is initialised at module scope rather than in an effect, because `I18nManager.forceRTL`
  * must be applied before any view is laid out — doing it in an effect would mirror the layout
  * one frame late and cause a visible flash on every cold start in Hebrew.
+ *
+ * `ThemeProvider` sits above everything, including `AuthProvider`/`AppGate` — the sign-in
+ * screens need `useTheme()` too, and are exactly where `AnimatedGradientBackground` shows,
+ * since they are otherwise the emptiest screens in the app.
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -11,9 +15,12 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { AppGate } from '../src/auth/AppGate.js';
 import { AuthProvider } from '../src/auth/AuthProvider.js';
+import { AnimatedGradientBackground } from '../src/components/AnimatedGradientBackground.js';
+import { ErrorBoundary } from '../src/components/ErrorBoundary.js';
 import { initI18n } from '../src/i18n/index.js';
-import { colors } from '../src/theme.js';
+import { ThemeProvider, useTheme } from '../src/ThemeProvider.js';
 
 initI18n();
 
@@ -28,16 +35,23 @@ const queryClient = new QueryClient({
   },
 });
 
-export default function RootLayout() {
+function RootLayoutInner() {
+  const { scheme } = useTheme();
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <SafeAreaProvider>
-          <StatusBar style="light" />
+    <>
+      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
+      <AnimatedGradientBackground />
+      <AppGate>
+        <ErrorBoundary>
           <Stack
             screenOptions={{
               headerShown: false,
-              contentStyle: { backgroundColor: colors.bg },
+              // Transparent, not a solid fill — AnimatedGradientBackground sits behind the
+              // whole stack, and every screen's own content already paints its own surfaces.
+              contentStyle: { backgroundColor: 'transparent' },
+              // A deliberate fade+rise on every push/pop, the same direction on both platforms —
+              // the native iOS slide and Android fade read as two different apps side by side.
+              animation: 'fade_from_bottom',
             }}
           >
             <Stack.Screen name="(tabs)" />
@@ -45,8 +59,22 @@ export default function RootLayout() {
                 exercise is a detour within the session, not a departure from it. */}
             <Stack.Screen name="exercise-picker" options={{ presentation: 'modal' }} />
           </Stack>
-        </SafeAreaProvider>
-      </AuthProvider>
-    </QueryClientProvider>
+        </ErrorBoundary>
+      </AppGate>
+    </>
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <SafeAreaProvider>
+            <RootLayoutInner />
+          </SafeAreaProvider>
+        </AuthProvider>
+      </QueryClientProvider>
+    </ThemeProvider>
   );
 }

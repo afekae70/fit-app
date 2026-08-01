@@ -78,9 +78,15 @@ export default async function coachRoutes(app: FastifyInstance): Promise<void> {
         messages,
       );
 
-      for await (const delta of stream) {
+      for await (const event of stream) {
         if (clientGone) break;
-        sendEvent(reply, 'delta', { text: delta });
+        if (event.type === 'text') {
+          sendEvent(reply, 'delta', { text: event.text });
+        } else if (event.type === 'plan_proposal') {
+          sendEvent(reply, 'plan_proposal', { plan: event.plan });
+        } else {
+          sendEvent(reply, 'nutrition_proposal', { menu: event.menu });
+        }
       }
 
       if (!clientGone) sendEvent(reply, 'done', {});

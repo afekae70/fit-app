@@ -1,7 +1,7 @@
 /**
  * Environment configuration, validated once at process start.
  *
- * Failing fast here with a clear message is the point: a missing `SUPABASE_JWT_SECRET`
+ * Failing fast here with a clear message is the point: a missing `SUPABASE_URL`
  * should not surface three requests later as a cryptic 401 on every route. It should stop
  * the process before it ever binds a port.
  *
@@ -22,12 +22,6 @@ const envSchema = z
     // Supabase
     SUPABASE_URL: z.string().url(),
     SUPABASE_SERVICE_ROLE_KEY: z.string().min(20),
-    /**
-     * Verifies the HS256-signed access tokens Supabase Auth issues. Project Settings ->
-     * API -> JWT Settings -> JWT Secret. Never the anon key — that authenticates the
-     * client to Supabase, it does not sign user tokens.
-     */
-    SUPABASE_JWT_SECRET: z.string().min(20),
 
     // Database — pooled connection for the running service. Migrations/seeds use the
     // direct connection separately (see src/db/seed/run.ts), not this variable.

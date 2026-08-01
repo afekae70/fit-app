@@ -1,16 +1,48 @@
 /**
  * Design tokens.
  *
- * A dark palette built on layered neutrals rather than pure black: each surface step is a
- * measured lift, so depth reads through value alone and the UI needs no drop shadows. Shadows
- * on Android render as a muddy halo at low elevation and cost a render pass — borders and
- * surface steps do the same job more cleanly.
+ * Two palettes, dark and light, share one shape (`ColorPalette`) so every screen can be written
+ * once against `colors.xxx` and simply receive whichever palette `useTheme()` resolves to.
  *
- * The accent is a single desaturated green used sparingly: for the primary action, live data,
- * and nothing else. When every card has an accent border, none of them read as important.
+ * Neither is the other with channels inverted. The dark palette is built on layered neutrals
+ * rather than pure black: each surface step is a measured lift, so depth reads through value
+ * alone and the UI needs no drop shadows — shadows on Android render as a muddy halo at low
+ * elevation and cost a render pass, where borders and surface steps do the same job more
+ * cleanly. The light palette keeps the same brand green but pulls it darker and more saturated
+ * (`#3DD68C` reads as a pale mint on white with poor contrast; `#1F9D63` holds up), and the same
+ * discipline applies to warning/danger/info/macro hues, each re-tuned for legibility on a light
+ * ground rather than assumed to survive the swap.
+ *
+ * The accent is a single colour used sparingly in both palettes: for the primary action, live
+ * data, and nothing else. When every card has an accent border, none of them read as important.
  */
 
-export const colors = {
+export interface ColorPalette {
+  bg: string;
+  surface: string;
+  surfaceRaised: string;
+  surfaceHigh: string;
+  border: string;
+  borderStrong: string;
+  text: string;
+  textSecondary: string;
+  textMuted: string;
+  textFaint: string;
+  accent: string;
+  accentSoft: string;
+  accentBorder: string;
+  warning: string;
+  warningSoft: string;
+  danger: string;
+  dangerSoft: string;
+  info: string;
+  infoSoft: string;
+  protein: string;
+  carbs: string;
+  fat: string;
+}
+
+export const darkColors: ColorPalette = {
   /* Surfaces — each step is a deliberate lift, not an arbitrary shade. */
   bg: '#0B0F14',
   surface: '#141A21',
@@ -44,7 +76,47 @@ export const colors = {
   protein: '#6BA6FF',
   carbs: '#F0B429',
   fat: '#EF7FAE',
-} as const;
+};
+
+export const lightColors: ColorPalette = {
+  /* Surfaces — off-white rather than pure white, so cards (pure white) still lift off it. */
+  bg: '#F5F8F7',
+  surface: '#FFFFFF',
+  surfaceRaised: '#EEF3F1',
+  surfaceHigh: '#E1E9E6',
+
+  /* Borders — visible on a light ground without turning into a harsh outline. */
+  border: '#DCE4E1',
+  borderStrong: '#BFCBC7',
+
+  /* Text — near-black rather than pure black, matching the dark palette's near-white choice. */
+  text: '#0F1513',
+  textSecondary: '#3E4B47',
+  textMuted: '#6C7A75',
+  textFaint: '#96A39E',
+
+  /* Accent — darker and more saturated than the dark palette's; the same hex on white reads
+     as a washed-out mint with poor text contrast. */
+  accent: '#1E9A62',
+  accentSoft: '#E3F4EC',
+  accentBorder: '#8FCDAE',
+
+  /* Status — each darkened from its dark-mode counterpart for the same contrast reason. */
+  warning: '#A66A00',
+  warningSoft: '#FBF0D9',
+  danger: '#C93B3E',
+  dangerSoft: '#FBE4E4',
+  info: '#2B76B8',
+  infoSoft: '#E3EFF9',
+
+  /* Macro colours */
+  protein: '#3C6CC0',
+  carbs: '#A66A00',
+  fat: '#BD4A82',
+};
+
+/** Default export for the rare theme-agnostic case. Components should use `useTheme()`. */
+export const colors = darkColors;
 
 /** 4px rhythm. Every gap in the app is one of these. */
 export const spacing = {
@@ -79,7 +151,7 @@ export const fontSize = {
 
 /**
  * Two weights carry the whole interface: 500 for labels, 700 for headings and values.
- * Anything heavier looks shouty at these sizes on a dark background.
+ * Anything heavier looks shouty at these sizes.
  */
 export const fontWeight = {
   regular: '400',

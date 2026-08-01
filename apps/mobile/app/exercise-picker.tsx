@@ -12,7 +12,7 @@
 
 import { EXERCISE_SEED, type ExerciseSeed } from '@fit/shared/catalog';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   FlatList,
@@ -26,7 +26,15 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors, fontSize, radius, spacing } from '../src/theme.js';
+import { useCurrentUserId } from '../src/auth/CurrentUserProvider.js';
+import { getExecutor } from '../src/db/provider.js';
+import { listRecentExerciseKeys } from '../src/db/workouts.js';
+import { useTheme } from '../src/ThemeProvider.js';
+import { fontSize, radius, spacing, type ColorPalette } from '../src/theme.js';
+
+const EXERCISE_BY_KEY = new Map<string, ExerciseSeed>(
+  EXERCISE_SEED.map((exercise) => [exercise.nameEn, exercise]),
+);
 
 /** Muscle groups offered as quick filters, ordered by how often they head a session. */
 const FILTER_MUSCLES = [
@@ -54,9 +62,34 @@ export default function ExercisePickerScreen() {
     planDayId?: string;
   }>();
   const isHebrew = i18n.language === 'he';
+  const userId = useCurrentUserId();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [query, setQuery] = useState('');
   const [muscle, setMuscle] = useState<string | null>(null);
+  const [recentKeys, setRecentKeys] = useState<string[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const db = await getExecutor();
+      const keys = await listRecentExerciseKeys(db, userId);
+      if (!cancelled) setRecentKeys(keys);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  const recentExercises = useMemo(
+    () => recentKeys.map((key) => EXERCISE_BY_KEY.get(key)).filter((e): e is ExerciseSeed => !!e),
+    [recentKeys],
+  );
+
+  // Hidden the moment a search or filter narrows the list — "recently used" is a shortcut for
+  // the unfiltered browse state, not another thing to reconcile against active filters.
+  const showRecents = query.trim() === '' && muscle === null && recentExercises.length > 0;
 
   const results = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -141,6 +174,28 @@ export default function ExercisePickerScreen() {
         }}
       />
 
+      {showRecents ? (
+        <View style={styles.recentsBlock}>
+          <Text style={styles.recentsTitle}>{t('picker.recentlyUsed')}</Text>
+          <FlatList
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            data={recentExercises}
+            keyExtractor={(e) => e.nameEn}
+            contentContainerStyle={styles.filterRow}
+            renderItem={({ item }) => (
+              <Pressable
+                onPress={() => choose(item)}
+                style={styles.recentChip}
+                accessibilityRole="button"
+              >
+                <Text style={styles.recentChipText}>{label(item)}</Text>
+              </Pressable>
+            )}
+          />
+        </View>
+      ) : null}
+
       <FlatList
         data={results}
         keyExtractor={(e) => e.nameEn}
@@ -164,25 +219,30 @@ export default function ExercisePickerScreen() {
   );
 }
 
-const styles = StyleSheet.create<{
-  screen: ViewStyle;
-  header: ViewStyle;
-  title: TextStyle;
-  closeButton: ViewStyle;
-  closeText: TextStyle;
-  search: TextStyle;
-  filterRow: ViewStyle;
-  chip: ViewStyle;
-  chipActive: ViewStyle;
-  chipText: TextStyle;
-  chipTextActive: TextStyle;
-  row: ViewStyle;
-  rowMain: ViewStyle;
-  rowTitle: TextStyle;
-  rowSub: TextStyle;
-  rowChevron: TextStyle;
-  empty: TextStyle;
-}>({
+const createStyles = (colors: ColorPalette) =>
+  StyleSheet.create<{
+    screen: ViewStyle;
+    header: ViewStyle;
+    title: TextStyle;
+    closeButton: ViewStyle;
+    closeText: TextStyle;
+    search: TextStyle;
+    filterRow: ViewStyle;
+    chip: ViewStyle;
+    chipActive: ViewStyle;
+    chipText: TextStyle;
+    chipTextActive: TextStyle;
+    recentsBlock: ViewStyle;
+    recentsTitle: TextStyle;
+    recentChip: ViewStyle;
+    recentChipText: TextStyle;
+    row: ViewStyle;
+    rowMain: ViewStyle;
+    rowTitle: TextStyle;
+    rowSub: TextStyle;
+    rowChevron: TextStyle;
+    empty: TextStyle;
+  }>({
   screen: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: spacing.lg },
   header: {
     flexDirection: 'row',
@@ -225,6 +285,25 @@ const styles = StyleSheet.create<{
   chipActive: { backgroundColor: colors.accentSoft, borderColor: colors.accent },
   chipText: { color: colors.textMuted, fontSize: fontSize.sm },
   chipTextActive: { color: colors.accent, fontWeight: '700' },
+  recentsBlock: { marginBottom: spacing.sm },
+  recentsTitle: {
+    color: colors.textMuted,
+    fontSize: fontSize.xs,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    textAlign: 'auto',
+  },
+  recentChip: {
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.accentBorder,
+    backgroundColor: colors.accentSoft,
+    height: 34,
+    justifyContent: 'center',
+  },
+  recentChipText: { color: colors.accent, fontSize: fontSize.sm, fontWeight: '600' },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

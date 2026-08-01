@@ -9,6 +9,7 @@
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import Fastify, { type FastifyInstance } from 'fastify';
+import { createRemoteJWKSet, type JWTVerifyGetKey } from 'jose';
 
 import { createCoachProvider } from './ai/factory.js';
 import type { CoachProvider } from './ai/provider.js';
@@ -27,9 +28,11 @@ declare module 'fastify' {
 
 export interface BuildAppOptions {
   env: Env;
+  /** Overrides the JWKS fetched from Supabase — tests inject a `createLocalJWKSet` here. */
+  jwks?: JWTVerifyGetKey;
 }
 
-export async function buildApp({ env }: BuildAppOptions): Promise<FastifyInstance> {
+export async function buildApp({ env, jwks }: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
     logger: { level: env.LOG_LEVEL },
   });
@@ -45,7 +48,9 @@ export async function buildApp({ env }: BuildAppOptions): Promise<FastifyInstanc
     timeWindow: '1 minute',
   });
 
-  await app.register(authPlugin, { jwtSecret: env.SUPABASE_JWT_SECRET });
+  await app.register(authPlugin, {
+    jwks: jwks ?? createRemoteJWKSet(new URL('/auth/v1/.well-known/jwks.json', env.SUPABASE_URL)),
+  });
 
   // postgres.js connects lazily — this does not open a socket until the first query, so
   // buildApp() succeeds even when nothing is listening at DATABASE_URL yet (as in tests).

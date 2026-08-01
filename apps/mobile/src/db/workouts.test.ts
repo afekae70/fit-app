@@ -7,27 +7,10 @@
  * app is designed around, and it is far easier to get wrong in SQL than it looks.
  */
 
-import { createRequire } from 'node:module';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-// Loaded through createRequire rather than a static import: Vite's import analysis does not
-// yet recognise `node:sqlite` (new in Node 22) and rewrites it to a bare "sqlite" specifier,
-// which then fails to resolve. createRequire hands the specifier straight to Node.
-const nodeRequire = createRequire(import.meta.url);
-const { DatabaseSync } = nodeRequire('node:sqlite') as {
-  DatabaseSync: new (path: string) => {
-    exec(sql: string): void;
-    prepare(sql: string): {
-      run(...params: never[]): unknown;
-      all(...params: never[]): unknown[];
-      get(...params: never[]): unknown;
-    };
-    close(): void;
-  };
-};
-
 import type { SqlExecutor } from './executor.js';
-import { CREATE_SCHEMA_SQL } from './schema.js';
+import { createTestExecutor } from './testUtils.js';
 import {
   addExerciseToSession,
   addSet,
@@ -36,44 +19,22 @@ import {
   getActiveSession,
   getPreviousBest,
   getSessionDetail,
-  listNamedTemplates,
-  listSessionSummaries,
+  getWorkoutStreak,
+  listRecentExerciseKeys,
   listSets,
   removeExerciseFromSession,
   removeSet,
-  renameSession,
-  repeatSession,
   startSession,
   updateSet,
 } from './workouts.js';
 
-/** Wrap node:sqlite in the same interface expo-sqlite is wrapped in on device. */
-function createTestExecutor(): SqlExecutor & { close: () => void } {
-  const db = new DatabaseSync(':memory:');
-  // WAL is meaningless for :memory: and node:sqlite rejects the pragma statement form used
-  // on device, so strip it here. Foreign keys matter and are kept.
-  db.exec(CREATE_SCHEMA_SQL.replace(/PRAGMA journal_mode = WAL;/, ''));
-  db.exec('PRAGMA foreign_keys = ON;');
-
-  return {
-    // eslint-disable-next-line @typescript-eslint/require-await
-    async run(sql, params = []) {
-      db.prepare(sql).run(...(params as never[]));
-    },
-    // eslint-disable-next-line @typescript-eslint/require-await
-    async all<T>(sql: string, params: unknown[] = []) {
-      return db.prepare(sql).all(...(params as never[])) as T[];
-    },
-    // eslint-disable-next-line @typescript-eslint/require-await
-    async get<T>(sql: string, params: unknown[] = []) {
-      return (db.prepare(sql).get(...(params as never[])) ?? null) as T | null;
-    },
-    // eslint-disable-next-line @typescript-eslint/require-await
-    async exec(sql) {
-      db.exec(sql);
-    },
-    close: () => db.close(),
-  };
+/** Noon N days before today, in local time — matches the day boundary `getWorkoutStreak` itself
+ * uses, so the test stays correct regardless of the machine's timezone. */
+function daysAgo(n: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  d.setHours(12, 0, 0, 0);
+  return d.toISOString();
 }
 
 /** Deterministic ids and clock so assertions never depend on randomness or wall time. */
@@ -85,6 +46,8 @@ function createFixtures() {
     clock: () => new Date(Date.UTC(2026, 6, 25, 10, 0, tick++)).toISOString(),
   };
 }
+
+const USER = 'user-1';
 
 let db: SqlExecutor & { close: () => void };
 let newId: () => string;
@@ -99,20 +62,20 @@ beforeEach(() => {
 
 describe('sessions', () => {
   it('starts a session and reports it as active until finished', async () => {
-    const sessionId = await startSession(db, newId, {}, clock);
+    const sessionId = await startSession(db, USER, newId, {}, clock);
 
-    let active = await getActiveSession(db);
+    let active = await getActiveSession(db, USER);
     expect(active?.id).toBe(sessionId);
     expect(active?.ended_at).toBeNull();
 
-    await finishSession(db, sessionId, { sessionRpe: 8 }, clock);
+    await finishSession(db, USER, sessionId, { sessionRpe: 8 }, clock);
 
-    active = await getActiveSession(db);
+    active = await getActiveSession(db, USER);
     expect(active).toBeNull();
   });
 
   it('cascades deletes from session down to sets', async () => {
-    const sessionId = await startSession(db, newId, {}, clock);
+    const sessionId = await startSession(db, USER, newId, {}, clock);
     const exId = await addExerciseToSession(db, newId, sessionId, 'Barbell Bench Press', clock);
     await addSet(db, newId, exId, { weightKg: 100, reps: 5 }, clock);
 
@@ -127,7 +90,7 @@ describe('sessions', () => {
 
 describe('dynamic set counts — the core requirement', () => {
   it('records 4 / 2 / 2 sets across three exercises in ONE session', async () => {
-    const sessionId = await startSession(db, newId, {}, clock);
+    const sessionId = await startSession(db, USER, newId, {}, clock);
 
     const press = await addExerciseToSession(db, newId, sessionId, 'Barbell Bench Press', clock);
     const facePull = await addExerciseToSession(db, newId, sessionId, 'Face Pull', clock);
@@ -148,7 +111,7 @@ describe('dynamic set counts — the core requirement', () => {
   });
 
   it('adding a set to one exercise does not disturb another', async () => {
-    const sessionId = await startSession(db, newId, {}, clock);
+    const sessionId = await startSession(db, USER, newId, {}, clock);
     const press = await addExerciseToSession(db, newId, sessionId, 'Barbell Bench Press', clock);
     const facePull = await addExerciseToSession(db, newId, sessionId, 'Face Pull', clock);
 
@@ -162,7 +125,7 @@ describe('dynamic set counts — the core requirement', () => {
   });
 
   it('renumbers 3->2 and 4->3 when set 2 of 4 is deleted', async () => {
-    const sessionId = await startSession(db, newId, {}, clock);
+    const sessionId = await startSession(db, USER, newId, {}, clock);
     const press = await addExerciseToSession(db, newId, sessionId, 'Barbell Bench Press', clock);
 
     const ids: string[] = [];
@@ -181,7 +144,7 @@ describe('dynamic set counts — the core requirement', () => {
   });
 
   it('renumbers correctly when the FIRST set is deleted', async () => {
-    const sessionId = await startSession(db, newId, {}, clock);
+    const sessionId = await startSession(db, USER, newId, {}, clock);
     const press = await addExerciseToSession(db, newId, sessionId, 'Barbell Bench Press', clock);
 
     const ids: string[] = [];
@@ -197,7 +160,7 @@ describe('dynamic set counts — the core requirement', () => {
   });
 
   it('lets the next added set reuse the freed index after a delete', async () => {
-    const sessionId = await startSession(db, newId, {}, clock);
+    const sessionId = await startSession(db, USER, newId, {}, clock);
     const press = await addExerciseToSession(db, newId, sessionId, 'Barbell Bench Press', clock);
 
     const a = await addSet(db, newId, press, { reps: 10 }, clock);
@@ -211,7 +174,7 @@ describe('dynamic set counts — the core requirement', () => {
   });
 
   it('handles deleting every set, then adding again', async () => {
-    const sessionId = await startSession(db, newId, {}, clock);
+    const sessionId = await startSession(db, USER, newId, {}, clock);
     const press = await addExerciseToSession(db, newId, sessionId, 'Barbell Bench Press', clock);
 
     const a = await addSet(db, newId, press, { reps: 10 }, clock);
@@ -232,7 +195,7 @@ describe('dynamic set counts — the core requirement', () => {
 
 describe('set prefill', () => {
   it('copies weight and reps forward from the previous set', async () => {
-    const sessionId = await startSession(db, newId, {}, clock);
+    const sessionId = await startSession(db, USER, newId, {}, clock);
     const press = await addExerciseToSession(db, newId, sessionId, 'Barbell Bench Press', clock);
     await addSet(db, newId, press, { weightKg: 82.5, reps: 8 }, clock);
 
@@ -244,7 +207,7 @@ describe('set prefill', () => {
   });
 
   it('does not carry warmup status forward', async () => {
-    const sessionId = await startSession(db, newId, {}, clock);
+    const sessionId = await startSession(db, USER, newId, {}, clock);
     const press = await addExerciseToSession(db, newId, sessionId, 'Barbell Bench Press', clock);
     await addSet(db, newId, press, { weightKg: 40, reps: 10, isWarmup: true }, clock);
 
@@ -256,7 +219,7 @@ describe('set prefill', () => {
   });
 
   it('creates an empty set when there is nothing to copy', async () => {
-    const sessionId = await startSession(db, newId, {}, clock);
+    const sessionId = await startSession(db, USER, newId, {}, clock);
     const press = await addExerciseToSession(db, newId, sessionId, 'Barbell Bench Press', clock);
 
     await addSetCopyingPrevious(db, newId, press, clock);
@@ -269,7 +232,7 @@ describe('set prefill', () => {
 
 describe('updateSet', () => {
   it('changes only the supplied fields', async () => {
-    const sessionId = await startSession(db, newId, {}, clock);
+    const sessionId = await startSession(db, USER, newId, {}, clock);
     const press = await addExerciseToSession(db, newId, sessionId, 'Barbell Bench Press', clock);
     const setId = await addSet(db, newId, press, { weightKg: 80, reps: 8 }, clock);
 
@@ -282,7 +245,7 @@ describe('updateSet', () => {
   });
 
   it('can explicitly clear a field with null', async () => {
-    const sessionId = await startSession(db, newId, {}, clock);
+    const sessionId = await startSession(db, USER, newId, {}, clock);
     const press = await addExerciseToSession(db, newId, sessionId, 'Barbell Bench Press', clock);
     const setId = await addSet(db, newId, press, { weightKg: 80, reps: 8 }, clock);
 
@@ -292,7 +255,7 @@ describe('updateSet', () => {
   });
 
   it('is a no-op with an empty patch', async () => {
-    const sessionId = await startSession(db, newId, {}, clock);
+    const sessionId = await startSession(db, USER, newId, {}, clock);
     const press = await addExerciseToSession(db, newId, sessionId, 'Barbell Bench Press', clock);
     const setId = await addSet(db, newId, press, { weightKg: 80, reps: 8 }, clock);
 
@@ -302,7 +265,7 @@ describe('updateSet', () => {
   });
 
   it('toggles warmup', async () => {
-    const sessionId = await startSession(db, newId, {}, clock);
+    const sessionId = await startSession(db, USER, newId, {}, clock);
     const press = await addExerciseToSession(db, newId, sessionId, 'Barbell Bench Press', clock);
     const setId = await addSet(db, newId, press, { weightKg: 40, reps: 10 }, clock);
 
@@ -313,7 +276,7 @@ describe('updateSet', () => {
 
 describe('exercise ordering', () => {
   it('closes the gap when a middle exercise is removed', async () => {
-    const sessionId = await startSession(db, newId, {}, clock);
+    const sessionId = await startSession(db, USER, newId, {}, clock);
     await addExerciseToSession(db, newId, sessionId, 'Barbell Bench Press', clock);
     const middle = await addExerciseToSession(db, newId, sessionId, 'Face Pull', clock);
     await addExerciseToSession(db, newId, sessionId, 'Machine Bicep Curl', clock);
@@ -329,7 +292,7 @@ describe('exercise ordering', () => {
   });
 
   it('removes the exercise sets along with it', async () => {
-    const sessionId = await startSession(db, newId, {}, clock);
+    const sessionId = await startSession(db, USER, newId, {}, clock);
     const press = await addExerciseToSession(db, newId, sessionId, 'Barbell Bench Press', clock);
     await addSet(db, newId, press, { weightKg: 80, reps: 8 }, clock);
 
@@ -341,7 +304,7 @@ describe('exercise ordering', () => {
 
 describe('getSessionDetail', () => {
   it('returns exercises in order, each with its own sets', async () => {
-    const sessionId = await startSession(db, newId, {}, clock);
+    const sessionId = await startSession(db, USER, newId, {}, clock);
     const press = await addExerciseToSession(db, newId, sessionId, 'Barbell Bench Press', clock);
     const facePull = await addExerciseToSession(db, newId, sessionId, 'Face Pull', clock);
 
@@ -364,46 +327,111 @@ describe('getSessionDetail', () => {
 
 describe('getPreviousBest', () => {
   it('finds the heaviest working set from an earlier session', async () => {
-    const first = await startSession(db, newId, {}, clock);
+    const first = await startSession(db, USER, newId, {}, clock);
     const p1 = await addExerciseToSession(db, newId, first, 'Barbell Bench Press', clock);
     await addSet(db, newId, p1, { weightKg: 80, reps: 8 }, clock);
     await addSet(db, newId, p1, { weightKg: 85, reps: 5 }, clock);
-    await finishSession(db, first, {}, clock);
+    await finishSession(db, USER, first, {}, clock);
 
-    const second = await startSession(db, newId, {}, clock);
+    const second = await startSession(db, USER, newId, {}, clock);
 
-    const best = await getPreviousBest(db, 'Barbell Bench Press', second);
+    const best = await getPreviousBest(db, USER, 'Barbell Bench Press', second);
     expect(best?.weight_kg).toBe(85);
   });
 
   it('ignores warmup sets', async () => {
-    const sessionId = await startSession(db, newId, {}, clock);
+    const sessionId = await startSession(db, USER, newId, {}, clock);
     const press = await addExerciseToSession(db, newId, sessionId, 'Barbell Bench Press', clock);
     await addSet(db, newId, press, { weightKg: 200, reps: 1, isWarmup: true }, clock);
     await addSet(db, newId, press, { weightKg: 80, reps: 8 }, clock);
-    await finishSession(db, sessionId, {}, clock);
+    await finishSession(db, USER, sessionId, {}, clock);
 
-    const best = await getPreviousBest(db, 'Barbell Bench Press');
+    const best = await getPreviousBest(db, USER, 'Barbell Bench Press');
     // A 200 kg "warmup" is data entry noise; counting it would show a fake personal best.
     expect(best?.weight_kg).toBe(80);
   });
 
   it('excludes the current session so the hint shows LAST time, not this time', async () => {
-    const sessionId = await startSession(db, newId, {}, clock);
+    const sessionId = await startSession(db, USER, newId, {}, clock);
     const press = await addExerciseToSession(db, newId, sessionId, 'Barbell Bench Press', clock);
     await addSet(db, newId, press, { weightKg: 100, reps: 5 }, clock);
 
-    expect(await getPreviousBest(db, 'Barbell Bench Press', sessionId)).toBeNull();
+    expect(await getPreviousBest(db, USER, 'Barbell Bench Press', sessionId)).toBeNull();
   });
 
   it('returns null for an exercise never performed', async () => {
-    expect(await getPreviousBest(db, 'Nordic Hamstring Curl')).toBeNull();
+    expect(await getPreviousBest(db, USER, 'Nordic Hamstring Curl')).toBeNull();
+  });
+
+  it('never surfaces another user\'s best as this user\'s reference', async () => {
+    const otherSession = await startSession(db, 'user-2', newId, {}, clock);
+    const otherPress = await addExerciseToSession(
+      db,
+      newId,
+      otherSession,
+      'Barbell Bench Press',
+      clock,
+    );
+    await addSet(db, newId, otherPress, { weightKg: 140, reps: 5 }, clock);
+    await finishSession(db, 'user-2', otherSession, {}, clock);
+
+    // USER has never performed this exercise — the 140kg set belongs to a different person
+    // sharing this device and must not leak in as USER's own "last time" hint.
+    expect(await getPreviousBest(db, USER, 'Barbell Bench Press')).toBeNull();
+  });
+});
+
+describe('listRecentExerciseKeys', () => {
+  it('returns the most recently trained exercise first', async () => {
+    const first = await startSession(db, USER, newId, {}, clock);
+    await addExerciseToSession(db, newId, first, 'Barbell Bench Press', clock);
+    await finishSession(db, USER, first, {}, clock);
+
+    const second = await startSession(db, USER, newId, {}, clock);
+    await addExerciseToSession(db, newId, second, 'Back Squat', clock);
+    await finishSession(db, USER, second, {}, clock);
+
+    expect(await listRecentExerciseKeys(db, USER)).toEqual(['Back Squat', 'Barbell Bench Press']);
+  });
+
+  it('deduplicates an exercise trained across several sessions', async () => {
+    const first = await startSession(db, USER, newId, {}, clock);
+    await addExerciseToSession(db, newId, first, 'Barbell Bench Press', clock);
+    await finishSession(db, USER, first, {}, clock);
+
+    const second = await startSession(db, USER, newId, {}, clock);
+    await addExerciseToSession(db, newId, second, 'Barbell Bench Press', clock);
+    await finishSession(db, USER, second, {}, clock);
+
+    expect(await listRecentExerciseKeys(db, USER)).toEqual(['Barbell Bench Press']);
+  });
+
+  it('respects the limit', async () => {
+    const sessionId = await startSession(db, USER, newId, {}, clock);
+    await addExerciseToSession(db, newId, sessionId, 'Barbell Bench Press', clock);
+    await addExerciseToSession(db, newId, sessionId, 'Back Squat', clock);
+    await addExerciseToSession(db, newId, sessionId, 'Conventional Deadlift', clock);
+    await finishSession(db, USER, sessionId, {}, clock);
+
+    expect(await listRecentExerciseKeys(db, USER, 2)).toHaveLength(2);
+  });
+
+  it('returns an empty list when nothing has been logged', async () => {
+    expect(await listRecentExerciseKeys(db, USER)).toEqual([]);
+  });
+
+  it('never surfaces another user\'s exercises', async () => {
+    const otherSession = await startSession(db, 'user-2', newId, {}, clock);
+    await addExerciseToSession(db, newId, otherSession, 'Barbell Bench Press', clock);
+    await finishSession(db, 'user-2', otherSession, {}, clock);
+
+    expect(await listRecentExerciseKeys(db, USER)).toEqual([]);
   });
 });
 
 describe('outbox', () => {
   it('records every mutation for later sync', async () => {
-    const sessionId = await startSession(db, newId, {}, clock);
+    const sessionId = await startSession(db, USER, newId, {}, clock);
     const press = await addExerciseToSession(db, newId, sessionId, 'Barbell Bench Press', clock);
     const setId = await addSet(db, newId, press, { weightKg: 80, reps: 8 }, clock);
     await updateSet(db, setId, { reps: 9 }, clock);
@@ -423,7 +451,7 @@ describe('outbox', () => {
   });
 
   it('stores a replayable payload', async () => {
-    const sessionId = await startSession(db, newId, {}, clock);
+    const sessionId = await startSession(db, USER, newId, {}, clock);
     const press = await addExerciseToSession(db, newId, sessionId, 'Barbell Bench Press', clock);
     await addSet(db, newId, press, { weightKg: 82.5, reps: 8 }, clock);
 
@@ -433,5 +461,60 @@ describe('outbox', () => {
     const payload = JSON.parse(entry?.payload ?? '{}') as { weightKg: number; setIndex: number };
     expect(payload.weightKg).toBe(82.5);
     expect(payload.setIndex).toBe(1);
+  });
+});
+
+describe('getWorkoutStreak', () => {
+  async function finishOn(daysBack: number) {
+    const at = daysAgo(daysBack);
+    const sessionId = await startSession(db, USER, newId, {}, () => at);
+    await finishSession(db, USER, sessionId, {}, () => at);
+  }
+
+  it('reports zero when no sessions exist', async () => {
+    expect(await getWorkoutStreak(db, USER)).toEqual({ currentDays: 0, trainedToday: false });
+  });
+
+  it('ignores sessions that were never finished', async () => {
+    await startSession(db, USER, newId, {}, () => daysAgo(0));
+    expect(await getWorkoutStreak(db, USER)).toEqual({ currentDays: 0, trainedToday: false });
+  });
+
+  it('counts a streak still running through today', async () => {
+    await finishOn(2);
+    await finishOn(1);
+    await finishOn(0);
+
+    expect(await getWorkoutStreak(db, USER)).toEqual({ currentDays: 3, trainedToday: true });
+  });
+
+  it('counts a streak that ended yesterday even without training today', async () => {
+    await finishOn(2);
+    await finishOn(1);
+
+    expect(await getWorkoutStreak(db, USER)).toEqual({ currentDays: 2, trainedToday: false });
+  });
+
+  it('stops counting at a gap day', async () => {
+    await finishOn(5);
+    await finishOn(1);
+    await finishOn(0);
+
+    expect(await getWorkoutStreak(db, USER)).toEqual({ currentDays: 2, trainedToday: true });
+  });
+
+  it('does not double count multiple sessions on the same day', async () => {
+    await finishOn(0);
+    await finishOn(0);
+
+    expect(await getWorkoutStreak(db, USER)).toEqual({ currentDays: 1, trainedToday: true });
+  });
+
+  it('only counts sessions for the given user', async () => {
+    await finishOn(0);
+    expect(await getWorkoutStreak(db, 'someone-else')).toEqual({
+      currentDays: 0,
+      trainedToday: false,
+    });
   });
 });

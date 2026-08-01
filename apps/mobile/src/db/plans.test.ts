@@ -6,7 +6,6 @@
  * match what was actually lifted.
  */
 
-import { createRequire } from 'node:module';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { SqlExecutor } from './executor.js';
@@ -29,45 +28,10 @@ import {
   startSessionFromPlanDay,
   updatePlanDayExercise,
 } from './plans.js';
-import { CREATE_SCHEMA_SQL } from './schema.js';
+import { createTestExecutor } from './testUtils.js';
 import { addSet, finishSession, getSessionDetail, removeSet } from './workouts.js';
 
-const nodeRequire = createRequire(import.meta.url);
-const { DatabaseSync } = nodeRequire('node:sqlite') as {
-  DatabaseSync: new (path: string) => {
-    exec(sql: string): void;
-    prepare(sql: string): {
-      run(...params: never[]): unknown;
-      all(...params: never[]): unknown[];
-      get(...params: never[]): unknown;
-    };
-    close(): void;
-  };
-};
-
-function createTestExecutor(): SqlExecutor {
-  const db = new DatabaseSync(':memory:');
-  db.exec(CREATE_SCHEMA_SQL.replace(/PRAGMA journal_mode = WAL;/, ''));
-  db.exec('PRAGMA foreign_keys = ON;');
-  return {
-    // eslint-disable-next-line @typescript-eslint/require-await
-    async run(sql, params = []) {
-      db.prepare(sql).run(...(params as never[]));
-    },
-    // eslint-disable-next-line @typescript-eslint/require-await
-    async all<T>(sql: string, params: unknown[] = []) {
-      return db.prepare(sql).all(...(params as never[])) as T[];
-    },
-    // eslint-disable-next-line @typescript-eslint/require-await
-    async get<T>(sql: string, params: unknown[] = []) {
-      return (db.prepare(sql).get(...(params as never[])) ?? null) as T | null;
-    },
-    // eslint-disable-next-line @typescript-eslint/require-await
-    async exec(sql) {
-      db.exec(sql);
-    },
-  };
-}
+const USER = 'user-1';
 
 let db: SqlExecutor;
 let counter = 0;
@@ -86,49 +50,79 @@ beforeEach(() => {
 
 describe('plans', () => {
   it('activates the first plan automatically', async () => {
-    const id = await createPlan(db, newId, 'Hypertrophy Block 1', clock);
-    const active = await getActivePlan(db);
+    const id = await createPlan(db, USER, newId, 'Hypertrophy Block 1', clock);
+    const active = await getActivePlan(db, USER);
     expect(active?.id).toBe(id);
     expect(active?.name).toBe('Hypertrophy Block 1');
   });
 
   it('does not steal activation from an existing plan', async () => {
-    const first = await createPlan(db, newId, 'Block 1', clock);
-    await createPlan(db, newId, 'Block 2', clock);
+    const first = await createPlan(db, USER, newId, 'Block 1', clock);
+    await createPlan(db, USER, newId, 'Block 2', clock);
 
     // Creating a second plan must not silently switch the programme mid-week.
-    expect((await getActivePlan(db))?.id).toBe(first);
+    expect((await getActivePlan(db, USER))?.id).toBe(first);
   });
 
   it('keeps exactly one plan active when switching', async () => {
-    await createPlan(db, newId, 'Block 1', clock);
-    const second = await createPlan(db, newId, 'Block 2', clock);
-    await activatePlan(db, second);
+    await createPlan(db, USER, newId, 'Block 1', clock);
+    const second = await createPlan(db, USER, newId, 'Block 2', clock);
+    await activatePlan(db, USER, second);
 
-    const plans = await listPlans(db);
+    const plans = await listPlans(db, USER);
     expect(plans.filter((p) => p.is_active === 1)).toHaveLength(1);
-    expect((await getActivePlan(db))?.id).toBe(second);
+    expect((await getActivePlan(db, USER))?.id).toBe(second);
   });
 
   it('promotes another plan when the active one is deleted', async () => {
-    const first = await createPlan(db, newId, 'Block 1', clock);
-    const second = await createPlan(db, newId, 'Block 2', clock);
-    await activatePlan(db, second);
-    await deletePlan(db, second);
+    const first = await createPlan(db, USER, newId, 'Block 1', clock);
+    const second = await createPlan(db, USER, newId, 'Block 2', clock);
+    await activatePlan(db, USER, second);
+    await deletePlan(db, USER, second);
 
     // Leaving the user with plans but no active one would make the plan tab look empty.
-    expect((await getActivePlan(db))?.id).toBe(first);
+    expect((await getActivePlan(db, USER))?.id).toBe(first);
+  });
+
+  it('auto-activates a second user\'s first plan even though the first user already has one', async () => {
+    // Unscoped, this would see USER's existing plan and conclude it isn't the first plan for
+    // 'user-2' either, leaving 'user-2' with a plan tab that looks empty.
+    await createPlan(db, USER, newId, 'Block 1', clock);
+    const secondUsersPlan = await createPlan(db, 'user-2', newId, 'Their First Plan', clock);
+
+    expect((await getActivePlan(db, 'user-2'))?.id).toBe(secondUsersPlan);
+  });
+
+  it('never lets activating one user\'s plan deactivate another user\'s active plan', async () => {
+    const usersPlan = await createPlan(db, USER, newId, 'Block 1', clock);
+    const otherUsersPlan = await createPlan(db, 'user-2', newId, 'Their Plan', clock);
+
+    await activatePlan(db, 'user-2', otherUsersPlan);
+
+    expect((await getActivePlan(db, USER))?.id).toBe(usersPlan);
+    expect((await getActivePlan(db, 'user-2'))?.id).toBe(otherUsersPlan);
+  });
+
+  it('promotes only this user\'s own plan, never another user\'s, when the active one is deleted', async () => {
+    const first = await createPlan(db, USER, newId, 'Block 1', clock);
+    const second = await createPlan(db, USER, newId, 'Block 2', clock);
+    await activatePlan(db, USER, second);
+    await createPlan(db, 'user-2', newId, 'Their Only Plan', clock);
+
+    await deletePlan(db, USER, second);
+
+    expect((await getActivePlan(db, USER))?.id).toBe(first);
   });
 
   it('trims the name', async () => {
-    await createPlan(db, newId, '   Push Pull Legs   ', clock);
-    expect((await getActivePlan(db))?.name).toBe('Push Pull Legs');
+    await createPlan(db, USER, newId, '   Push Pull Legs   ', clock);
+    expect((await getActivePlan(db, USER))?.name).toBe('Push Pull Legs');
   });
 });
 
 describe('plan days', () => {
   it('numbers days from 1 in creation order', async () => {
-    const plan = await createPlan(db, newId, 'PPL', clock);
+    const plan = await createPlan(db, USER, newId, 'PPL', clock);
     await addPlanDay(db, newId, plan, 'Push');
     await addPlanDay(db, newId, plan, 'Pull');
     await addPlanDay(db, newId, plan, 'Legs');
@@ -139,7 +133,7 @@ describe('plan days', () => {
   });
 
   it('closes the gap in day_index when a middle day is removed', async () => {
-    const plan = await createPlan(db, newId, 'PPL', clock);
+    const plan = await createPlan(db, USER, newId, 'PPL', clock);
     await addPlanDay(db, newId, plan, 'Push');
     const pull = await addPlanDay(db, newId, plan, 'Pull');
     await addPlanDay(db, newId, plan, 'Legs');
@@ -153,11 +147,11 @@ describe('plan days', () => {
   });
 
   it('cascades day and prescription deletion when the plan goes', async () => {
-    const plan = await createPlan(db, newId, 'PPL', clock);
+    const plan = await createPlan(db, USER, newId, 'PPL', clock);
     const day = await addPlanDay(db, newId, plan, 'Push');
     await addPlanDayExercise(db, newId, day, 'Barbell Bench Press');
 
-    await deletePlan(db, plan);
+    await deletePlan(db, USER, plan);
 
     expect(await getPlanDay(db, day)).toBeNull();
     const orphans = await db.all(`SELECT * FROM plan_day_exercises`);
@@ -167,7 +161,7 @@ describe('plan days', () => {
 
 describe('prescriptions', () => {
   it('defaults to 3 sets of 8-12', async () => {
-    const plan = await createPlan(db, newId, 'PPL', clock);
+    const plan = await createPlan(db, USER, newId, 'PPL', clock);
     const day = await addPlanDay(db, newId, plan, 'Push');
     await addPlanDayExercise(db, newId, day, 'Barbell Bench Press');
 
@@ -178,7 +172,7 @@ describe('prescriptions', () => {
   });
 
   it('patches only the fields supplied', async () => {
-    const plan = await createPlan(db, newId, 'PPL', clock);
+    const plan = await createPlan(db, USER, newId, 'PPL', clock);
     const day = await addPlanDay(db, newId, plan, 'Push');
     const prescription = await addPlanDayExercise(db, newId, day, 'Barbell Bench Press', {
       targetSets: 5,
@@ -196,7 +190,7 @@ describe('prescriptions', () => {
   });
 
   it('closes the gap in order_index when one is removed', async () => {
-    const plan = await createPlan(db, newId, 'PPL', clock);
+    const plan = await createPlan(db, USER, newId, 'PPL', clock);
     const day = await addPlanDay(db, newId, plan, 'Push');
     await addPlanDayExercise(db, newId, day, 'Barbell Bench Press');
     const middle = await addPlanDayExercise(db, newId, day, 'Overhead Press');
@@ -215,7 +209,7 @@ describe('prescriptions', () => {
 
 describe('starting a session from a plan day', () => {
   async function buildDay() {
-    const plan = await createPlan(db, newId, 'PPL', clock);
+    const plan = await createPlan(db, USER, newId, 'PPL', clock);
     const day = await addPlanDay(db, newId, plan, 'Push');
     await addPlanDayExercise(db, newId, day, 'Barbell Bench Press', { targetSets: 4 });
     await addPlanDayExercise(db, newId, day, 'Face Pull', { targetSets: 2 });
@@ -224,7 +218,7 @@ describe('starting a session from a plan day', () => {
 
   it('creates the prescribed exercises with the prescribed number of blank sets', async () => {
     const { day } = await buildDay();
-    const sessionId = (await startSessionFromPlanDay(db, newId, day, clock)) as string;
+    const sessionId = (await startSessionFromPlanDay(db, USER, newId, day, clock)) as string;
 
     const { exercises } = await getSessionDetail(db, sessionId);
     expect(exercises.map((e) => e.exercise_key)).toEqual(['Barbell Bench Press', 'Face Pull']);
@@ -235,7 +229,7 @@ describe('starting a session from a plan day', () => {
 
   it('records plan_day_id and inherits the day name', async () => {
     const { day } = await buildDay();
-    const sessionId = (await startSessionFromPlanDay(db, newId, day, clock)) as string;
+    const sessionId = (await startSessionFromPlanDay(db, USER, newId, day, clock)) as string;
 
     const { session } = await getSessionDetail(db, sessionId);
     expect(session?.plan_day_id).toBe(day);
@@ -243,23 +237,23 @@ describe('starting a session from a plan day', () => {
   });
 
   it('still creates one set when the prescription says none', async () => {
-    const plan = await createPlan(db, newId, 'PPL', clock);
+    const plan = await createPlan(db, USER, newId, 'PPL', clock);
     const day = await addPlanDay(db, newId, plan, 'Push');
     await addPlanDayExercise(db, newId, day, 'Plank', { targetSets: null });
 
-    const sessionId = (await startSessionFromPlanDay(db, newId, day, clock)) as string;
+    const sessionId = (await startSessionFromPlanDay(db, USER, newId, day, clock)) as string;
     const { exercises } = await getSessionDetail(db, sessionId);
     // An exercise with zero rows gives the user nothing to type into.
     expect(exercises[0]?.sets).toHaveLength(1);
   });
 
   it('returns null for an unknown day instead of an empty session', async () => {
-    expect(await startSessionFromPlanDay(db, newId, 'no-such-day', clock)).toBeNull();
+    expect(await startSessionFromPlanDay(db, USER, newId, 'no-such-day', clock)).toBeNull();
   });
 
   it('lets the session diverge from the plan without changing the plan', async () => {
     const { day } = await buildDay();
-    const sessionId = (await startSessionFromPlanDay(db, newId, day, clock)) as string;
+    const sessionId = (await startSessionFromPlanDay(db, USER, newId, day, clock)) as string;
 
     const { exercises } = await getSessionDetail(db, sessionId);
     const press = exercises[0]!;
@@ -280,54 +274,54 @@ describe('starting a session from a plan day', () => {
 describe('next plan day', () => {
   it('suggests a never-trained day before any trained one', async () => {
     const tick = tickingClock();
-    const plan = await createPlan(db, newId, 'PPL', tick);
+    const plan = await createPlan(db, USER, newId, 'PPL', tick);
     const push = await addPlanDay(db, newId, plan, 'Push');
     await addPlanDay(db, newId, plan, 'Pull');
     await addPlanDayExercise(db, newId, push, 'Barbell Bench Press');
 
-    const sessionId = (await startSessionFromPlanDay(db, newId, push, tick)) as string;
-    await finishSession(db, sessionId, {}, tick);
+    const sessionId = (await startSessionFromPlanDay(db, USER, newId, push, tick)) as string;
+    await finishSession(db, USER, sessionId, {}, tick);
 
-    const next = await getNextPlanDay(db, plan);
+    const next = await getNextPlanDay(db, USER, plan);
     expect(next?.name).toBe('Pull');
   });
 
   it('cycles back to the least recently trained day', async () => {
     const tick = tickingClock();
-    const plan = await createPlan(db, newId, 'PPL', tick);
+    const plan = await createPlan(db, USER, newId, 'PPL', tick);
     const push = await addPlanDay(db, newId, plan, 'Push');
     const pull = await addPlanDay(db, newId, plan, 'Pull');
     await addPlanDayExercise(db, newId, push, 'Barbell Bench Press');
     await addPlanDayExercise(db, newId, pull, 'Barbell Row');
 
-    const first = (await startSessionFromPlanDay(db, newId, push, tick)) as string;
-    await finishSession(db, first, {}, tick);
-    const second = (await startSessionFromPlanDay(db, newId, pull, tick)) as string;
-    await finishSession(db, second, {}, tick);
+    const first = (await startSessionFromPlanDay(db, USER, newId, push, tick)) as string;
+    await finishSession(db, USER, first, {}, tick);
+    const second = (await startSessionFromPlanDay(db, USER, newId, pull, tick)) as string;
+    await finishSession(db, USER, second, {}, tick);
 
     // Both trained; Push was longer ago, so it comes round again.
-    expect((await getNextPlanDay(db, plan))?.name).toBe('Push');
+    expect((await getNextPlanDay(db, USER, plan))?.name).toBe('Push');
   });
 
   it('returns null for a plan with no days', async () => {
-    const plan = await createPlan(db, newId, 'Empty', clock);
-    expect(await getNextPlanDay(db, plan)).toBeNull();
+    const plan = await createPlan(db, USER, newId, 'Empty', clock);
+    expect(await getNextPlanDay(db, USER, plan)).toBeNull();
   });
 });
 
 describe('plan day status', () => {
   it('reports exercise counts and last-trained per day', async () => {
     const tick = tickingClock();
-    const plan = await createPlan(db, newId, 'PPL', tick);
+    const plan = await createPlan(db, USER, newId, 'PPL', tick);
     const push = await addPlanDay(db, newId, plan, 'Push');
     await addPlanDay(db, newId, plan, 'Pull');
     await addPlanDayExercise(db, newId, push, 'Barbell Bench Press');
     await addPlanDayExercise(db, newId, push, 'Face Pull');
 
-    const sessionId = (await startSessionFromPlanDay(db, newId, push, tick)) as string;
-    await finishSession(db, sessionId, {}, tick);
+    const sessionId = (await startSessionFromPlanDay(db, USER, newId, push, tick)) as string;
+    await finishSession(db, USER, sessionId, {}, tick);
 
-    const status = await listPlanDayStatus(db, plan);
+    const status = await listPlanDayStatus(db, USER, plan);
     expect(status.map((s) => s.name)).toEqual(['Push', 'Pull']);
     expect(status[0]?.exercise_count).toBe(2);
     expect(status[0]?.session_count).toBe(1);
@@ -339,7 +333,7 @@ describe('plan day status', () => {
 
 describe('prescribed vs actual', () => {
   it('reports logged sets against the target', async () => {
-    const plan = await createPlan(db, newId, 'PPL', clock);
+    const plan = await createPlan(db, USER, newId, 'PPL', clock);
     const day = await addPlanDay(db, newId, plan, 'Push');
     await addPlanDayExercise(db, newId, day, 'Barbell Bench Press', {
       targetSets: 3,
@@ -347,14 +341,14 @@ describe('prescribed vs actual', () => {
       targetRepsMax: 12,
     });
 
-    const sessionId = (await startSessionFromPlanDay(db, newId, day, clock)) as string;
+    const sessionId = (await startSessionFromPlanDay(db, USER, newId, day, clock)) as string;
     const { exercises } = await getSessionDetail(db, sessionId);
     const press = exercises[0]!;
     for (const [i, set] of press.sets.entries()) {
       await db.run(`UPDATE sets SET weight_kg = ?, reps = ? WHERE id = ?`, [80, 10 - i, set.id]);
     }
 
-    const adherence = await getSessionAdherence(db, sessionId);
+    const adherence = await getSessionAdherence(db, USER, sessionId);
     expect(adherence).toHaveLength(1);
     expect(adherence[0]?.target_sets).toBe(3);
     expect(adherence[0]?.logged_sets).toBe(3);
@@ -363,30 +357,30 @@ describe('prescribed vs actual', () => {
   });
 
   it('excludes warmups from the logged count', async () => {
-    const plan = await createPlan(db, newId, 'PPL', clock);
+    const plan = await createPlan(db, USER, newId, 'PPL', clock);
     const day = await addPlanDay(db, newId, plan, 'Push');
     await addPlanDayExercise(db, newId, day, 'Barbell Bench Press', { targetSets: 2 });
 
-    const sessionId = (await startSessionFromPlanDay(db, newId, day, clock)) as string;
+    const sessionId = (await startSessionFromPlanDay(db, USER, newId, day, clock)) as string;
     const { exercises } = await getSessionDetail(db, sessionId);
     await addSet(db, newId, exercises[0]!.id, { weightKg: 40, reps: 12, isWarmup: true }, clock);
 
     // Three rows exist, but a thorough warmup must not read as beating the prescription.
-    const adherence = await getSessionAdherence(db, sessionId);
+    const adherence = await getSessionAdherence(db, USER, sessionId);
     expect(adherence[0]?.logged_sets).toBe(2);
   });
 
   it('includes ad-hoc exercises with null targets rather than hiding them', async () => {
-    const plan = await createPlan(db, newId, 'PPL', clock);
+    const plan = await createPlan(db, USER, newId, 'PPL', clock);
     const day = await addPlanDay(db, newId, plan, 'Push');
     await addPlanDayExercise(db, newId, day, 'Barbell Bench Press', { targetSets: 2 });
 
-    const sessionId = (await startSessionFromPlanDay(db, newId, day, clock)) as string;
+    const sessionId = (await startSessionFromPlanDay(db, USER, newId, day, clock)) as string;
     const { addExerciseToSession } = await import('./workouts.js');
     const extra = await addExerciseToSession(db, newId, sessionId, 'Cable Fly', clock);
     await addSet(db, newId, extra, { weightKg: 15, reps: 15 }, clock);
 
-    const adherence = await getSessionAdherence(db, sessionId);
+    const adherence = await getSessionAdherence(db, USER, sessionId);
     const fly = adherence.find((a) => a.exercise_key === 'Cable Fly');
     // It was part of the workout; dropping it would misreport the session's volume.
     expect(fly).toBeDefined();
@@ -396,14 +390,14 @@ describe('prescribed vs actual', () => {
 
   it('is empty for a freestyle session with no plan day', async () => {
     const { startSession } = await import('./workouts.js');
-    const sessionId = await startSession(db, newId, {}, clock);
-    expect(await getSessionAdherence(db, sessionId)).toEqual([]);
+    const sessionId = await startSession(db, USER, newId, {}, clock);
+    expect(await getSessionAdherence(db, USER, sessionId)).toEqual([]);
   });
 });
 
 describe('plan detail', () => {
   it('returns days in order with their exercises', async () => {
-    const plan = await createPlan(db, newId, 'PPL', clock);
+    const plan = await createPlan(db, USER, newId, 'PPL', clock);
     const push = await addPlanDay(db, newId, plan, 'Push');
     const pull = await addPlanDay(db, newId, plan, 'Pull');
     await addPlanDayExercise(db, newId, push, 'Barbell Bench Press');

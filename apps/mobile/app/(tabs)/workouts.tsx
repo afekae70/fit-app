@@ -26,12 +26,15 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
 import {
   ExerciseCard,
   type ExerciseTarget,
   type PreviousSet,
 } from '../../src/components/ExerciseCard.js';
 import { FinishSummary } from '../../src/components/FinishSummary.js';
+import { PrToast, type PrToastData } from '../../src/components/PrToast.js';
+import { EmptyState, SkeletonScreen } from '../../src/components/ui.js';
 import { WorkoutHome, type TemplateEntry } from '../../src/components/WorkoutHome.js';
 import { listPlanDayExercises } from '../../src/db/plans.js';
 import { getExecutor, newId } from '../../src/db/provider.js';
@@ -41,6 +44,7 @@ import {
   addSetCopyingPrevious,
   finishSession,
   getActiveSession,
+  getPreviousBest,
   getPreviousSessionSets,
   getSessionDetail,
   listNamedTemplates,
@@ -54,7 +58,9 @@ import {
   type SessionExerciseWithSets,
   type SessionSummaryRow,
 } from '../../src/db/workouts.js';
-import { colors, fontSize, radius, spacing } from '../../src/theme.js';
+import { hapticSuccess } from '../../src/haptics.js';
+import { useTheme } from '../../src/ThemeProvider.js';
+import { fontSize, radius, spacing, type ColorPalette } from '../../src/theme.js';
 
 const EXERCISE_BY_KEY = new Map<string, ExerciseSeed>(
   EXERCISE_SEED.map((exercise) => [exercise.nameEn, exercise]),
@@ -72,9 +78,13 @@ function elapsedMinutes(startedAt: string, endMs: number): number {
 }
 
 export default function WorkoutsScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const isHebrew = i18n.language === 'he';
   const insets = useSafeAreaInsets();
+  const userId = useCurrentUserId();
   const params = useLocalSearchParams<{ addExercise?: string; sessionId?: string }>();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [startedAt, setStartedAt] = useState<string | null>(null);
@@ -90,13 +100,23 @@ export default function WorkoutsScreen() {
   const [sessionName, setSessionName] = useState<string | null>(null);
   const [templates, setTemplates] = useState<TemplateEntry[]>([]);
   const [history, setHistory] = useState<SessionSummaryRow[]>([]);
+  const [prToast, setPrToast] = useState<PrToastData | null>(null);
+  // A set that already triggered a celebration stays quiet on further edits this session —
+  // otherwise nudging the same field twice (even to the same value) would re-fire the toast.
+  const celebratedSetIds = useRef<Set<string>>(new Set());
 
   /** Refresh the idle-state lists (templates + history). */
   const reloadHome = useCallback(async () => {
     const db = await getExecutor();
-    setTemplates((await listNamedTemplates(db)) as TemplateEntry[]);
-    setHistory(await listSessionSummaries(db, 50));
-  }, []);
+    setTemplates((await listNamedTemplates(db, userId)) as TemplateEntry[]);
+    setHistory(await listSessionSummaries(db, userId, 50));
+  }, [userId]);
+
+  const [homeRefreshing, setHomeRefreshing] = useState(false);
+  const handleHomeRefresh = useCallback(() => {
+    setHomeRefreshing(true);
+    void reloadHome().finally(() => setHomeRefreshing(false));
+  }, [reloadHome]);
 
   /** Reload the session from SQLite — the database is the source of truth, not component state. */
   const reload = useCallback(async (id: string) => {
@@ -110,7 +130,7 @@ export default function WorkoutsScreen() {
     // come back as their own "last time" the instant they are saved.
     const nextPrevious: Record<string, PreviousSet[] | null> = {};
     for (const exercise of loaded) {
-      const sets = await getPreviousSessionSets(db, exercise.exercise_key, id);
+      const sets = await getPreviousSessionSets(db, userId, exercise.exercise_key, id);
       nextPrevious[exercise.exercise_key] = sets.length > 0 ? sets : null;
     }
     setPrevious(nextPrevious);
@@ -128,7 +148,8 @@ export default function WorkoutsScreen() {
       }
     }
     setTargets(nextTargets);
-  }, []);
+    return loaded;
+  }, [userId]);
 
   // Resume whatever session was left open — being backgrounded mid-workout is the normal
   // case here, not an edge case.
@@ -136,7 +157,7 @@ export default function WorkoutsScreen() {
     let cancelled = false;
     void (async () => {
       const db = await getExecutor();
-      const active = await getActiveSession(db);
+      const active = await getActiveSession(db, userId);
       if (cancelled) return;
       if (active) {
         setSessionId(active.id);
@@ -172,9 +193,10 @@ export default function WorkoutsScreen() {
 
   const begin = async () => {
     const db = await getExecutor();
-    const id = await startSession(db, newId);
+    const id = await startSession(db, userId, newId);
     setSessionId(id);
     handledParam.current = null;
+    celebratedSetIds.current.clear();
     await reload(id);
   };
 
@@ -182,10 +204,11 @@ export default function WorkoutsScreen() {
   const useTemplate = (sourceSessionId: string) => {
     void (async () => {
       const db = await getExecutor();
-      const id = await repeatSession(db, newId, sourceSessionId);
+      const id = await repeatSession(db, userId, newId, sourceSessionId);
       if (!id) return;
       setSessionId(id);
       handledParam.current = null;
+      celebratedSetIds.current.clear();
       await reload(id);
     })();
   };
@@ -196,6 +219,8 @@ export default function WorkoutsScreen() {
     setSessionName(null);
     setExercises([]);
     handledParam.current = null;
+    celebratedSetIds.current.clear();
+    setPrToast(null);
     await reloadHome();
   }, [reloadHome]);
 
@@ -231,8 +256,8 @@ export default function WorkoutsScreen() {
     if (!sessionId) return;
     void (async () => {
       const db = await getExecutor();
-      if (name !== null) await renameSession(db, sessionId, name);
-      await finishSession(db, sessionId);
+      if (name !== null) await renameSession(db, userId, sessionId, name);
+      await finishSession(db, userId, sessionId);
       setSummaryOpen(false);
       await closeOut();
     })();
@@ -265,10 +290,41 @@ export default function WorkoutsScreen() {
       void (async () => {
         const db = await getExecutor();
         await updateSet(db, setId, patch);
-        if (sessionId) await reload(sessionId);
+        if (!sessionId) return;
+        const loaded = await reload(sessionId);
+
+        // Only a weight/reps edit on a working set can be a PR — skip the warmup toggle, set
+        // add/remove, and edits already celebrated once this session.
+        if (typeof patch.weightKg !== 'number' && typeof patch.reps !== 'number') return;
+        const exercise = loaded.find((ex) => ex.sets.some((s) => s.id === setId));
+        const set = exercise?.sets.find((s) => s.id === setId);
+        if (
+          !exercise ||
+          !set ||
+          set.is_warmup === 1 ||
+          set.weight_kg === null ||
+          set.reps === null ||
+          celebratedSetIds.current.has(setId)
+        ) {
+          return;
+        }
+
+        const best = await getPreviousBest(db, userId, exercise.exercise_key, sessionId);
+        const isPr =
+          !best || set.weight_kg > best.weight_kg || (set.weight_kg === best.weight_kg && set.reps > best.reps);
+        if (!isPr) return;
+
+        celebratedSetIds.current.add(setId);
+        hapticSuccess();
+        const seed = EXERCISE_BY_KEY.get(exercise.exercise_key);
+        setPrToast({
+          exerciseLabel: seed ? (isHebrew ? seed.nameHe : seed.nameEn) : exercise.exercise_key,
+          weightKg: set.weight_kg,
+          reps: set.reps,
+        });
       })();
     },
-    [sessionId, reload],
+    [sessionId, reload, userId, isHebrew],
   );
 
   const dropExercise = useCallback(
@@ -305,11 +361,7 @@ export default function WorkoutsScreen() {
   }, [exercises]);
 
   if (loading) {
-    return (
-      <View style={[styles.centered, { paddingTop: insets.top }]}>
-        <Text style={styles.muted}>{t('common.loading')}</Text>
-      </View>
-    );
+    return <SkeletonScreen paddingTop={insets.top + spacing.md} />;
   }
 
   if (!sessionId) {
@@ -324,6 +376,8 @@ export default function WorkoutsScreen() {
           paddingTop: insets.top + spacing.lg,
           paddingBottom: insets.bottom + spacing.xxl,
         }}
+        refreshing={homeRefreshing}
+        onRefresh={handleHomeRefresh}
       />
     );
   }
@@ -352,6 +406,8 @@ export default function WorkoutsScreen() {
         </Pressable>
       </View>
 
+      <PrToast data={prToast} onDone={() => setPrToast(null)} />
+
       <FinishSummary
         visible={summaryOpen}
         // The watch's duration wins when imported: it was started at the first rep rather than
@@ -375,10 +431,7 @@ export default function WorkoutsScreen() {
         keyboardDismissMode="on-drag"
       >
         {exercises.length === 0 ? (
-          <View style={styles.emptyBlock}>
-            <Text style={styles.emptyTitle}>{t('workout.noExercises')}</Text>
-            <Text style={styles.emptyHint}>{t('workout.noExercisesHint')}</Text>
-          </View>
+          <EmptyState emoji="➕" title={t('workout.noExercises')} hint={t('workout.noExercisesHint')} />
         ) : (
           exercises.map((exercise) => {
             const seed = EXERCISE_BY_KEY.get(exercise.exercise_key);
@@ -411,54 +464,20 @@ export default function WorkoutsScreen() {
   );
 }
 
-const styles = StyleSheet.create<{
-  screen: ViewStyle;
-  centered: ViewStyle;
-  muted: TextStyle;
-  bigEmoji: TextStyle;
-  startTitle: TextStyle;
-  startSubtitle: TextStyle;
-  primaryButton: ViewStyle;
-  primaryButtonText: TextStyle;
-  topBar: ViewStyle;
-  topMain: ViewStyle;
-  sessionName: TextStyle;
-  elapsed: TextStyle;
-  topSub: TextStyle;
-  finishButton: ViewStyle;
-  finishButtonText: TextStyle;
-  emptyBlock: ViewStyle;
-  emptyTitle: TextStyle;
-  emptyHint: TextStyle;
-  addExercise: ViewStyle;
-  addExerciseText: TextStyle;
-}>({
+const createStyles = (colors: ColorPalette) =>
+  StyleSheet.create<{
+    screen: ViewStyle;
+    topBar: ViewStyle;
+    topMain: ViewStyle;
+    sessionName: TextStyle;
+    elapsed: TextStyle;
+    topSub: TextStyle;
+    finishButton: ViewStyle;
+    finishButtonText: TextStyle;
+    addExercise: ViewStyle;
+    addExerciseText: TextStyle;
+  }>({
   screen: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: spacing.lg },
-  centered: {
-    flex: 1,
-    backgroundColor: colors.bg,
-    alignItems: 'center',
-    paddingHorizontal: spacing.xl,
-  },
-  muted: { color: colors.textMuted, fontSize: fontSize.sm },
-  bigEmoji: { fontSize: 56, marginBottom: spacing.lg },
-  startTitle: { color: colors.text, fontSize: fontSize.lg, fontWeight: '700', textAlign: 'center' },
-  startSubtitle: {
-    color: colors.textMuted,
-    fontSize: fontSize.sm,
-    textAlign: 'center',
-    marginTop: spacing.sm,
-    marginBottom: spacing.xl,
-  },
-  primaryButton: {
-    backgroundColor: colors.accentSoft,
-    borderWidth: 1,
-    borderColor: colors.accent,
-    borderRadius: radius.pill,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xxl,
-  },
-  primaryButtonText: { color: colors.accent, fontSize: fontSize.md, fontWeight: '700' },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -482,9 +501,6 @@ const styles = StyleSheet.create<{
     paddingHorizontal: spacing.lg,
   },
   finishButtonText: { color: colors.text, fontSize: fontSize.sm, fontWeight: '700' },
-  emptyBlock: { alignItems: 'center', paddingVertical: spacing.xxl },
-  emptyTitle: { color: colors.text, fontSize: fontSize.md },
-  emptyHint: { color: colors.textMuted, fontSize: fontSize.sm, marginTop: spacing.xs },
   addExercise: {
     marginTop: spacing.sm,
     paddingVertical: spacing.md,

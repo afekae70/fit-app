@@ -10,10 +10,23 @@
  * against it before that logic exists.
  */
 
+import type { AiNutritionMenu, AiWorkoutPlan } from '@fit/shared/schemas';
+
 export interface CoachMessage {
   role: 'user' | 'assistant';
   content: string;
 }
+
+/**
+ * What `streamChat` yields. A plain string was enough while the coach only ever talked; once it
+ * can also propose a structured plan or menu mid-turn (see `packages/shared/schemas/aiPlan.ts`),
+ * the stream needs to carry both kinds of output without losing the interleaving — the model may
+ * write a sentence of prose, then a plan, in one turn.
+ */
+export type CoachStreamEvent =
+  | { type: 'text'; text: string }
+  | { type: 'plan_proposal'; plan: AiWorkoutPlan }
+  | { type: 'nutrition_proposal'; menu: AiNutritionMenu };
 
 /**
  * Everything a provider call needs beyond the message history.
@@ -35,8 +48,8 @@ export interface CoachContext {
 export interface CoachProvider {
   readonly name: 'claude' | 'openai';
 
-  /** Stream the assistant's reply token-by-token. */
-  streamChat(ctx: CoachContext, messages: CoachMessage[]): AsyncIterable<string>;
+  /** Stream the assistant's reply token-by-token, plus any plan/menu it proposes mid-turn. */
+  streamChat(ctx: CoachContext, messages: CoachMessage[]): AsyncIterable<CoachStreamEvent>;
 
   /**
    * Generate a plan (workout or nutrition) constrained to a JSON schema.

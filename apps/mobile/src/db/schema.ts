@@ -7,8 +7,16 @@
  * different numbers of child rows, not different column shapes.
  *
  * Differences from the server schema, and why:
- *  - No user_id anywhere. This database belongs to one device and one signed-in user; server
- *    RLS is what enforces ownership once rows sync.
+ *  - `user_id` on every top-level owned table (`profile`, `body_metrics`, `nutrition_targets`,
+ *    `workout_sessions`, `plans`, `outbox`) is a plain TEXT column filtered by the app layer,
+ *    not a Postgres RLS policy — this device has no RLS, so ownership has to be enforced in
+ *    the repository functions themselves. Child tables (`session_exercises`, `sets`,
+ *    `plan_days`, `plan_day_exercises`) carry no `user_id` of their own; ownership flows
+ *    through their existing foreign key to an already-scoped parent row, the same shape the
+ *    server schema uses (ownership lives on the top-level row, not repeated on every child).
+ *    Before multi-user existed this was a single implicit user with no column at all; `'local'`
+ *    is the pseudo user id used both before any real sign-in and for the lifetime of a device
+ *    where Supabase has never been configured (see `AuthProvider`'s `isConfigured` fallback).
  *  - Exercises are referenced by `exercise_key` (the catalogue's stable `nameEn`) rather than
  *    a uuid, because the catalogue ships in the app bundle and has no local uuids until the
  *    server assigns them.
@@ -18,7 +26,7 @@
  * TEXT (lexicographically sortable, which is what the history queries rely on).
  */
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 6;
 
 /**
  * Incremental migrations, keyed by the version they upgrade TO.
@@ -65,17 +73,79 @@ export const MIGRATIONS: Record<number, string> = {
     CREATE INDEX IF NOT EXISTS plan_day_exercises_day_idx
       ON plan_day_exercises (plan_day_id, order_index);
   `,
+  // Per-user local data isolation. `profile`'s old PK was `id INTEGER PRIMARY KEY CHECK (id = 1)`
+  // — SQLite cannot ALTER a PRIMARY KEY/CHECK in place, so this is rename-recreate-copy-drop
+  // rather than an ALTER. The explicit column list in the INSERT (never SELECT *) is what makes
+  // the copy correct regardless of whether `profile_v4` is a real device's `id`-keyed row or
+  // already the fresh-install `user_id`-keyed shape from CREATE_SCHEMA_SQL — a brand-new
+  // database runs every pending migration in one pass (see the version-4 entry above for the
+  // same convention with the plan tables), so this must be safe to run against an
+  // already-correct, already-empty `profile` too. That safety rests on one invariant: nothing
+  // can write to `profile` before `initialise()` in db/index.ts resolves, since `getExecutor()`
+  // is unreachable earlier — a future change to the init sequence must preserve that.
+  5: `
+    ALTER TABLE profile RENAME TO profile_v4;
+
+    CREATE TABLE profile (
+      user_id          TEXT PRIMARY KEY NOT NULL,
+      display_name     TEXT,
+      birth_date       TEXT,
+      sex              TEXT,
+      bmr_formula_sex  TEXT,
+      height_cm        REAL,
+      activity_level   TEXT,
+      goal             TEXT,
+      updated_at       TEXT NOT NULL
+    );
+
+    INSERT INTO profile (user_id, display_name, birth_date, sex, bmr_formula_sex, height_cm,
+                          activity_level, goal, updated_at)
+    SELECT 'local', display_name, birth_date, sex, bmr_formula_sex, height_cm,
+           activity_level, goal, updated_at
+    FROM profile_v4;
+
+    DROP TABLE profile_v4;
+
+    ALTER TABLE body_metrics ADD COLUMN user_id TEXT NOT NULL DEFAULT 'local';
+    CREATE INDEX IF NOT EXISTS body_metrics_user_idx ON body_metrics (user_id, measured_at DESC);
+
+    ALTER TABLE nutrition_targets ADD COLUMN user_id TEXT NOT NULL DEFAULT 'local';
+    CREATE INDEX IF NOT EXISTS nutrition_targets_user_idx
+      ON nutrition_targets (user_id, effective_from DESC);
+
+    ALTER TABLE workout_sessions ADD COLUMN user_id TEXT NOT NULL DEFAULT 'local';
+    CREATE INDEX IF NOT EXISTS workout_sessions_user_idx
+      ON workout_sessions (user_id, started_at DESC);
+
+    ALTER TABLE plans ADD COLUMN user_id TEXT NOT NULL DEFAULT 'local';
+    CREATE INDEX IF NOT EXISTS plans_user_idx ON plans (user_id, is_active DESC, created_at DESC);
+
+    ALTER TABLE outbox ADD COLUMN user_id TEXT NOT NULL DEFAULT 'local';
+  `,
+  // One cached coach reply per user per calendar day, so the Today screen's brief costs one
+  // model call a day rather than one per screen visit.
+  6: `
+    CREATE TABLE IF NOT EXISTS coach_briefs (
+      id          TEXT PRIMARY KEY NOT NULL,
+      user_id     TEXT NOT NULL,
+      brief_date  TEXT NOT NULL,
+      text        TEXT NOT NULL,
+      created_at  TEXT NOT NULL,
+      UNIQUE (user_id, brief_date)
+    );
+  `,
 };
 
 export const CREATE_SCHEMA_SQL = `
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 
--- Single-row table (id is always 1). The profile is device-local until auth lands; keeping it
--- in SQLite rather than component state is what lets the weight tracker recompute TDEE
--- across app launches.
+-- Keyed by user_id (a Supabase user id, or the pseudo id 'local' before any real sign-in / on
+-- a device where Supabase is never configured — see AuthProvider.isConfigured), one row per
+-- person. Keeping it in SQLite rather than component state is what lets the weight tracker
+-- recompute TDEE across app launches.
 CREATE TABLE IF NOT EXISTS profile (
-  id               INTEGER PRIMARY KEY CHECK (id = 1),
+  user_id          TEXT PRIMARY KEY NOT NULL,
   display_name     TEXT,
   birth_date       TEXT,
   sex              TEXT,
@@ -88,6 +158,7 @@ CREATE TABLE IF NOT EXISTS profile (
 
 CREATE TABLE IF NOT EXISTS body_metrics (
   id              TEXT PRIMARY KEY NOT NULL,
+  user_id         TEXT NOT NULL DEFAULT 'local',
   measured_at     TEXT NOT NULL,
   weight_kg       REAL,
   body_fat_pct    REAL,
@@ -105,11 +176,17 @@ CREATE TABLE IF NOT EXISTS body_metrics (
 
 CREATE INDEX IF NOT EXISTS body_metrics_measured_idx
   ON body_metrics (measured_at DESC);
+-- The user_id index is NOT declared here. On a device upgrading from an older schema, this
+-- whole block runs via CREATE_SCHEMA_SQL BEFORE migrate() has added the user_id column to the
+-- pre-existing table — an index on a not-yet-existing column would fail immediately with
+-- "no such column: user_id" and abort startup. Migration 5 (schema.ts) adds this index only
+-- after its own ALTER TABLE has actually added the column.
 
 -- Dated snapshots rather than values recomputed on read, so the weekly update has somewhere
 -- to record each revision and history stays auditable.
 CREATE TABLE IF NOT EXISTS nutrition_targets (
   id                  TEXT PRIMARY KEY NOT NULL,
+  user_id             TEXT NOT NULL DEFAULT 'local',
   effective_from      TEXT NOT NULL,
   effective_to        TEXT,
   weight_kg_snapshot  REAL NOT NULL,
@@ -127,9 +204,11 @@ CREATE TABLE IF NOT EXISTS nutrition_targets (
 
 CREATE INDEX IF NOT EXISTS nutrition_targets_from_idx
   ON nutrition_targets (effective_from DESC);
+-- See the comment on body_metrics above — the user_id index lives only in migration 5.
 
 CREATE TABLE IF NOT EXISTS workout_sessions (
   id             TEXT PRIMARY KEY NOT NULL,
+  user_id        TEXT NOT NULL DEFAULT 'local',
   location_id    TEXT,
   plan_day_id    TEXT,
   -- User-given label, e.g. "Push A". Doubles as the template name when a past session is
@@ -146,6 +225,7 @@ CREATE TABLE IF NOT EXISTS workout_sessions (
 
 CREATE INDEX IF NOT EXISTS workout_sessions_started_idx
   ON workout_sessions (started_at DESC);
+-- See the comment on body_metrics above — the user_id index lives only in migration 5.
 
 CREATE TABLE IF NOT EXISTS session_exercises (
   id            TEXT PRIMARY KEY NOT NULL,
@@ -191,12 +271,17 @@ CREATE INDEX IF NOT EXISTS sets_exercise_idx
 -- a foreign key on plan_days, not a reshape of these rows.
 CREATE TABLE IF NOT EXISTS plans (
   id          TEXT PRIMARY KEY NOT NULL,
+  user_id     TEXT NOT NULL DEFAULT 'local',
   name        TEXT NOT NULL,
-  -- Exactly one plan drives the week. Enforced in the repository rather than by a constraint,
-  -- since SQLite cannot express "at most one row with is_active = 1".
+  -- Exactly one ACTIVE PLAN PER USER drives the week. Enforced in the repository rather than
+  -- by a constraint, since SQLite cannot express "at most one row per user_id with
+  -- is_active = 1" — every query/update against is_active must be scoped by user_id or it
+  -- reaches across people sharing this device.
   is_active   INTEGER NOT NULL DEFAULT 0,
   created_at  TEXT NOT NULL
 );
+
+-- The user_id index lives only in migration 5 — see the comment on body_metrics above.
 
 CREATE TABLE IF NOT EXISTS plan_days (
   id         TEXT PRIMARY KEY NOT NULL,
@@ -226,6 +311,7 @@ CREATE INDEX IF NOT EXISTS plan_day_exercises_day_idx
 
 CREATE TABLE IF NOT EXISTS outbox (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id     TEXT NOT NULL DEFAULT 'local',
   entity      TEXT NOT NULL,
   entity_id   TEXT NOT NULL,
   op          TEXT NOT NULL,
@@ -236,4 +322,13 @@ CREATE TABLE IF NOT EXISTS outbox (
 );
 
 CREATE INDEX IF NOT EXISTS outbox_created_idx ON outbox (created_at);
+
+CREATE TABLE IF NOT EXISTS coach_briefs (
+  id          TEXT PRIMARY KEY NOT NULL,
+  user_id     TEXT NOT NULL,
+  brief_date  TEXT NOT NULL,
+  text        TEXT NOT NULL,
+  created_at  TEXT NOT NULL,
+  UNIQUE (user_id, brief_date)
+);
 `;

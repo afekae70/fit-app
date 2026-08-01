@@ -2,11 +2,10 @@
  * History, naming and template-repeat tests. Real SQL against real SQLite, as elsewhere.
  */
 
-import { createRequire } from 'node:module';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { SqlExecutor } from './executor.js';
-import { CREATE_SCHEMA_SQL } from './schema.js';
+import { createTestExecutor } from './testUtils.js';
 import {
   addExerciseToSession,
   addSet,
@@ -21,42 +20,7 @@ import {
   startSession,
 } from './workouts.js';
 
-const nodeRequire = createRequire(import.meta.url);
-const { DatabaseSync } = nodeRequire('node:sqlite') as {
-  DatabaseSync: new (path: string) => {
-    exec(sql: string): void;
-    prepare(sql: string): {
-      run(...params: never[]): unknown;
-      all(...params: never[]): unknown[];
-      get(...params: never[]): unknown;
-    };
-    close(): void;
-  };
-};
-
-function createTestExecutor(): SqlExecutor {
-  const db = new DatabaseSync(':memory:');
-  db.exec(CREATE_SCHEMA_SQL.replace(/PRAGMA journal_mode = WAL;/, ''));
-  db.exec('PRAGMA foreign_keys = ON;');
-  return {
-    // eslint-disable-next-line @typescript-eslint/require-await
-    async run(sql, params = []) {
-      db.prepare(sql).run(...(params as never[]));
-    },
-    // eslint-disable-next-line @typescript-eslint/require-await
-    async all<T>(sql: string, params: unknown[] = []) {
-      return db.prepare(sql).all(...(params as never[])) as T[];
-    },
-    // eslint-disable-next-line @typescript-eslint/require-await
-    async get<T>(sql: string, params: unknown[] = []) {
-      return (db.prepare(sql).get(...(params as never[])) ?? null) as T | null;
-    },
-    // eslint-disable-next-line @typescript-eslint/require-await
-    async exec(sql) {
-      db.exec(sql);
-    },
-  };
-}
+const USER = 'user-1';
 
 let db: SqlExecutor;
 let counter = 0;
@@ -76,17 +40,17 @@ beforeEach(() => {
 
 describe('naming a session', () => {
   it('stores a trimmed name', async () => {
-    const sessionId = await startSession(db, newId, {}, clock);
-    await renameSession(db, sessionId, '  Push A  ', clock);
+    const sessionId = await startSession(db, USER, newId, {}, clock);
+    await renameSession(db, USER, sessionId, '  Push A  ', clock);
 
     const { session } = await getSessionDetail(db, sessionId);
     expect(session?.name).toBe('Push A');
   });
 
   it('treats a blank name as no name rather than an empty string', async () => {
-    const sessionId = await startSession(db, newId, {}, clock);
-    await renameSession(db, sessionId, 'Push A', clock);
-    await renameSession(db, sessionId, '   ', clock);
+    const sessionId = await startSession(db, USER, newId, {}, clock);
+    await renameSession(db, USER, sessionId, 'Push A', clock);
+    await renameSession(db, USER, sessionId, '   ', clock);
 
     const { session } = await getSessionDetail(db, sessionId);
     // NULL, not '' — the template query filters on `name IS NOT NULL`, so an empty string
@@ -97,14 +61,14 @@ describe('naming a session', () => {
 
 describe('history summaries', () => {
   it('aggregates exercise count, set count and volume per session', async () => {
-    const sessionId = await startSession(db, newId, {}, clock);
+    const sessionId = await startSession(db, USER, newId, {}, clock);
     const press = await addExerciseToSession(db, newId, sessionId, 'Barbell Bench Press', clock);
     const facePull = await addExerciseToSession(db, newId, sessionId, 'Face Pull', clock);
 
     for (let i = 0; i < 4; i++) await addSet(db, newId, press, { weightKg: 80, reps: 8 }, clock);
     for (let i = 0; i < 2; i++) await addSet(db, newId, facePull, { weightKg: 25, reps: 15 }, clock);
 
-    const [summary] = await listSessionSummaries(db);
+    const [summary] = await listSessionSummaries(db, USER);
     expect(summary?.exercise_count).toBe(2);
     expect(summary?.set_count).toBe(6);
     // 4 x (80x8) + 2 x (25x15) = 2560 + 750 = 3310
@@ -112,19 +76,19 @@ describe('history summaries', () => {
   });
 
   it('excludes warmups, matching the figures shown during the workout', async () => {
-    const sessionId = await startSession(db, newId, {}, clock);
+    const sessionId = await startSession(db, USER, newId, {}, clock);
     const press = await addExerciseToSession(db, newId, sessionId, 'Barbell Bench Press', clock);
     await addSet(db, newId, press, { weightKg: 200, reps: 5, isWarmup: true }, clock);
     await addSet(db, newId, press, { weightKg: 80, reps: 8 }, clock);
 
-    const [summary] = await listSessionSummaries(db);
+    const [summary] = await listSessionSummaries(db, USER);
     expect(summary?.set_count).toBe(1);
     expect(summary?.volume_load).toBe(640);
   });
 
   it('keeps a session that has no exercises rather than dropping it', async () => {
-    await startSession(db, newId, {}, clock);
-    const summaries = await listSessionSummaries(db);
+    await startSession(db, USER, newId, {}, clock);
+    const summaries = await listSessionSummaries(db, USER);
     // The LEFT JOIN exists for this: a workout you started and abandoned should still appear
     // in history instead of vanishing with no explanation.
     expect(summaries).toHaveLength(1);
@@ -134,19 +98,28 @@ describe('history summaries', () => {
 
   it('orders newest first', async () => {
     const tick = tickingClock();
-    const first = await startSession(db, newId, {}, tick);
-    const second = await startSession(db, newId, {}, tick);
+    const first = await startSession(db, USER, newId, {}, tick);
+    const second = await startSession(db, USER, newId, {}, tick);
 
-    const summaries = await listSessionSummaries(db);
+    const summaries = await listSessionSummaries(db, USER);
     expect(summaries[0]?.id).toBe(second);
     expect(summaries[1]?.id).toBe(first);
+  });
+
+  it('never includes another user\'s sessions in this user\'s history', async () => {
+    await startSession(db, USER, newId, {}, clock);
+    await startSession(db, 'user-2', newId, {}, clock);
+    await startSession(db, 'user-2', newId, {}, clock);
+
+    expect(await listSessionSummaries(db, USER)).toHaveLength(1);
+    expect(await listSessionSummaries(db, 'user-2')).toHaveLength(2);
   });
 });
 
 describe('repeating a session as a template', () => {
   async function buildSource() {
-    const sessionId = await startSession(db, newId, {}, clock);
-    await renameSession(db, sessionId, 'Push A', clock);
+    const sessionId = await startSession(db, USER, newId, {}, clock);
+    await renameSession(db, USER, sessionId, 'Push A', clock);
     const press = await addExerciseToSession(db, newId, sessionId, 'Barbell Bench Press', clock);
     const facePull = await addExerciseToSession(db, newId, sessionId, 'Face Pull', clock);
 
@@ -155,13 +128,13 @@ describe('repeating a session as a template', () => {
     await addSet(db, newId, press, { weightKg: 80, reps: 7 }, clock);
     await addSet(db, newId, facePull, { weightKg: 25, reps: 15 }, clock);
 
-    await finishSession(db, sessionId, {}, clock);
+    await finishSession(db, USER, sessionId, {}, clock);
     return sessionId;
   }
 
   it('copies exercises, their order and their set structure', async () => {
     const sourceId = await buildSource();
-    const newSessionId = await repeatSession(db, newId, sourceId, clock);
+    const newSessionId = await repeatSession(db, USER, newId, sourceId, clock);
     expect(newSessionId).not.toBeNull();
 
     const { exercises } = await getSessionDetail(db, newSessionId as string);
@@ -172,7 +145,7 @@ describe('repeating a session as a template', () => {
 
   it('leaves every value blank rather than pre-filling last time', async () => {
     const sourceId = await buildSource();
-    const newSessionId = await repeatSession(db, newId, sourceId, clock);
+    const newSessionId = await repeatSession(db, USER, newId, sourceId, clock);
 
     const { exercises } = await getSessionDetail(db, newSessionId as string);
     const pressSets = exercises[0]?.sets ?? [];
@@ -187,7 +160,7 @@ describe('repeating a session as a template', () => {
 
   it('carries warmup flags forward', async () => {
     const sourceId = await buildSource();
-    const newSessionId = await repeatSession(db, newId, sourceId, clock);
+    const newSessionId = await repeatSession(db, USER, newId, sourceId, clock);
 
     const { exercises } = await getSessionDetail(db, newSessionId as string);
     expect(exercises[0]?.sets.map((s) => s.is_warmup)).toEqual([1, 0, 0]);
@@ -195,7 +168,7 @@ describe('repeating a session as a template', () => {
 
   it('does NOT carry RPE or to-failure forward', async () => {
     const sourceId = await buildSource();
-    const newSessionId = await repeatSession(db, newId, sourceId, clock);
+    const newSessionId = await repeatSession(db, USER, newId, sourceId, clock);
 
     const { exercises } = await getSessionDetail(db, newSessionId as string);
     const workingSet = exercises[0]?.sets[1];
@@ -207,7 +180,7 @@ describe('repeating a session as a template', () => {
 
   it('inherits the name so the template stays identifiable', async () => {
     const sourceId = await buildSource();
-    const newSessionId = await repeatSession(db, newId, sourceId, clock);
+    const newSessionId = await repeatSession(db, USER, newId, sourceId, clock);
 
     const { session } = await getSessionDetail(db, newSessionId as string);
     expect(session?.name).toBe('Push A');
@@ -215,9 +188,9 @@ describe('repeating a session as a template', () => {
 
   it('creates an open session and leaves the source untouched', async () => {
     const sourceId = await buildSource();
-    const newSessionId = await repeatSession(db, newId, sourceId, clock);
+    const newSessionId = await repeatSession(db, USER, newId, sourceId, clock);
 
-    const active = await getActiveSession(db);
+    const active = await getActiveSession(db, USER);
     expect(active?.id).toBe(newSessionId);
 
     // Repeating must never mutate history.
@@ -228,13 +201,13 @@ describe('repeating a session as a template', () => {
   });
 
   it('returns null for an unknown source instead of creating an empty session', async () => {
-    expect(await repeatSession(db, newId, 'no-such-session', clock)).toBeNull();
-    expect(await listSessionSummaries(db)).toHaveLength(0);
+    expect(await repeatSession(db, USER, newId, 'no-such-session', clock)).toBeNull();
+    expect(await listSessionSummaries(db, USER)).toHaveLength(0);
   });
 
   it('numbers copied sets from 1 within each exercise', async () => {
     const sourceId = await buildSource();
-    const newSessionId = await repeatSession(db, newId, sourceId, clock);
+    const newSessionId = await repeatSession(db, USER, newId, sourceId, clock);
 
     const { exercises } = await getSessionDetail(db, newSessionId as string);
     expect(exercises[0]?.sets.map((s) => s.set_index)).toEqual([1, 2, 3]);
@@ -248,10 +221,10 @@ describe('previous session reference', () => {
     tick: () => string,
     sets: { weightKg: number; reps: number; isWarmup?: boolean }[],
   ): Promise<string> {
-    const sessionId = await startSession(db, newId, {}, tick);
+    const sessionId = await startSession(db, USER, newId, {}, tick);
     const press = await addExerciseToSession(db, newId, sessionId, 'Barbell Bench Press', tick);
     for (const set of sets) await addSet(db, newId, press, set, tick);
-    await finishSession(db, sessionId, {}, tick);
+    await finishSession(db, USER, sessionId, {}, tick);
     return sessionId;
   }
 
@@ -264,7 +237,7 @@ describe('previous session reference', () => {
       { weightKg: 75, reps: 6 },
     ]);
 
-    const previous = await getPreviousSessionSets(db, 'Barbell Bench Press');
+    const previous = await getPreviousSessionSets(db, USER, 'Barbell Bench Press');
     expect(previous.map((s) => s.set_index)).toEqual([1, 2, 3]);
     expect(previous.map((s) => s.weight_kg)).toEqual([80, 80, 75]);
     expect(previous.map((s) => s.reps)).toEqual([8, 7, 6]);
@@ -281,7 +254,7 @@ describe('previous session reference', () => {
     ]);
     await logPress(tick, [{ weightKg: 85, reps: 5 }]);
 
-    const previous = await getPreviousSessionSets(db, 'Barbell Bench Press');
+    const previous = await getPreviousSessionSets(db, USER, 'Barbell Bench Press');
     expect(previous).toHaveLength(1);
     expect(previous[0]?.weight_kg).toBe(85);
   });
@@ -291,11 +264,11 @@ describe('previous session reference', () => {
     await logPress(tick, [{ weightKg: 80, reps: 8 }]);
 
     // The session currently open must not become its own reference the moment a set is saved.
-    const currentId = await startSession(db, newId, {}, tick);
+    const currentId = await startSession(db, USER, newId, {}, tick);
     const press = await addExerciseToSession(db, newId, currentId, 'Barbell Bench Press', tick);
     await addSet(db, newId, press, { weightKg: 100, reps: 1 }, tick);
 
-    const previous = await getPreviousSessionSets(db, 'Barbell Bench Press', currentId);
+    const previous = await getPreviousSessionSets(db, USER, 'Barbell Bench Press', currentId);
     expect(previous.map((s) => s.weight_kg)).toEqual([80]);
   });
 
@@ -305,12 +278,12 @@ describe('previous session reference', () => {
 
     // Exactly what repeatSession now produces: structure with no numbers. An abandoned repeat
     // must not blank out the reference for the next real session.
-    const emptyId = await startSession(db, newId, {}, tick);
+    const emptyId = await startSession(db, USER, newId, {}, tick);
     const press = await addExerciseToSession(db, newId, emptyId, 'Barbell Bench Press', tick);
     await addSet(db, newId, press, {}, tick);
-    await finishSession(db, emptyId, {}, tick);
+    await finishSession(db, USER, emptyId, {}, tick);
 
-    const previous = await getPreviousSessionSets(db, 'Barbell Bench Press');
+    const previous = await getPreviousSessionSets(db, USER, 'Barbell Bench Press');
     expect(previous.map((s) => s.weight_kg)).toEqual([80]);
   });
 
@@ -321,12 +294,29 @@ describe('previous session reference', () => {
       { weightKg: 80, reps: 8 },
     ]);
 
-    const previous = await getPreviousSessionSets(db, 'Barbell Bench Press');
+    const previous = await getPreviousSessionSets(db, USER, 'Barbell Bench Press');
     expect(previous.map((s) => s.is_warmup)).toEqual([1, 0]);
   });
 
   it('returns an empty list for an exercise with no history', async () => {
-    expect(await getPreviousSessionSets(db, 'Nordic Hamstring Curl')).toEqual([]);
+    expect(await getPreviousSessionSets(db, USER, 'Nordic Hamstring Curl')).toEqual([]);
+  });
+
+  it('never surfaces another user\'s sets as this user\'s reference', async () => {
+    const tick = tickingClock();
+    const otherSession = await startSession(db, 'user-2', newId, {}, tick);
+    const otherPress = await addExerciseToSession(
+      db,
+      newId,
+      otherSession,
+      'Barbell Bench Press',
+      tick,
+    );
+    await addSet(db, newId, otherPress, { weightKg: 140, reps: 5 }, tick);
+    await finishSession(db, 'user-2', otherSession, {}, tick);
+
+    // USER has no bench history at all — user-2's 140kg set must not leak in as a reference.
+    expect(await getPreviousSessionSets(db, USER, 'Barbell Bench Press')).toEqual([]);
   });
 
   it('pairs with repeatSession: blank sets, previous numbers still available', async () => {
@@ -336,13 +326,13 @@ describe('previous session reference', () => {
       { weightKg: 80, reps: 7 },
     ]);
 
-    const repeatedId = (await repeatSession(db, newId, sourceId, tick)) as string;
+    const repeatedId = (await repeatSession(db, USER, newId, sourceId, tick)) as string;
     const { exercises } = await getSessionDetail(db, repeatedId);
 
     // Same structure, nothing filled in...
     expect(exercises[0]?.sets.map((s) => s.weight_kg)).toEqual([null, null]);
     // ...and last time's numbers are still there to aim at.
-    const previous = await getPreviousSessionSets(db, 'Barbell Bench Press', repeatedId);
+    const previous = await getPreviousSessionSets(db, USER, 'Barbell Bench Press', repeatedId);
     expect(previous.map((s) => s.weight_kg)).toEqual([80, 80]);
     expect(previous.map((s) => s.reps)).toEqual([8, 7]);
   });
@@ -352,15 +342,15 @@ describe('template list', () => {
   it('offers only the most recent session for each name', async () => {
     const tick = tickingClock();
 
-    const older = await startSession(db, newId, {}, tick);
-    await renameSession(db, older, 'Push A', tick);
+    const older = await startSession(db, USER, newId, {}, tick);
+    await renameSession(db, USER, older, 'Push A', tick);
     await addExerciseToSession(db, newId, older, 'Barbell Bench Press', tick);
 
-    const newer = await startSession(db, newId, {}, tick);
-    await renameSession(db, newer, 'Push A', tick);
+    const newer = await startSession(db, USER, newId, {}, tick);
+    await renameSession(db, USER, newer, 'Push A', tick);
     await addExerciseToSession(db, newId, newer, 'Barbell Bench Press', tick);
 
-    const templates = await listNamedTemplates(db);
+    const templates = await listNamedTemplates(db, USER);
     // One entry per name, pointing at the latest session — that is the one carrying current
     // weights, which is the entire reason to repeat it.
     expect(templates).toHaveLength(1);
@@ -368,17 +358,17 @@ describe('template list', () => {
   });
 
   it('ignores unnamed sessions', async () => {
-    const sessionId = await startSession(db, newId, {}, clock);
+    const sessionId = await startSession(db, USER, newId, {}, clock);
     await addExerciseToSession(db, newId, sessionId, 'Barbell Bench Press', clock);
 
-    expect(await listNamedTemplates(db)).toHaveLength(0);
+    expect(await listNamedTemplates(db, USER)).toHaveLength(0);
   });
 
   it('ignores a named session with no exercises', async () => {
-    const sessionId = await startSession(db, newId, {}, clock);
-    await renameSession(db, sessionId, 'Empty', clock);
+    const sessionId = await startSession(db, USER, newId, {}, clock);
+    await renameSession(db, USER, sessionId, 'Empty', clock);
 
     // Repeating it would produce nothing, so it is not a usable template.
-    expect(await listNamedTemplates(db)).toHaveLength(0);
+    expect(await listNamedTemplates(db, USER)).toHaveLength(0);
   });
 });

@@ -18,7 +18,7 @@
     "android": {
       "package": "com.afeka.fitapp",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#0B0F14",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -71,10 +71,10 @@
     },
     "extra": {
       "//apiBaseUrl": "Base URL of the Fastify service that holds the LLM key. Empty until deployed; the coach screen then says it is not configured rather than failing on a bad fetch. For local development use the machine's LAN address, or run 'adb reverse tcp:3000 tcp:3000' and set http://127.0.0.1:3000 — 'localhost' from a phone means the phone.",
-      "apiBaseUrl": "",
+      "apiBaseUrl": "https://fit-app-api-production-60f0.up.railway.app",
       "//supabase": "From the Supabase project: Settings -> API. supabaseUrl is the Project URL; supabaseAnonKey is the 'anon public' key (safe to ship — RLS protects data, not key secrecy). Never put the service_role key here; that one bypasses RLS and belongs only in the API service's .env.",
-      "supabaseUrl": "",
-      "supabaseAnonKey": "",
+      "supabaseUrl": "https://ibapcvxepbpdlmwnpuhs.supabase.co",
+      "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImliYXBjdnhlcGJwZGxtd25wdWhzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUyNTQwOTMsImV4cCI6MjEwMDgzMDA5M30.754zHmoVekRWlJmTMYC4sipQgowzMyMKgfz1i7Qd9XQ",
       "//blePermissions": "neverForLocation is set on BLUETOOTH_SCAN so Android 12+ does not require the user to grant location just to find a scale. ACCESS_FINE_LOCATION remains declared because Android 11 and below have no BLUETOOTH_SCAN and genuinely gate BLE discovery behind location.",
       "//blePermissionsLegacy": "BLUETOOTH and BLUETOOTH_ADMIN were added by the react-native-ble-plx config plugin, not by hand. They are the pre-Android-12 equivalents of BLUETOOTH_CONNECT and BLUETOOTH_SCAN, scoped by the manifest merger to older API levels — inert on Android 12+, required below it.",
       "//healthPermissions": "Health Connect permissions are android.permission.health.* and are granted per data type inside the Health Connect app, not by a standard runtime prompt.",

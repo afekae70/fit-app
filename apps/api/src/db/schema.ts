@@ -72,10 +72,19 @@ export const TARGET_AUTHORS = ['system_weekly', 'ai', 'manual'] as const;
 export const AI_ROLES = ['user', 'assistant'] as const;
 export const AI_PLAN_KINDS = ['workout', 'nutrition'] as const;
 
-/** Build a CHECK constraint restricting a text column to a fixed set of values. */
+/**
+ * Build a CHECK constraint restricting a text column to a fixed set of values.
+ *
+ * Values are inlined via `sql.raw` as literal SQL text, never as parameterized values. A bound
+ * parameter (`sql\`${v}\``) only means something alongside an executed query — embedded in a
+ * static CREATE TABLE statement written to a migration file, there is no parameter-binding
+ * mechanism at all, so it serializes as a literal, meaningless `$1` in the file. `values` is
+ * always a hardcoded constant array defined in this file, never user input, so raw
+ * interpolation is safe; the quote-escaping is defensive correctness, not a real risk today.
+ */
 const oneOf = (column: unknown, values: readonly string[]) =>
   sql`${column} in (${sql.join(
-    values.map((v) => sql`${v}`),
+    values.map((v) => sql.raw(`'${v.replace(/'/g, "''")}'`)),
     sql`, `,
   )})`;
 

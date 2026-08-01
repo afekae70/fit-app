@@ -33,6 +33,12 @@ export function getSupabaseClient(): SupabaseClient | null {
       persistSession: true,
       // No OAuth redirect flow in a bare React Native app — this only matters on web.
       detectSessionInUrl: false,
+      // PKCE, not the implicit grant: the emailed confirmation/recovery link carries a
+      // `?code=...` query param (exchanged manually via exchangeCodeForSession in
+      // app/auth/callback.tsx) rather than a `#access_token=...` fragment, which survives a
+      // native deep link far more reliably. This is Supabase's own recommendation for
+      // mobile/native clients specifically.
+      flowType: 'pkce',
     },
   });
 

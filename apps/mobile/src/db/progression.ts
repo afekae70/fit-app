@@ -39,6 +39,7 @@ export interface ExerciseSessionBest {
  */
 export async function getExerciseProgression(
   db: SqlExecutor,
+  userId: string,
   exerciseKey: string,
   limit = 30,
 ): Promise<ExerciseSessionBest[]> {
@@ -56,7 +57,8 @@ export async function getExerciseProgression(
      FROM sets s
      JOIN session_exercises se ON se.id = s.session_exercise_id
      JOIN workout_sessions ws  ON ws.id = se.session_id
-     WHERE se.exercise_key = ?
+     WHERE ws.user_id = ?
+       AND se.exercise_key = ?
        AND s.is_warmup = 0
        AND s.weight_kg IS NOT NULL
        AND s.reps IS NOT NULL
@@ -64,7 +66,7 @@ export async function getExerciseProgression(
      GROUP BY ws.id
      ORDER BY ws.started_at DESC
      LIMIT ?`,
-    [exerciseKey, limit],
+    [userId, exerciseKey, limit],
   );
 
   // Query newest-first so LIMIT keeps the most RECENT sessions, then flip: the trend maths
@@ -84,6 +86,7 @@ export interface ExerciseProgressSummary {
 /** Every exercise with logged history, most recently performed first. */
 export async function listTrainedExercises(
   db: SqlExecutor,
+  userId: string,
   limit = 60,
 ): Promise<{ exercise_key: string; session_count: number; last_performed_at: string }[]> {
   return db.all(
@@ -94,13 +97,14 @@ export async function listTrainedExercises(
      FROM session_exercises se
      JOIN workout_sessions ws ON ws.id = se.session_id
      JOIN sets s              ON s.session_exercise_id = se.id
-     WHERE s.is_warmup = 0
+     WHERE ws.user_id = ?
+       AND s.is_warmup = 0
        AND s.weight_kg IS NOT NULL
        AND s.reps IS NOT NULL
      GROUP BY se.exercise_key
      ORDER BY last_performed_at DESC
      LIMIT ?`,
-    [limit],
+    [userId, limit],
   );
 }
 
@@ -112,9 +116,10 @@ export async function listTrainedExercises(
  */
 export async function summariseExerciseProgress(
   db: SqlExecutor,
+  userId: string,
   exerciseKey: string,
 ): Promise<ExerciseProgressSummary | null> {
-  const sessions = await getExerciseProgression(db, exerciseKey);
+  const sessions = await getExerciseProgression(db, userId, exerciseKey);
   if (sessions.length === 0) return null;
 
   const points: SessionStrengthPoint[] = sessions.map((s) => ({
@@ -145,14 +150,15 @@ export async function summariseExerciseProgress(
  */
 export async function summariseAllProgress(
   db: SqlExecutor,
+  userId: string,
   { minSessions = 2 } = {},
 ): Promise<ExerciseProgressSummary[]> {
-  const trained = await listTrainedExercises(db);
+  const trained = await listTrainedExercises(db, userId);
   const summaries: ExerciseProgressSummary[] = [];
 
   for (const entry of trained) {
     if (entry.session_count < minSessions) continue;
-    const summary = await summariseExerciseProgress(db, entry.exercise_key);
+    const summary = await summariseExerciseProgress(db, userId, entry.exercise_key);
     if (summary) summaries.push(summary);
   }
 

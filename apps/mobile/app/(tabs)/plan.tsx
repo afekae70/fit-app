@@ -12,11 +12,12 @@
 
 import { EXERCISE_SEED, type ExerciseSeed } from '@fit/shared/catalog';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Alert,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -27,7 +28,16 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Banner, Button, Card, EmptyState, Hint, ScreenTitle } from '../../src/components/ui.js';
+import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
+import {
+  Banner,
+  Button,
+  Card,
+  EmptyState,
+  Hint,
+  ScreenHeader,
+  SkeletonScreen,
+} from '../../src/components/ui.js';
 import {
   addPlanDay,
   createPlan,
@@ -40,7 +50,8 @@ import {
 } from '../../src/db/plans.js';
 import { getExecutor, newId } from '../../src/db/provider.js';
 import { getActiveSession } from '../../src/db/workouts.js';
-import { colors, fontSize, fontWeight, radius, spacing } from '../../src/theme.js';
+import { useTheme } from '../../src/ThemeProvider.js';
+import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../../src/theme.js';
 
 const EXERCISE_BY_KEY = new Map<string, ExerciseSeed>(
   EXERCISE_SEED.map((exercise) => [exercise.nameEn, exercise]),
@@ -63,6 +74,9 @@ function daysSince(iso: string, nowMs: number): number {
 export default function PlanScreen() {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
+  const userId = useCurrentUserId();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [plan, setPlan] = useState<PlanRow | null>(null);
   const [days, setDays] = useState<DayStatus[]>([]);
@@ -72,18 +86,24 @@ export default function PlanScreen() {
 
   const reload = useCallback(async () => {
     const db = await getExecutor();
-    const active = await getActivePlan(db);
+    const active = await getActivePlan(db, userId);
     setPlan(active);
 
     if (active) {
-      setDays((await listPlanDayStatus(db, active.id)) as DayStatus[]);
-      setNextDayId((await getNextPlanDay(db, active.id))?.id ?? null);
+      setDays((await listPlanDayStatus(db, userId, active.id)) as DayStatus[]);
+      setNextDayId((await getNextPlanDay(db, userId, active.id))?.id ?? null);
     } else {
       setDays([]);
       setNextDayId(null);
     }
     setLoading(false);
-  }, []);
+  }, [userId]);
+
+  const [refreshing, setRefreshing] = useState(false);
+  const handleRefresh = useCallback(() => {
+    setRefreshing(true);
+    void reload().finally(() => setRefreshing(false));
+  }, [reload]);
 
   // useFocusEffect rather than useEffect: editing a day happens on another screen, and coming
   // back must show the new exercise counts rather than a stale snapshot.
@@ -98,7 +118,7 @@ export default function PlanScreen() {
     if (!name) return;
     void (async () => {
       const db = await getExecutor();
-      await createPlan(db, newId, name);
+      await createPlan(db, userId, newId, name);
       setNameDraft('');
       await reload();
     })();
@@ -124,7 +144,7 @@ export default function PlanScreen() {
         onPress: () => {
           void (async () => {
             const db = await getExecutor();
-            await deletePlan(db, plan.id);
+            await deletePlan(db, userId, plan.id);
             await reload();
           })();
         },
@@ -137,23 +157,19 @@ export default function PlanScreen() {
       const db = await getExecutor();
 
       // Only one session can be open at a time; starting a second would strand the first.
-      const active = await getActiveSession(db);
+      const active = await getActiveSession(db, userId);
       if (active) {
         Alert.alert('', t('history.activeWarning'));
         return;
       }
 
-      const sessionId = await startSessionFromPlanDay(db, newId, planDayId);
+      const sessionId = await startSessionFromPlanDay(db, userId, newId, planDayId);
       if (sessionId) router.replace('/(tabs)/workouts');
     })();
   };
 
   if (loading) {
-    return (
-      <View style={[styles.centered, { paddingTop: insets.top + spacing.xxl }]}>
-        <Text style={styles.muted}>{t('common.loading')}</Text>
-      </View>
-    );
+    return <SkeletonScreen paddingTop={insets.top + spacing.xxl} />;
   }
 
   const nowMs = Date.now();
@@ -166,8 +182,11 @@ export default function PlanScreen() {
         { paddingTop: insets.top + spacing.lg, paddingBottom: insets.bottom + spacing.xxl },
       ]}
       keyboardShouldPersistTaps="handled"
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.accent} />
+      }
     >
-      <ScreenTitle>{t('plan.title')}</ScreenTitle>
+      <ScreenHeader title={t('plan.title')} />
 
       {!plan ? (
         <>
@@ -253,30 +272,31 @@ export default function PlanScreen() {
   );
 }
 
-const styles = StyleSheet.create<{
-  screen: ViewStyle;
-  content: ViewStyle;
-  centered: ViewStyle;
-  muted: TextStyle;
-  input: TextStyle;
-  spacer: ViewStyle;
-  planName: TextStyle;
-  dayCard: ViewStyle;
-  dayCardNext: ViewStyle;
-  dayHeader: ViewStyle;
-  dayHeaderMain: ViewStyle;
-  dayName: TextStyle;
-  dayMeta: TextStyle;
-  nextBadge: ViewStyle;
-  nextBadgeText: TextStyle;
-  startButton: ViewStyle;
-  startButtonText: TextStyle;
-  emptyDayHint: TextStyle;
-  addDayButton: ViewStyle;
-  addDayText: TextStyle;
-  deleteButton: ViewStyle;
-  deleteButtonText: TextStyle;
-}>({
+const createStyles = (colors: ColorPalette) =>
+  StyleSheet.create<{
+    screen: ViewStyle;
+    content: ViewStyle;
+    centered: ViewStyle;
+    muted: TextStyle;
+    input: TextStyle;
+    spacer: ViewStyle;
+    planName: TextStyle;
+    dayCard: ViewStyle;
+    dayCardNext: ViewStyle;
+    dayHeader: ViewStyle;
+    dayHeaderMain: ViewStyle;
+    dayName: TextStyle;
+    dayMeta: TextStyle;
+    nextBadge: ViewStyle;
+    nextBadgeText: TextStyle;
+    startButton: ViewStyle;
+    startButtonText: TextStyle;
+    emptyDayHint: TextStyle;
+    addDayButton: ViewStyle;
+    addDayText: TextStyle;
+    deleteButton: ViewStyle;
+    deleteButtonText: TextStyle;
+  }>({
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { paddingHorizontal: spacing.lg },
   centered: { flex: 1, backgroundColor: colors.bg, alignItems: 'center' },

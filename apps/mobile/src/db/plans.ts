@@ -24,6 +24,7 @@ const defaultClock: Clock = () => new Date().toISOString();
 
 export interface PlanRow {
   id: string;
+  user_id: string;
   name: string;
   is_active: number;
   created_at: string;
@@ -61,20 +62,24 @@ export interface PlanDayWithExercises extends PlanDayRow {
  */
 export async function createPlan(
   db: SqlExecutor,
+  userId: string,
   newId: IdFactory,
   name: string,
   clock: Clock = defaultClock,
 ): Promise<string> {
   const id = newId();
-  const existing = await db.get<{ count: number }>(`SELECT COUNT(*) AS count FROM plans`);
+  // Scoped by user_id: without it, a second person's first plan would see the first person's
+  // plans already in the table and never auto-activate.
+  const existing = await db.get<{ count: number }>(
+    `SELECT COUNT(*) AS count FROM plans WHERE user_id = ?`,
+    [userId],
+  );
   const isFirst = (existing?.count ?? 0) === 0;
 
-  await db.run(`INSERT INTO plans (id, name, is_active, created_at) VALUES (?, ?, ?, ?)`, [
-    id,
-    name.trim(),
-    isFirst ? 1 : 0,
-    clock(),
-  ]);
+  await db.run(
+    `INSERT INTO plans (id, user_id, name, is_active, created_at) VALUES (?, ?, ?, ?, ?)`,
+    [id, userId, name.trim(), isFirst ? 1 : 0, clock()],
+  );
   return id;
 }
 
@@ -85,21 +90,41 @@ export async function createPlan(
  * failure between them leaves no active plan (recoverable — the user picks one again) rather
  * than two (ambiguous, and every "today's workout" query would have to guess).
  */
-export async function activatePlan(db: SqlExecutor, planId: string): Promise<void> {
-  await db.run(`UPDATE plans SET is_active = 0 WHERE is_active = 1`);
-  await db.run(`UPDATE plans SET is_active = 1 WHERE id = ?`, [planId]);
+export async function activatePlan(
+  db: SqlExecutor,
+  userId: string,
+  planId: string,
+): Promise<void> {
+  // Both steps scoped by user_id: without it, activating user B's plan would deactivate
+  // user A's active plan too — a real cross-user bug, not just a missing filter.
+  await db.run(`UPDATE plans SET is_active = 0 WHERE is_active = 1 AND user_id = ?`, [userId]);
+  await db.run(`UPDATE plans SET is_active = 1 WHERE id = ? AND user_id = ?`, [planId, userId]);
 }
 
-export async function getActivePlan(db: SqlExecutor): Promise<PlanRow | null> {
-  return db.get<PlanRow>(`SELECT * FROM plans WHERE is_active = 1 LIMIT 1`);
+export async function getActivePlan(db: SqlExecutor, userId: string): Promise<PlanRow | null> {
+  return db.get<PlanRow>(`SELECT * FROM plans WHERE user_id = ? AND is_active = 1 LIMIT 1`, [
+    userId,
+  ]);
 }
 
-export async function listPlans(db: SqlExecutor): Promise<PlanRow[]> {
-  return db.all<PlanRow>(`SELECT * FROM plans ORDER BY is_active DESC, created_at DESC`);
+export async function listPlans(db: SqlExecutor, userId: string): Promise<PlanRow[]> {
+  return db.all<PlanRow>(
+    `SELECT * FROM plans WHERE user_id = ? ORDER BY is_active DESC, created_at DESC`,
+    [userId],
+  );
 }
 
-export async function renamePlan(db: SqlExecutor, planId: string, name: string): Promise<void> {
-  await db.run(`UPDATE plans SET name = ? WHERE id = ?`, [name.trim(), planId]);
+export async function renamePlan(
+  db: SqlExecutor,
+  userId: string,
+  planId: string,
+  name: string,
+): Promise<void> {
+  await db.run(`UPDATE plans SET name = ? WHERE id = ? AND user_id = ?`, [
+    name.trim(),
+    planId,
+    userId,
+  ]);
 }
 
 /**
@@ -110,16 +135,19 @@ export async function renamePlan(db: SqlExecutor, planId: string, name: string):
  * not a foreign key for exactly this reason — it becomes a dangling reference, which is the
  * correct outcome.
  */
-export async function deletePlan(db: SqlExecutor, planId: string): Promise<void> {
-  await db.run(`DELETE FROM plans WHERE id = ?`, [planId]);
+export async function deletePlan(db: SqlExecutor, userId: string, planId: string): Promise<void> {
+  await db.run(`DELETE FROM plans WHERE id = ? AND user_id = ?`, [planId, userId]);
 
-  // Promote another plan so the user is never left with plans but no active one.
-  const active = await getActivePlan(db);
+  // Promote another plan so the user is never left with plans but no active one. Scoped by
+  // user_id: unscoped, this user could get no promotion at all (or, without activatePlan's own
+  // scoping, activate a different user's plan).
+  const active = await getActivePlan(db, userId);
   if (!active) {
     const next = await db.get<{ id: string }>(
-      `SELECT id FROM plans ORDER BY created_at DESC LIMIT 1`,
+      `SELECT id FROM plans WHERE user_id = ? ORDER BY created_at DESC LIMIT 1`,
+      [userId],
     );
-    if (next) await activatePlan(db, next.id);
+    if (next) await activatePlan(db, userId, next.id);
   }
 }
 
@@ -344,6 +372,7 @@ export async function listPlanDayExercises(
  */
 export async function startSessionFromPlanDay(
   db: SqlExecutor,
+  userId: string,
   newId: IdFactory,
   planDayId: string,
   clock: Clock = defaultClock,
@@ -351,7 +380,7 @@ export async function startSessionFromPlanDay(
   const day = await getPlanDay(db, planDayId);
   if (!day) return null;
 
-  const sessionId = await startSession(db, newId, { planDayId }, clock);
+  const sessionId = await startSession(db, userId, newId, { planDayId }, clock);
   if (day.name) {
     await db.run(`UPDATE workout_sessions SET name = ? WHERE id = ?`, [day.name, sessionId]);
   }
@@ -386,23 +415,25 @@ export async function startSessionFromPlanDay(
  */
 export async function getNextPlanDay(
   db: SqlExecutor,
+  userId: string,
   planId: string,
 ): Promise<(PlanDayRow & { last_trained_at: string | null }) | null> {
   return db.get<PlanDayRow & { last_trained_at: string | null }>(
     `SELECT pd.id, pd.plan_id, pd.day_index, pd.name,
             (SELECT MAX(ws.started_at) FROM workout_sessions ws
-              WHERE ws.plan_day_id = pd.id) AS last_trained_at
+              WHERE ws.plan_day_id = pd.id AND ws.user_id = ?) AS last_trained_at
        FROM plan_days pd
       WHERE pd.plan_id = ?
       ORDER BY last_trained_at IS NOT NULL, last_trained_at ASC, pd.day_index ASC
       LIMIT 1`,
-    [planId],
+    [userId, planId],
   );
 }
 
 /** Every day of a plan with when it was last trained — the weekly overview. */
 export async function listPlanDayStatus(
   db: SqlExecutor,
+  userId: string,
   planId: string,
 ): Promise<
   {
@@ -419,13 +450,13 @@ export async function listPlanDayStatus(
             (SELECT COUNT(*) FROM plan_day_exercises pde
               WHERE pde.plan_day_id = pd.id) AS exercise_count,
             (SELECT MAX(ws.started_at) FROM workout_sessions ws
-              WHERE ws.plan_day_id = pd.id) AS last_trained_at,
+              WHERE ws.plan_day_id = pd.id AND ws.user_id = ?) AS last_trained_at,
             (SELECT COUNT(*) FROM workout_sessions ws
-              WHERE ws.plan_day_id = pd.id AND ws.ended_at IS NOT NULL) AS session_count
+              WHERE ws.plan_day_id = pd.id AND ws.user_id = ? AND ws.ended_at IS NOT NULL) AS session_count
        FROM plan_days pd
       WHERE pd.plan_id = ?
       ORDER BY pd.day_index`,
-    [planId],
+    [userId, userId, planId],
   );
 }
 
@@ -452,6 +483,7 @@ export interface AdherenceRow {
  */
 export async function getSessionAdherence(
   db: SqlExecutor,
+  userId: string,
   sessionId: string,
 ): Promise<AdherenceRow[]> {
   return db.all<AdherenceRow>(
@@ -468,9 +500,9 @@ export async function getSessionAdherence(
        LEFT JOIN plan_day_exercises pde
               ON pde.plan_day_id = ws.plan_day_id
              AND pde.exercise_key = se.exercise_key
-      WHERE se.session_id = ?
+      WHERE se.session_id = ? AND ws.user_id = ?
       GROUP BY se.id, se.exercise_key, pde.target_sets, pde.target_reps_min, pde.target_reps_max
       ORDER BY se.order_index`,
-    [sessionId],
+    [sessionId, userId],
   );
 }

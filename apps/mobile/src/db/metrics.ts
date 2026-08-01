@@ -28,7 +28,7 @@ const defaultClock: Clock = () => new Date().toISOString();
 /* -------------------------------------------------------------------------- */
 
 export interface ProfileRow {
-  id: number;
+  user_id: string;
   display_name: string | null;
   birth_date: string | null;
   sex: string | null;
@@ -50,30 +50,32 @@ export interface ProfileInput {
   goal?: Goal | null;
 }
 
-export async function getProfile(db: SqlExecutor): Promise<ProfileRow | null> {
-  return db.get<ProfileRow>(`SELECT * FROM profile WHERE id = 1`);
+export async function getProfile(db: SqlExecutor, userId: string): Promise<ProfileRow | null> {
+  return db.get<ProfileRow>(`SELECT * FROM profile WHERE user_id = ?`, [userId]);
 }
 
 /**
- * Upsert the single profile row.
+ * Upsert the one profile row for this user.
  *
  * Only the supplied fields are written, so editing the goal from one screen cannot blank the
  * height entered on another.
  */
 export async function saveProfile(
   db: SqlExecutor,
+  userId: string,
   input: ProfileInput,
   clock: Clock = defaultClock,
 ): Promise<void> {
-  const existing = await getProfile(db);
+  const existing = await getProfile(db, userId);
   const now = clock();
 
   if (!existing) {
     await db.run(
       `INSERT INTO profile
-         (id, display_name, birth_date, sex, bmr_formula_sex, height_cm, activity_level, goal, updated_at)
-       VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (user_id, display_name, birth_date, sex, bmr_formula_sex, height_cm, activity_level, goal, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
+        userId,
         input.displayName ?? null,
         input.birthDate ?? null,
         input.sex ?? null,
@@ -106,7 +108,8 @@ export async function saveProfile(
   assignments.push('updated_at = ?');
   params.push(now);
 
-  await db.run(`UPDATE profile SET ${assignments.join(', ')} WHERE id = 1`, params);
+  params.push(userId);
+  await db.run(`UPDATE profile SET ${assignments.join(', ')} WHERE user_id = ?`, params);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -145,6 +148,7 @@ export interface BodyMetricInput {
 
 export async function recordBodyMetric(
   db: SqlExecutor,
+  userId: string,
   newId: IdFactory,
   input: BodyMetricInput,
   clock: Clock = defaultClock,
@@ -154,11 +158,12 @@ export async function recordBodyMetric(
 
   await db.run(
     `INSERT INTO body_metrics
-       (id, measured_at, weight_kg, body_fat_pct, muscle_mass_kg, water_pct, bone_mass_kg,
+       (id, user_id, measured_at, weight_kg, body_fat_pct, muscle_mass_kg, water_pct, bone_mass_kg,
         visceral_fat, source, device_id, raw_payload)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
+      userId,
       measuredAt,
       input.weightKg ?? null,
       input.bodyFatPct ?? null,
@@ -173,8 +178,8 @@ export async function recordBodyMetric(
   );
 
   await db.run(
-    `INSERT INTO outbox (entity, entity_id, op, payload, created_at) VALUES (?, ?, ?, ?, ?)`,
-    ['body_metric', id, 'insert', JSON.stringify({ ...input, measuredAt }), clock()],
+    `INSERT INTO outbox (user_id, entity, entity_id, op, payload, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+    [userId, 'body_metric', id, 'insert', JSON.stringify({ ...input, measuredAt }), clock()],
   );
 
   return id;
@@ -182,31 +187,34 @@ export async function recordBodyMetric(
 
 export async function listBodyMetrics(
   db: SqlExecutor,
+  userId: string,
   limit = 180,
 ): Promise<BodyMetricRow[]> {
   return db.all<BodyMetricRow>(
-    `SELECT * FROM body_metrics WHERE weight_kg IS NOT NULL
+    `SELECT * FROM body_metrics WHERE user_id = ? AND weight_kg IS NOT NULL
       ORDER BY measured_at DESC LIMIT ?`,
-    [limit],
+    [userId, limit],
   );
 }
 
-export async function getLatestWeight(db: SqlExecutor): Promise<BodyMetricRow | null> {
+export async function getLatestWeight(db: SqlExecutor, userId: string): Promise<BodyMetricRow | null> {
   return db.get<BodyMetricRow>(
-    `SELECT * FROM body_metrics WHERE weight_kg IS NOT NULL
+    `SELECT * FROM body_metrics WHERE user_id = ? AND weight_kg IS NOT NULL
       ORDER BY measured_at DESC LIMIT 1`,
+    [userId],
   );
 }
 
 export async function deleteBodyMetric(
   db: SqlExecutor,
+  userId: string,
   id: string,
   clock: Clock = defaultClock,
 ): Promise<void> {
-  await db.run(`DELETE FROM body_metrics WHERE id = ?`, [id]);
+  await db.run(`DELETE FROM body_metrics WHERE id = ? AND user_id = ?`, [id, userId]);
   await db.run(
-    `INSERT INTO outbox (entity, entity_id, op, payload, created_at) VALUES (?, ?, ?, ?, ?)`,
-    ['body_metric', id, 'delete', null, clock()],
+    `INSERT INTO outbox (user_id, entity, entity_id, op, payload, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+    [userId, 'body_metric', id, 'delete', null, clock()],
   );
 }
 
@@ -320,6 +328,7 @@ export function summariseTrend(metrics: BodyMetricRow[]) {
  */
 export async function snapshotTargets(
   db: SqlExecutor,
+  userId: string,
   newId: IdFactory,
   targets: ComputedTargets,
   computedBy: 'system_weekly' | 'manual' | 'ai',
@@ -328,19 +337,21 @@ export async function snapshotTargets(
   const now = clock();
   const today = now.slice(0, 10);
 
+  // Unscoped, this would close out every user's open target period, not just this one's.
   await db.run(
-    `UPDATE nutrition_targets SET effective_to = ? WHERE effective_to IS NULL`,
-    [today],
+    `UPDATE nutrition_targets SET effective_to = ? WHERE effective_to IS NULL AND user_id = ?`,
+    [today, userId],
   );
 
   const id = newId();
   await db.run(
     `INSERT INTO nutrition_targets
-       (id, effective_from, effective_to, weight_kg_snapshot, bmi, bmr_kcal, tdee_kcal, goal,
-        calorie_target, protein_g, carbs_g, fat_g, computed_by, created_at)
-     VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, user_id, effective_from, effective_to, weight_kg_snapshot, bmi, bmr_kcal, tdee_kcal,
+        goal, calorie_target, protein_g, carbs_g, fat_g, computed_by, created_at)
+     VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
+      userId,
       today,
       targets.weightKg,
       targets.bmi,
@@ -375,9 +386,13 @@ export interface NutritionTargetRow {
   created_at: string;
 }
 
-export async function getCurrentTargets(db: SqlExecutor): Promise<NutritionTargetRow | null> {
+export async function getCurrentTargets(
+  db: SqlExecutor,
+  userId: string,
+): Promise<NutritionTargetRow | null> {
   return db.get<NutritionTargetRow>(
-    `SELECT * FROM nutrition_targets WHERE effective_to IS NULL
+    `SELECT * FROM nutrition_targets WHERE user_id = ? AND effective_to IS NULL
       ORDER BY effective_from DESC LIMIT 1`,
+    [userId],
   );
 }

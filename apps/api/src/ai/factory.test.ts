@@ -12,7 +12,6 @@ const baseEnv = {
   LOG_LEVEL: 'fatal',
   SUPABASE_URL: 'https://test.supabase.co',
   SUPABASE_SERVICE_ROLE_KEY: 'x'.repeat(40),
-  SUPABASE_JWT_SECRET: 'y'.repeat(40),
   DATABASE_URL: 'postgresql://user:pass@localhost:6543/postgres',
   ANTHROPIC_MODEL: 'claude-opus-5',
   OPENAI_MODEL: 'gpt-4o',

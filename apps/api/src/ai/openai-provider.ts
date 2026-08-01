@@ -11,11 +11,17 @@
  *    is enforced, but the failure mode when a schema is not expressible under strict mode is a
  *    request error rather than a validated object — so the parse is defended here, where the
  *    Claude path can rely on the API having enforced it.
+ *
+ * `streamChat` here is text-only: it wraps every delta as a `{ type: 'text' }` event to satisfy
+ * `CoachProvider`, but does not declare the `propose_workout_plan` / `propose_nutrition_menu`
+ * tools the Claude path does — OpenAI function-calling streams arguments as a different event
+ * shape and would need its own accumulation logic. Until that is built, plan/menu proposals only
+ * work when `AI_PROVIDER=claude`.
  */
 
 import OpenAI from 'openai';
 
-import type { CoachContext, CoachMessage, CoachProvider } from './provider.js';
+import type { CoachContext, CoachMessage, CoachProvider, CoachStreamEvent } from './provider.js';
 
 export interface OpenAiProviderOptions {
   apiKey: string;
@@ -46,7 +52,7 @@ export class OpenAiProvider implements CoachProvider {
     ];
   }
 
-  async *streamChat(ctx: CoachContext, messages: CoachMessage[]): AsyncIterable<string> {
+  async *streamChat(ctx: CoachContext, messages: CoachMessage[]): AsyncIterable<CoachStreamEvent> {
     const stream = await this.client.chat.completions.create({
       model: this.model,
       max_tokens: 4096,
@@ -59,7 +65,7 @@ export class OpenAiProvider implements CoachProvider {
 
     for await (const chunk of stream) {
       const delta = chunk.choices[0]?.delta?.content;
-      if (delta) yield delta;
+      if (delta) yield { type: 'text', text: delta };
     }
   }
 

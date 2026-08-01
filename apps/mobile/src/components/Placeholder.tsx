@@ -3,10 +3,12 @@
  * owns the screen, so an unfinished tab reads as planned work rather than a broken app.
  */
 
+import { useMemo } from 'react';
 import { StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors, fontSize, spacing } from '../theme.js';
+import { useTheme } from '../ThemeProvider.js';
+import { fontSize, spacing, type ColorPalette } from '../theme.js';
 
 export function Placeholder({
   emoji,
@@ -20,6 +22,8 @@ export function Placeholder({
   description: string;
 }) {
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   return (
     <View style={[styles.container, { paddingTop: insets.top + spacing.xxl }]}>
       <Text style={styles.emoji}>{emoji}</Text>
@@ -32,14 +36,15 @@ export function Placeholder({
   );
 }
 
-const styles = StyleSheet.create<{
-  container: ViewStyle;
-  emoji: TextStyle;
-  title: TextStyle;
-  phaseBadge: ViewStyle;
-  phaseText: TextStyle;
-  description: TextStyle;
-}>({
+const createStyles = (colors: ColorPalette) =>
+  StyleSheet.create<{
+    container: ViewStyle;
+    emoji: TextStyle;
+    title: TextStyle;
+    phaseBadge: ViewStyle;
+    phaseText: TextStyle;
+    description: TextStyle;
+  }>({
   container: {
     flex: 1,
     backgroundColor: colors.bg,

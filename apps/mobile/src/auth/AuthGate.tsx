@@ -6,9 +6,12 @@
  * to do and back again. Rendered inline, it disappears the moment `session` becomes non-null —
  * `AuthProvider`'s `onAuthStateChange` subscription flips that automatically, so there is
  * nothing here that needs to notice sign-in succeeded and dismiss itself.
+ *
+ * Also reused full-screen by `AppGate.tsx` as the whole-app sign-in wall — nothing here assumes
+ * which container it's rendered inside.
  */
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
@@ -22,35 +25,41 @@ import {
 } from 'react-native';
 
 import { Banner } from '../components/ui.js';
-import { colors, fontSize, fontWeight, radius, spacing } from '../theme.js';
+import { useTheme } from '../ThemeProvider.js';
+import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../theme.js';
 import { useAuth } from './AuthProvider.js';
+import { AUTH_ERROR_I18N_KEY } from './friendlyAuthError.js';
 
-const ERROR_KEY: Record<string, string> = {
-  invalid_credentials: 'auth.errorInvalidCredentials',
-  already_registered: 'auth.errorAlreadyRegistered',
-  weak_password: 'auth.errorWeakPassword',
-  email_not_confirmed: 'auth.errorEmailNotConfirmed',
-  not_configured: 'auth.errorNotConfigured',
-  unknown: 'auth.errorUnknown',
-};
+/** Which of the form's sub-views is showing. A single component with an internal view state,
+ *  same as the original `awaitingConfirmation` boolean this replaces — these are all small,
+ *  closely related steps of one flow, not separate screens. */
+type GateView = 'form' | 'awaitingConfirmation' | 'forgotPassword' | 'resetEmailSent';
 
 export function AuthGate() {
   const { t } = useTranslation();
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, resetPassword, resendConfirmation } = useAuth();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [mode, setMode] = useState<'signIn' | 'signUp'>('signIn');
+  const [view, setView] = useState<GateView>('form');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [forgotEmail, setForgotEmail] = useState('');
   const [busy, setBusy] = useState(false);
   const [errorKey, setErrorKey] = useState<string | null>(null);
-  // Supabase's default project settings require confirming a new address by email before
-  // sign-in works. Surfaced explicitly after sign-up so the user does not conclude the button
-  // is broken when nothing visibly happens next.
-  const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
+  const [resendBusy, setResendBusy] = useState(false);
+  const [resendSent, setResendSent] = useState(false);
 
   const submit = () => {
     const trimmedEmail = email.trim();
     if (!trimmedEmail || password.length === 0 || busy) return;
+    // Checked client-side, before any network call — a typo here is never a server-side concern.
+    if (mode === 'signUp' && password !== confirmPassword) {
+      setErrorKey('password_mismatch');
+      return;
+    }
 
     setBusy(true);
     setErrorKey(null);
@@ -63,21 +72,122 @@ export function AuthGate() {
       if (result.error) {
         setErrorKey(result.error);
       } else if (mode === 'signUp') {
-        setAwaitingConfirmation(true);
+        setView('awaitingConfirmation');
       }
       // A successful sign-in needs no local state change: AuthProvider's subscription updates
-      // `session`, and the coach screen re-renders past this component on its own.
+      // `session`, and the gate above this component re-renders past it on its own.
     })();
   };
 
-  if (awaitingConfirmation) {
+  const submitForgotPassword = () => {
+    const trimmed = forgotEmail.trim();
+    if (!trimmed || busy) return;
+
+    setBusy(true);
+    setErrorKey(null);
+
+    void (async () => {
+      const result = await resetPassword(trimmed);
+      setBusy(false);
+      if (result.error) setErrorKey(result.error);
+      else setView('resetEmailSent');
+    })();
+  };
+
+  const resend = () => {
+    if (resendBusy || resendSent) return;
+    setResendBusy(true);
+    void (async () => {
+      // Errors are not surfaced here beyond the generic banner state below — a failed resend
+      // (e.g. rate-limited) is low-stakes enough that "it didn't visibly resend, try again in a
+      // bit" is an acceptable outcome without a dedicated error path of its own.
+      await resendConfirmation(email);
+      setResendBusy(false);
+      setResendSent(true);
+    })();
+  };
+
+  const backToSignIn = () => {
+    setView('form');
+    setMode('signIn');
+    setErrorKey(null);
+    setResendSent(false);
+  };
+
+  if (view === 'awaitingConfirmation') {
     return (
       <View style={styles.card}>
         <Banner tone="info">{t('auth.checkYourEmail')}</Banner>
         <Pressable
+          onPress={resend}
+          disabled={resendBusy || resendSent}
+          style={styles.switchModeButton}
+        >
+          {resendBusy ? (
+            <ActivityIndicator color={colors.accent} />
+          ) : (
+            <Text style={styles.switchModeText}>
+              {resendSent ? t('auth.resendConfirmationSent') : t('auth.resendConfirmation')}
+            </Text>
+          )}
+        </Pressable>
+        <Pressable onPress={backToSignIn} style={styles.switchModeButton}>
+          <Text style={styles.switchModeText}>{t('auth.backToSignIn')}</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  if (view === 'resetEmailSent') {
+    return (
+      <View style={styles.card}>
+        <Banner tone="info">{t('auth.resetEmailSent')}</Banner>
+        <Pressable onPress={backToSignIn} style={styles.switchModeButton}>
+          <Text style={styles.switchModeText}>{t('auth.backToSignIn')}</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  if (view === 'forgotPassword') {
+    return (
+      <View style={styles.card}>
+        <Text style={styles.title}>{t('auth.resetPasswordTitle')}</Text>
+        <Text style={styles.subtitle}>{t('auth.resetPasswordSubtitle')}</Text>
+
+        <TextInput
+          value={forgotEmail}
+          onChangeText={setForgotEmail}
+          placeholder={t('auth.emailPlaceholder')}
+          placeholderTextColor={colors.textMuted}
+          style={styles.input}
+          autoCapitalize="none"
+          autoComplete="email"
+          keyboardType="email-address"
+          editable={!busy}
+        />
+
+        {errorKey ? (
+          <Banner tone="warning">{t(AUTH_ERROR_I18N_KEY[errorKey] ?? AUTH_ERROR_I18N_KEY.unknown!)}</Banner>
+        ) : null}
+
+        <Pressable
+          onPress={submitForgotPassword}
+          disabled={busy || !forgotEmail.trim()}
+          style={[styles.submitButton, (busy || !forgotEmail.trim()) && styles.submitButtonDisabled]}
+          accessibilityRole="button"
+        >
+          {busy ? (
+            <ActivityIndicator color={colors.bg} />
+          ) : (
+            <Text style={styles.submitButtonText}>{t('auth.resetPasswordSend')}</Text>
+          )}
+        </Pressable>
+
+        <Pressable
           onPress={() => {
-            setAwaitingConfirmation(false);
-            setMode('signIn');
+            setView('form');
+            setErrorKey(null);
           }}
           style={styles.switchModeButton}
         >
@@ -113,8 +223,35 @@ export function AuthGate() {
         autoComplete={mode === 'signIn' ? 'current-password' : 'new-password'}
         editable={!busy}
       />
+      {mode === 'signUp' ? (
+        <TextInput
+          value={confirmPassword}
+          onChangeText={setConfirmPassword}
+          placeholder={t('auth.confirmPasswordPlaceholder')}
+          placeholderTextColor={colors.textMuted}
+          style={styles.input}
+          secureTextEntry
+          autoComplete="new-password"
+          editable={!busy}
+        />
+      ) : null}
 
-      {errorKey ? <Banner tone="warning">{t(ERROR_KEY[errorKey] ?? ERROR_KEY.unknown!)}</Banner> : null}
+      {mode === 'signIn' ? (
+        <Pressable
+          onPress={() => {
+            setForgotEmail(email);
+            setErrorKey(null);
+            setView('forgotPassword');
+          }}
+          style={styles.forgotPasswordButton}
+        >
+          <Text style={styles.switchModeText}>{t('auth.forgotPassword')}</Text>
+        </Pressable>
+      ) : null}
+
+      {errorKey ? (
+          <Banner tone="warning">{t(AUTH_ERROR_I18N_KEY[errorKey] ?? AUTH_ERROR_I18N_KEY.unknown!)}</Banner>
+        ) : null}
 
       <Pressable
         onPress={submit}
@@ -149,17 +286,19 @@ export function AuthGate() {
   );
 }
 
-const styles = StyleSheet.create<{
-  card: ViewStyle;
-  title: TextStyle;
-  subtitle: TextStyle;
-  input: TextStyle;
-  submitButton: ViewStyle;
-  submitButtonDisabled: ViewStyle;
-  submitButtonText: TextStyle;
-  switchModeButton: ViewStyle;
-  switchModeText: TextStyle;
-}>({
+const createStyles = (colors: ColorPalette) =>
+  StyleSheet.create<{
+    card: ViewStyle;
+    title: TextStyle;
+    subtitle: TextStyle;
+    input: TextStyle;
+    forgotPasswordButton: ViewStyle;
+    submitButton: ViewStyle;
+    submitButtonDisabled: ViewStyle;
+    submitButtonText: TextStyle;
+    switchModeButton: ViewStyle;
+    switchModeText: TextStyle;
+  }>({
   card: { gap: spacing.sm, padding: spacing.lg },
   title: {
     color: colors.text,
@@ -184,6 +323,7 @@ const styles = StyleSheet.create<{
     paddingVertical: spacing.sm,
     textAlign: 'auto',
   },
+  forgotPasswordButton: { alignSelf: 'flex-end', padding: spacing.xs },
   submitButton: {
     marginTop: spacing.sm,
     paddingVertical: spacing.md,

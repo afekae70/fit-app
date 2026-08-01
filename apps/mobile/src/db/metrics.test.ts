@@ -3,7 +3,6 @@
  * workouts.test.ts.
  */
 
-import { createRequire } from 'node:module';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { SqlExecutor } from './executor.js';
@@ -20,49 +19,13 @@ import {
   summariseTrend,
   type ProfileRow,
 } from './metrics.js';
-import { CREATE_SCHEMA_SQL } from './schema.js';
-
-const nodeRequire = createRequire(import.meta.url);
-const { DatabaseSync } = nodeRequire('node:sqlite') as {
-  DatabaseSync: new (path: string) => {
-    exec(sql: string): void;
-    prepare(sql: string): {
-      run(...params: never[]): unknown;
-      all(...params: never[]): unknown[];
-      get(...params: never[]): unknown;
-    };
-    close(): void;
-  };
-};
-
-function createTestExecutor(): SqlExecutor {
-  const db = new DatabaseSync(':memory:');
-  db.exec(CREATE_SCHEMA_SQL.replace(/PRAGMA journal_mode = WAL;/, ''));
-  db.exec('PRAGMA foreign_keys = ON;');
-  return {
-    // eslint-disable-next-line @typescript-eslint/require-await
-    async run(sql, params = []) {
-      db.prepare(sql).run(...(params as never[]));
-    },
-    // eslint-disable-next-line @typescript-eslint/require-await
-    async all<T>(sql: string, params: unknown[] = []) {
-      return db.prepare(sql).all(...(params as never[])) as T[];
-    },
-    // eslint-disable-next-line @typescript-eslint/require-await
-    async get<T>(sql: string, params: unknown[] = []) {
-      return (db.prepare(sql).get(...(params as never[])) ?? null) as T | null;
-    },
-    // eslint-disable-next-line @typescript-eslint/require-await
-    async exec(sql) {
-      db.exec(sql);
-    },
-  };
-}
+import { createTestExecutor } from './testUtils.js';
 
 let db: SqlExecutor;
 let counter = 0;
 const newId = () => `id-${String(++counter).padStart(3, '0')}`;
 const clock = () => '2026-07-25T10:00:00.000Z';
+const USER = 'user-1';
 
 beforeEach(() => {
   db = createTestExecutor();
@@ -70,7 +33,7 @@ beforeEach(() => {
 });
 
 const fullProfile: ProfileRow = {
-  id: 1,
+  user_id: USER,
   display_name: 'Test',
   birth_date: '1996-01-01',
   sex: 'male',
@@ -83,18 +46,18 @@ const fullProfile: ProfileRow = {
 
 describe('profile', () => {
   it('creates the row on first save and reads it back', async () => {
-    await saveProfile(db, { heightCm: 180, sex: 'male', goal: 'cut' }, clock);
+    await saveProfile(db, USER, { heightCm: 180, sex: 'male', goal: 'cut' }, clock);
 
-    const profile = await getProfile(db);
+    const profile = await getProfile(db, USER);
     expect(profile?.height_cm).toBe(180);
     expect(profile?.goal).toBe('cut');
   });
 
   it('updates only the supplied fields', async () => {
-    await saveProfile(db, { heightCm: 180, sex: 'male', goal: 'cut' }, clock);
-    await saveProfile(db, { goal: 'bulk' }, clock);
+    await saveProfile(db, USER, { heightCm: 180, sex: 'male', goal: 'cut' }, clock);
+    await saveProfile(db, USER, { goal: 'bulk' }, clock);
 
-    const profile = await getProfile(db);
+    const profile = await getProfile(db, USER);
     expect(profile?.goal).toBe('bulk');
     // Changing the goal from one screen must not blank height entered on another.
     expect(profile?.height_cm).toBe(180);
@@ -102,20 +65,28 @@ describe('profile', () => {
   });
 
   it('keeps exactly one profile row no matter how often it is saved', async () => {
-    await saveProfile(db, { heightCm: 180 }, clock);
-    await saveProfile(db, { heightCm: 181 }, clock);
-    await saveProfile(db, { heightCm: 182 }, clock);
+    await saveProfile(db, USER, { heightCm: 180 }, clock);
+    await saveProfile(db, USER, { heightCm: 181 }, clock);
+    await saveProfile(db, USER, { heightCm: 182 }, clock);
 
     const rows = await db.all('SELECT * FROM profile');
     expect(rows).toHaveLength(1);
+  });
+
+  it('keeps two users profiles independent', async () => {
+    await saveProfile(db, USER, { heightCm: 180 }, clock);
+    await saveProfile(db, 'user-2', { heightCm: 165 }, clock);
+
+    expect((await getProfile(db, USER))?.height_cm).toBe(180);
+    expect((await getProfile(db, 'user-2'))?.height_cm).toBe(165);
   });
 });
 
 describe('body metrics', () => {
   it('records a manual weight and returns it as the latest', async () => {
-    await recordBodyMetric(db, newId, { weightKg: 80.4, source: 'manual' }, clock);
+    await recordBodyMetric(db, USER, newId, { weightKg: 80.4, source: 'manual' }, clock);
 
-    const latest = await getLatestWeight(db);
+    const latest = await getLatestWeight(db, USER);
     expect(latest?.weight_kg).toBe(80.4);
     expect(latest?.source).toBe('manual');
   });
@@ -123,6 +94,7 @@ describe('body metrics', () => {
   it('orders latest by measurement time, not insertion order', async () => {
     await recordBodyMetric(
       db,
+      USER,
       newId,
       { weightKg: 80, source: 'manual', measuredAt: '2026-07-20T08:00:00.000Z' },
       clock,
@@ -131,17 +103,19 @@ describe('body metrics', () => {
     // "latest" just because it was typed in most recently.
     await recordBodyMetric(
       db,
+      USER,
       newId,
       { weightKg: 99, source: 'manual', measuredAt: '2026-07-01T08:00:00.000Z' },
       clock,
     );
 
-    expect((await getLatestWeight(db))?.weight_kg).toBe(80);
+    expect((await getLatestWeight(db, USER))?.weight_kg).toBe(80);
   });
 
   it('stores the raw device frame for later reprocessing', async () => {
     await recordBodyMetric(
       db,
+      USER,
       newId,
       {
         weightKg: 80,
@@ -153,26 +127,36 @@ describe('body metrics', () => {
       clock,
     );
 
-    const latest = await getLatestWeight(db);
+    const latest = await getLatestWeight(db, USER);
     expect(JSON.parse(latest?.raw_payload ?? 'null')).toEqual({ bytes: [1, 2, 3] });
     expect(latest?.device_id).toBe('AA:BB:CC');
   });
 
   it('excludes rows with no weight from the list', async () => {
-    await recordBodyMetric(db, newId, { bodyFatPct: 18, source: 'manual' }, clock);
-    await recordBodyMetric(db, newId, { weightKg: 80, source: 'manual' }, clock);
+    await recordBodyMetric(db, USER, newId, { bodyFatPct: 18, source: 'manual' }, clock);
+    await recordBodyMetric(db, USER, newId, { weightKg: 80, source: 'manual' }, clock);
 
-    expect(await listBodyMetrics(db)).toHaveLength(1);
+    expect(await listBodyMetrics(db, USER)).toHaveLength(1);
   });
 
   it('queues every metric for sync and records deletions too', async () => {
-    const id = await recordBodyMetric(db, newId, { weightKg: 80, source: 'manual' }, clock);
-    await deleteBodyMetric(db, id, clock);
+    const id = await recordBodyMetric(db, USER, newId, { weightKg: 80, source: 'manual' }, clock);
+    await deleteBodyMetric(db, USER, id, clock);
 
     const ops = await db.all<{ op: string }>(
       `SELECT op FROM outbox WHERE entity = 'body_metric' ORDER BY id`,
     );
     expect(ops.map((o) => o.op)).toEqual(['insert', 'delete']);
+  });
+
+  it('keeps two users weight histories independent', async () => {
+    await recordBodyMetric(db, USER, newId, { weightKg: 80, source: 'manual' }, clock);
+    await recordBodyMetric(db, 'user-2', newId, { weightKg: 60, source: 'manual' }, clock);
+
+    expect(await listBodyMetrics(db, USER)).toHaveLength(1);
+    expect(await listBodyMetrics(db, 'user-2')).toHaveLength(1);
+    expect((await getLatestWeight(db, USER))?.weight_kg).toBe(80);
+    expect((await getLatestWeight(db, 'user-2'))?.weight_kg).toBe(60);
   });
 });
 
@@ -305,9 +289,10 @@ describe('target snapshots', () => {
       goal: 'cut' as const,
     };
 
-    await snapshotTargets(db, newId, targets, 'manual', () => '2026-07-01T10:00:00.000Z');
+    await snapshotTargets(db, USER, newId, targets, 'manual', () => '2026-07-01T10:00:00.000Z');
     await snapshotTargets(
       db,
+      USER,
       newId,
       { ...targets, weightKg: 79 },
       'system_weekly',
@@ -319,12 +304,43 @@ describe('target snapshots', () => {
     // unanswerable, which is the whole point of snapshotting.
     expect(open).toHaveLength(1);
 
-    const current = await getCurrentTargets(db);
+    const current = await getCurrentTargets(db, USER);
     expect(current?.weight_kg_snapshot).toBe(79);
     expect(current?.computed_by).toBe('system_weekly');
   });
 
   it('returns null before any snapshot exists', async () => {
-    expect(await getCurrentTargets(db)).toBeNull();
+    expect(await getCurrentTargets(db, USER)).toBeNull();
+  });
+
+  it('does not let one user closing their period close another user\'s open period', async () => {
+    const targets = {
+      weightKg: 80,
+      bmi: 24.7,
+      bmrKcal: 1780,
+      tdeeKcal: 2759,
+      calorieTarget: 2207,
+      clampedToBmr: false,
+      proteinG: 176,
+      carbsG: 230,
+      fatG: 64,
+      goal: 'cut' as const,
+    };
+
+    await snapshotTargets(db, USER, newId, targets, 'manual', () => '2026-07-01T10:00:00.000Z');
+    await snapshotTargets(db, 'user-2', newId, targets, 'manual', () => '2026-07-01T10:00:00.000Z');
+
+    // A second snapshot for USER must close only USER's period, not user-2's.
+    await snapshotTargets(
+      db,
+      USER,
+      newId,
+      { ...targets, weightKg: 79 },
+      'system_weekly',
+      () => '2026-07-08T10:00:00.000Z',
+    );
+
+    expect(await getCurrentTargets(db, 'user-2')).not.toBeNull();
+    expect((await getCurrentTargets(db, USER))?.weight_kg_snapshot).toBe(79);
   });
 });

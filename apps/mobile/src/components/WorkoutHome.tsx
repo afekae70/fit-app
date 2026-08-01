@@ -7,9 +7,11 @@
  * so it gets the prominent position, not a menu somewhere.
  */
 
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -19,7 +21,9 @@ import {
 } from 'react-native';
 
 import type { SessionSummaryRow } from '../db/workouts.js';
-import { colors, fontSize, radius, spacing } from '../theme.js';
+import { useTheme } from '../ThemeProvider.js';
+import { fontSize, radius, spacing, type ColorPalette } from '../theme.js';
+import { EmptyState, ScreenHeader } from './ui.js';
 
 export interface TemplateEntry {
   id: string;
@@ -35,6 +39,8 @@ export interface WorkoutHomeProps {
   onUseTemplate: (sessionId: string) => void;
   onOpenSession: (sessionId: string) => void;
   contentPadding: { paddingTop: number; paddingBottom: number };
+  refreshing: boolean;
+  onRefresh: () => void;
 }
 
 function formatDate(iso: string): string {
@@ -59,15 +65,22 @@ export function WorkoutHome({
   onUseTemplate,
   onOpenSession,
   contentPadding,
+  refreshing,
+  onRefresh,
 }: WorkoutHomeProps) {
   const { t } = useTranslation();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   return (
     <ScrollView
       style={styles.screen}
       contentContainerStyle={[styles.content, contentPadding]}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
+      }
     >
-      <Text style={styles.pageTitle}>{t('tabs.workouts')}</Text>
+      <ScreenHeader title={t('tabs.workouts')} />
 
       <Pressable onPress={onStartEmpty} style={styles.primaryButton} accessibilityRole="button">
         <Text style={styles.primaryButtonText}>{t('workout.startButton')}</Text>
@@ -102,10 +115,7 @@ export function WorkoutHome({
         <Text style={styles.sectionTitle}>{t('history.title')}</Text>
 
         {history.length === 0 ? (
-          <View style={styles.emptyBlock}>
-            <Text style={styles.emptyTitle}>{t('history.empty')}</Text>
-            <Text style={styles.emptyHint}>{t('history.emptyHint')}</Text>
-          </View>
+          <EmptyState emoji="🏋️" title={t('history.empty')} hint={t('history.emptyHint')} />
         ) : (
           history.map((session) => {
             const minutes = durationMinutes(session.started_at, session.ended_at);
@@ -142,36 +152,26 @@ export function WorkoutHome({
   );
 }
 
-const styles = StyleSheet.create<{
-  screen: ViewStyle;
-  content: ViewStyle;
-  pageTitle: TextStyle;
-  primaryButton: ViewStyle;
-  primaryButtonText: TextStyle;
-  section: ViewStyle;
-  sectionTitle: TextStyle;
-  sectionHint: TextStyle;
-  templateRow: ViewStyle;
-  templateName: TextStyle;
-  repeatIcon: TextStyle;
-  historyRow: ViewStyle;
-  historyName: TextStyle;
-  rowMain: ViewStyle;
-  rowMeta: TextStyle;
-  rowStats: TextStyle;
-  emptyBlock: ViewStyle;
-  emptyTitle: TextStyle;
-  emptyHint: TextStyle;
-}>({
+const createStyles = (colors: ColorPalette) =>
+  StyleSheet.create<{
+    screen: ViewStyle;
+    content: ViewStyle;
+    primaryButton: ViewStyle;
+    primaryButtonText: TextStyle;
+    section: ViewStyle;
+    sectionTitle: TextStyle;
+    sectionHint: TextStyle;
+    templateRow: ViewStyle;
+    templateName: TextStyle;
+    repeatIcon: TextStyle;
+    historyRow: ViewStyle;
+    historyName: TextStyle;
+    rowMain: ViewStyle;
+    rowMeta: TextStyle;
+    rowStats: TextStyle;
+  }>({
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { paddingHorizontal: spacing.lg },
-  pageTitle: {
-    color: colors.text,
-    fontSize: fontSize.xl,
-    fontWeight: '800',
-    marginBottom: spacing.lg,
-    textAlign: 'auto',
-  },
   primaryButton: {
     backgroundColor: colors.accentSoft,
     borderWidth: 1,
@@ -219,7 +219,4 @@ const styles = StyleSheet.create<{
   rowMain: { flex: 1 },
   rowMeta: { color: colors.textMuted, fontSize: fontSize.xs, marginTop: 2, textAlign: 'auto' },
   rowStats: { color: colors.textMuted, fontSize: fontSize.xs, marginTop: 4, textAlign: 'auto' },
-  emptyBlock: { alignItems: 'center', paddingVertical: spacing.xl },
-  emptyTitle: { color: colors.text, fontSize: fontSize.md },
-  emptyHint: { color: colors.textMuted, fontSize: fontSize.sm, marginTop: spacing.xs },
 });

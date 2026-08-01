@@ -14,11 +14,11 @@ import {
   expectedKgPerWeek,
   movingAverage,
 } from '@fit/shared/calculations';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Alert,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -29,13 +29,24 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
 import {
   checkScanAvailability,
   scanForReading,
   ScanError,
   type ScanUnavailableReason,
 } from '../../src/ble/scanner.js';
-import { Banner, Card, Hint, SectionTitle, Stat } from '../../src/components/ui.js';
+import {
+  Banner,
+  Card,
+  Hint,
+  ScreenHeader,
+  SectionTitle,
+  SkeletonScreen,
+  Stat,
+} from '../../src/components/ui.js';
+import { SwipeableRow } from '../../src/components/SwipeableRow.js';
+import { UndoToast } from '../../src/components/UndoToast.js';
 import { WeightSparkline } from '../../src/components/WeightSparkline.js';
 import {
   computeTargets,
@@ -50,7 +61,8 @@ import {
   type TargetsGap,
 } from '../../src/db/metrics.js';
 import { getExecutor, newId } from '../../src/db/provider.js';
-import { colors, fontSize, radius, spacing } from '../../src/theme.js';
+import { useTheme } from '../../src/ThemeProvider.js';
+import { fontSize, radius, spacing, type ColorPalette } from '../../src/theme.js';
 
 const GAP_MESSAGE: Record<TargetsGap, string> = {
   no_weight: 'metrics.noDataHint',
@@ -83,6 +95,9 @@ const SOURCE_LABEL: Record<string, string> = {
 export default function MetricsScreen() {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
+  const userId = useCurrentUserId();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [metrics, setMetrics] = useState<BodyMetricRow[]>([]);
   const [profile, setProfile] = useState<ProfileRow | null>(null);
@@ -97,9 +112,15 @@ export default function MetricsScreen() {
 
   const reload = useCallback(async () => {
     const db = await getExecutor();
-    setMetrics(await listBodyMetrics(db));
-    setProfile(await getProfile(db));
-  }, []);
+    setMetrics(await listBodyMetrics(db, userId));
+    setProfile(await getProfile(db, userId));
+  }, [userId]);
+
+  const [refreshing, setRefreshing] = useState(false);
+  const handleRefresh = useCallback(() => {
+    setRefreshing(true);
+    void reload().finally(() => setRefreshing(false));
+  }, [reload]);
 
   useEffect(() => {
     void (async () => {
@@ -147,7 +168,7 @@ export default function MetricsScreen() {
         }
 
         const db = await getExecutor();
-        await recordBodyMetric(db, newId, {
+        await recordBodyMetric(db, userId, newId, {
           weightKg: result.reading.weightKg,
           bodyFatPct: result.reading.bodyFatPct ?? null,
           muscleMassKg: result.reading.muscleMassKg ?? null,
@@ -175,34 +196,72 @@ export default function MetricsScreen() {
     if (!Number.isFinite(value) || value <= 0 || value > 500) return;
 
     const db = await getExecutor();
-    await recordBodyMetric(db, newId, { weightKg: value, source: 'manual' });
+    await recordBodyMetric(db, userId, newId, { weightKg: value, source: 'manual' });
     setEntry('');
     await reload();
   };
 
-  const remove = (id: string) => {
-    Alert.alert('', t('metrics.delete'), [
-      { text: t('common.cancel'), style: 'cancel' },
-      {
-        text: t('metrics.delete'),
-        style: 'destructive',
-        onPress: () => {
-          void (async () => {
-            const db = await getExecutor();
-            await deleteBodyMetric(db, id);
-            await reload();
-          })();
-        },
-      },
-    ]);
-  };
+  // A swipe hides the row immediately; the entry only leaves SQLite once the undo window
+  // (below) runs out or a second swipe forces this one to commit early.
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const pendingRef = useRef<{ id: string; timer: ReturnType<typeof setTimeout> } | null>(null);
+
+  const commitDelete = useCallback(
+    (id: string) => {
+      void (async () => {
+        const db = await getExecutor();
+        await deleteBodyMetric(db, userId, id);
+        await reload();
+      })();
+    },
+    [userId, reload],
+  );
+
+  const finalizePending = useCallback(() => {
+    if (!pendingRef.current) return;
+    clearTimeout(pendingRef.current.timer);
+    const id = pendingRef.current.id;
+    pendingRef.current = null;
+    setPendingDeleteId(null);
+    commitDelete(id);
+  }, [commitDelete]);
+
+  const swipeDelete = useCallback(
+    (id: string) => {
+      // Only one undo window open at a time — swiping a second row commits the first right away
+      // rather than silently discarding it.
+      finalizePending();
+      setPendingDeleteId(id);
+      const timer = setTimeout(() => {
+        pendingRef.current = null;
+        setPendingDeleteId(null);
+        commitDelete(id);
+      }, 4000);
+      pendingRef.current = { id, timer };
+    },
+    [finalizePending, commitDelete],
+  );
+
+  const undoDelete = useCallback(() => {
+    if (!pendingRef.current) return;
+    clearTimeout(pendingRef.current.timer);
+    pendingRef.current = null;
+    setPendingDeleteId(null);
+  }, []);
+
+  // Leaving the screen with an undo window still open must not silently drop the delete.
+  useEffect(() => {
+    return () => {
+      if (pendingRef.current) {
+        clearTimeout(pendingRef.current.timer);
+        commitDelete(pendingRef.current.id);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (loading) {
-    return (
-      <View style={[styles.centered, { paddingTop: insets.top }]}>
-        <Text style={styles.muted}>{t('common.loading')}</Text>
-      </View>
-    );
+    return <SkeletonScreen paddingTop={insets.top + spacing.lg} />;
   }
 
   // listBodyMetrics returns newest-first; the trend maths expects oldest-first.
@@ -223,15 +282,18 @@ export default function MetricsScreen() {
       : null;
 
   return (
+    <View style={styles.screen}>
     <ScrollView
-      style={styles.screen}
       contentContainerStyle={[
         styles.content,
         { paddingTop: insets.top + spacing.lg, paddingBottom: insets.bottom + spacing.xxl },
       ]}
       keyboardShouldPersistTaps="handled"
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.accent} />
+      }
     >
-      <Text style={styles.pageTitle}>{t('metrics.title')}</Text>
+      <ScreenHeader title={t('metrics.title')} />
 
       <Card>
         <SectionTitle>{t('metrics.addWeight')}</SectionTitle>
@@ -394,65 +456,60 @@ export default function MetricsScreen() {
       {metrics.length > 0 ? (
         <Card>
           <SectionTitle>{t('metrics.history')}</SectionTitle>
-          {metrics.slice(0, 30).map((metric) => (
-            <Pressable
-              key={metric.id}
-              onLongPress={() => remove(metric.id)}
-              style={styles.historyRow}
-              accessibilityRole="button"
-            >
-              <View style={styles.historyMain}>
-                <Text style={styles.historyWeight}>
-                  {metric.weight_kg} {t('common.kg')}
-                </Text>
-                <Text style={styles.historyMeta}>
-                  {new Date(metric.measured_at).toLocaleDateString()} ·{' '}
-                  {t(SOURCE_LABEL[metric.source] ?? 'metrics.sourceManual')}
-                </Text>
-              </View>
-              {metric.body_fat_pct !== null ? (
-                <Text style={styles.historyFat}>{metric.body_fat_pct}%</Text>
-              ) : null}
-            </Pressable>
-          ))}
+          {metrics
+            .filter((metric) => metric.id !== pendingDeleteId)
+            .slice(0, 30)
+            .map((metric) => (
+              <SwipeableRow key={metric.id} onDelete={() => swipeDelete(metric.id)}>
+                <View style={styles.historyRow}>
+                  <View style={styles.historyMain}>
+                    <Text style={styles.historyWeight}>
+                      {metric.weight_kg} {t('common.kg')}
+                    </Text>
+                    <Text style={styles.historyMeta}>
+                      {new Date(metric.measured_at).toLocaleDateString()} ·{' '}
+                      {t(SOURCE_LABEL[metric.source] ?? 'metrics.sourceManual')}
+                    </Text>
+                  </View>
+                  {metric.body_fat_pct !== null ? (
+                    <Text style={styles.historyFat}>{metric.body_fat_pct}%</Text>
+                  ) : null}
+                </View>
+              </SwipeableRow>
+            ))}
         </Card>
       ) : null}
     </ScrollView>
+    <UndoToast message={pendingDeleteId ? t('metrics.deletedToast') : null} onUndo={undoDelete} />
+    </View>
   );
 }
 
-const styles = StyleSheet.create<{
-  screen: ViewStyle;
-  content: ViewStyle;
-  centered: ViewStyle;
-  muted: TextStyle;
-  pageTitle: TextStyle;
-  entryRow: ViewStyle;
-  entryInput: TextStyle;
-  saveButton: ViewStyle;
-  saveButtonText: TextStyle;
-  divider: ViewStyle;
-  macroRow: ViewStyle;
-  scanButton: ViewStyle;
-  scanButtonText: TextStyle;
-  bleSupported: TextStyle;
-  historyRow: ViewStyle;
-  historyMain: ViewStyle;
-  historyWeight: TextStyle;
-  historyMeta: TextStyle;
-  historyFat: TextStyle;
-}>({
+const createStyles = (colors: ColorPalette) =>
+  StyleSheet.create<{
+    screen: ViewStyle;
+    content: ViewStyle;
+    centered: ViewStyle;
+    muted: TextStyle;
+    entryRow: ViewStyle;
+    entryInput: TextStyle;
+    saveButton: ViewStyle;
+    saveButtonText: TextStyle;
+    divider: ViewStyle;
+    macroRow: ViewStyle;
+    scanButton: ViewStyle;
+    scanButtonText: TextStyle;
+    bleSupported: TextStyle;
+    historyRow: ViewStyle;
+    historyMain: ViewStyle;
+    historyWeight: TextStyle;
+    historyMeta: TextStyle;
+    historyFat: TextStyle;
+  }>({
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { paddingHorizontal: spacing.lg },
   centered: { flex: 1, backgroundColor: colors.bg, alignItems: 'center' },
   muted: { color: colors.textMuted, fontSize: fontSize.sm },
-  pageTitle: {
-    color: colors.text,
-    fontSize: fontSize.xl,
-    fontWeight: '800',
-    marginBottom: spacing.lg,
-    textAlign: 'auto',
-  },
   entryRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
   entryInput: {
     flex: 1,

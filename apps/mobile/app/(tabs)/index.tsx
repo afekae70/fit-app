@@ -8,7 +8,8 @@
  * Once auth lands, these inputs come from the user's stored profile instead of local state.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Pressable,
@@ -35,6 +36,9 @@ import {
   type Goal,
 } from '@fit/shared/calculations';
 
+import { useAuth } from '../../src/auth/AuthProvider.js';
+import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
+import { getDailyBrief } from '../../src/coach/dailyBrief.js';
 import {
   Banner,
   Card,
@@ -44,10 +48,12 @@ import {
   SectionTitle,
   Stat,
 } from '../../src/components/ui.js';
+import { API_BASE_URL } from '../../src/config.js';
 import { getLatestWeight, getProfile, recordBodyMetric, saveProfile } from '../../src/db/metrics.js';
 import { getExecutor, newId } from '../../src/db/provider.js';
-import { setAppLanguage, type Language } from '../../src/i18n/index.js';
-import { colors, fontSize, spacing } from '../../src/theme.js';
+import { getWorkoutStreak, type WorkoutStreak } from '../../src/db/workouts.js';
+import { useTheme } from '../../src/ThemeProvider.js';
+import { fontSize, spacing, type ColorPalette } from '../../src/theme.js';
 
 /**
  * Convert an entered age to a date of birth.
@@ -83,7 +89,12 @@ function parseNumber(raw: string): number | null {
 
 export default function TodayScreen() {
   const { t, i18n } = useTranslation();
+  const isHebrew = i18n.language === 'he';
   const insets = useSafeAreaInsets();
+  const userId = useCurrentUserId();
+  const { session } = useAuth();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [weightRaw, setWeightRaw] = useState('80');
   const [heightRaw, setHeightRaw] = useState('180');
@@ -91,8 +102,49 @@ export default function TodayScreen() {
   const [sex, setSex] = useState<SexChoice>('male');
   const [activityLevel, setActivityLevel] = useState<ActivityLevel>('moderate');
   const [goal, setGoal] = useState<Goal>('cut');
-  const [reloadNeeded, setReloadNeeded] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [streak, setStreak] = useState<WorkoutStreak | null>(null);
+  const [brief, setBrief] = useState<string | null>(null);
+
+  // Once per mount, not on every focus: the brief is cached per calendar day (see
+  // getDailyBrief), so refetching on every tab switch would only add repeat network calls on the
+  // days it fails, never a fresher result on the days it succeeds.
+  useEffect(() => {
+    const accessToken = session?.access_token;
+    if (!accessToken || !API_BASE_URL) return;
+    let cancelled = false;
+    void (async () => {
+      const db = await getExecutor();
+      const text = await getDailyBrief({
+        db,
+        userId,
+        newId,
+        locale: isHebrew ? 'he' : 'en',
+        baseUrl: API_BASE_URL,
+        accessToken,
+      });
+      if (!cancelled) setBrief(text);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, session?.access_token, isHebrew]);
+
+  // useFocusEffect rather than useEffect: a workout gets finished on another tab, so coming back
+  // to Today must show the fresh streak rather than whatever it was on first mount.
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      void (async () => {
+        const db = await getExecutor();
+        const result = await getWorkoutStreak(db, userId);
+        if (!cancelled) setStreak(result);
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [userId]),
+  );
 
   // Load the saved profile and latest weight once. Until this completes, the fields show
   // defaults; writing those defaults back would overwrite real saved values, hence `hydrated`.
@@ -100,7 +152,10 @@ export default function TodayScreen() {
     let cancelled = false;
     void (async () => {
       const db = await getExecutor();
-      const [profile, latest] = await Promise.all([getProfile(db), getLatestWeight(db)]);
+      const [profile, latest] = await Promise.all([
+        getProfile(db, userId),
+        getLatestWeight(db, userId),
+      ]);
       if (cancelled) return;
 
       if (profile?.height_cm) setHeightRaw(String(profile.height_cm));
@@ -124,7 +179,7 @@ export default function TodayScreen() {
     const heightCm = parseNumber(heightRaw);
     void (async () => {
       const db = await getExecutor();
-      await saveProfile(db, {
+      await saveProfile(db, userId, {
         heightCm,
         birthDate: ageYears === null ? null : birthDateFromAge(ageYears),
         sex,
@@ -163,13 +218,25 @@ export default function TodayScreen() {
     };
   }, [weightRaw, heightRaw, ageRaw, sex, activityLevel, goal]);
 
-  // On a direction change this never returns — setAppLanguage reloads the bundle, and the app
-  // comes back mirrored. The banner below is only reached if that reload was refused.
-  const toggleLanguage = async () => {
-    const next: Language = i18n.language === 'he' ? 'en' : 'he';
-    const result = await setAppLanguage(next);
-    setReloadNeeded(result.reloadFailed === true);
-  };
+  const renderMacroBar = (label: string, grams: number, share: number, color: string) => (
+    <View key={label} style={styles.macroBarBlock}>
+      <View style={styles.macroBarHeader}>
+        <Text style={styles.macroBarLabel}>{label}</Text>
+        <Text style={styles.macroBarValue}>
+          {grams}
+          {t('common.grams')}
+        </Text>
+      </View>
+      <View style={styles.macroBarTrack}>
+        <View
+          style={[
+            styles.macroBarFill,
+            { width: `${Math.round(share * 100)}%`, backgroundColor: color },
+          ]}
+        />
+      </View>
+    </View>
+  );
 
   return (
     <ScrollView
@@ -182,14 +249,46 @@ export default function TodayScreen() {
     >
       <View style={styles.header}>
         <Text style={styles.appName}>{t('common.appName')}</Text>
-        <Pressable onPress={toggleLanguage} style={styles.langButton} accessibilityRole="button">
-          <Text style={styles.langButtonText}>{t('dev.languageToggle')}</Text>
+        <Pressable
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- settings.tsx is new;
+          // expo-router's typed-routes union regenerates on the next `expo start`/build.
+          onPress={() => router.push('/settings' as any)}
+          style={styles.langButton}
+          accessibilityRole="button"
+          accessibilityLabel={t('settings.title')}
+          hitSlop={8}
+        >
+          <Text style={styles.langButtonText}>⚙️</Text>
         </Pressable>
       </View>
 
-      {/* Only shown when the automatic reload failed; normally the app has already restarted
-          mirrored by this point and this branch is never rendered. */}
-      {reloadNeeded ? <Banner tone="warning">{t('dev.reloadForRtl')}</Banner> : null}
+      {streak && streak.currentDays > 0 ? (
+        <Card style={styles.streakCard}>
+          <View style={styles.streakRow}>
+            <Text style={styles.streakEmoji}>🔥</Text>
+            <View style={styles.streakTextCol}>
+              <Text style={styles.streakDays}>
+                {t('streak.days', { count: streak.currentDays })}
+              </Text>
+              <Text style={styles.streakSub}>
+                {t(streak.trainedToday ? 'streak.trainedToday' : 'streak.trainToday')}
+              </Text>
+            </View>
+          </View>
+        </Card>
+      ) : null}
+
+      {brief ? (
+        <Card tone="accent" style={styles.briefCard}>
+          <View style={styles.briefRow}>
+            <Text style={styles.briefEmoji}>🧠</Text>
+            <View style={styles.streakTextCol}>
+              <Text style={styles.briefTitle}>{t('coach.dailyBriefTitle')}</Text>
+              <Text style={styles.briefText}>{brief}</Text>
+            </View>
+          </View>
+        </Card>
+      ) : null}
 
       <Card>
         <SectionTitle>{t('profile.title')}</SectionTitle>
@@ -207,9 +306,9 @@ export default function TodayScreen() {
             if (value === null || !hydrated) return;
             void (async () => {
               const db = await getExecutor();
-              const latest = await getLatestWeight(db);
+              const latest = await getLatestWeight(db, userId);
               if (latest?.weight_kg === value) return; // no change, no duplicate row
-              await recordBodyMetric(db, newId, { weightKg: value, source: 'manual' });
+              await recordBodyMetric(db, userId, newId, { weightKg: value, source: 'manual' });
             })();
           }}
         />
@@ -291,59 +390,60 @@ export default function TodayScreen() {
 
           <Card>
             <SectionTitle>{t('targets.protein')} · {t('targets.carbs')} · {t('targets.fat')}</SectionTitle>
-            <View style={styles.macroRow}>
-              <Stat
-                label={t('targets.protein')}
-                value={String(results.macros.proteinG)}
-                unit={t('common.grams')}
-                color={colors.protein}
-              />
-              <Stat
-                label={t('targets.carbs')}
-                value={String(results.macros.carbsG)}
-                unit={t('common.grams')}
-                color={colors.carbs}
-              />
-              <Stat
-                label={t('targets.fat')}
-                value={String(results.macros.fatG)}
-                unit={t('common.grams')}
-                color={colors.fat}
-              />
-            </View>
+            {(() => {
+              // Shown as each macro's share of the day's calories, not "progress toward a goal"
+              // — there is no food log here, so these three numbers ARE the target, not an
+              // intake to compare against it. The bars visualise the split, nothing more.
+              const proteinKcal = results.macros.proteinG * 4;
+              const carbsKcal = results.macros.carbsG * 4;
+              const fatKcal = results.macros.fatG * 9;
+              const totalKcal = proteinKcal + carbsKcal + fatKcal;
+              const share = (kcal: number) => (totalKcal > 0 ? kcal / totalKcal : 0);
+
+              return (
+                <>
+                  {renderMacroBar(t('targets.protein'), results.macros.proteinG, share(proteinKcal), colors.protein)}
+                  {renderMacroBar(t('targets.carbs'), results.macros.carbsG, share(carbsKcal), colors.carbs)}
+                  {renderMacroBar(t('targets.fat'), results.macros.fatG, share(fatKcal), colors.fat)}
+                </>
+              );
+            })()}
           </Card>
         </>
       ) : null}
 
-      <Card>
-        <SectionTitle>{t('dev.statusTitle')}</SectionTitle>
-        <View style={styles.statusRow}>
-          <Text style={styles.statusOk}>✅ {t('dev.calculationsLive')}</Text>
-          <Hint>{t('dev.calculationsHint')}</Hint>
-        </View>
-        <View style={styles.statusRow}>
-          <Text style={styles.statusPending}>⏳ {t('dev.noBackend')}</Text>
-          <Hint>{t('dev.noBackendHint')}</Hint>
-        </View>
-      </Card>
     </ScrollView>
   );
 }
 
 // Per-key types — see the note in src/components/ui.tsx for why this is explicit.
-const styles = StyleSheet.create<{
-  screen: ViewStyle;
-  content: ViewStyle;
-  header: ViewStyle;
-  appName: TextStyle;
-  langButton: ViewStyle;
-  langButtonText: TextStyle;
-  divider: ViewStyle;
-  macroRow: ViewStyle;
-  statusRow: ViewStyle;
-  statusOk: TextStyle;
-  statusPending: TextStyle;
-}>({
+const createStyles = (colors: ColorPalette) =>
+  StyleSheet.create<{
+    screen: ViewStyle;
+    content: ViewStyle;
+    header: ViewStyle;
+    appName: TextStyle;
+    langButton: ViewStyle;
+    langButtonText: TextStyle;
+    streakCard: ViewStyle;
+    streakRow: ViewStyle;
+    streakEmoji: TextStyle;
+    streakTextCol: ViewStyle;
+    streakDays: TextStyle;
+    streakSub: TextStyle;
+    briefCard: ViewStyle;
+    briefRow: ViewStyle;
+    briefEmoji: TextStyle;
+    briefTitle: TextStyle;
+    briefText: TextStyle;
+    divider: ViewStyle;
+    macroBarBlock: ViewStyle;
+    macroBarHeader: ViewStyle;
+    macroBarLabel: TextStyle;
+    macroBarValue: TextStyle;
+    macroBarTrack: ViewStyle;
+    macroBarFill: ViewStyle;
+  }>({
   screen: {
     flex: 1,
     backgroundColor: colors.bg,
@@ -373,29 +473,80 @@ const styles = StyleSheet.create<{
     color: colors.textMuted,
     fontSize: fontSize.sm,
   },
+  streakCard: {
+    paddingVertical: spacing.md,
+  },
+  streakRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  streakEmoji: {
+    fontSize: 32,
+  },
+  streakTextCol: {
+    flex: 1,
+  },
+  streakDays: {
+    color: colors.text,
+    fontSize: fontSize.md,
+    fontWeight: '700',
+    textAlign: 'auto',
+  },
+  streakSub: {
+    color: colors.textMuted,
+    fontSize: fontSize.xs,
+    marginTop: spacing.xxs,
+    textAlign: 'auto',
+  },
+  briefCard: {
+    paddingVertical: spacing.md,
+  },
+  briefRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+  },
+  briefEmoji: {
+    fontSize: 24,
+  },
+  briefTitle: {
+    color: colors.accent,
+    fontSize: fontSize.xs,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    marginBottom: spacing.xxs,
+    textAlign: 'auto',
+  },
+  briefText: {
+    color: colors.text,
+    fontSize: fontSize.sm,
+    lineHeight: 20,
+    textAlign: 'auto',
+  },
   divider: {
     height: 1,
     backgroundColor: colors.border,
     marginVertical: spacing.md,
   },
-  macroRow: {
+  macroBarBlock: {
+    marginTop: spacing.md,
+  },
+  macroBarHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: spacing.md,
+    marginBottom: spacing.xs,
   },
-  statusRow: {
-    marginBottom: spacing.sm,
+  macroBarLabel: { color: colors.text, fontSize: fontSize.sm, fontWeight: '600', textAlign: 'auto' },
+  macroBarValue: { color: colors.textMuted, fontSize: fontSize.sm, textAlign: 'auto' },
+  macroBarTrack: {
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: colors.surfaceRaised,
+    overflow: 'hidden',
   },
-  statusOk: {
-    color: colors.accent,
-    fontSize: fontSize.md,
-    fontWeight: '600',
-    textAlign: 'auto',
-  },
-  statusPending: {
-    color: colors.warning,
-    fontSize: fontSize.md,
-    fontWeight: '600',
-    textAlign: 'auto',
+  macroBarFill: {
+    height: '100%',
+    borderRadius: 999,
   },
 });

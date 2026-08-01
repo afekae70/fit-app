@@ -1,42 +1,50 @@
 /**
- * Signs real JWTs against a test secret rather than mocking `jwtVerify`, so these tests
+ * Signs real JWTs against a local key pair rather than mocking `jwtVerify`, so these tests
  * exercise the actual verification path — including the failure modes that matter for
- * security (wrong secret, expired token, anon-role token) rather than a mock that always
- * agrees with the code under test.
+ * security (wrong key, expired token, anon-role token) rather than a mock that always agrees
+ * with the code under test. `createLocalJWKSet` stands in for `createRemoteJWKSet` — same
+ * verification code path, no network fetch.
+ *
+ * ES256, matching how this project's real Supabase instance signs access tokens (confirmed by
+ * fetching its JWKS endpoint) — not HS256, which the auth plugin used to assume incorrectly.
  */
 
 import Fastify from 'fastify';
-import { SignJWT } from 'jose';
+import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair, type JWK } from 'jose';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import authPlugin from './auth.js';
 
-const TEST_SECRET = 'test-jwt-secret-at-least-32-bytes-long';
-const secretKey = new TextEncoder().encode(TEST_SECRET);
-
-async function signToken(claims: Record<string, unknown>, expiresIn = '1h') {
-  return new SignJWT(claims)
-    .setProtectedHeader({ alg: 'HS256' })
-    .setIssuedAt()
-    .setExpirationTime(expiresIn)
-    .sign(secretKey);
-}
+const KID = 'test-key-1';
 
 async function buildTestApp() {
+  const { publicKey, privateKey } = await generateKeyPair('ES256', { extractable: true });
+  const publicJwk = await exportJWK(publicKey);
+  const jwks = createLocalJWKSet({ keys: [{ ...publicJwk, kid: KID, alg: 'ES256' } as JWK] });
+
+  async function signToken(claims: Record<string, unknown>, expiresIn = '1h') {
+    return new SignJWT(claims)
+      .setProtectedHeader({ alg: 'ES256', kid: KID })
+      .setIssuedAt()
+      .setExpirationTime(expiresIn)
+      .sign(privateKey);
+  }
+
   const app = Fastify({ logger: false });
-  await app.register(authPlugin, { jwtSecret: TEST_SECRET });
+  await app.register(authPlugin, { jwks });
   app.get('/protected', { preHandler: app.authenticate }, async (request) => ({
     userId: request.userId,
   }));
   await app.ready();
-  return app;
+  return { app, signToken };
 }
 
 describe('auth plugin', () => {
-  let app: Awaited<ReturnType<typeof buildTestApp>>;
+  let app: Awaited<ReturnType<typeof buildTestApp>>['app'];
+  let signToken: Awaited<ReturnType<typeof buildTestApp>>['signToken'];
 
   beforeAll(async () => {
-    app = await buildTestApp();
+    ({ app, signToken } = await buildTestApp());
   });
 
   it('rejects a request with no Authorization header', async () => {
@@ -65,10 +73,10 @@ describe('auth plugin', () => {
     expect(res.json()).toEqual({ userId: 'user-abc-123' });
   });
 
-  it('rejects a token signed with a different secret', async () => {
-    const wrongKey = new TextEncoder().encode('a-completely-different-secret-value');
+  it('rejects a token signed with a different key', async () => {
+    const { privateKey: wrongKey } = await generateKeyPair('ES256');
     const token = await new SignJWT({ sub: 'user-abc-123', role: 'authenticated' })
-      .setProtectedHeader({ alg: 'HS256' })
+      .setProtectedHeader({ alg: 'ES256', kid: KID })
       .setIssuedAt()
       .setExpirationTime('1h')
       .sign(wrongKey);

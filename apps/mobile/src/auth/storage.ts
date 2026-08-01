@@ -57,3 +57,13 @@ export const secureChunkedStorage: AuthStorage = {
     await SecureStore.deleteItemAsync(metaKey(key));
   },
 };
+
+/**
+ * Storage for `claimLocalData.ts`'s once-per-device flag. Unlike the session blob above, this
+ * value is a single short user id — nowhere near the 2048-byte limit — so it needs no chunking,
+ * just a direct `getItemAsync`/`setItemAsync` pair matching the `ClaimStorage` interface.
+ */
+export const secureClaimStorage = {
+  getItem: (key: string) => SecureStore.getItemAsync(key),
+  setItem: (key: string, value: string) => SecureStore.setItemAsync(key, value),
+};

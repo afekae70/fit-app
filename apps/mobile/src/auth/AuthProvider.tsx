@@ -11,7 +11,11 @@
 import type { Session } from '@supabase/supabase-js';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
+import { getExecutor } from '../db/provider.js';
+import { claimLocalData } from './claimLocalData.js';
 import { getSupabaseClient } from './client.js';
+import { friendlyAuthError } from './friendlyAuthError.js';
+import { secureClaimStorage } from './storage.js';
 
 export interface AuthState {
   /** Undefined while the stored session is still being read; null once confirmed absent. */
@@ -21,19 +25,22 @@ export interface AuthState {
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signUp: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
+  /** Sends a "reset your password" email with a link back into the app (see auth/callback.tsx). */
+  resetPassword: (email: string) => Promise<{ error: string | null }>;
+  /** Sets a new password — only meaningful once a recovery session exists (see auth/reset-password.tsx). */
+  updatePassword: (newPassword: string) => Promise<{ error: string | null }>;
+  /** Re-sends the sign-up confirmation email, for when the first one expired or got lost. */
+  resendConfirmation: (email: string) => Promise<{ error: string | null }>;
+  /** Completes the PKCE round trip for a confirmation/recovery deep link (see auth/callback.tsx). */
+  exchangeCode: (code: string) => Promise<{ error: string | null }>;
 }
+
+/** Where both the sign-up confirmation and password-recovery emails redirect back into the app.
+ *  A single shared route (see app/auth/callback.tsx) dispatches on the `type` query param GoTrue
+ *  always attaches, rather than needing two separate redirect URLs kept in sync everywhere. */
+const AUTH_CALLBACK_URL = 'fitapp://auth/callback';
 
 const AuthContext = createContext<AuthState | null>(null);
-
-/** Supabase's own error strings are in English regardless of device locale; normalised here so
- * the sign-in screen can show a message in the user's language instead of raw GoTrue text. */
-function friendlyAuthError(message: string): string {
-  if (/invalid login credentials/i.test(message)) return 'invalid_credentials';
-  if (/already registered/i.test(message)) return 'already_registered';
-  if (/password should be at least/i.test(message)) return 'weak_password';
-  if (/email not confirmed/i.test(message)) return 'email_not_confirmed';
-  return 'unknown';
-}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const client = useMemo(() => getSupabaseClient(), []);
@@ -47,15 +54,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     let cancelled = false;
 
+    // Idempotent by design (see claimLocalData.ts) — safe to call from both this initial
+    // resolution and the onAuthStateChange subscription below without coordinating them,
+    // even though both can fire for the same session on cold start.
+    const claimIfSignedIn = (nextSession: Session | null) => {
+      if (!nextSession) return;
+      void getExecutor().then((db) => claimLocalData(db, nextSession.user.id, secureClaimStorage));
+    };
+
     void client.auth.getSession().then(({ data }) => {
-      if (!cancelled) setSession(data.session);
+      if (cancelled) return;
+      setSession(data.session);
+      claimIfSignedIn(data.session);
     });
 
     // Keeps `session` current across sign-in, sign-out, and silent token refresh — without
     // this, a refreshed access token would sit in SecureStore while the coach screen kept
     // sending the stale one from the initial getSession() call.
     const { data: subscription } = client.auth.onAuthStateChange((_event, nextSession) => {
-      if (!cancelled) setSession(nextSession);
+      if (cancelled) return;
+      setSession(nextSession);
+      claimIfSignedIn(nextSession);
     });
 
     return () => {
@@ -75,11 +94,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       signUp: async (email, password) => {
         if (!client) return { error: 'not_configured' };
-        const { error } = await client.auth.signUp({ email, password });
+        const { error } = await client.auth.signUp({
+          email,
+          password,
+          options: { emailRedirectTo: AUTH_CALLBACK_URL },
+        });
         return { error: error ? friendlyAuthError(error.message) : null };
       },
       signOut: async () => {
         await client?.auth.signOut();
+      },
+      resetPassword: async (email) => {
+        if (!client) return { error: 'not_configured' };
+        const { error } = await client.auth.resetPasswordForEmail(email, {
+          redirectTo: AUTH_CALLBACK_URL,
+        });
+        return { error: error ? friendlyAuthError(error.message) : null };
+      },
+      updatePassword: async (newPassword) => {
+        if (!client) return { error: 'not_configured' };
+        const { error } = await client.auth.updateUser({ password: newPassword });
+        return { error: error ? friendlyAuthError(error.message) : null };
+      },
+      resendConfirmation: async (email) => {
+        if (!client) return { error: 'not_configured' };
+        const { error } = await client.auth.resend({
+          type: 'signup',
+          email,
+          options: { emailRedirectTo: AUTH_CALLBACK_URL },
+        });
+        return { error: error ? friendlyAuthError(error.message) : null };
+      },
+      exchangeCode: async (code) => {
+        if (!client) return { error: 'not_configured' };
+        const { error } = await client.auth.exchangeCodeForSession(code);
+        return { error: error ? friendlyAuthError(error.message) : null };
       },
     }),
     [client, session],

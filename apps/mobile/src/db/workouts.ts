@@ -68,6 +68,11 @@ const defaultClock: Clock = () => new Date().toISOString();
  * Written in the same transaction as the mutation itself, so a crash between the two cannot
  * leave a local row that never syncs — the classic offline-sync failure.
  */
+// `outbox` carries a `user_id` column (default 'local') but has no reader anywhere in the app
+// yet — it's scaffolding for a future sync feature that hasn't been built. Not worth threading
+// a real userId through every call site of this helper (several of which only have a child id,
+// like a set or session-exercise id, with no cheap way to look up the owning user) before that
+// feature exists and can inform how outbox rows should actually be attributed.
 async function enqueue(
   db: SqlExecutor,
   entity: string,
@@ -88,6 +93,7 @@ async function enqueue(
 
 export async function startSession(
   db: SqlExecutor,
+  userId: string,
   newId: IdFactory,
   options: { locationId?: string | null; planDayId?: string | null; bodyweightKg?: number | null } = {},
   clock: Clock = defaultClock,
@@ -96,9 +102,9 @@ export async function startSession(
   const now = clock();
   await db.run(
     `INSERT INTO workout_sessions
-       (id, location_id, plan_day_id, started_at, bodyweight_kg, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [id, options.locationId ?? null, options.planDayId ?? null, now, options.bodyweightKg ?? null, now],
+       (id, user_id, location_id, plan_day_id, started_at, bodyweight_kg, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [id, userId, options.locationId ?? null, options.planDayId ?? null, now, options.bodyweightKg ?? null, now],
   );
   await enqueue(db, 'workout_session', id, 'insert', { id, startedAt: now }, clock);
   return id;
@@ -106,53 +112,69 @@ export async function startSession(
 
 export async function finishSession(
   db: SqlExecutor,
+  userId: string,
   sessionId: string,
   options: { sessionRpe?: number | null; notes?: string | null } = {},
   clock: Clock = defaultClock,
 ): Promise<void> {
   const endedAt = clock();
   await db.run(
-    `UPDATE workout_sessions SET ended_at = ?, session_rpe = ?, notes = ? WHERE id = ?`,
-    [endedAt, options.sessionRpe ?? null, options.notes ?? null, sessionId],
+    `UPDATE workout_sessions SET ended_at = ?, session_rpe = ?, notes = ? WHERE id = ? AND user_id = ?`,
+    [endedAt, options.sessionRpe ?? null, options.notes ?? null, sessionId, userId],
   );
   await enqueue(db, 'workout_session', sessionId, 'update', { endedAt }, clock);
 }
 
 /** The session that has been started but not finished, if any. */
-export async function getActiveSession(db: SqlExecutor): Promise<WorkoutSessionRow | null> {
+export async function getActiveSession(
+  db: SqlExecutor,
+  userId: string,
+): Promise<WorkoutSessionRow | null> {
   return db.get<WorkoutSessionRow>(
-    `SELECT * FROM workout_sessions WHERE ended_at IS NULL ORDER BY started_at DESC LIMIT 1`,
+    `SELECT * FROM workout_sessions WHERE user_id = ? AND ended_at IS NULL
+      ORDER BY started_at DESC LIMIT 1`,
+    [userId],
   );
 }
 
-export async function listSessions(db: SqlExecutor, limit = 50): Promise<WorkoutSessionRow[]> {
+export async function listSessions(
+  db: SqlExecutor,
+  userId: string,
+  limit = 50,
+): Promise<WorkoutSessionRow[]> {
   return db.all<WorkoutSessionRow>(
-    `SELECT * FROM workout_sessions ORDER BY started_at DESC LIMIT ?`,
-    [limit],
+    `SELECT * FROM workout_sessions WHERE user_id = ? ORDER BY started_at DESC LIMIT ?`,
+    [userId, limit],
   );
 }
 
 /** Label a session. The name is what makes it findable — and reusable — later. */
 export async function renameSession(
   db: SqlExecutor,
+  userId: string,
   sessionId: string,
   name: string | null,
   clock: Clock = defaultClock,
 ): Promise<void> {
   const trimmed = name?.trim() ?? '';
   const value = trimmed === '' ? null : trimmed;
-  await db.run(`UPDATE workout_sessions SET name = ? WHERE id = ?`, [value, sessionId]);
+  await db.run(`UPDATE workout_sessions SET name = ? WHERE id = ? AND user_id = ?`, [
+    value,
+    sessionId,
+    userId,
+  ]);
   await enqueue(db, 'workout_session', sessionId, 'update', { name: value }, clock);
 }
 
 export async function deleteSession(
   db: SqlExecutor,
+  userId: string,
   sessionId: string,
   clock: Clock = defaultClock,
 ): Promise<void> {
   // Children go via ON DELETE CASCADE — which only fires if PRAGMA foreign_keys is ON for
   // this connection (see db/index.ts).
-  await db.run(`DELETE FROM workout_sessions WHERE id = ?`, [sessionId]);
+  await db.run(`DELETE FROM workout_sessions WHERE id = ? AND user_id = ?`, [sessionId, userId]);
   await enqueue(db, 'workout_session', sessionId, 'delete', undefined, clock);
 }
 
@@ -459,6 +481,7 @@ export interface SessionSummaryRow extends WorkoutSessionRow {
  */
 export async function listSessionSummaries(
   db: SqlExecutor,
+  userId: string,
   limit = 100,
 ): Promise<SessionSummaryRow[]> {
   return db.all<SessionSummaryRow>(
@@ -472,11 +495,58 @@ export async function listSessionSummaries(
      FROM workout_sessions ws
      LEFT JOIN session_exercises se ON se.session_id = ws.id
      LEFT JOIN sets s               ON s.session_exercise_id = se.id
+     WHERE ws.user_id = ?
      GROUP BY ws.id
      ORDER BY ws.started_at DESC
      LIMIT ?`,
-    [limit],
+    [userId, limit],
   );
+}
+
+export interface WorkoutStreak {
+  /** Consecutive trained days ending today (or yesterday, if today is still open). */
+  currentDays: number;
+  trainedToday: boolean;
+}
+
+/** `YYYY-MM-DD` in the device's own local calendar day — matches SQLite's `date(x, 'localtime')`. */
+function localDateString(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * How many consecutive calendar days, ending today, have at least one finished session.
+ *
+ * Not trained yet today doesn't break the streak — it just means today hasn't been decided
+ * one way or the other. The count starts from yesterday in that case; it only actually breaks
+ * once a full day passes with nothing logged.
+ */
+export async function getWorkoutStreak(db: SqlExecutor, userId: string): Promise<WorkoutStreak> {
+  const rows = await db.all<{ day: string }>(
+    `SELECT DISTINCT date(started_at, 'localtime') AS day
+     FROM workout_sessions
+     WHERE user_id = ? AND ended_at IS NOT NULL
+     ORDER BY day DESC`,
+    [userId],
+  );
+  const trainedDays = new Set(rows.map((r) => r.day));
+
+  const today = new Date();
+  const trainedToday = trainedDays.has(localDateString(today));
+
+  const cursor = new Date(today);
+  if (!trainedToday) cursor.setDate(cursor.getDate() - 1);
+
+  let currentDays = 0;
+  while (trainedDays.has(localDateString(cursor))) {
+    currentDays += 1;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+
+  return { currentDays, trainedToday };
 }
 
 /**
@@ -506,18 +576,19 @@ export async function listSessionSummaries(
  */
 export async function repeatSession(
   db: SqlExecutor,
+  userId: string,
   newId: IdFactory,
   sourceSessionId: string,
   clock: Clock = defaultClock,
 ): Promise<string | null> {
   const source = await db.get<WorkoutSessionRow>(
-    `SELECT * FROM workout_sessions WHERE id = ?`,
-    [sourceSessionId],
+    `SELECT * FROM workout_sessions WHERE id = ? AND user_id = ?`,
+    [sourceSessionId, userId],
   );
   if (!source) return null;
 
-  const sessionId = await startSession(db, newId, {}, clock);
-  if (source.name) await renameSession(db, sessionId, source.name, clock);
+  const sessionId = await startSession(db, userId, newId, {}, clock);
+  if (source.name) await renameSession(db, userId, sessionId, source.name, clock);
 
   const exercises = await listSessionExercises(db, sourceSessionId);
   for (const exercise of exercises) {
@@ -563,6 +634,7 @@ export async function repeatSession(
  */
 export async function getPreviousSessionSets(
   db: SqlExecutor,
+  userId: string,
   exerciseKey: string,
   excludeSessionId?: string,
 ): Promise<
@@ -583,12 +655,14 @@ export async function getPreviousSessionSets(
        FROM sets s
        JOIN session_exercises se ON se.id = s.session_exercise_id
        JOIN workout_sessions ws  ON ws.id = se.session_id
-      WHERE se.exercise_key = ?
+      WHERE ws.user_id = ?
+        AND se.exercise_key = ?
         AND ws.id = (
           SELECT prev_ws.id
             FROM workout_sessions prev_ws
             JOIN session_exercises prev_se ON prev_se.session_id = prev_ws.id
-           WHERE prev_se.exercise_key = ?
+           WHERE prev_ws.user_id = ?
+             AND prev_se.exercise_key = ?
              AND (? IS NULL OR prev_ws.id <> ?)
              AND EXISTS (
                SELECT 1 FROM sets prev_s
@@ -600,7 +674,7 @@ export async function getPreviousSessionSets(
            LIMIT 1
         )
       ORDER BY s.set_index`,
-    [exerciseKey, exerciseKey, exclude, exclude],
+    [userId, exerciseKey, userId, exerciseKey, exclude, exclude],
   );
 }
 
@@ -610,23 +684,25 @@ export async function getPreviousSessionSets(
  */
 export async function listNamedTemplates(
   db: SqlExecutor,
+  userId: string,
   limit = 20,
 ): Promise<{ id: string; name: string; started_at: string; exercise_count: number }[]> {
   return db.all(
     `SELECT ws.id, ws.name, ws.started_at, COUNT(DISTINCT se.id) AS exercise_count
        FROM workout_sessions ws
        LEFT JOIN session_exercises se ON se.session_id = ws.id
-      WHERE ws.name IS NOT NULL
+      WHERE ws.user_id = ?
+        AND ws.name IS NOT NULL
         AND ws.id = (
           SELECT inner_ws.id FROM workout_sessions inner_ws
-           WHERE inner_ws.name = ws.name
+           WHERE inner_ws.user_id = ? AND inner_ws.name = ws.name
            ORDER BY inner_ws.started_at DESC LIMIT 1
         )
       GROUP BY ws.id
       HAVING exercise_count > 0
       ORDER BY ws.started_at DESC
       LIMIT ?`,
-    [limit],
+    [userId, userId, limit],
   );
 }
 
@@ -636,6 +712,7 @@ export async function listNamedTemplates(
  */
 export async function getPreviousBest(
   db: SqlExecutor,
+  userId: string,
   exerciseKey: string,
   excludeSessionId?: string,
 ): Promise<{ weight_kg: number; reps: number; started_at: string } | null> {
@@ -644,13 +721,37 @@ export async function getPreviousBest(
        FROM sets s
        JOIN session_exercises se ON se.id = s.session_exercise_id
        JOIN workout_sessions ws  ON ws.id = se.session_id
-      WHERE se.exercise_key = ?
+      WHERE ws.user_id = ?
+        AND se.exercise_key = ?
         AND s.is_warmup = 0
         AND s.weight_kg IS NOT NULL
         AND s.reps IS NOT NULL
         AND (? IS NULL OR ws.id <> ?)
       ORDER BY s.weight_kg DESC, s.reps DESC
       LIMIT 1`,
-    [exerciseKey, excludeSessionId ?? null, excludeSessionId ?? null],
+    [userId, exerciseKey, excludeSessionId ?? null, excludeSessionId ?? null],
   );
+}
+
+/**
+ * Exercise keys logged most recently, newest first, deduplicated. Drives the "recently used"
+ * shortcut at the top of the exercise picker — the exercises someone actually reaches for are a
+ * much smaller set than the full catalogue, and re-adding one from last week is the common case.
+ */
+export async function listRecentExerciseKeys(
+  db: SqlExecutor,
+  userId: string,
+  limit = 8,
+): Promise<string[]> {
+  const rows = await db.all<{ exercise_key: string }>(
+    `SELECT se.exercise_key, MAX(ws.started_at) AS last_used
+       FROM session_exercises se
+       JOIN workout_sessions ws ON ws.id = se.session_id
+      WHERE ws.user_id = ?
+      GROUP BY se.exercise_key
+      ORDER BY last_used DESC
+      LIMIT ?`,
+    [userId, limit],
+  );
+  return rows.map((row) => row.exercise_key);
 }

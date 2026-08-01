@@ -15,7 +15,7 @@ CREATE TABLE "ai_generated_plans" (
 	"provider" text,
 	"accepted" boolean DEFAULT false NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "ai_generated_plans_kind_check" CHECK ("ai_generated_plans"."kind" in ($1, $2))
+	CONSTRAINT "ai_generated_plans_kind_check" CHECK ("ai_generated_plans"."kind" in ('workout', 'nutrition'))
 );
 --> statement-breakpoint
 CREATE TABLE "ai_messages" (
@@ -29,7 +29,7 @@ CREATE TABLE "ai_messages" (
 	"output_tokens" integer,
 	"cache_read_tokens" integer,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "ai_messages_role_check" CHECK ("ai_messages"."role" in ($1, $2))
+	CONSTRAINT "ai_messages_role_check" CHECK ("ai_messages"."role" in ('user', 'assistant'))
 );
 --> statement-breakpoint
 CREATE TABLE "body_metrics" (
@@ -46,7 +46,7 @@ CREATE TABLE "body_metrics" (
 	"device_id" text,
 	"raw_payload" jsonb,
 	CONSTRAINT "body_metrics_user_measured_source_unique" UNIQUE("user_id","measured_at","source"),
-	CONSTRAINT "body_metrics_source_check" CHECK ("body_metrics"."source" in ($1, $2, $3, $4)),
+	CONSTRAINT "body_metrics_source_check" CHECK ("body_metrics"."source" in ('ble_scale', 'manual', 'ai_assistant', 'health_platform')),
 	CONSTRAINT "body_metrics_weight_check" CHECK ("body_metrics"."weight_kg" is null or ("body_metrics"."weight_kg" > 0 and "body_metrics"."weight_kg" < 500)),
 	CONSTRAINT "body_metrics_body_fat_check" CHECK ("body_metrics"."body_fat_pct" is null or ("body_metrics"."body_fat_pct" >= 0 and "body_metrics"."body_fat_pct" < 100))
 );
@@ -71,7 +71,7 @@ CREATE TABLE "exercises" (
 	"is_unilateral" boolean DEFAULT false NOT NULL,
 	"load_type" text DEFAULT 'weight_reps' NOT NULL,
 	CONSTRAINT "exercises_user_name_unique" UNIQUE NULLS NOT DISTINCT("user_id","name_en"),
-	CONSTRAINT "exercises_load_type_check" CHECK ("exercises"."load_type" in ($1, $2, $3, $4, $5))
+	CONSTRAINT "exercises_load_type_check" CHECK ("exercises"."load_type" in ('weight_reps', 'bodyweight', 'bodyweight_plus', 'time', 'distance'))
 );
 --> statement-breakpoint
 CREATE TABLE "location_equipment" (
@@ -87,7 +87,7 @@ CREATE TABLE "locations" (
 	"kind" text,
 	"notes" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "locations_kind_check" CHECK ("locations"."kind" is null or "locations"."kind" in ($1, $2, $3, $4, $5))
+	CONSTRAINT "locations_kind_check" CHECK ("locations"."kind" is null or "locations"."kind" in ('commercial_gym', 'home', 'military_base', 'outdoor', 'other'))
 );
 --> statement-breakpoint
 CREATE TABLE "nutrition_targets" (
@@ -107,8 +107,8 @@ CREATE TABLE "nutrition_targets" (
 	"formula" text DEFAULT 'mifflin_st_jeor' NOT NULL,
 	"computed_by" text NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "nutrition_targets_goal_check" CHECK ("nutrition_targets"."goal" in ($1, $2, $3)),
-	CONSTRAINT "nutrition_targets_computed_by_check" CHECK ("nutrition_targets"."computed_by" in ($1, $2, $3)),
+	CONSTRAINT "nutrition_targets_goal_check" CHECK ("nutrition_targets"."goal" in ('cut', 'maintain', 'bulk')),
+	CONSTRAINT "nutrition_targets_computed_by_check" CHECK ("nutrition_targets"."computed_by" in ('system_weekly', 'ai', 'manual')),
 	CONSTRAINT "nutrition_targets_date_order_check" CHECK ("nutrition_targets"."effective_to" is null or "nutrition_targets"."effective_to" >= "nutrition_targets"."effective_from")
 );
 --> statement-breakpoint
@@ -156,7 +156,7 @@ CREATE TABLE "plans" (
 	"length_weeks" integer,
 	"is_active" boolean DEFAULT false NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "plans_goal_check" CHECK ("plans"."goal" is null or "plans"."goal" in ($1, $2, $3)),
+	CONSTRAINT "plans_goal_check" CHECK ("plans"."goal" is null or "plans"."goal" in ('cut', 'maintain', 'bulk')),
 	CONSTRAINT "plans_days_per_week_check" CHECK ("plans"."days_per_week" is null or ("plans"."days_per_week" between 1 and 14))
 );
 --> statement-breakpoint
@@ -173,11 +173,11 @@ CREATE TABLE "profiles" (
 	"locale" text DEFAULT 'he' NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "profiles_sex_check" CHECK ("profiles"."sex" is null or "profiles"."sex" in ($1, $2, $3)),
+	CONSTRAINT "profiles_sex_check" CHECK ("profiles"."sex" is null or "profiles"."sex" in ('male', 'female', 'other')),
 	CONSTRAINT "profiles_bmr_formula_sex_check" CHECK ("profiles"."bmr_formula_sex" is null or "profiles"."bmr_formula_sex" in ('male', 'female')),
-	CONSTRAINT "profiles_activity_level_check" CHECK ("profiles"."activity_level" is null or "profiles"."activity_level" in ($1, $2, $3, $4, $5)),
-	CONSTRAINT "profiles_goal_check" CHECK ("profiles"."goal" is null or "profiles"."goal" in ($1, $2, $3)),
-	CONSTRAINT "profiles_unit_preference_check" CHECK ("profiles"."unit_preference" in ($1, $2)),
+	CONSTRAINT "profiles_activity_level_check" CHECK ("profiles"."activity_level" is null or "profiles"."activity_level" in ('sedentary', 'light', 'moderate', 'active', 'very_active')),
+	CONSTRAINT "profiles_goal_check" CHECK ("profiles"."goal" is null or "profiles"."goal" in ('cut', 'maintain', 'bulk')),
+	CONSTRAINT "profiles_unit_preference_check" CHECK ("profiles"."unit_preference" in ('metric', 'imperial')),
 	CONSTRAINT "profiles_height_range_check" CHECK ("profiles"."height_cm" is null or ("profiles"."height_cm" > 50 and "profiles"."height_cm" < 260))
 );
 --> statement-breakpoint

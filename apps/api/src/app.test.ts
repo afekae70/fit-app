@@ -4,13 +4,13 @@
  * because postgres.js connects lazily and neither route below issues a query.
  */
 
-import { SignJWT } from 'jose';
+import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair, type JWK } from 'jose';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { buildApp } from './app.js';
 import type { Env } from './config/env.js';
 
-const JWT_SECRET = 'app-test-jwt-secret-at-least-32-bytes';
+const KID = 'app-test-key-1';
 
 const testEnv: Env = {
   NODE_ENV: 'test',
@@ -18,7 +18,6 @@ const testEnv: Env = {
   LOG_LEVEL: 'fatal',
   SUPABASE_URL: 'https://test-project.supabase.co',
   SUPABASE_SERVICE_ROLE_KEY: 'service-role-key-placeholder-value',
-  SUPABASE_JWT_SECRET: JWT_SECRET,
   // Deliberately unreachable — proves no route on the health/auth path needs a live DB.
   DATABASE_URL: 'postgresql://user:pass@127.0.0.1:1/nonexistent',
   AI_PROVIDER: 'claude',
@@ -29,9 +28,22 @@ const testEnv: Env = {
 
 describe('buildApp', () => {
   let app: Awaited<ReturnType<typeof buildApp>>;
+  let signToken: (claims: Record<string, unknown>) => Promise<string>;
 
   beforeAll(async () => {
-    app = await buildApp({ env: testEnv });
+    // Injects a local JWKS (see auth.test.ts) instead of letting buildApp construct a
+    // `createRemoteJWKSet` against the fake SUPABASE_URL above, which would try a real fetch.
+    const { publicKey, privateKey } = await generateKeyPair('ES256', { extractable: true });
+    const publicJwk = await exportJWK(publicKey);
+    const jwks = createLocalJWKSet({ keys: [{ ...publicJwk, kid: KID, alg: 'ES256' } as JWK] });
+    signToken = (claims) =>
+      new SignJWT(claims)
+        .setProtectedHeader({ alg: 'ES256', kid: KID })
+        .setIssuedAt()
+        .setExpirationTime('1h')
+        .sign(privateKey);
+
+    app = await buildApp({ env: testEnv, jwks });
   });
 
   afterAll(async () => {
@@ -50,11 +62,7 @@ describe('buildApp', () => {
   });
 
   it('accepts /health/me with a valid token and echoes the user id', async () => {
-    const token = await new SignJWT({ sub: 'user-e2e-test', role: 'authenticated' })
-      .setProtectedHeader({ alg: 'HS256' })
-      .setIssuedAt()
-      .setExpirationTime('1h')
-      .sign(new TextEncoder().encode(JWT_SECRET));
+    const token = await signToken({ sub: 'user-e2e-test', role: 'authenticated' });
 
     const res = await app.inject({
       method: 'GET',
@@ -81,11 +89,7 @@ describe('buildApp', () => {
   });
 
   it('rejects /coach/chat with a valid token but a malformed body, before touching the provider', async () => {
-    const token = await new SignJWT({ sub: 'user-e2e-test', role: 'authenticated' })
-      .setProtectedHeader({ alg: 'HS256' })
-      .setIssuedAt()
-      .setExpirationTime('1h')
-      .sign(new TextEncoder().encode(JWT_SECRET));
+    const token = await signToken({ sub: 'user-e2e-test', role: 'authenticated' });
 
     const res = await app.inject({
       method: 'POST',
