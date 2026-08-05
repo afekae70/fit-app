@@ -1,20 +1,24 @@
 /**
- * Design tokens.
+ * Design tokens — the Nocturne design system.
  *
- * Two palettes, dark and light, share one shape (`ColorPalette`) so every screen can be written
- * once against `colors.xxx` and simply receive whichever palette `useTheme()` resolves to.
+ * Ported from the `FitApp.dc.html` prototype and the `styles.css` of its bundled Nocturne
+ * design system. The ground is a deep indigo (`#161826`) and the accent a blurple (`#9184d9`),
+ * replacing the earlier near-black-and-mint scheme.
  *
- * Neither is the other with channels inverted. The dark palette is built on layered neutrals
- * rather than pure black: each surface step is a measured lift, so depth reads through value
- * alone and the UI needs no drop shadows — shadows on Android render as a muddy halo at low
- * elevation and cost a render pass, where borders and surface steps do the same job more
- * cleanly. The light palette keeps the same brand green but pulls it darker and more saturated
- * (`#3DD68C` reads as a pale mint on white with poor contrast; `#1F9D63` holds up), and the same
- * discipline applies to warning/danger/info/macro hues, each re-tuned for legibility on a light
- * ground rather than assumed to survive the swap.
+ * Nocturne expresses its derived colours as `color-mix(in srgb, X n%, transparent)` layered over
+ * the ground. React Native has no `color-mix` and no alpha compositing against an implicit
+ * parent, so every one of those is resolved here to the solid hex it produces **over that
+ * palette's own background**. That is why the same conceptual token differs between the two
+ * palettes by more than a lightness flip: `--accent-soft` is the accent at 14% over `#161826` in
+ * the dark palette and at 12% over `#e4e7f5` in the light one, which are unrelated hex values.
  *
- * The accent is a single colour used sparingly in both palettes: for the primary action, live
- * data, and nothing else. When every card has an accent border, none of them read as important.
+ * Two palettes share one shape (`ColorPalette`) so every screen is written once against
+ * `colors.xxx`. `warning`, `info` and the macro hues have no Nocturne token of their own; they
+ * are tuned into the same family rather than carried over from the old palette, where saturated
+ * primaries would have read as foreign against this ground.
+ *
+ * The accent stays a single colour used sparingly: the primary action, live data, nothing else.
+ * When every card has an accent border, none of them read as important.
  */
 
 export interface ColorPalette {
@@ -43,76 +47,79 @@ export interface ColorPalette {
 }
 
 export const darkColors: ColorPalette = {
-  /* Surfaces — each step is a deliberate lift, not an arbitrary shade. */
-  bg: '#0B0F14',
-  surface: '#141A21',
-  surfaceRaised: '#1C242D',
-  surfaceHigh: '#25303B',
+  /* Surfaces — Nocturne's ground, card, and the neutral ramp above them. */
+  bg: '#161826', // --color-bg
+  surface: '#232532', // --color-surface
+  surfaceRaised: '#292B31', // --color-neutral-900, the prototype's --surface2
+  surfaceHigh: '#3F424D', // --color-neutral-800
 
-  /* Borders — hairlines that separate without drawing attention. */
-  border: '#232D38',
-  borderStrong: '#33404E',
+  /* Borders — the divider token and the prototype's --line2, each flattened over --color-bg. */
+  border: '#383946', // text 16% over bg
+  borderStrong: '#4D4E5A', // text 26% over bg
 
-  /* Text — four steps, enough hierarchy without becoming illegible. */
-  text: '#EDF2F7',
-  textSecondary: '#A8B6C4',
-  textMuted: '#6B7C8D',
-  textFaint: '#4A5866',
+  /* Text — the ramp read downward from --color-text. */
+  text: '#E9E9ED', // --color-text
+  textSecondary: '#B2B6CA', // --color-neutral-400
+  textMuted: '#9397AB', // --color-neutral-500, the prototype's --dim
+  textFaint: '#75798C', // --color-neutral-600, the prototype's --faint
 
-  /* Accent — primary actions and live values only. */
-  accent: '#3DD68C',
-  accentSoft: '#1A3A2C',
-  accentBorder: '#2A6B4D',
+  /* Accent — the blurple, plus its soft fill and border flattened over bg. */
+  accent: '#9184D9', // --color-accent
+  accentSoft: '#27273F', // accent 14% over bg
+  accentBorder: '#4D4977', // accent 45% over bg
 
-  /* Status */
-  warning: '#F0B429',
-  warningSoft: '#2E2410',
-  danger: '#F2686B',
-  dangerSoft: '#331A1C',
-  info: '#5AA9E6',
-  infoSoft: '#152634',
+  /* Status — only `danger` has a Nocturne token; the rest are tuned to sit beside it rather
+     than carried over, since a saturated amber or sky blue reads as foreign on this ground. */
+  warning: '#D9A86A',
+  warningSoft: '#2D2830',
+  danger: '#D98A8F', // the prototype's --danger
+  dangerSoft: '#2D2633',
+  info: '#A7A1DB', // --color-accent-2
+  infoSoft: '#27283C',
 
-  /* Macro colours — distinct hues that survive a dark background. */
-  protein: '#6BA6FF',
-  carbs: '#F0B429',
-  fat: '#EF7FAE',
+  /* Macro colours — three hues held at the palette's own muted chroma so the row reads as one
+     family. Kept clear of `warning` and `info`, which they would otherwise collide with. */
+  protein: '#8FA9E8',
+  carbs: '#D9C48A',
+  fat: '#D98AC0',
 };
 
 export const lightColors: ColorPalette = {
-  /* Surfaces — off-white rather than pure white, so cards (pure white) still lift off it. */
-  bg: '#F5F8F7',
-  surface: '#FFFFFF',
-  surfaceRaised: '#EEF3F1',
-  surfaceHigh: '#E1E9E6',
+  /* Surfaces — Nocturne's light theme reads the neutral ramp from the top: the ground is a step
+     down from the card, so cards still lift without needing shadows. */
+  bg: '#E4E7F5', // --color-neutral-200
+  surface: '#F3F5FE', // --color-neutral-100
+  surfaceRaised: '#CFD3E5', // --color-neutral-300
+  surfaceHigh: '#B2B6CA', // --color-neutral-400
 
-  /* Borders — visible on a light ground without turning into a harsh outline. */
-  border: '#DCE4E1',
-  borderStrong: '#BFCBC7',
+  /* Borders — neutral-900 at 12% and 26% over this palette's own ground. */
+  border: '#CDD0DD',
+  borderStrong: '#B3B6C2',
 
-  /* Text — near-black rather than pure black, matching the dark palette's near-white choice. */
-  text: '#0F1513',
-  textSecondary: '#3E4B47',
-  textMuted: '#6C7A75',
-  textFaint: '#96A39E',
+  /* Text — the same ramp read upward. */
+  text: '#292B31', // --color-neutral-900
+  textSecondary: '#3F424D', // --color-neutral-800
+  textMuted: '#595D6C', // --color-neutral-700
+  textFaint: '#75798C', // --color-neutral-600
 
-  /* Accent — darker and more saturated than the dark palette's; the same hex on white reads
-     as a washed-out mint with poor text contrast. */
-  accent: '#1E9A62',
-  accentSoft: '#E3F4EC',
-  accentBorder: '#8FCDAE',
+  /* Accent — the darker rung, because #9184D9 on a near-white ground fails text contrast. */
+  accent: '#5D5294', // --color-accent-700
+  accentSoft: '#D4D5E9', // accent-700 12% over bg
+  accentBorder: '#AEABCE', // accent-700 40% over bg
 
-  /* Status — each darkened from its dark-mode counterpart for the same contrast reason. */
-  warning: '#A66A00',
-  warningSoft: '#FBF0D9',
-  danger: '#C93B3E',
-  dangerSoft: '#FBE4E4',
-  info: '#2B76B8',
-  infoSoft: '#E3EFF9',
+  /* Status — each pulled darker for contrast, and each soft fill hand-tuned rather than mixed:
+     a straight mix over this indigo ground turns every tint the same mauve. */
+  warning: '#8A6A2F',
+  warningSoft: '#EDE7D8',
+  danger: '#A24B50', // the prototype's light --danger
+  dangerSoft: '#EDDADC',
+  info: '#5C5783', // --color-accent-2-700
+  infoSoft: '#DDDCE9',
 
   /* Macro colours */
-  protein: '#3C6CC0',
-  carbs: '#A66A00',
-  fat: '#BD4A82',
+  protein: '#47548F',
+  carbs: '#8A6A2F',
+  fat: '#8F4F74',
 };
 
 /** Default export for the rare theme-agnostic case. Components should use `useTheme()`. */
@@ -130,10 +137,14 @@ export const spacing = {
   xxxl: 48,
 } as const;
 
+/**
+ * Nocturne's scale is 4 / 8 / 14. Our `sm` stays at 8 because it is what buttons and inputs
+ * use, and 8 is exactly what the prototype gives them; `lg` drops 16 → 14 to match its cards.
+ */
 export const radius = {
-  sm: 8,
+  sm: 8, // --radius-md in Nocturne: buttons, inputs, small chips
   md: 12,
-  lg: 16,
+  lg: 14, // --radius-lg: cards
   xl: 20,
   pill: 999,
 } as const;

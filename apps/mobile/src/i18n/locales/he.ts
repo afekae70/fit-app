@@ -119,6 +119,7 @@ export const he = {
     newPr: 'שיא אישי חדש!',
     elapsed: 'זמן שחלף',
     totalSets: 'סטים',
+    setsProgress: '{{done}} מתוך {{total}} סטים',
     totalVolume: 'נפח',
     summaryTitle: 'סיכום אימון',
     summaryDuration: 'משך',

@@ -350,14 +350,19 @@ export default function WorkoutsScreen() {
   const totals = useMemo(() => {
     let sets = 0;
     let volume = 0;
+    // "Filled in" is what the progress bar counts. A set row exists from the moment it is added,
+    // so counting rows would show a full bar before a single rep was performed; a set with both
+    // numbers entered is the closest thing to "done" that needs no schema change.
+    let done = 0;
     for (const exercise of exercises) {
       for (const set of exercise.sets) {
         if (set.is_warmup === 1) continue;
         sets += 1;
         volume += (set.weight_kg ?? 0) * (set.reps ?? 0);
+        if (set.weight_kg !== null && set.reps !== null) done += 1;
       }
     }
-    return { sets, volume };
+    return { sets, volume, done };
   }, [exercises]);
 
   if (loading) {
@@ -389,9 +394,12 @@ export default function WorkoutsScreen() {
           <Text style={styles.sessionName} numberOfLines={1}>
             {sessionName ?? t('workout.activeTitle')}
           </Text>
-          {/* Sets and volume only — no running clock. See elapsedMinutes above. */}
+          {/* Progress, not a clock. The Nocturne prototype puts a running elapsed time here; it
+              is deliberately still absent — a ticking timer pressures people to cut rest short,
+              which is why it was removed in the first place (see CLAUDE.md). Sets completed is
+              the same reassurance without the pressure. */}
           <Text style={styles.topSub}>
-            {totals.sets} {t('workout.totalSets')}
+            {t('workout.setsProgress', { done: totals.done, total: totals.sets })}
             {totals.volume > 0
               ? ` · ${Math.round(totals.volume).toLocaleString()} ${t('common.kg')}`
               : ''}
@@ -405,6 +413,17 @@ export default function WorkoutsScreen() {
           <Text style={styles.finishButtonText}>{t('workout.finishButton')}</Text>
         </Pressable>
       </View>
+
+      {totals.sets > 0 ? (
+        <View style={styles.progressTrack}>
+          <View
+            style={[
+              styles.progressFill,
+              { width: `${Math.round((totals.done / totals.sets) * 100)}%` },
+            ]}
+          />
+        </View>
+      ) : null}
 
       <PrToast data={prToast} onDone={() => setPrToast(null)} />
 
@@ -472,6 +491,8 @@ const createStyles = (colors: ColorPalette) =>
     sessionName: TextStyle;
     elapsed: TextStyle;
     topSub: TextStyle;
+    progressTrack: ViewStyle;
+    progressFill: ViewStyle;
     finishButton: ViewStyle;
     finishButtonText: TextStyle;
     addExercise: ViewStyle;
@@ -493,6 +514,18 @@ const createStyles = (colors: ColorPalette) =>
   },
   elapsed: { color: colors.text, fontSize: fontSize.xl, fontWeight: '800' },
   topSub: { color: colors.textMuted, fontSize: fontSize.xs, textAlign: 'auto' },
+  // 4px rail, matching the prototype's sticky header. `sunk` there is the app background, so
+  // the unfilled portion reads as a groove rather than another surface.
+  progressTrack: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.bg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+    marginBottom: spacing.md,
+  },
+  progressFill: { height: '100%', backgroundColor: colors.accent, borderRadius: 2 },
   finishButton: {
     borderWidth: 1,
     borderColor: colors.border,

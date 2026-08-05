@@ -126,6 +126,7 @@ export const en = {
     newPr: 'New PR!',
     elapsed: 'Elapsed',
     totalSets: 'sets',
+    setsProgress: '{{done}} of {{total}} sets',
     totalVolume: 'volume',
     summaryTitle: 'Workout summary',
     summaryDuration: 'Duration',
