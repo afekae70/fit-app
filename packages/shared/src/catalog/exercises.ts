@@ -154,6 +154,13 @@ export const EXERCISE_SEED: readonly ExerciseSeed[] = [
   { nameEn: 'Bent-Over Dumbbell Rear Delt Raise', nameHe: 'הרחקה אחורית בהטיה', primaryMuscle: 'rear_delts', movementPattern: 'isolation', equipmentSlug: 'dumbbell' },
   { nameEn: 'Cable Rear Delt Fly', nameHe: 'פרפר אחורי בכבל', primaryMuscle: 'rear_delts', movementPattern: 'isolation', equipmentSlug: 'cable_machine', isUnilateral: true },
   { nameEn: 'Incline Rear Delt Raise', nameHe: 'הרחקה אחורית בשיפוע', primaryMuscle: 'rear_delts', movementPattern: 'isolation', equipmentSlug: 'adjustable_bench' },
+  { nameEn: 'Band Pull-Apart', nameHe: 'פתיחת גומייה', primaryMuscle: 'rear_delts', secondaryMuscles: ['mid_back', 'traps'], movementPattern: 'isolation', equipmentSlug: 'resistance_band' },
+  { nameEn: 'Prone Y-Raise', nameHe: 'הרמת Y בשכיבה על ספסל', primaryMuscle: 'rear_delts', secondaryMuscles: ['traps', 'mid_back'], movementPattern: 'isolation', equipmentSlug: 'adjustable_bench' },
+  { nameEn: 'Seated Rear Delt Raise', nameHe: 'הרחקה אחורית בישיבה', primaryMuscle: 'rear_delts', movementPattern: 'isolation', equipmentSlug: 'adjustable_bench' },
+  // Rowing patterns, but with the elbows flared high so the rear delt leads rather than the lats.
+  { nameEn: 'Rear Delt Row', nameHe: 'חתירה לכתף אחורית במוט', primaryMuscle: 'rear_delts', secondaryMuscles: ['mid_back', 'traps'], movementPattern: 'horizontal_pull', equipmentSlug: 'barbell' },
+  { nameEn: 'Dumbbell Rear Delt Row', nameHe: 'חתירה לכתף אחורית במשקולות', primaryMuscle: 'rear_delts', secondaryMuscles: ['mid_back'], movementPattern: 'horizontal_pull', equipmentSlug: 'dumbbell' },
+  { nameEn: 'Cable Rear Delt Row', nameHe: 'חתירה לכתף אחורית בכבל', primaryMuscle: 'rear_delts', secondaryMuscles: ['mid_back', 'traps'], movementPattern: 'horizontal_pull', equipmentSlug: 'cable_machine' },
   { nameEn: 'Front Raise', nameHe: 'הרמה קדמית', primaryMuscle: 'front_delts', movementPattern: 'isolation', equipmentSlug: 'dumbbell' },
   { nameEn: 'Barbell Shrug', nameHe: 'כיווץ כתפיים במוט', primaryMuscle: 'traps', movementPattern: 'isolation', equipmentSlug: 'barbell' },
   { nameEn: 'Dumbbell Shrug', nameHe: 'כיווץ כתפיים במשקולות', primaryMuscle: 'traps', movementPattern: 'isolation', equipmentSlug: 'dumbbell' },

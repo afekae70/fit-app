@@ -12,4 +12,5 @@
  */
 
 export * from './equipment.js';
+export * from './exerciseImages.js';
 export * from './exercises.js';

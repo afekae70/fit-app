@@ -27,6 +27,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useCurrentUserId } from '../src/auth/CurrentUserProvider.js';
+import { ExerciseVisual } from '../src/components/ExerciseVisual.js';
 import { getExecutor } from '../src/db/provider.js';
 import { listRecentExerciseKeys } from '../src/db/workouts.js';
 import { useTheme } from '../src/ThemeProvider.js';
@@ -204,6 +205,9 @@ export default function ExercisePickerScreen() {
         ListEmptyComponent={<Text style={styles.empty}>{t('picker.noResults')}</Text>}
         renderItem={({ item }) => (
           <Pressable onPress={() => choose(item)} style={styles.row} accessibilityRole="button">
+            <View style={styles.rowThumb}>
+              <ExerciseVisual exercise={item} height={56} />
+            </View>
             <View style={styles.rowMain}>
               <Text style={styles.rowTitle}>{label(item)}</Text>
               <Text style={styles.rowSub}>
@@ -237,6 +241,7 @@ const createStyles = (colors: ColorPalette) =>
     recentChip: ViewStyle;
     recentChipText: TextStyle;
     row: ViewStyle;
+    rowThumb: ViewStyle;
     rowMain: ViewStyle;
     rowTitle: TextStyle;
     rowSub: TextStyle;
@@ -311,6 +316,7 @@ const createStyles = (colors: ColorPalette) =>
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
+  rowThumb: { width: 64, marginEnd: spacing.md },
   rowMain: { flex: 1 },
   rowTitle: { color: colors.text, fontSize: fontSize.md, textAlign: 'auto' },
   rowSub: { color: colors.textMuted, fontSize: fontSize.xs, marginTop: 2, textAlign: 'auto' },

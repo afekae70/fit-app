@@ -26,6 +26,7 @@ import {
 
 import type { SetRow } from '../db/workouts.js';
 import { hapticLight } from '../haptics.js';
+import { ExerciseVisual } from './ExerciseVisual.js';
 import { useTheme } from '../ThemeProvider.js';
 import { fontSize, radius, spacing, type ColorPalette } from '../theme.js';
 
@@ -198,6 +199,9 @@ function ExerciseCardImpl({
   return (
     <View style={styles.card}>
       <View style={styles.header}>
+        <View style={styles.cardThumb}>
+          <ExerciseVisual exercise={exercise} height={52} />
+        </View>
         <View style={styles.headerMain}>
           <View style={styles.titleRow}>
             <Text style={styles.title}>{isHebrew ? exercise.nameHe : exercise.nameEn}</Text>
@@ -371,6 +375,7 @@ const createStyles = (colors: ColorPalette) =>
   StyleSheet.create<{
     card: ViewStyle;
     header: ViewStyle;
+    cardThumb: ViewStyle;
     headerMain: ViewStyle;
     titleRow: ViewStyle;
     title: TextStyle;
@@ -411,6 +416,7 @@ const createStyles = (colors: ColorPalette) =>
     marginBottom: spacing.md,
   },
   header: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: spacing.sm },
+  cardThumb: { width: 58, marginEnd: spacing.sm },
   headerMain: { flex: 1 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' },
   title: { color: colors.text, fontSize: fontSize.md, fontWeight: '700', textAlign: 'auto' },
