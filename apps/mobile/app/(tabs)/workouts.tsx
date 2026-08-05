@@ -34,6 +34,8 @@ import {
 } from '../../src/components/ExerciseCard.js';
 import { FinishSummary } from '../../src/components/FinishSummary.js';
 import { PrToast, type PrToastData } from '../../src/components/PrToast.js';
+import { RestTimer } from '../../src/components/RestTimer.js';
+import { DEFAULT_REST_SECONDS, REST_STEP_SECONDS } from '../../src/components/restTime.js';
 import { EmptyState, SkeletonScreen } from '../../src/components/ui.js';
 import { WorkoutHome, type TemplateEntry } from '../../src/components/WorkoutHome.js';
 import { listPlanDayExercises } from '../../src/db/plans.js';
@@ -49,6 +51,7 @@ import {
   getSessionDetail,
   listNamedTemplates,
   listSessionSummaries,
+  markSetDone,
   removeExerciseFromSession,
   removeSet,
   renameSession,
@@ -58,7 +61,7 @@ import {
   type SessionExerciseWithSets,
   type SessionSummaryRow,
 } from '../../src/db/workouts.js';
-import { hapticSuccess } from '../../src/haptics.js';
+import { hapticLight, hapticSuccess } from '../../src/haptics.js';
 import { useTheme } from '../../src/ThemeProvider.js';
 import { fontSize, radius, spacing, type ColorPalette } from '../../src/theme.js';
 
@@ -101,6 +104,9 @@ export default function WorkoutsScreen() {
   const [templates, setTemplates] = useState<TemplateEntry[]>([]);
   const [history, setHistory] = useState<SessionSummaryRow[]>([]);
   const [prToast, setPrToast] = useState<PrToastData | null>(null);
+  // Held as an absolute deadline, not a countdown — see RestTimer for why a tick counter drifts
+  // and stalls when the phone sleeps mid-set.
+  const [rest, setRest] = useState<{ deadline: number; total: number } | null>(null);
   // A set that already triggered a celebration stays quiet on further edits this session —
   // otherwise nudging the same field twice (even to the same value) would re-fire the toast.
   const celebratedSetIds = useRef<Set<string>>(new Set());
@@ -221,6 +227,7 @@ export default function WorkoutsScreen() {
     handledParam.current = null;
     celebratedSetIds.current.clear();
     setPrToast(null);
+    setRest(null);
     await reloadHome();
   }, [reloadHome]);
 
@@ -270,6 +277,24 @@ export default function WorkoutsScreen() {
         await addSetCopyingPrevious(db, newId, sessionExerciseId);
         if (sessionId) await reload(sessionId);
       })();
+    },
+    [sessionId, reload],
+  );
+
+  const toggleDone = useCallback(
+    (setId: string, done: boolean) => {
+      if (done) hapticLight();
+      void (async () => {
+        const db = await getExecutor();
+        await markSetDone(db, setId, done);
+        if (sessionId) await reload(sessionId);
+      })();
+      // Only ticking starts a rest; unticking a set is a correction, not the end of a set.
+      setRest(
+        done
+          ? { deadline: Date.now() + DEFAULT_REST_SECONDS * 1000, total: DEFAULT_REST_SECONDS }
+          : null,
+      );
     },
     [sessionId, reload],
   );
@@ -350,20 +375,32 @@ export default function WorkoutsScreen() {
   const totals = useMemo(() => {
     let sets = 0;
     let volume = 0;
-    // "Filled in" is what the progress bar counts. A set row exists from the moment it is added,
-    // so counting rows would show a full bar before a single rep was performed; a set with both
-    // numbers entered is the closest thing to "done" that needs no schema change.
+    // The rail counts sets the user actually ticked off — the design's checkmark — rather than
+    // sets with numbers in them, which exist from the moment a row is added.
     let done = 0;
     for (const exercise of exercises) {
       for (const set of exercise.sets) {
         if (set.is_warmup === 1) continue;
         sets += 1;
         volume += (set.weight_kg ?? 0) * (set.reps ?? 0);
-        if (set.weight_kg !== null && set.reps !== null) done += 1;
+        if (set.done_at !== null) done += 1;
       }
     }
     return { sets, volume, done };
   }, [exercises]);
+
+  /** The first set still untouched, as "Exercise · set N" — the prototype's `nextSetLabel`. */
+  const nextSetLabel = useMemo(() => {
+    for (const exercise of exercises) {
+      const index = exercise.sets.findIndex((set) => set.done_at === null);
+      if (index >= 0) {
+        const seed = EXERCISE_BY_KEY.get(exercise.exercise_key);
+        const name = seed ? (isHebrew ? seed.nameHe : seed.nameEn) : exercise.exercise_key;
+        return `${name} · ${t('workout.setNumber')} ${index + 1}`;
+      }
+    }
+    return t('workout.restAllDone');
+  }, [exercises, isHebrew, t]);
 
   if (loading) {
     return <SkeletonScreen paddingTop={insets.top + spacing.md} />;
@@ -427,6 +464,24 @@ export default function WorkoutsScreen() {
 
       <PrToast data={prToast} onDone={() => setPrToast(null)} />
 
+      <RestTimer
+        deadline={rest?.deadline ?? null}
+        totalSeconds={rest?.total ?? DEFAULT_REST_SECONDS}
+        nextLabel={nextSetLabel}
+        onAddTime={() =>
+          setRest((current) =>
+            current
+              ? {
+                  deadline: current.deadline + REST_STEP_SECONDS * 1000,
+                  total: current.total + REST_STEP_SECONDS,
+                }
+              : current,
+          )
+        }
+        onSkip={() => setRest(null)}
+        onFinished={() => setRest(null)}
+      />
+
       <FinishSummary
         visible={summaryOpen}
         // The watch's duration wins when imported: it was started at the first rep rather than
@@ -464,6 +519,7 @@ export default function WorkoutsScreen() {
                 target={targets[exercise.exercise_key] ?? null}
                 onAddSet={() => addSet(exercise.id)}
                 onRemoveSet={deleteSet}
+                onToggleDone={toggleDone}
                 onUpdateSet={patchSet}
                 onRemoveExercise={() => dropExercise(exercise.id)}
               />

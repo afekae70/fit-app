@@ -40,6 +40,8 @@ export interface SetRow {
   is_warmup: number;
   to_failure: number;
   completed_at: string;
+  /** When the user ticked the set off mid-workout; null while it is still ahead of them. */
+  done_at: string | null;
 }
 
 /** Values a set can carry. Which ones are meaningful depends on the exercise's load type. */
@@ -481,6 +483,28 @@ export async function renumberExercises(db: SqlExecutor, sessionId: string): Pro
   for (const [i, r] of remaining.entries()) {
     await db.run(`UPDATE session_exercises SET order_index = ? WHERE id = ?`, [i + 1, r.id]);
   }
+}
+
+/**
+ * Tick a set off (or untick it) during the workout.
+ *
+ * Deliberately NOT part of updateSet's patch surface: marking a set done is a tap on a
+ * checkmark, not an edit to what was lifted, and the rest timer keys off exactly this
+ * transition. Kept idempotent — re-marking a done set refreshes the stamp harmlessly.
+ */
+export async function markSetDone(
+  db: SqlExecutor,
+  setId: string,
+  done: boolean,
+  clock: Clock = defaultClock,
+): Promise<void> {
+  const at = clock();
+  await db.run(`UPDATE sets SET done_at = ?, updated_at = ? WHERE id = ?`, [
+    done ? at : null,
+    at,
+    setId,
+  ]);
+  await enqueue(db, 'set', setId, 'update', { doneAt: done ? at : null }, clock);
 }
 
 export async function listSets(

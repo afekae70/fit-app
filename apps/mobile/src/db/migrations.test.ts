@@ -168,9 +168,9 @@ describe('startup on an already-populated device', () => {
 });
 
 describe('migration 7 — sync columns', () => {
-  it('is the version the app actually ships', () => {
+  it('is on the app upgrade path', () => {
     // A migration that exists but is never reached is the same as no migration at all.
-    expect(SCHEMA_VERSION).toBe(7);
+    expect(SCHEMA_VERSION).toBeGreaterThanOrEqual(7);
     expect(MIGRATIONS[7]).toBeDefined();
   });
 
@@ -244,6 +244,29 @@ describe('migration 7 — sync columns', () => {
 
     const count = db.prepare(`SELECT COUNT(*) AS n FROM sets`).get() as { n: number };
     expect(count.n).toBe(1);
+    db.close();
+  });
+});
+
+describe('migration 8 — set done flag', () => {
+  it('ships as the current version', () => {
+    expect(SCHEMA_VERSION).toBe(8);
+    expect(MIGRATIONS[8]).toBeDefined();
+  });
+
+  it('adds done_at as null on existing sets, unlike updated_at', () => {
+    // The two backfills are opposite on purpose: updated_at must be non-null so the first sync
+    // uploads history, while done_at must stay null — the flag marks a live-workout action, and
+    // backfilling it would show every historic set as "ticked" with a fabricated time.
+    const db = seededV6Database();
+    startUpLikeTheApp(db);
+
+    const row = db.prepare(`SELECT done_at, updated_at FROM sets WHERE id = 't1'`).get() as {
+      done_at: string | null;
+      updated_at: string | null;
+    };
+    expect(row.done_at).toBeNull();
+    expect(row.updated_at).not.toBeNull();
     db.close();
   });
 });

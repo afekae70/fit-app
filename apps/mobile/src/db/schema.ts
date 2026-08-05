@@ -26,7 +26,7 @@
  * TEXT (lexicographically sortable, which is what the history queries rely on).
  */
 
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 /**
  * Incremental migrations, keyed by the version they upgrade TO.
@@ -184,6 +184,20 @@ export const MIGRATIONS: Record<number, string> = {
       last_synced_at TEXT
     );
   `,
+  /**
+   * Marking a set as performed.
+   *
+   * Distinct from `completed_at`, which despite its name is stamped when the row is *created* —
+   * a set exists from the moment it is added, long before it is lifted. `done_at` is the moment
+   * the user ticked it off, and it is what drives the progress rail and starts the rest timer.
+   *
+   * No index: this column is only ever read for sets already loaded by session, never searched
+   * across the table. Declaring one in CREATE_SCHEMA_SQL is also how three screens were bricked
+   * once — that file runs before the migrations, so it cannot reference a column added here.
+   */
+  8: `
+    ALTER TABLE sets ADD COLUMN done_at TEXT;
+  `,
 };
 
 export const CREATE_SCHEMA_SQL = `
@@ -313,6 +327,8 @@ CREATE TABLE IF NOT EXISTS sets (
   is_warmup            INTEGER NOT NULL DEFAULT 0,
   to_failure           INTEGER NOT NULL DEFAULT 0,
   completed_at         TEXT NOT NULL,
+  -- When the user ticked the set off, as opposed to when the row appeared. See migration 8.
+  done_at              TEXT,
   updated_at           TEXT,
   deleted_at           TEXT,
   UNIQUE (session_exercise_id, set_index)

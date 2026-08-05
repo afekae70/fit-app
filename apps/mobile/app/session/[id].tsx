@@ -39,6 +39,7 @@ import {
   getActiveSession,
   getPreviousSessionSets,
   getSessionDetail,
+  markSetDone,
   removeExerciseFromSession,
   removeSet,
   renameSession,
@@ -106,6 +107,17 @@ export default function SessionDetailScreen() {
       router.setParams({ addExercise: '' });
     })();
   }, [addExercise, id, load]);
+
+  const toggleDone = useCallback(
+    (setId: string, done: boolean) => {
+      void (async () => {
+        const db = await getExecutor();
+        await markSetDone(db, setId, done);
+        await load();
+      })();
+    },
+    [load],
+  );
 
   const patchSet = useCallback(
     (setId: string, patch: Record<string, number | boolean | null>) => {
@@ -304,6 +316,7 @@ export default function SessionDetailScreen() {
                 onAddSet={() => addSetTo(exercise.id)}
                 onRemoveSet={deleteSet}
                 onUpdateSet={patchSet}
+                onToggleDone={toggleDone}
                 onRemoveExercise={() => dropExercise(exercise.id)}
               />
             );

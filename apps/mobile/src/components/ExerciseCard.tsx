@@ -60,6 +60,8 @@ export interface ExerciseCardProps {
   onAddSet: () => void;
   onRemoveSet: (setId: string) => void;
   onUpdateSet: (setId: string, patch: Record<string, number | boolean | null>) => void;
+  /** The design's checkmark: ticks the set off, which is also what starts the rest timer. */
+  onToggleDone: (setId: string, done: boolean) => void;
   onRemoveExercise: () => void;
 }
 
@@ -156,6 +158,7 @@ function ExerciseCardImpl({
   onAddSet,
   onRemoveSet,
   onUpdateSet,
+  onToggleDone,
   onRemoveExercise,
 }: ExerciseCardProps) {
   const { t, i18n } = useTranslation();
@@ -335,14 +338,20 @@ function ExerciseCardImpl({
             />
           ) : null}
 
+          {/* Tap ticks the set off (the design's checkmark); a long-press deletes. Deleting is
+              the rare action of the two mid-workout, so it earns the harder gesture — and the
+              accessibility label spells the long-press out, since nothing visual hints at it. */}
           <Pressable
-            onPress={() => onRemoveSet(set.id)}
-            style={styles.colActions}
+            onPress={() => onToggleDone(set.id, set.done_at === null)}
+            onLongPress={() => onRemoveSet(set.id)}
+            delayLongPress={450}
+            style={[styles.doneBtn, set.done_at !== null && styles.doneBtnActive]}
             accessibilityRole="button"
-            accessibilityLabel={t('workout.removeSet')}
-            hitSlop={8}
+            accessibilityState={{ checked: set.done_at !== null }}
+            accessibilityLabel={`${t('workout.markDone')}. ${t('workout.longPressDelete')}`}
+            hitSlop={4}
           >
-            <Text style={styles.deleteText}>✕</Text>
+            <Text style={[styles.doneMark, set.done_at !== null && styles.doneMarkActive]}>✓</Text>
           </Pressable>
         </View>
         );
@@ -402,6 +411,10 @@ const createStyles = (colors: ColorPalette) =>
     stepperGroup: ViewStyle;
     stepperBtn: ViewStyle;
     stepperBtnText: TextStyle;
+    doneBtn: ViewStyle;
+    doneBtnActive: ViewStyle;
+    doneMark: TextStyle;
+    doneMarkActive: TextStyle;
     deleteText: TextStyle;
     addSet: ViewStyle;
     addSetText: TextStyle;
@@ -484,6 +497,19 @@ const createStyles = (colors: ColorPalette) =>
     justifyContent: 'center',
   },
   stepperBtnText: { color: colors.textMuted, fontSize: fontSize.md, fontWeight: '700' },
+  doneBtn: {
+    width: 44,
+    height: 40,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceRaised,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  doneBtnActive: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
+  doneMark: { color: colors.textFaint, fontSize: fontSize.md, fontWeight: '700' },
+  doneMarkActive: { color: colors.accent },
   deleteText: { color: colors.textMuted, fontSize: fontSize.sm },
   addSet: {
     marginTop: spacing.xs,
