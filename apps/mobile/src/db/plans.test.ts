@@ -15,6 +15,7 @@ import {
   addPlanDayExercise,
   createPlan,
   deletePlan,
+  duplicatePlanWeek,
   getActivePlan,
   getNextPlanDay,
   getPlanDay,
@@ -26,6 +27,7 @@ import {
   listPlans,
   removePlanDay,
   removePlanDayExercise,
+  reorderPlanDay,
   startSessionFromPlanDay,
   updatePlanDayExercise,
 } from './plans.js';
@@ -450,5 +452,124 @@ describe('plan detail', () => {
     const detail = await getPlanDetail(db, 'no-such-plan');
     expect(detail.plan).toBeNull();
     expect(detail.days).toEqual([]);
+  });
+});
+
+describe('reorderPlanDay', () => {
+  it('moves a day later and closes the gap behind it', async () => {
+    const plan = await createPlan(db, USER, newId, 'PPL', clock);
+    const push = await addPlanDay(db, newId, plan, 'Push');
+    await addPlanDay(db, newId, plan, 'Pull');
+    await addPlanDay(db, newId, plan, 'Legs');
+
+    await reorderPlanDay(db, plan, push, 2);
+
+    const days = await listPlanDays(db, plan);
+    expect(days.map((d) => d.name)).toEqual(['Pull', 'Legs', 'Push']);
+    // UNIQUE (plan_id, day_index) would have rejected any intermediate collision.
+    expect(days.map((d) => d.day_index)).toEqual([1, 2, 3]);
+  });
+
+  it('moves a day earlier', async () => {
+    const plan = await createPlan(db, USER, newId, 'PPL', clock);
+    await addPlanDay(db, newId, plan, 'Push');
+    await addPlanDay(db, newId, plan, 'Pull');
+    const legs = await addPlanDay(db, newId, plan, 'Legs');
+
+    await reorderPlanDay(db, plan, legs, 0);
+
+    expect((await listPlanDays(db, plan)).map((d) => d.name)).toEqual(['Legs', 'Push', 'Pull']);
+  });
+
+  it('clamps a target past the end instead of leaving a hole', async () => {
+    const plan = await createPlan(db, USER, newId, 'PPL', clock);
+    const push = await addPlanDay(db, newId, plan, 'Push');
+    await addPlanDay(db, newId, plan, 'Pull');
+
+    await reorderPlanDay(db, plan, push, 99);
+
+    const days = await listPlanDays(db, plan);
+    expect(days.map((d) => d.name)).toEqual(['Pull', 'Push']);
+    expect(days.map((d) => d.day_index)).toEqual([1, 2]);
+  });
+
+  it('is a no-op when the day is already there', async () => {
+    const plan = await createPlan(db, USER, newId, 'PPL', clock);
+    const push = await addPlanDay(db, newId, plan, 'Push');
+    await addPlanDay(db, newId, plan, 'Pull');
+
+    await reorderPlanDay(db, plan, push, 0);
+
+    expect((await listPlanDays(db, plan)).map((d) => d.name)).toEqual(['Push', 'Pull']);
+  });
+
+  it('ignores a day that is not in this plan', async () => {
+    const plan = await createPlan(db, USER, newId, 'PPL', clock);
+    await addPlanDay(db, newId, plan, 'Push');
+
+    await expect(reorderPlanDay(db, plan, 'not-a-day', 0)).resolves.toBeUndefined();
+    expect((await listPlanDays(db, plan)).map((d) => d.name)).toEqual(['Push']);
+  });
+});
+
+describe('duplicatePlanWeek', () => {
+  it('appends a copy of every day after the originals', async () => {
+    const plan = await createPlan(db, USER, newId, 'PPL', clock);
+    await addPlanDay(db, newId, plan, 'Push');
+    await addPlanDay(db, newId, plan, 'Pull');
+
+    const copied = await duplicatePlanWeek(db, newId, plan);
+
+    expect(copied).toBe(2);
+    const days = await listPlanDays(db, plan);
+    expect(days.map((d) => d.name)).toEqual(['Push', 'Pull', 'Push', 'Pull']);
+    expect(days.map((d) => d.day_index)).toEqual([1, 2, 3, 4]);
+  });
+
+  it('copies each day\'s prescriptions too', async () => {
+    const plan = await createPlan(db, USER, newId, 'PPL', clock);
+    const push = await addPlanDay(db, newId, plan, 'Push');
+    await addPlanDayExercise(db, newId, push, 'Barbell Bench Press', { targetSets: 4 });
+
+    await duplicatePlanWeek(db, newId, plan);
+
+    const days = await listPlanDays(db, plan);
+    const copy = days[1];
+    const exercises = await listPlanDayExercises(db, copy?.id ?? '');
+    expect(exercises.map((e) => e.exercise_key)).toEqual(['Barbell Bench Press']);
+    expect(exercises[0]?.target_sets).toBe(4);
+  });
+
+  it('gives the copies new ids so editing one does not edit the other', async () => {
+    const plan = await createPlan(db, USER, newId, 'PPL', clock);
+    const push = await addPlanDay(db, newId, plan, 'Push');
+    await addPlanDayExercise(db, newId, push, 'Barbell Bench Press');
+
+    await duplicatePlanWeek(db, newId, plan);
+
+    const days = await listPlanDays(db, plan);
+    expect(days[0]?.id).not.toBe(days[1]?.id);
+
+    // Reusing ids would make the copy and the original the same row to the sync engine.
+    const original = await listPlanDayExercises(db, days[0]?.id ?? '');
+    const copy = await listPlanDayExercises(db, days[1]?.id ?? '');
+    expect(original[0]?.id).not.toBe(copy[0]?.id);
+  });
+
+  it('does nothing for an empty plan', async () => {
+    const plan = await createPlan(db, USER, newId, 'PPL', clock);
+    expect(await duplicatePlanWeek(db, newId, plan)).toBe(0);
+    expect(await listPlanDays(db, plan)).toHaveLength(0);
+  });
+
+  it('does not copy a deleted day', async () => {
+    const plan = await createPlan(db, USER, newId, 'PPL', clock);
+    await addPlanDay(db, newId, plan, 'Push');
+    const gone = await addPlanDay(db, newId, plan, 'Pull');
+    await removePlanDay(db, gone);
+
+    await duplicatePlanWeek(db, newId, plan);
+
+    expect((await listPlanDays(db, plan)).map((d) => d.name)).toEqual(['Push', 'Push']);
   });
 });

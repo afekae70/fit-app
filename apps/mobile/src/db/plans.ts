@@ -595,3 +595,105 @@ export async function getSessionAdherence(
     [sessionId, userId],
   );
 }
+
+/**
+ * Move a day to a new position in the week, shifting the others around it.
+ *
+ * Two-phase like every other renumber here, and for the same reason: `UNIQUE (plan_id,
+ * day_index)` is checked per row, so writing the final order directly collides the moment two
+ * days momentarily share an index. Parking every day above the range first makes the second
+ * pass collision-free by construction.
+ */
+export async function reorderPlanDay(
+  db: SqlExecutor,
+  planId: string,
+  planDayId: string,
+  toIndex: number,
+  clock: Clock = defaultClock,
+): Promise<void> {
+  const days = await db.all<{ id: string }>(
+    `SELECT id FROM plan_days WHERE plan_id = ? AND deleted_at IS NULL ORDER BY day_index`,
+    [planId],
+  );
+  const from = days.findIndex((d) => d.id === planDayId);
+  if (from < 0) return;
+
+  const target = Math.max(0, Math.min(days.length - 1, toIndex));
+  if (target === from) return;
+
+  const ordered = [...days];
+  const [moved] = ordered.splice(from, 1);
+  if (!moved) return;
+  ordered.splice(target, 0, moved);
+
+  const at = clock();
+  const PARK = 100000;
+  for (const [offset, row] of ordered.entries()) {
+    await db.run(`UPDATE plan_days SET day_index = ? WHERE id = ?`, [PARK + offset, row.id]);
+  }
+  for (const [offset, row] of ordered.entries()) {
+    await db.run(`UPDATE plan_days SET day_index = ?, updated_at = ? WHERE id = ?`, [
+      offset + 1,
+      at,
+      row.id,
+    ]);
+  }
+}
+
+/**
+ * Copy every day of a plan, and its prescriptions, onto the end of the same plan.
+ *
+ * Appends rather than creating a second plan: the design's "duplicate week" is for building a
+ * two-week rotation out of one, so the copies have to live in the same plan to be reachable.
+ * New ids throughout — reusing them would make the copy and the original the same row to the
+ * sync engine, and editing one would silently edit the other.
+ */
+export async function duplicatePlanWeek(
+  db: SqlExecutor,
+  newId: IdFactory,
+  planId: string,
+  clock: Clock = defaultClock,
+): Promise<number> {
+  const days = await db.all<PlanDayRow>(
+    `SELECT * FROM plan_days WHERE plan_id = ? AND deleted_at IS NULL ORDER BY day_index`,
+    [planId],
+  );
+  if (days.length === 0) return 0;
+
+  const at = clock();
+  const offset = days.length;
+
+  for (const [i, day] of days.entries()) {
+    const copyId = newId();
+    await db.run(
+      `INSERT INTO plan_days (id, plan_id, day_index, name, updated_at) VALUES (?, ?, ?, ?, ?)`,
+      [copyId, planId, offset + i + 1, day.name, at],
+    );
+
+    const prescriptions = await db.all<PlanDayExerciseRow>(
+      `SELECT * FROM plan_day_exercises WHERE plan_day_id = ? AND deleted_at IS NULL
+        ORDER BY order_index`,
+      [day.id],
+    );
+    for (const p of prescriptions) {
+      await db.run(
+        `INSERT INTO plan_day_exercises
+           (id, plan_day_id, exercise_key, order_index, target_sets, target_reps_min,
+            target_reps_max, notes, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          newId(),
+          copyId,
+          p.exercise_key,
+          p.order_index,
+          p.target_sets,
+          p.target_reps_min,
+          p.target_reps_max,
+          p.notes,
+          at,
+        ],
+      );
+    }
+  }
+  return days.length;
+}

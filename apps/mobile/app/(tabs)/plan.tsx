@@ -44,7 +44,9 @@ import {
   deletePlan,
   getActivePlan,
   getNextPlanDay,
+  duplicatePlanWeek,
   listPlanDayStatus,
+  reorderPlanDay,
   startSessionFromPlanDay,
   type PlanRow,
 } from '../../src/db/plans.js';
@@ -98,6 +100,35 @@ export default function PlanScreen() {
     }
     setLoading(false);
   }, [userId]);
+
+  /**
+   * Reorder with buttons rather than a drag. The prototype drags days, but a drag inside a
+   * vertical ScrollView has to win a gesture race against the scroll to start, and the loser is
+   * always the user — either the list will not scroll or the day will not pick up. Two arrows
+   * do the same job with no ambiguity and stay reachable one-handed at the gym.
+   */
+  const move = useCallback(
+    (dayId: string, delta: number) => {
+      if (!plan) return;
+      const from = days.findIndex((d) => d.id === dayId);
+      if (from < 0) return;
+      void (async () => {
+        const db = await getExecutor();
+        await reorderPlanDay(db, plan.id, dayId, from + delta);
+        await reload();
+      })();
+    },
+    [plan, days, reload],
+  );
+
+  const duplicate = useCallback(() => {
+    if (!plan) return;
+    void (async () => {
+      const db = await getExecutor();
+      await duplicatePlanWeek(db, newId, plan.id);
+      await reload();
+    })();
+  }, [plan, reload]);
 
   const [refreshing, setRefreshing] = useState(false);
   const handleRefresh = useCallback(() => {
@@ -214,7 +245,7 @@ export default function PlanScreen() {
           {days.length === 0 ? (
             <EmptyState emoji="➕" title={t('plan.noDays')} hint={t('plan.noDaysHint')} />
           ) : (
-            days.map((day) => {
+            days.map((day, index) => {
               const isNext = day.id === nextDayId;
               const label = day.name?.trim() || `${t('plan.day')} ${day.day_index}`;
               return (
@@ -239,6 +270,28 @@ export default function PlanScreen() {
                         <Text style={styles.nextBadgeText}>{t('plan.next')}</Text>
                       </View>
                     ) : null}
+                    <View style={styles.reorder}>
+                      <Pressable
+                        onPress={() => move(day.id, -1)}
+                        disabled={index === 0}
+                        style={[styles.moveBtn, index === 0 && styles.moveBtnOff]}
+                        accessibilityRole="button"
+                        accessibilityLabel={t('plan.moveUp')}
+                        hitSlop={6}
+                      >
+                        <Text style={styles.moveText}>↑</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => move(day.id, 1)}
+                        disabled={index === days.length - 1}
+                        style={[styles.moveBtn, index === days.length - 1 && styles.moveBtnOff]}
+                        accessibilityRole="button"
+                        accessibilityLabel={t('plan.moveDown')}
+                        hitSlop={6}
+                      >
+                        <Text style={styles.moveText}>↓</Text>
+                      </Pressable>
+                    </View>
                   </View>
 
                   {day.exercise_count > 0 ? (
@@ -256,6 +309,16 @@ export default function PlanScreen() {
               );
             })
           )}
+
+          {days.length > 0 ? (
+            <Pressable
+              onPress={duplicate}
+              style={styles.addDayButton}
+              accessibilityRole="button"
+            >
+              <Text style={styles.addDayText}>⧉ {t('plan.duplicateWeek')}</Text>
+            </Pressable>
+          ) : null}
 
           <Pressable onPress={addDay} style={styles.addDayButton} accessibilityRole="button">
             <Text style={styles.addDayText}>+ {t('plan.addDay')}</Text>
@@ -287,6 +350,10 @@ const createStyles = (colors: ColorPalette) =>
     dayHeaderMain: ViewStyle;
     dayName: TextStyle;
     dayMeta: TextStyle;
+    reorder: ViewStyle;
+    moveBtn: ViewStyle;
+    moveBtnOff: ViewStyle;
+    moveText: TextStyle;
     nextBadge: ViewStyle;
     nextBadgeText: TextStyle;
     startButton: ViewStyle;
@@ -338,6 +405,18 @@ const createStyles = (colors: ColorPalette) =>
     textAlign: 'auto',
   },
   dayMeta: { color: colors.textMuted, fontSize: fontSize.xs, marginTop: 2, textAlign: 'auto' },
+  reorder: { flexDirection: 'row', gap: spacing.xs },
+  moveBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  moveBtnOff: { opacity: 0.3 },
+  moveText: { color: colors.textMuted, fontSize: fontSize.sm },
   nextBadge: {
     paddingVertical: spacing.xxs,
     paddingHorizontal: spacing.sm,
