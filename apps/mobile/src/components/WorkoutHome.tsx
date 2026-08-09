@@ -210,7 +210,7 @@ const createStyles = (colors: ColorPalette) =>
   historyRow: {
     backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.borderSubtle,
     borderRadius: radius.md,
     padding: spacing.md,
     marginTop: spacing.sm,

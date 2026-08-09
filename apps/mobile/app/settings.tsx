@@ -12,6 +12,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View, type TextStyle, type Vie
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '../src/auth/AuthProvider.js';
+import { SyncCard } from '../src/components/SyncCard.js';
 import { Banner, Button, Card, ScreenTitle, Segmented, SectionTitle } from '../src/components/ui.js';
 import { setAppLanguage, type Language } from '../src/i18n/index.js';
 import { useTheme, type ColorScheme } from '../src/ThemeProvider.js';
@@ -77,6 +78,8 @@ export default function SettingsScreen() {
           ]}
         />
       </Card>
+
+      {session ? <SyncCard /> : null}
 
       {session ? (
         <Card>

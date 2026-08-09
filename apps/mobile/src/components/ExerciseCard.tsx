@@ -470,7 +470,7 @@ const createStyles = (colors: ColorPalette) =>
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.borderSubtle,
     padding: spacing.md,
     marginBottom: spacing.md,
   },

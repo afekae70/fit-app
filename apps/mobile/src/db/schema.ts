@@ -26,7 +26,7 @@
  * TEXT (lexicographically sortable, which is what the history queries rely on).
  */
 
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 /**
  * Incremental migrations, keyed by the version they upgrade TO.
@@ -198,6 +198,38 @@ export const MIGRATIONS: Record<number, string> = {
   8: `
     ALTER TABLE sets ADD COLUMN done_at TEXT;
   `,
+  /**
+   * Separating the two clocks that `updated_at` was being asked to be at once.
+   *
+   * `updated_at` is written by this device from this device's clock. A row's server `updated_at`
+   * is written by Postgres from Postgres's clock. They are not comparable, and storing both in
+   * one column meant a pulled row came back stamped with server time — which, on a phone whose
+   * clock runs behind, reads as "edited in the future" and therefore as unsynced. The sync then
+   * pushed it again, the server restamped it, and the same rows shuttled back and forth on every
+   * single run, forever.
+   *
+   * So the two now live apart, and each is only ever compared against a timestamp from the same
+   * clock:
+   *
+   *   - `updated_at`        local clock. Newer than `sync_state.last_synced_at` means this device
+   *                         has changes to send.
+   *   - `remote_updated_at` server clock, as of the last time this row crossed the wire. An
+   *                         incoming row newer than this is a genuine change from elsewhere;
+   *                         equal means the server is handing back what we already have.
+   *
+   * No index on `remote_updated_at`: it is only ever read for one row at a time, by id, during a
+   * merge. And per the note on migration 8 — a column added here can never be indexed from
+   * CREATE_SCHEMA_SQL, which runs first.
+   */
+  9: `
+    ALTER TABLE workout_sessions   ADD COLUMN remote_updated_at TEXT;
+    ALTER TABLE session_exercises  ADD COLUMN remote_updated_at TEXT;
+    ALTER TABLE sets               ADD COLUMN remote_updated_at TEXT;
+    ALTER TABLE body_metrics       ADD COLUMN remote_updated_at TEXT;
+    ALTER TABLE plans              ADD COLUMN remote_updated_at TEXT;
+    ALTER TABLE plan_days          ADD COLUMN remote_updated_at TEXT;
+    ALTER TABLE plan_day_exercises ADD COLUMN remote_updated_at TEXT;
+  `,
 };
 
 export const CREATE_SCHEMA_SQL = `
@@ -237,7 +269,8 @@ CREATE TABLE IF NOT EXISTS body_metrics (
   -- bytes means a parser fix can reprocess history instead of discarding it.
   raw_payload     TEXT,
   updated_at      TEXT,
-  deleted_at      TEXT
+  deleted_at      TEXT,
+  remote_updated_at TEXT
 );
 
 CREATE INDEX IF NOT EXISTS body_metrics_measured_idx
@@ -291,7 +324,8 @@ CREATE TABLE IF NOT EXISTS workout_sessions (
   created_at     TEXT NOT NULL,
   -- Sync bookkeeping. See migration 7 for why deletion is a value rather than an absence.
   updated_at     TEXT,
-  deleted_at     TEXT
+  deleted_at     TEXT,
+  remote_updated_at TEXT
 );
 
 CREATE INDEX IF NOT EXISTS workout_sessions_started_idx
@@ -307,6 +341,7 @@ CREATE TABLE IF NOT EXISTS session_exercises (
   notes         TEXT,
   updated_at    TEXT,
   deleted_at    TEXT,
+  remote_updated_at TEXT,
   UNIQUE (session_id, order_index)
 );
 
@@ -331,6 +366,7 @@ CREATE TABLE IF NOT EXISTS sets (
   done_at              TEXT,
   updated_at           TEXT,
   deleted_at           TEXT,
+  remote_updated_at TEXT,
   UNIQUE (session_exercise_id, set_index)
 );
 
@@ -358,7 +394,8 @@ CREATE TABLE IF NOT EXISTS plans (
   is_active   INTEGER NOT NULL DEFAULT 0,
   created_at  TEXT NOT NULL,
   updated_at  TEXT,
-  deleted_at  TEXT
+  deleted_at  TEXT,
+  remote_updated_at TEXT
 );
 
 -- The user_id and updated_at indexes live only in migrations 5 and 7 — see the comment on
@@ -373,6 +410,7 @@ CREATE TABLE IF NOT EXISTS plan_days (
   name       TEXT,
   updated_at TEXT,
   deleted_at TEXT,
+  remote_updated_at TEXT,
   UNIQUE (plan_id, day_index)
 );
 
@@ -387,6 +425,7 @@ CREATE TABLE IF NOT EXISTS plan_day_exercises (
   notes            TEXT,
   updated_at       TEXT,
   deleted_at       TEXT,
+  remote_updated_at TEXT,
   UNIQUE (plan_day_id, order_index)
 );
 

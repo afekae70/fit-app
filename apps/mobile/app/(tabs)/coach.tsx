@@ -477,7 +477,7 @@ const createStyles = (colors: ColorPalette) =>
   bubbleCoach: {
     alignSelf: 'flex-start',
     backgroundColor: colors.surface,
-    borderColor: colors.border,
+    borderColor: colors.borderSubtle,
   },
   bubbleInterrupted: { borderColor: colors.warning },
   // Full width rather than the 88% text bubbles use — a plan or menu card reads better without

@@ -461,7 +461,7 @@ const createStyles = (colors: ColorPalette) =>
     backgroundColor: colors.surface,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.borderSubtle,
     padding: spacing.md,
   },
   exerciseTitle: {

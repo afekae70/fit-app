@@ -71,7 +71,7 @@ const createStyles = (colors: ColorPalette) =>
       backgroundColor: colors.surfaceRaised,
       borderRadius: radius.md,
       borderWidth: 1,
-      borderColor: colors.border,
+      borderColor: colors.borderSubtle,
       overflow: 'hidden',
       justifyContent: 'center',
       paddingVertical: spacing.sm,

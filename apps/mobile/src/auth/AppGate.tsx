@@ -28,6 +28,7 @@ import { spacing } from '../theme.js';
 import { AuthGate } from './AuthGate.js';
 import { useAuth } from './AuthProvider.js';
 import { CurrentUserProvider } from './CurrentUserProvider.js';
+import { SyncProvider } from '../sync/SyncProvider.js';
 
 const LOCAL_USER_ID = 'local';
 
@@ -64,7 +65,15 @@ export function AppGate({ children }: { children: ReactNode }) {
   }
 
   const userId = isConfigured ? session!.user.id : LOCAL_USER_ID;
-  return <CurrentUserProvider userId={userId}>{children}</CurrentUserProvider>;
+  // Sync mounts here rather than in the root layout because it needs the resolved user id, and
+  // because there is nothing to sync until someone is signed in. It also makes a change of
+  // account restart cleanly: the gate remounts this subtree, and the new provider starts from
+  // that user's own cursors rather than inheriting the previous account's.
+  return (
+    <CurrentUserProvider userId={userId}>
+      <SyncProvider userId={userId}>{children}</SyncProvider>
+    </CurrentUserProvider>
+  );
 }
 
 // Transparent, not colors.bg — this is exactly where AnimatedGradientBackground is meant to

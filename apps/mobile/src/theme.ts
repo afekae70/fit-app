@@ -28,6 +28,7 @@ export interface ColorPalette {
   surfaceHigh: string;
   border: string;
   borderStrong: string;
+  borderSubtle: string;
   text: string;
   textSecondary: string;
   textMuted: string;
@@ -56,6 +57,12 @@ export const darkColors: ColorPalette = {
   /* Borders — the divider token and the prototype's --line2, each flattened over --color-bg. */
   border: '#383946', // text 16% over bg
   borderStrong: '#4D4E5A', // text 26% over bg
+  // For a card edge rather than a divider. #232532 on #161826 is already a visible step, so an
+  // outline at full `border` strength draws a box around something that did not need one — the
+  // effect across a screen of six cards is a grid of boxes competing with their own contents.
+  // This is barely above the surface it sits on: enough to catch a corner, not enough to read
+  // as a line.
+  borderSubtle: '#2C2E3D', // text 7% over surface
 
   /* Text — the ramp read downward from --color-text. */
   text: '#E9E9ED', // --color-text
@@ -95,6 +102,7 @@ export const lightColors: ColorPalette = {
   /* Borders — neutral-900 at 12% and 26% over this palette's own ground. */
   border: '#CDD0DD',
   borderStrong: '#B3B6C2',
+  borderSubtle: '#E5E8F4', // the same idea inverted: a hair darker than the card surface
 
   /* Text — the same ramp read upward. */
   text: '#292B31', // --color-neutral-900

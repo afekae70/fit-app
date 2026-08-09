@@ -249,8 +249,7 @@ describe('migration 7 — sync columns', () => {
 });
 
 describe('migration 8 — set done flag', () => {
-  it('ships as the current version', () => {
-    expect(SCHEMA_VERSION).toBe(8);
+  it('has a migration of its own', () => {
     expect(MIGRATIONS[8]).toBeDefined();
   });
 
@@ -268,5 +267,72 @@ describe('migration 8 — set done flag', () => {
     expect(row.done_at).toBeNull();
     expect(row.updated_at).not.toBeNull();
     db.close();
+  });
+});
+
+describe('migration 9 — the server clock gets its own column', () => {
+  const SYNCED_TABLES = [
+    'workout_sessions',
+    'session_exercises',
+    'sets',
+    'body_metrics',
+    'plans',
+    'plan_days',
+    'plan_day_exercises',
+  ];
+
+  it('adds remote_updated_at to every table that syncs', () => {
+    const db = seededV6Database();
+    startUpLikeTheApp(db);
+
+    for (const table of SYNCED_TABLES) {
+      const columns = (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map(
+        (c) => c.name,
+      );
+      expect(columns, table).toContain('remote_updated_at');
+    }
+    db.close();
+  });
+
+  it('leaves it null on existing rows, so nothing looks already-synced', () => {
+    // The opposite backfill to updated_at, and for the same reason it was chosen there: null here
+    // means "the server has never seen this row", so the merge treats anything arriving for it as
+    // news. Backfilling a time would claim these rows were already uploaded when they never were.
+    const db = seededV6Database();
+    startUpLikeTheApp(db);
+
+    const row = db.prepare(`SELECT remote_updated_at FROM sets WHERE id = 't1'`).get() as {
+      remote_updated_at: string | null;
+    };
+    expect(row.remote_updated_at).toBeNull();
+    db.close();
+  });
+
+  it('reaches a fresh install too', () => {
+    // Both startup paths, asserted separately rather than by diffing one against the other.
+    // Diffing them looks like the stronger test and is in fact vacuous: migrations run on a fresh
+    // database as well, so whatever CREATE_SCHEMA_SQL leaves out, migration 9 puts back, and the
+    // two agree no matter what. Only checking each path against the requirement can fail.
+    const fresh = new DatabaseSync(':memory:');
+    startUpLikeTheApp(fresh);
+
+    for (const table of SYNCED_TABLES) {
+      const columns = (
+        fresh.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]
+      ).map((c) => c.name);
+      expect(columns, table).toContain('remote_updated_at');
+    }
+    fresh.close();
+  });
+});
+
+describe('the schema version', () => {
+  it('matches the highest migration', () => {
+    // These two are what decide whether a migration ever runs. If a migration is added and the
+    // version is not bumped, `user_version` already equals SCHEMA_VERSION on every existing
+    // device and the new statements are skipped forever — silently, and only on the devices that
+    // already have data.
+    const highest = Math.max(...Object.keys(MIGRATIONS).map(Number));
+    expect(SCHEMA_VERSION).toBe(highest);
   });
 });

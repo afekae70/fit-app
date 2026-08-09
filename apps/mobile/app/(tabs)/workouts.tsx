@@ -11,7 +11,7 @@
  */
 
 import { EXERCISE_SEED, type ExerciseSeed } from '@fit/shared/catalog';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -156,6 +156,20 @@ export default function WorkoutsScreen() {
     setTargets(nextTargets);
     return loaded;
   }, [userId]);
+
+  // Deleting a session happens on the detail screen, and this tab stays mounted underneath it.
+  // Without this the user comes back to a list that still shows the workout they just deleted —
+  // it looks like the delete silently failed. Same reasoning as plan.tsx.
+  //
+  // Guarded on `sessionId`: mid-workout this tab shows the logging UI, not the history list, and
+  // the trips that happen then (the exercise picker) already reload the session themselves. A
+  // blanket refresh would be pointless work over a screen the user is actively typing into.
+  useFocusEffect(
+    useCallback(() => {
+      if (sessionId) return;
+      void reloadHome();
+    }, [sessionId, reloadHome]),
+  );
 
   // Resume whatever session was left open — being backgrounded mid-workout is the normal
   // case here, not an edge case.

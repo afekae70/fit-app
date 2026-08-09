@@ -599,9 +599,12 @@ const createStyles = (colors: ColorPalette) =>
       backgroundColor: colors.surface,
       borderRadius: radius.lg,
       borderWidth: 1,
-      borderColor: colors.border,
+      borderColor: colors.borderSubtle,
       padding: spacing.lg,
-      marginBottom: spacing.md,
+      // More air between cards than inside them. When the two are equal the page reads as one
+      // undifferentiated column; separating the groups is what lets the eye skip to the section
+      // it wants instead of reading everything.
+      marginBottom: spacing.lg,
     },
     cardAccent: { borderColor: colors.accentBorder, backgroundColor: colors.accentSoft },
 
@@ -620,11 +623,17 @@ const createStyles = (colors: ColorPalette) =>
       gap: spacing.md,
     },
     screenHeaderGear: { fontSize: fontSize.lg, marginBottom: spacing.lg },
+    // A label for the group below it, not a heading that competes with it. At full text colour
+    // and body size in bold it carried the same weight as the numbers inside the card, so every
+    // card opened with two things asking to be read first. Smaller, quieter and letterspaced, it
+    // does the one job a section title has: say what this is, then get out of the way.
     sectionTitle: {
-      color: colors.text,
-      fontSize: fontSize.md,
-      fontWeight: fontWeight.bold,
-      marginBottom: spacing.xs,
+      color: colors.textMuted,
+      fontSize: fontSize.xs,
+      fontWeight: fontWeight.medium,
+      letterSpacing: 0.6,
+      textTransform: 'uppercase',
+      marginBottom: spacing.sm,
       textAlign: 'auto',
     },
     hint: {
@@ -770,7 +779,7 @@ const createStyles = (colors: ColorPalette) =>
       backgroundColor: colors.surface,
       borderRadius: radius.lg,
       borderWidth: 1,
-      borderColor: colors.border,
+      borderColor: colors.borderSubtle,
       padding: spacing.lg,
       marginBottom: spacing.md,
       gap: spacing.sm,

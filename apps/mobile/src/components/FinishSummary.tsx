@@ -284,7 +284,7 @@ const createStyles = (colors: ColorPalette) =>
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
     borderTopWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.borderSubtle,
     padding: spacing.lg,
     paddingBottom: spacing.xxl,
   },
