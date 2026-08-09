@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { Env } from '../config/env.js';
 import { ClaudeProvider } from './claude-provider.js';
 import { createCoachProvider } from './factory.js';
+import { GeminiProvider } from './gemini-provider.js';
 import { OpenAiProvider } from './openai-provider.js';
 import { CoachRefusalError } from './provider.js';
 
@@ -15,6 +16,7 @@ const baseEnv = {
   DATABASE_URL: 'postgresql://user:pass@localhost:6543/postgres',
   ANTHROPIC_MODEL: 'claude-opus-5',
   OPENAI_MODEL: 'gpt-4o',
+    GEMINI_MODEL: 'gemini-2.5-flash',
 } as const;
 
 describe('createCoachProvider', () => {
@@ -30,6 +32,13 @@ describe('createCoachProvider', () => {
     const provider = createCoachProvider(env);
     expect(provider).toBeInstanceOf(OpenAiProvider);
     expect(provider.name).toBe('openai');
+  });
+
+  it('builds a GeminiProvider when AI_PROVIDER=gemini', () => {
+    const env: Env = { ...baseEnv, AI_PROVIDER: 'gemini', GOOGLE_API_KEY: 'AIza-test' };
+    const provider = createCoachProvider(env);
+    expect(provider).toBeInstanceOf(GeminiProvider);
+    expect(provider.name).toBe('gemini');
   });
 
   it('this is the only place AI_PROVIDER is branched on', () => {

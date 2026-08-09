@@ -11,7 +11,7 @@
 
 import { z } from 'zod';
 
-const AI_PROVIDERS = ['claude', 'openai'] as const;
+const AI_PROVIDERS = ['claude', 'openai', 'gemini'] as const;
 
 const envSchema = z
   .object({
@@ -33,6 +33,8 @@ const envSchema = z
     ANTHROPIC_MODEL: z.string().default('claude-opus-5'),
     OPENAI_API_KEY: z.string().min(1).optional(),
     OPENAI_MODEL: z.string().default('gpt-4o'),
+    GOOGLE_API_KEY: z.string().min(1).optional(),
+    GEMINI_MODEL: z.string().default('gemini-2.5-flash'),
   })
   .superRefine((env, ctx) => {
     // The selected provider's key is required; the other provider's key is not, so both
@@ -49,6 +51,13 @@ const envSchema = z
         code: z.ZodIssueCode.custom,
         path: ['OPENAI_API_KEY'],
         message: 'OPENAI_API_KEY is required when AI_PROVIDER=openai',
+      });
+    }
+    if (env.AI_PROVIDER === 'gemini' && !env.GOOGLE_API_KEY) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['GOOGLE_API_KEY'],
+        message: 'GOOGLE_API_KEY is required when AI_PROVIDER=gemini',
       });
     }
   });

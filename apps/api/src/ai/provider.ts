@@ -46,7 +46,7 @@ export interface CoachContext {
 }
 
 export interface CoachProvider {
-  readonly name: 'claude' | 'openai';
+  readonly name: 'claude' | 'openai' | 'gemini';
 
   /** Stream the assistant's reply token-by-token, plus any plan/menu it proposes mid-turn. */
   streamChat(ctx: CoachContext, messages: CoachMessage[]): AsyncIterable<CoachStreamEvent>;

@@ -64,6 +64,24 @@ describe('loadEnv', () => {
     ).toThrow(EnvValidationError);
   });
 
+  it('requires GOOGLE_API_KEY only when AI_PROVIDER=gemini', () => {
+    // The failure this guards is specific: without it, selecting gemini boots a service that
+    // accepts requests and then fails every coach call at runtime with an auth error, rather
+    // than refusing to start with a message naming the missing variable.
+    expect(() =>
+      loadEnv({ ...baseValidEnv, AI_PROVIDER: 'gemini', GOOGLE_API_KEY: undefined }),
+    ).toThrow(EnvValidationError);
+
+    const asGemini = loadEnv({
+      ...baseValidEnv,
+      AI_PROVIDER: 'gemini',
+      GOOGLE_API_KEY: 'AIza-test',
+    });
+    expect(asGemini.AI_PROVIDER).toBe('gemini');
+    // Defaulted rather than required, so setting the key alone is enough to switch providers.
+    expect(asGemini.GEMINI_MODEL).toBe('gemini-2.5-flash');
+  });
+
   it('does not require the non-selected provider key to be present', () => {
     // Both adapters must compile and be constructible without both keys set — this is
     // what lets `AI_PROVIDER` be a one-line switch in practice.

@@ -8,6 +8,7 @@
 
 import type { Env } from '../config/env.js';
 import { ClaudeProvider } from './claude-provider.js';
+import { GeminiProvider } from './gemini-provider.js';
 import { OpenAiProvider } from './openai-provider.js';
 import type { CoachProvider } from './provider.js';
 
@@ -23,6 +24,11 @@ export function createCoachProvider(env: Env): CoachProvider {
       return new OpenAiProvider({
         apiKey: env.OPENAI_API_KEY as string,
         model: env.OPENAI_MODEL,
+      });
+    case 'gemini':
+      return new GeminiProvider({
+        apiKey: env.GOOGLE_API_KEY as string,
+        model: env.GEMINI_MODEL,
       });
   }
 }

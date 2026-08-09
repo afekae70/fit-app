@@ -24,6 +24,7 @@ const testEnv: Env = {
   ANTHROPIC_API_KEY: 'sk-ant-test-placeholder',
   ANTHROPIC_MODEL: 'claude-opus-5',
   OPENAI_MODEL: 'gpt-4o',
+  GEMINI_MODEL: 'gemini-2.5-flash',
 };
 
 describe('buildApp', () => {
