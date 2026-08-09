@@ -383,6 +383,8 @@ export const he = {
     weight_plate: 'צלחת משקל',
   },
   muscle: {
+    abductors: 'מרחיקי ירך',
+    adductors: 'מקרבי ירך',
     chest: 'חזה',
     lats: 'גב רחב',
     mid_back: 'גב אמצעי',

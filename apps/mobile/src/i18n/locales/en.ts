@@ -392,6 +392,8 @@ export const en = {
     weight_plate: 'Weight Plate',
   },
   muscle: {
+    abductors: 'Hip abductors',
+    adductors: 'Hip adductors',
     chest: 'Chest',
     lats: 'Lats',
     mid_back: 'Mid back',

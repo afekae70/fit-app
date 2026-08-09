@@ -315,6 +315,20 @@ export const EXERCISE_SEED: readonly ExerciseSeed[] = [
   { nameEn: 'Toes to Bar', nameHe: 'רגליים למוט', primaryMuscle: 'core', secondaryMuscles: ['lats'], movementPattern: 'core', equipmentSlug: 'pullup_bar' },
   { nameEn: 'V-Up', nameHe: 'וי-אפ', primaryMuscle: 'core', secondaryMuscles: ['obliques'], movementPattern: 'core', equipmentSlug: 'none' },
   { nameEn: 'Weighted Sit-Up', nameHe: 'כפיפת בטן עם משקל', primaryMuscle: 'core', secondaryMuscles: [], movementPattern: 'core', equipmentSlug: 'weight_plate' },
+  { nameEn: 'Hip Abduction Machine', nameHe: 'הרחקת ירך במכונה', primaryMuscle: 'abductors', secondaryMuscles: ['glutes'], movementPattern: 'isolation', equipmentSlug: 'hip_thrust_machine' },
+  { nameEn: 'Banded Hip Abduction', nameHe: 'הרחקת ירך עם גומייה', primaryMuscle: 'abductors', secondaryMuscles: ['glutes'], movementPattern: 'isolation', equipmentSlug: 'resistance_band' },
+  { nameEn: 'Side-Lying Leg Raise', nameHe: 'הרמת רגל בשכיבה צידית', primaryMuscle: 'abductors', secondaryMuscles: ['glutes'], movementPattern: 'isolation', equipmentSlug: 'none' },
+  { nameEn: 'Clamshell', nameHe: 'צדפה', primaryMuscle: 'abductors', secondaryMuscles: ['glutes'], movementPattern: 'isolation', equipmentSlug: 'resistance_band' },
+  { nameEn: 'Hip Adduction Machine', nameHe: 'קירוב ירך במכונה', primaryMuscle: 'adductors', secondaryMuscles: [], movementPattern: 'isolation', equipmentSlug: 'hip_thrust_machine' },
+  { nameEn: 'Cable Hip Adduction', nameHe: 'קירוב ירך בפולי', primaryMuscle: 'adductors', secondaryMuscles: [], movementPattern: 'isolation', equipmentSlug: 'cable_machine' },
+  { nameEn: 'Copenhagen Adduction', nameHe: 'קירוב קופנהגן', primaryMuscle: 'adductors', secondaryMuscles: ['core'], movementPattern: 'isolation', equipmentSlug: 'flat_bench' },
+  { nameEn: 'Sumo Squat', nameHe: 'סקוואט סומו', primaryMuscle: 'adductors', secondaryMuscles: ['quads', 'glutes'], movementPattern: 'squat', equipmentSlug: 'dumbbell' },
+  { nameEn: 'Wide-Stance Leg Press', nameHe: 'לחיצת רגליים ברגליים רחבות', primaryMuscle: 'adductors', secondaryMuscles: ['glutes', 'quads'], movementPattern: 'squat', equipmentSlug: 'leg_press' },
+  { nameEn: 'Calf Raise on Leg Press', nameHe: 'הרמת עקבים במכונת לחיצת רגליים', primaryMuscle: 'calves', secondaryMuscles: [], movementPattern: 'isolation', equipmentSlug: 'leg_press' },
+  { nameEn: 'Hack Squat Calf Raise', nameHe: 'הרמת עקבים בהאק סקוואט', primaryMuscle: 'calves', secondaryMuscles: [], movementPattern: 'isolation', equipmentSlug: 'hack_squat' },
+  { nameEn: 'Bent-Knee Calf Raise', nameHe: 'הרמת עקבים בברך כפופה', primaryMuscle: 'calves', secondaryMuscles: [], movementPattern: 'isolation', equipmentSlug: 'calf_raise_machine' },
+  { nameEn: 'Weighted Calf Raise', nameHe: 'הרמת עקבים עם משקולת', primaryMuscle: 'calves', secondaryMuscles: [], movementPattern: 'isolation', equipmentSlug: 'dumbbell' },
+  { nameEn: 'Calf Press', nameHe: 'לחיצת תאומים', primaryMuscle: 'calves', secondaryMuscles: [], movementPattern: 'isolation', equipmentSlug: 'leg_press' },
 ] as const;
 
 /**
@@ -331,6 +345,7 @@ export const EXERCISE_SEED: readonly ExerciseSeed[] = [
  */
 const PRIORITY: readonly string[] = [
   'chest', 'lats', 'mid_back', 'quads', 'hamstrings', 'glutes',
+  'abductors', 'adductors',
   'front_delts', 'side_delts', 'rear_delts', 'biceps', 'triceps', 'core', 'calves', 'cardio',
 ];
 
@@ -352,6 +367,10 @@ export const FILTERABLE_MUSCLES: readonly string[] = (() => {
  * silently break muscle-group filtering and the AI's volume-per-muscle analysis.
  */
 export const MUSCLE_GROUPS = [
+  // The two hip machines every gym has and this list did not: without them the catalogue could
+  // not name what a hip abduction actually trains, so the movement had nowhere to live at all.
+  'abductors',
+  'adductors',
   'chest',
   'lats',
   'mid_back',
