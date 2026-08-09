@@ -110,6 +110,9 @@ export const en = {
     needSexForBmr: 'Choose which formula to use (male/female) to see your targets.',
   },
   workout: {
+    rest: 'Rest',
+    upNext: 'Up next',
+    skipRest: 'Skip',
     firstTime: 'First time with this exercise',
     volume: 'volume',
     target: 'Target',

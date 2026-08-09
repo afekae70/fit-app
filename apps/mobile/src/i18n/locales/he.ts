@@ -103,6 +103,9 @@ export const he = {
     needSexForBmr: 'בחר לפי איזו נוסחה לחשב (גבר/אישה) כדי לקבל יעדים.',
   },
   workout: {
+    rest: 'מנוחה',
+    upNext: 'הבא',
+    skipRest: 'דלג',
     firstTime: 'פעם ראשונה עם התרגיל הזה',
     volume: 'נפח',
     target: 'יעד',
