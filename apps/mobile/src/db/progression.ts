@@ -189,3 +189,168 @@ export function toCoachDigest(summaries: readonly ExerciseProgressSummary[]) {
     lastPerformed: s.lastPerformedAt.slice(0, 10),
   }));
 }
+
+/** `YYYY-MM-DD` in the device's local calendar — matches SQLite's `date(x,'localtime')`. */
+function localDay(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Progress screen aggregates                                                  */
+/* -------------------------------------------------------------------------- */
+
+export interface WeeklyVolume {
+  /** Monday of the week, `YYYY-MM-DD` in local time. */
+  weekStart: string;
+  volumeKg: number;
+}
+
+/**
+ * Working-set volume per week, oldest first, with empty weeks included.
+ *
+ * The gaps are the point. Dropping weeks you did not train would slide the remaining bars
+ * together and turn a fortnight off into a flat, healthy-looking line — which is exactly the
+ * thing the chart exists to expose.
+ */
+export async function weeklyVolume(
+  db: SqlExecutor,
+  userId: string,
+  weeks = 8,
+  today = new Date(),
+): Promise<WeeklyVolume[]> {
+  const rows = await db.all<{ week: string; volume: number }>(
+    `SELECT date(ws.started_at, 'localtime', 'weekday 1', '-7 days') AS week,
+            SUM(COALESCE(s.weight_kg, 0) * COALESCE(s.reps, 0))     AS volume
+       FROM sets s
+       JOIN session_exercises se ON se.id = s.session_exercise_id AND se.deleted_at IS NULL
+       JOIN workout_sessions ws  ON ws.id = se.session_id AND ws.deleted_at IS NULL
+      WHERE ws.user_id = ? AND s.is_warmup = 0 AND s.deleted_at IS NULL
+      GROUP BY week`,
+    [userId],
+  );
+  const byWeek = new Map(rows.map((r) => [r.week, r.volume]));
+
+  // Walk back from this week's Monday so the series always ends on the current week, trained
+  // or not — a chart that stops at the last workout hides that you have not trained since.
+  const monday = new Date(today);
+  monday.setHours(0, 0, 0, 0);
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+
+  const out: WeeklyVolume[] = [];
+  for (let i = weeks - 1; i >= 0; i--) {
+    const d = new Date(monday);
+    d.setDate(d.getDate() - i * 7);
+    const key = localDay(d);
+    out.push({ weekStart: key, volumeKg: byWeek.get(key) ?? 0 });
+  }
+  return out;
+}
+
+export interface TrainingDay {
+  /** `YYYY-MM-DD`, local. */
+  day: string;
+  /** 0 = untrained, 1..4 = increasing volume. Bucketed, not raw, so one huge day cannot flatten the rest. */
+  level: number;
+}
+
+/**
+ * A day-per-cell consistency grid, oldest first, covering whole weeks back from today.
+ *
+ * Levels are quartiles of the days actually trained rather than fractions of the maximum: one
+ * exceptional session would otherwise push every ordinary day into the palest bucket and make a
+ * consistent block of training look like a near-empty grid.
+ */
+export async function consistencyHeat(
+  db: SqlExecutor,
+  userId: string,
+  weeks = 16,
+  today = new Date(),
+): Promise<TrainingDay[]> {
+  const rows = await db.all<{ day: string; volume: number }>(
+    `SELECT date(ws.started_at, 'localtime')                    AS day,
+            SUM(COALESCE(s.weight_kg, 0) * COALESCE(s.reps, 0)) AS volume
+       FROM workout_sessions ws
+       LEFT JOIN session_exercises se ON se.session_id = ws.id AND se.deleted_at IS NULL
+       LEFT JOIN sets s ON s.session_exercise_id = se.id AND s.deleted_at IS NULL
+                        AND s.is_warmup = 0
+      WHERE ws.user_id = ? AND ws.deleted_at IS NULL
+      GROUP BY day`,
+    [userId],
+  );
+  const byDay = new Map(rows.map((r) => [r.day, r.volume]));
+
+  const trained = [...byDay.values()].filter((v) => v > 0).sort((a, b) => a - b);
+  const quartile = (q: number) =>
+    trained.length === 0 ? 0 : (trained[Math.floor((trained.length - 1) * q)] ?? 0);
+  const q1 = quartile(0.25);
+  const q2 = quartile(0.5);
+  const q3 = quartile(0.75);
+
+  const end = new Date(today);
+  end.setHours(0, 0, 0, 0);
+  // Finish the current week so the grid is rectangular; leading cells are simply untrained.
+  end.setDate(end.getDate() + (7 - ((end.getDay() + 6) % 7) - 1));
+
+  const out: TrainingDay[] = [];
+  for (let i = weeks * 7 - 1; i >= 0; i--) {
+    const d = new Date(end);
+    d.setDate(d.getDate() - i);
+    const key = localDay(d);
+    const volume = byDay.get(key) ?? 0;
+    // A logged session with no working sets still counts as showing up.
+    let level = 0;
+    if (byDay.has(key)) level = 1;
+    if (volume > q1) level = 2;
+    if (volume > q2) level = 3;
+    if (volume > q3) level = 4;
+    out.push({ day: key, level });
+  }
+  return out;
+}
+
+export interface PersonalRecord {
+  exerciseKey: string;
+  weightKg: number;
+  reps: number;
+  achievedAt: string;
+}
+
+/**
+ * The heaviest working set ever logged per exercise, heaviest first.
+ *
+ * Ties break on reps: 100×8 beats 100×5, which is what a lifter would call the better record.
+ */
+export async function personalRecords(
+  db: SqlExecutor,
+  userId: string,
+  limit = 20,
+): Promise<PersonalRecord[]> {
+  return db.all<PersonalRecord>(
+    `SELECT se.exercise_key AS exerciseKey,
+            s.weight_kg     AS weightKg,
+            s.reps          AS reps,
+            ws.started_at   AS achievedAt
+       FROM sets s
+       JOIN session_exercises se ON se.id = s.session_exercise_id AND se.deleted_at IS NULL
+       JOIN workout_sessions ws  ON ws.id = se.session_id AND ws.deleted_at IS NULL
+      WHERE ws.user_id = ?
+        AND s.is_warmup = 0 AND s.deleted_at IS NULL
+        AND s.weight_kg IS NOT NULL AND s.reps IS NOT NULL
+        AND s.weight_kg = (
+          SELECT MAX(b.weight_kg)
+            FROM sets b
+            JOIN session_exercises bse ON bse.id = b.session_exercise_id AND bse.deleted_at IS NULL
+            JOIN workout_sessions bws  ON bws.id = bse.session_id AND bws.deleted_at IS NULL
+           WHERE bws.user_id = ? AND bse.exercise_key = se.exercise_key
+             AND b.is_warmup = 0 AND b.deleted_at IS NULL
+        )
+      GROUP BY se.exercise_key
+      HAVING s.reps = MAX(s.reps)
+      ORDER BY s.weight_kg DESC
+      LIMIT ?`,
+    [userId, userId, limit],
+  );
+}

@@ -23,8 +23,30 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useCurrentUserId } from '../src/auth/CurrentUserProvider.js';
-import { Banner, Card, EmptyState, Hint, ScreenTitle, SkeletonScreen } from '../src/components/ui.js';
-import { summariseAllProgress, type ExerciseProgressSummary } from '../src/db/progression.js';
+import {
+  Banner,
+  Card,
+  EmptyState,
+  Hint,
+  ScreenTitle,
+  SectionTitle,
+  SkeletonScreen,
+} from '../src/components/ui.js';
+import {
+  ConsistencyGrid,
+  PersonalRecordList,
+  WeeklyVolumeChart,
+} from '../src/components/ProgressCharts.js';
+import {
+  consistencyHeat,
+  personalRecords,
+  summariseAllProgress,
+  weeklyVolume,
+  type ExerciseProgressSummary,
+  type PersonalRecord,
+  type TrainingDay,
+  type WeeklyVolume,
+} from '../src/db/progression.js';
 import { getExecutor } from '../src/db/provider.js';
 import { useTheme } from '../src/ThemeProvider.js';
 import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../src/theme.js';
@@ -58,11 +80,17 @@ export default function ProgressScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [summaries, setSummaries] = useState<ExerciseProgressSummary[]>([]);
+  const [volume, setVolume] = useState<WeeklyVolume[]>([]);
+  const [heat, setHeat] = useState<TrainingDay[]>([]);
+  const [records, setRecords] = useState<PersonalRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
   const reload = useCallback(async () => {
     const db = await getExecutor();
     setSummaries(await summariseAllProgress(db, userId));
+    setVolume(await weeklyVolume(db, userId));
+    setHeat(await consistencyHeat(db, userId));
+    setRecords(await personalRecords(db, userId));
     setLoading(false);
   }, [userId]);
 
@@ -97,6 +125,28 @@ export default function ProgressScreen() {
         </Pressable>
         <ScreenTitle>{t('progress.title')}</ScreenTitle>
       </View>
+
+      {volume.some((w) => w.volumeKg > 0) ? (
+        <>
+          <Card>
+            <SectionTitle>{t('progress.weeklyVolume')}</SectionTitle>
+            <WeeklyVolumeChart weeks={volume} />
+          </Card>
+
+          <Card>
+            <SectionTitle>{t('progress.consistency')}</SectionTitle>
+            <Hint>{t('progress.consistencyHint')}</Hint>
+            <ConsistencyGrid days={heat} />
+          </Card>
+
+          {records.length > 0 ? (
+            <Card>
+              <SectionTitle>{t('progress.records')}</SectionTitle>
+              <PersonalRecordList records={records} isHebrew={isHebrew} />
+            </Card>
+          ) : null}
+        </>
+      ) : null}
 
       {summaries.length === 0 ? (
         <EmptyState emoji="📈" title={t('progress.empty')} hint={t('progress.emptyHint')} />

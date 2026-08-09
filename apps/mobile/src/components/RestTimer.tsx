@@ -43,7 +43,7 @@ export { DEFAULT_REST_SECONDS } from './restTime.js';
 export interface RestTimerProps {
   /** Epoch ms the rest ends at, or null when not resting. */
   deadline: number | null;
-  /** Total seconds this rest was set to, so the ring knows what fraction remains. */
+  /** Total seconds this rest was set to, so the bar knows what fraction remains. */
   totalSeconds: number;
   /** What comes next, e.g. "Bench Press · set 3". */
   nextLabel: string;
@@ -103,8 +103,6 @@ export function RestTimer({
   if (deadline === null) return null;
 
   const fraction = restFraction(remaining, totalSeconds);
-  // The ring empties as time runs out, so the sweep is over the *elapsed* portion.
-  const elapsedDeg = (1 - fraction) * 360;
 
   return (
     <Animated.View

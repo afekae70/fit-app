@@ -52,6 +52,14 @@ export const en = {
     stallingHint:
       'No new best for several sessions — consider a deload, a different rep range, or swapping the exercise',
     aiNote: 'This analysis is exactly what the AI coach will receive in the next phase',
+    weeklyVolume: 'Weekly volume',
+    tonnes: 't',
+    weeks: 'weeks',
+    consistency: 'Consistency',
+    consistencyHint: 'Last 16 weeks',
+    less: 'Less',
+    more: 'More',
+    records: 'Personal records',
   },
   streak: {
     days_one: '{{count}} day streak',

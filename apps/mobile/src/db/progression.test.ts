@@ -12,11 +12,14 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { SqlExecutor } from './executor.js';
 import {
+  consistencyHeat,
   getExerciseProgression,
   listTrainedExercises,
+  personalRecords,
   summariseAllProgress,
   summariseExerciseProgress,
   toCoachDigest,
+  weeklyVolume,
 } from './progression.js';
 import { createTestExecutor } from './testUtils.js';
 import {
@@ -272,5 +275,112 @@ describe('deleted sessions are excluded from progression', () => {
 
     expect(await listTrainedExercises(db, USER)).toHaveLength(0);
     expect(await summariseAllProgress(db, USER)).toHaveLength(0);
+  });
+});
+
+describe('progress screen aggregates', () => {
+  // A fixed "today" so week boundaries never depend on when the suite runs.
+  const TODAY = new Date(2026, 5, 17); // Wednesday 17 June 2026
+
+  it('weeklyVolume returns one entry per week, ending on the current week', async () => {
+    const weeks = await weeklyVolume(db, USER, 4, TODAY);
+    expect(weeks).toHaveLength(4);
+    // Mondays, ascending, seven days apart.
+    expect(weeks.map((w) => w.weekStart)).toEqual([
+      '2026-05-25',
+      '2026-06-01',
+      '2026-06-08',
+      '2026-06-15',
+    ]);
+  });
+
+  it('weeklyVolume keeps untrained weeks at zero rather than dropping them', async () => {
+    // Dropping them would slide the bars together and make a fortnight off look like a flat
+    // healthy line — the exact thing the chart exists to reveal.
+    const weeks = await weeklyVolume(db, USER, 4, TODAY);
+    expect(weeks.every((w) => w.volumeKg === 0)).toBe(true);
+  });
+
+  it('weeklyVolume sums working-set volume into the right week', async () => {
+    // logSession's clock is 1 June + dayOffset, so offset 15 is 16 June — the current week.
+    await logSession(15, 'Barbell Curl', [{ weightKg: 30, reps: 10 }]);
+
+    const weeks = await weeklyVolume(db, USER, 4, TODAY);
+    const current = weeks[weeks.length - 1];
+    expect(current?.weekStart).toBe('2026-06-15');
+    expect(current?.volumeKg).toBe(300);
+  });
+
+  it('weeklyVolume ignores warmups', async () => {
+    await logSession(15, 'Barbell Curl', [
+      { weightKg: 100, reps: 10, isWarmup: true },
+      { weightKg: 30, reps: 10 },
+    ]);
+    const weeks = await weeklyVolume(db, USER, 4, TODAY);
+    expect(weeks[weeks.length - 1]?.volumeKg).toBe(300);
+  });
+
+  it('consistencyHeat returns whole weeks of days', async () => {
+    const days = await consistencyHeat(db, USER, 4, TODAY);
+    expect(days).toHaveLength(28);
+    expect(days.every((d) => d.level === 0)).toBe(true);
+  });
+
+  it('consistencyHeat marks a trained day above zero', async () => {
+    await logSession(15, 'Barbell Curl', [{ weightKg: 30, reps: 10 }]);
+    const days = await consistencyHeat(db, USER, 4, TODAY);
+    const trained = days.filter((d) => d.level > 0);
+    expect(trained).toHaveLength(1);
+    expect(trained[0]?.day).toBe('2026-06-16');
+  });
+
+  it('consistencyHeat buckets by quartile, so one huge day cannot flatten the rest', async () => {
+    await logSession(10, 'Barbell Curl', [{ weightKg: 20, reps: 10 }]); // 200
+    await logSession(11, 'Barbell Curl', [{ weightKg: 30, reps: 10 }]); // 300
+    await logSession(12, 'Barbell Curl', [{ weightKg: 40, reps: 10 }]); // 400
+    await logSession(13, 'Barbell Curl', [{ weightKg: 900, reps: 10 }]); // 9000, the outlier
+
+    const days = await consistencyHeat(db, USER, 4, TODAY);
+    const levels = days.filter((d) => d.level > 0).map((d) => d.level);
+    // Against a plain max-based scale the first three would all collapse to the lowest bucket.
+    expect(new Set(levels).size).toBeGreaterThan(1);
+    expect(Math.max(...levels)).toBe(4);
+  });
+
+  it('personalRecords reports the heaviest working set per exercise', async () => {
+    await logSession(0, 'Barbell Curl', [{ weightKg: 30, reps: 10 }]);
+    await logSession(1, 'Barbell Curl', [{ weightKg: 40, reps: 6 }]);
+    await logSession(2, 'Back Squat', [{ weightKg: 100, reps: 5 }]);
+
+    const prs = await personalRecords(db, USER);
+    expect(prs.map((p) => p.exerciseKey)).toEqual(['Back Squat', 'Barbell Curl']);
+    expect(prs[1]?.weightKg).toBe(40);
+    expect(prs[1]?.reps).toBe(6);
+  });
+
+  it('personalRecords breaks a weight tie on reps', async () => {
+    await logSession(0, 'Barbell Curl', [{ weightKg: 40, reps: 5 }]);
+    await logSession(1, 'Barbell Curl', [{ weightKg: 40, reps: 8 }]);
+
+    const prs = await personalRecords(db, USER);
+    expect(prs).toHaveLength(1);
+    expect(prs[0]?.reps).toBe(8);
+  });
+
+  it('personalRecords ignores warmups and deleted sessions', async () => {
+    await logSession(0, 'Barbell Curl', [{ weightKg: 30, reps: 10 }]);
+    const inflated = await logSession(1, 'Barbell Curl', [{ weightKg: 500, reps: 1 }]);
+    await deleteSession(db, USER, inflated);
+
+    const prs = await personalRecords(db, USER);
+    expect(prs[0]?.weightKg).toBe(30);
+  });
+
+  it('all three ignore another user entirely', async () => {
+    await logSession(15, 'Barbell Curl', [{ weightKg: 30, reps: 10 }], 'user-2');
+
+    expect((await weeklyVolume(db, USER, 4, TODAY)).every((w) => w.volumeKg === 0)).toBe(true);
+    expect((await consistencyHeat(db, USER, 4, TODAY)).every((d) => d.level === 0)).toBe(true);
+    expect(await personalRecords(db, USER)).toEqual([]);
   });
 });
