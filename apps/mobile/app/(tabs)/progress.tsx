@@ -22,7 +22,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useCurrentUserId } from '../src/auth/CurrentUserProvider.js';
+import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
 import {
   Banner,
   Card,
@@ -31,12 +31,12 @@ import {
   ScreenTitle,
   SectionTitle,
   SkeletonScreen,
-} from '../src/components/ui.js';
+} from '../../src/components/ui.js';
 import {
   ConsistencyGrid,
   PersonalRecordList,
   WeeklyVolumeChart,
-} from '../src/components/ProgressCharts.js';
+} from '../../src/components/ProgressCharts.js';
 import {
   consistencyHeat,
   personalRecords,
@@ -46,10 +46,10 @@ import {
   type PersonalRecord,
   type TrainingDay,
   type WeeklyVolume,
-} from '../src/db/progression.js';
-import { getExecutor } from '../src/db/provider.js';
-import { useTheme } from '../src/ThemeProvider.js';
-import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../src/theme.js';
+} from '../../src/db/progression.js';
+import { getExecutor } from '../../src/db/provider.js';
+import { useTheme } from '../../src/ThemeProvider.js';
+import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../../src/theme.js';
 
 const EXERCISE_BY_KEY = new Map<string, ExerciseSeed>(
   EXERCISE_SEED.map((exercise) => [exercise.nameEn, exercise]),

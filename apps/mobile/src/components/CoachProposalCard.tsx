@@ -4,7 +4,7 @@
  *
  * Neither card writes anything on its own. `WorkoutPlanCard`'s Apply button is the only path
  * that touches `plans`/`plan_days`/`plan_day_exercises` — wired by the caller in
- * `app/(tabs)/coach.tsx` — matching the rest of the app's rule that AI output is held for review,
+ * `app/coach.tsx` — matching the rest of the app's rule that AI output is held for review,
  * never materialised silently. `NutritionMenuCard` has no apply action at all: a menu is a
  * suggestion read against targets already computed elsewhere, not a table of its own.
  */

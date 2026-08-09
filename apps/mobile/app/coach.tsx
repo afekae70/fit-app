@@ -34,17 +34,17 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useAuth } from '../../src/auth/AuthProvider.js';
-import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
-import { buildCoachPayload } from '../../src/coach/payload.js';
-import { streamCoachChat, type CancelStream } from '../../src/coach/stream.js';
-import { NutritionMenuCard, WorkoutPlanCard } from '../../src/components/CoachProposalCard.js';
-import { Banner, EmptyState } from '../../src/components/ui.js';
-import { API_BASE_URL } from '../../src/config.js';
-import { activatePlan, addPlanDay, addPlanDayExercise, createPlan } from '../../src/db/plans.js';
-import { getExecutor, newId } from '../../src/db/provider.js';
-import { useTheme } from '../../src/ThemeProvider.js';
-import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../../src/theme.js';
+import { useAuth } from '../src/auth/AuthProvider.js';
+import { useCurrentUserId } from '../src/auth/CurrentUserProvider.js';
+import { buildCoachPayload } from '../src/coach/payload.js';
+import { streamCoachChat, type CancelStream } from '../src/coach/stream.js';
+import { NutritionMenuCard, WorkoutPlanCard } from '../src/components/CoachProposalCard.js';
+import { Banner, EmptyState } from '../src/components/ui.js';
+import { API_BASE_URL } from '../src/config.js';
+import { activatePlan, addPlanDay, addPlanDayExercise, createPlan } from '../src/db/plans.js';
+import { getExecutor, newId } from '../src/db/provider.js';
+import { useTheme } from '../src/ThemeProvider.js';
+import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../src/theme.js';
 
 /** Placeholder shown from send() until the first token, tool call, or error arrives. */
 interface PendingBubble {
@@ -296,7 +296,7 @@ export default function CoachChatScreen() {
     >
       <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
         <Text style={styles.title}>{t('coach.title')}</Text>
-        <Pressable onPress={() => router.push('/progress')} accessibilityRole="button" hitSlop={8}>
+        <Pressable onPress={() => router.push('/(tabs)/progress')} accessibilityRole="button" hitSlop={8}>
           <Text style={styles.viewProgress}>📈 {t('coach.viewProgress')}</Text>
         </Pressable>
         <Pressable

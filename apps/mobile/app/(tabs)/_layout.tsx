@@ -2,21 +2,23 @@ import { Tabs } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Animated } from 'react-native';
+import { Barbell, BookOpen, CalendarBlank, ChartBar, House, type Icon } from 'phosphor-react-native';
 
 import { useTheme } from '../../src/ThemeProvider.js';
-import { fontSize } from '../../src/theme.js';
 
 /**
- * Emoji rather than an icon font: it keeps the first run dependency-free (no vector-icons
- * asset loading to debug on device) and renders identically on Android and iOS. Swap for
- * proper icons once the screens themselves are built out.
+ * Five tabs, in the handoff's order: היום · אימון · תרגילים · תוכנית · התקדמות. Profile is
+ * reached from the home avatar rather than from here, which keeps the bar to the five things
+ * done during training and not the one done occasionally.
  *
- * The focus bounce is local to this one Animated.Value (opacity and scale both interpolated
- * from it, native-driven throughout) — unlike the tab-switch scene animation above, this isn't
- * an integration with react-native-screens, just a plain prop-driven spring, so it doesn't share
- * that feature's flakiness.
+ * Icons are Phosphor line icons at 20px / 1.5px stroke, as specified. They replaced emoji, which
+ * were a first-run shortcut from before any of these screens existed — they rendered at whatever
+ * weight and hue the platform font decided, which is the one thing a single-accent palette cannot
+ * absorb. The cost is `react-native-svg`, deliberately avoided until now; the design also asks
+ * for a stroke-dashoffset countdown ring and mirrored sparklines, so the dependency was going to
+ * be needed regardless and this is the cheapest moment to take it.
  */
-function TabIcon({ emoji, focused }: { emoji: string; focused: boolean }) {
+function TabIcon({ Glyph, focused, color }: { Glyph: Icon; focused: boolean; color: string }) {
   const progress = useRef(new Animated.Value(focused ? 1 : 0)).current;
 
   useEffect(() => {
@@ -29,17 +31,17 @@ function TabIcon({ emoji, focused }: { emoji: string; focused: boolean }) {
   }, [focused, progress]);
 
   return (
-    <Animated.Text
+    <Animated.View
       style={{
-        fontSize: 22,
-        opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [0.5, 1] }),
         transform: [
-          { scale: progress.interpolate({ inputRange: [0, 1], outputRange: [1, 1.15] }) },
+          { scale: progress.interpolate({ inputRange: [0, 1], outputRange: [1, 1.12] }) },
         ],
       }}
     >
-      {emoji}
-    </Animated.Text>
+      {/* `duotone` when focused rather than a heavier stroke: filling the glyph would put a solid
+          block of accent on screen, and the accent is reserved for actions and live data. */}
+      <Glyph size={20} color={color} weight={focused ? 'duotone' : 'regular'} />
+    </Animated.View>
   );
 }
 
@@ -47,58 +49,50 @@ export default function TabsLayout() {
   const { t } = useTranslation();
   const { colors } = useTheme();
 
+  const icon =
+    (Glyph: Icon) =>
+    ({ focused, color }: { focused: boolean; color: string }) => (
+      <TabIcon Glyph={Glyph} focused={focused} color={color} />
+    );
+
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: colors.accent,
-        tabBarInactiveTintColor: colors.textMuted,
+        tabBarInactiveTintColor: colors.textFaint,
         tabBarStyle: {
+          height: 74,
+          paddingTop: 8,
           backgroundColor: colors.surface,
           borderTopColor: colors.border,
         },
-        tabBarLabelStyle: { fontSize: fontSize.xs },
+        tabBarLabelStyle: { fontSize: 10 },
         sceneStyle: { backgroundColor: colors.bg },
         // Deliberately no custom tab-switch animation (e.g. sceneStyleInterpolator): it was
         // inconsistent in practice — sometimes animating, sometimes not — worse than the
-        // instant default it was meant to improve on. The push/pop transition below is the
-        // one animation this app ships, and it's a long-stable react-native-screens feature.
+        // instant default it was meant to improve on.
       }}
     >
       <Tabs.Screen
         name="index"
-        options={{
-          title: t('tabs.today'),
-          tabBarIcon: ({ focused }) => <TabIcon emoji="📊" focused={focused} />,
-        }}
-      />
-      <Tabs.Screen
-        name="plan"
-        options={{
-          title: t('tabs.plan'),
-          tabBarIcon: ({ focused }) => <TabIcon emoji="🗓️" focused={focused} />,
-        }}
+        options={{ title: t('tabs.today'), tabBarIcon: icon(House) }}
       />
       <Tabs.Screen
         name="workouts"
-        options={{
-          title: t('tabs.workouts'),
-          tabBarIcon: ({ focused }) => <TabIcon emoji="🏋️" focused={focused} />,
-        }}
+        options={{ title: t('tabs.workout'), tabBarIcon: icon(Barbell) }}
       />
       <Tabs.Screen
-        name="metrics"
-        options={{
-          title: t('tabs.metrics'),
-          tabBarIcon: ({ focused }) => <TabIcon emoji="⚖️" focused={focused} />,
-        }}
+        name="library"
+        options={{ title: t('tabs.library'), tabBarIcon: icon(BookOpen) }}
       />
       <Tabs.Screen
-        name="coach"
-        options={{
-          title: t('tabs.coach'),
-          tabBarIcon: ({ focused }) => <TabIcon emoji="💬" focused={focused} />,
-        }}
+        name="plan"
+        options={{ title: t('tabs.plan'), tabBarIcon: icon(CalendarBlank) }}
+      />
+      <Tabs.Screen
+        name="progress"
+        options={{ title: t('tabs.progress'), tabBarIcon: icon(ChartBar) }}
       />
     </Tabs>
   );

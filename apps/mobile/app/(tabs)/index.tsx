@@ -110,7 +110,7 @@ export default function TodayScreen() {
         greeting={t(greetingKey(new Date()))}
         date={formatDate(new Date(), i18n.language)}
         initials={initialsFor(session?.user.email)}
-        onPressAvatar={() => router.push('/settings')}
+        onPressAvatar={() => router.push('/profile')}
       />
 
       {failed ? (

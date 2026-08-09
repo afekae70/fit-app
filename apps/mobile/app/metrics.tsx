@@ -29,13 +29,13 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
+import { useCurrentUserId } from '../src/auth/CurrentUserProvider.js';
 import {
   checkScanAvailability,
   scanForReading,
   ScanError,
   type ScanUnavailableReason,
-} from '../../src/ble/scanner.js';
+} from '../src/ble/scanner.js';
 import {
   Banner,
   Card,
@@ -44,10 +44,10 @@ import {
   SectionTitle,
   SkeletonScreen,
   Stat,
-} from '../../src/components/ui.js';
-import { SwipeableRow } from '../../src/components/SwipeableRow.js';
-import { UndoToast } from '../../src/components/UndoToast.js';
-import { WeightSparkline } from '../../src/components/WeightSparkline.js';
+} from '../src/components/ui.js';
+import { SwipeableRow } from '../src/components/SwipeableRow.js';
+import { UndoToast } from '../src/components/UndoToast.js';
+import { WeightSparkline } from '../src/components/WeightSparkline.js';
 import {
   computeTargets,
   deleteBodyMetric,
@@ -59,10 +59,10 @@ import {
   type ComputedTargets,
   type ProfileRow,
   type TargetsGap,
-} from '../../src/db/metrics.js';
-import { getExecutor, newId } from '../../src/db/provider.js';
-import { useTheme } from '../../src/ThemeProvider.js';
-import { fontSize, radius, spacing, type ColorPalette } from '../../src/theme.js';
+} from '../src/db/metrics.js';
+import { getExecutor, newId } from '../src/db/provider.js';
+import { useTheme } from '../src/ThemeProvider.js';
+import { fontSize, radius, spacing, type ColorPalette } from '../src/theme.js';
 
 const GAP_MESSAGE: Record<TargetsGap, string> = {
   no_weight: 'metrics.noDataHint',
