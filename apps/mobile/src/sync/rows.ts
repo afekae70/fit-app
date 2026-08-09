@@ -53,7 +53,15 @@ export function earlierOf(a: string | null, b: string | null): string | null {
  */
 export function toRemote(table: SyncTable, row: Row): Row {
   const out: Row = {};
+  // A soft-deleted row's ordering column holds `-rowid`, a local sentinel that frees its slot in
+  // SQLite's UNIQUE index. The server rejects it outright (`set_index >= 1`), and no substitute
+  // is safe either — every positive value risks colliding with a live row under the same parent.
+  // Omitting the column entirely is what works: the upsert then leaves the server's own value
+  // alone, and the index of a deleted row means nothing to anybody.
+  const deleted = row.deleted_at !== null && row.deleted_at !== undefined;
+
   for (const column of table.columns) {
+    if (deleted && table.indexColumns?.includes(column)) continue;
     const value = row[column];
     if (value === undefined) continue;
 

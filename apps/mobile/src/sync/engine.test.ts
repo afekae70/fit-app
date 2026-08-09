@@ -62,9 +62,13 @@ function createFakeServer(startAt = Date.parse('2026-03-01T00:00:00.000Z')): Fak
         throw new Error('server rejected the batch');
       }
       for (const row of rows) {
+        // Merged over what is already stored, not replacing it. `ON CONFLICT DO UPDATE` only
+        // touches the columns present in the payload, so a column the client omits keeps the
+        // server's value — which is precisely the mechanism the parked-index fix relies on.
+        const previous = table(name).get(row.id as string) ?? {};
         // The real server stamps updated_at by trigger and ignores what the client sent. Modelling
         // that is the point of this fake: it is what makes the two-clock design testable.
-        table(name).set(row.id as string, { ...row, updated_at: now() });
+        table(name).set(row.id as string, { ...previous, ...row, updated_at: now() });
       }
     },
 
@@ -597,7 +601,7 @@ describe('blank sets', () => {
     expect(server.rows('sets').map((r) => r.id)).toEqual([setId]);
   });
 
-  it('still sends the deletion of a blank set', async () => {
+  it('does not bother deleting a blank set the server never received', async () => {
     const at = '2026-02-01T10:00:00.000Z';
     const sessionId = await seedSession(at);
     const setId = await seedBlankSet(sessionId, at);
@@ -611,9 +615,64 @@ describe('blank sets', () => {
     ]);
     const result = await runSync(db, server, USER, localClock('2026-02-01T13:00:00.000Z'));
 
-    // A tombstone has no reps either. Filtering it the same way would leave the row alive on the
-    // other device with no way to ever remove it.
-    expect(result.pushed).toBe(1);
-    expect(server.rows('sets')[0]?.deleted_at).toBe('2026-02-01T12:00:00.000Z');
+    // A blank set never reaches the server, so there is nothing there to delete. The tombstone
+    // rule catches this before the emptiness rule has to: no row was ever sent, none comes back,
+    // and the other device is already in the state this delete was trying to produce.
+    expect(result.pushed).toBe(0);
+    expect(server.rows('sets')).toHaveLength(0);
+  });
+});
+
+describe('parked indexes on deleted rows', () => {
+  it('never sends the negative index a soft delete parks', async () => {
+    const at = '2026-02-01T10:00:00.000Z';
+    const sessionId = await seedSession(at);
+    const { setId } = await seedExerciseWithSet(sessionId, at);
+    const server = createFakeServer();
+    await runSync(db, server, USER, localClock('2026-02-01T11:00:00.000Z'));
+
+    // Exactly what deleteSession does: park the index so surviving rows can renumber past it.
+    await db.run(`UPDATE sets SET deleted_at = ?, updated_at = ?, set_index = -rowid WHERE id = ?`, [
+      '2026-02-01T12:00:00.000Z',
+      '2026-02-01T12:00:00.000Z',
+      setId,
+    ]);
+    await runSync(db, server, USER, localClock('2026-02-01T13:00:00.000Z'));
+
+    const remote = server.rows('sets')[0];
+    expect(remote?.deleted_at).toBe('2026-02-01T12:00:00.000Z');
+    // The server checks set_index >= 1. Sending -rowid fails that check, which fails the batch,
+    // which stops sync for every table — so the column must simply not be in the payload.
+    expect(remote?.set_index).toBe(1);
+  });
+
+  it('keeps sending the index while the row is alive', async () => {
+    const at = '2026-02-01T10:00:00.000Z';
+    const sessionId = await seedSession(at);
+    await seedExerciseWithSet(sessionId, at);
+    const server = createFakeServer();
+    await runSync(db, server, USER, localClock('2026-02-01T11:00:00.000Z'));
+
+    expect(server.rows('sets')[0]?.set_index).toBe(1);
+    expect(server.rows('session_exercises')[0]?.order_index).toBe(1);
+  });
+
+  it('does not send a tombstone for a row the server never had', async () => {
+    const at = '2026-02-01T10:00:00.000Z';
+    const sessionId = await seedSession(at);
+    const { setId } = await seedExerciseWithSet(sessionId, at);
+    // Created and deleted before any sync ran.
+    await db.run(`UPDATE sets SET deleted_at = ?, updated_at = ?, set_index = -rowid WHERE id = ?`, [
+      '2026-02-01T10:30:00.000Z',
+      '2026-02-01T10:30:00.000Z',
+      setId,
+    ]);
+    const server = createFakeServer();
+
+    await runSync(db, server, USER, localClock('2026-02-01T11:00:00.000Z'));
+
+    // Inserting a tombstone for a row nobody has is pure noise — and it would have to be inserted
+    // without an index, which the server requires on insert.
+    expect(server.rows('sets')).toHaveLength(0);
   });
 });

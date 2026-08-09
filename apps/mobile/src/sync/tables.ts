@@ -48,6 +48,16 @@ export interface SyncTable {
    * sync for every table.
    */
   readonly pushWhere?: string;
+  /**
+   * Ordering columns that hold a local-only sentinel once the row is soft-deleted.
+   *
+   * SQLite enforces UNIQUE on (parent, index), so a deleted row would keep occupying its slot and
+   * block the surviving rows from renumbering. The repository parks it at `-rowid` — negative,
+   * unique, never a real index. That is a trick for this database, and it does not travel: the
+   * server checks `set_index >= 1` and has its own uniqueness. So a tombstone is sent without
+   * these columns, leaving whatever the server already had.
+   */
+  readonly indexColumns?: readonly string[];
 }
 
 export const SYNC_TABLES: readonly SyncTable[] = [
@@ -64,6 +74,7 @@ export const SYNC_TABLES: readonly SyncTable[] = [
     booleans: [],
     json: [],
     scope: { kind: 'parent', table: 'plans', column: 'plan_id' },
+    indexColumns: ['day_index'],
   },
   {
     table: 'plan_day_exercises',
@@ -82,6 +93,7 @@ export const SYNC_TABLES: readonly SyncTable[] = [
     booleans: [],
     json: [],
     scope: { kind: 'parent', table: 'plan_days', column: 'plan_day_id' },
+    indexColumns: ['order_index'],
   },
   {
     table: 'workout_sessions',
@@ -112,6 +124,7 @@ export const SYNC_TABLES: readonly SyncTable[] = [
     booleans: [],
     json: [],
     scope: { kind: 'parent', table: 'workout_sessions', column: 'session_id' },
+    indexColumns: ['order_index'],
   },
   {
     table: 'sets',
@@ -139,6 +152,7 @@ export const SYNC_TABLES: readonly SyncTable[] = [
     // objects to. Holding it back locally is both the smaller change and the more honest one:
     // an empty row is not training data, and the moment anything is entered it syncs normally.
     pushWhere: '(t0.reps IS NOT NULL OR t0.duration_seconds IS NOT NULL OR t0.distance_m IS NOT NULL)',
+    indexColumns: ['set_index'],
   },
   {
     table: 'body_metrics',

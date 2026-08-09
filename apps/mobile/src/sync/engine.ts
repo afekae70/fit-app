@@ -139,11 +139,16 @@ export function buildPushQuery(table: SyncTable): string {
   // delete — so `pushWhere` never applies to one. Without the escape, deleting a blank set would
   // hold its tombstone back and leave that row alive on the server permanently.
   const extra = table.pushWhere ? `AND (${table.pushWhere} OR t0.deleted_at IS NOT NULL)` : '';
+  // A row created and deleted between two syncs has never existed on the server, so there is
+  // nothing there to delete. Sending it would mean inserting a tombstone for a row nobody has —
+  // and for an ordered table that insert has no index to carry, since the parked one cannot go.
+  const tombstone = 'AND NOT (t0.deleted_at IS NOT NULL AND t0.remote_updated_at IS NULL)';
   return `SELECT ${columns} FROM ${table.table} t0
     ${joins.join('\n    ')}
     WHERE ${alias}.user_id = ?
       AND (? IS NULL OR t0.updated_at IS NULL OR t0.updated_at > ?)
       ${extra}
+      ${tombstone}
     ORDER BY t0.updated_at`;
 }
 
