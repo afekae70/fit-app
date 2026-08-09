@@ -1,0 +1,224 @@
+import { beforeEach, describe, expect, it } from 'vitest';
+
+import { getTodayWorkout, weekStrip, weekSummary } from './home.js';
+import type { SqlExecutor } from './executor.js';
+import { createTestExecutor } from './testUtils.js';
+
+const USER = 'u1';
+const OTHER = 'u2';
+const NOW = new Date('2026-08-05T09:00:00');
+
+let db: SqlExecutor & { close: () => void };
+beforeEach(() => {
+  db = createTestExecutor();
+});
+
+let seq = 0;
+const id = (prefix: string) => `${prefix}-${(seq += 1)}`;
+
+async function logWorkout(
+  startedLocal: string,
+  sets: { exercise: string; weight: number; reps: number }[],
+  { user = USER, planDayId = null as string | null } = {},
+): Promise<string> {
+  const sessionId = id('ws');
+  await db.run(
+    `INSERT INTO workout_sessions (id, user_id, plan_day_id, started_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    [sessionId, user, planDayId, startedLocal, startedLocal, startedLocal],
+  );
+  let index = 0;
+  for (const set of sets) {
+    const exerciseId = id('se');
+    await db.run(
+      `INSERT INTO session_exercises (id, session_id, exercise_key, order_index, updated_at)
+         VALUES (?, ?, ?, ?, ?)`,
+      [exerciseId, sessionId, set.exercise, (index += 1), startedLocal],
+    );
+    await db.run(
+      `INSERT INTO sets (id, session_exercise_id, set_index, weight_kg, reps, completed_at, updated_at)
+         VALUES (?, ?, 1, ?, ?, ?, ?)`,
+      [id('st'), exerciseId, set.weight, set.reps, startedLocal, startedLocal],
+    );
+  }
+  return sessionId;
+}
+
+async function seedPlan(days: { name: string; exercises: [string, number | null][] }[]) {
+  const planId = id('p');
+  await db.run(
+    `INSERT INTO plans (id, user_id, name, is_active, created_at, updated_at)
+       VALUES (?, ?, 'PPL', 1, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`,
+    [planId, USER],
+  );
+  const dayIds: string[] = [];
+  days.forEach(() => dayIds.push(id('pd')));
+  for (const [i, day] of days.entries()) {
+    await db.run(
+      `INSERT INTO plan_days (id, plan_id, day_index, name, updated_at)
+         VALUES (?, ?, ?, ?, '2026-01-01T00:00:00.000Z')`,
+      [dayIds[i], planId, i + 1, day.name],
+    );
+    for (const [j, [key, targetSets]] of day.exercises.entries()) {
+      await db.run(
+        `INSERT INTO plan_day_exercises (id, plan_day_id, exercise_key, order_index, target_sets, updated_at)
+           VALUES (?, ?, ?, ?, ?, '2026-01-01T00:00:00.000Z')`,
+        [id('pde'), dayIds[i], key, j + 1, targetSets],
+      );
+    }
+  }
+  return dayIds;
+}
+
+describe('getTodayWorkout', () => {
+  it('offers the most overdue day, not today\'s weekday', async () => {
+    const [pushDay, pullDay] = await seedPlan([
+      { name: 'דחיפה A', exercises: [['Barbell Bench Press', 4]] },
+      { name: 'משיכה A', exercises: [['Barbell Row', 4]] },
+    ]);
+    // Push was trained yesterday, pull never — so pull is the one that is due.
+    await logWorkout('2026-08-04T09:00:00', [{ exercise: 'Barbell Bench Press', weight: 80, reps: 5 }], {
+      planDayId: pushDay,
+    });
+
+    const today = await getTodayWorkout(db, USER);
+    expect(today?.dayName).toBe('משיכה A');
+    expect(today?.planDayId).toBe(pullDay);
+  });
+
+  it('counts sets and estimates a duration from them', async () => {
+    await seedPlan([
+      { name: 'דחיפה A', exercises: [['Barbell Bench Press', 4], ['Overhead Press', 3]] },
+    ]);
+    const today = await getTodayWorkout(db, USER);
+    expect(today?.exerciseCount).toBe(2);
+    expect(today?.setCount).toBe(7);
+    expect(today?.estimatedMinutes).toBeGreaterThan(10);
+  });
+
+  it('assumes three sets for an exercise with no target', async () => {
+    await seedPlan([{ name: 'דחיפה A', exercises: [['Barbell Bench Press', null]] }]);
+    expect((await getTodayWorkout(db, USER))?.setCount).toBe(3);
+  });
+
+  it('gives Hebrew names, because the card is read not queried', async () => {
+    await seedPlan([{ name: 'דחיפה A', exercises: [['Barbell Bench Press', 3]] }]);
+    const today = await getTodayWorkout(db, USER);
+    // The catalogue key is English; the screen must never show it.
+    expect(today?.exerciseNames[0]).not.toBe('Barbell Bench Press');
+    expect(today?.exerciseNames[0]).toMatch(/[֐-׿]/);
+  });
+
+  it('is null with no active plan, rather than inventing one', async () => {
+    expect(await getTodayWorkout(db, USER)).toBeNull();
+  });
+
+  it('is null for a plan day with no exercises', async () => {
+    await seedPlan([{ name: 'ריק', exercises: [] }]);
+    expect(await getTodayWorkout(db, USER)).toBeNull();
+  });
+});
+
+describe('weekStrip', () => {
+  it('returns seven days, oldest first, ending today', async () => {
+    const strip = await weekStrip(db, USER, NOW);
+    expect(strip).toHaveLength(7);
+    expect(strip[0]?.date).toBe('2026-07-30');
+    expect(strip[6]?.date).toBe('2026-08-05');
+  });
+
+  it('marks trained days and leaves the rest empty', async () => {
+    await logWorkout('2026-08-03T18:00:00', [{ exercise: 'Barbell Row', weight: 60, reps: 8 }]);
+    const strip = await weekStrip(db, USER, NOW);
+    expect(strip.find((d) => d.date === '2026-08-03')?.state).toBe('trained');
+    expect(strip.find((d) => d.date === '2026-08-02')?.state).toBe('rest');
+  });
+
+  it('shows today as today even when it has been trained', async () => {
+    await logWorkout('2026-08-05T07:00:00', [{ exercise: 'Barbell Row', weight: 60, reps: 8 }]);
+    expect((await weekStrip(db, USER, NOW))[6]?.state).toBe('today');
+  });
+
+  it('ignores another user\'s training', async () => {
+    await logWorkout('2026-08-03T18:00:00', [{ exercise: 'Barbell Row', weight: 60, reps: 8 }], {
+      user: OTHER,
+    });
+    expect((await weekStrip(db, USER, NOW)).every((d) => d.state !== 'trained')).toBe(true);
+  });
+
+  it('ignores a deleted workout, so a deleted day stops being marked', async () => {
+    const sessionId = await logWorkout('2026-08-03T18:00:00', [
+      { exercise: 'Barbell Row', weight: 60, reps: 8 },
+    ]);
+    await db.run(`UPDATE workout_sessions SET deleted_at = ? WHERE id = ?`, [
+      '2026-08-04T00:00:00.000Z',
+      sessionId,
+    ]);
+    expect((await weekStrip(db, USER, NOW)).find((d) => d.date === '2026-08-03')?.state).toBe('rest');
+  });
+});
+
+describe('weekSummary', () => {
+  it('counts only this week, starting Sunday', async () => {
+    // 2026-08-05 is a Wednesday, so the week began Sunday 2026-08-02.
+    await logWorkout('2026-08-03T09:00:00', [{ exercise: 'Barbell Row', weight: 100, reps: 10 }]);
+    await logWorkout('2026-08-01T09:00:00', [{ exercise: 'Barbell Row', weight: 100, reps: 10 }]);
+
+    const summary = await weekSummary(db, USER, NOW);
+    expect(summary.workouts).toBe(1);
+  });
+
+  it('reports volume in tonnes to one decimal', async () => {
+    await logWorkout('2026-08-03T09:00:00', [{ exercise: 'Barbell Row', weight: 100, reps: 10 }]);
+    await logWorkout('2026-08-04T09:00:00', [{ exercise: 'Barbell Row', weight: 105, reps: 10 }]);
+    // 1000 + 1050 kg
+    expect((await weekSummary(db, USER, NOW)).volumeTonnes).toBe(2.1);
+  });
+
+  it('counts a personal record once per exercise, not once per heavy set', async () => {
+    await logWorkout('2026-07-01T09:00:00', [{ exercise: 'Barbell Row', weight: 80, reps: 5 }]);
+    await logWorkout('2026-08-03T09:00:00', [
+      { exercise: 'Barbell Row', weight: 90, reps: 5 },
+      { exercise: 'Barbell Row', weight: 95, reps: 5 },
+    ]);
+    expect((await weekSummary(db, USER, NOW)).personalRecords).toBe(1);
+  });
+
+  it('does not call a lighter week a record', async () => {
+    await logWorkout('2026-07-01T09:00:00', [{ exercise: 'Barbell Row', weight: 100, reps: 5 }]);
+    await logWorkout('2026-08-03T09:00:00', [{ exercise: 'Barbell Row', weight: 90, reps: 5 }]);
+    expect((await weekSummary(db, USER, NOW)).personalRecords).toBe(0);
+  });
+
+  it('counts a brand-new exercise as a record', async () => {
+    await logWorkout('2026-08-03T09:00:00', [{ exercise: 'Barbell Row', weight: 60, reps: 5 }]);
+    expect((await weekSummary(db, USER, NOW)).personalRecords).toBe(1);
+  });
+
+  it('is all zeroes for a user with no training', async () => {
+    expect(await weekSummary(db, USER, NOW)).toEqual({
+      workouts: 0,
+      volumeTonnes: 0,
+      personalRecords: 0,
+    });
+  });
+
+  it('excludes a deleted workout from every number', async () => {
+    const kept = await logWorkout('2026-08-03T09:00:00', [
+      { exercise: 'Barbell Row', weight: 100, reps: 10 },
+    ]);
+    const removed = await logWorkout('2026-08-04T09:00:00', [
+      { exercise: 'Overhead Press', weight: 100, reps: 10 },
+    ]);
+    await db.run(`UPDATE workout_sessions SET deleted_at = ? WHERE id = ?`, [
+      '2026-08-04T12:00:00.000Z',
+      removed,
+    ]);
+
+    const summary = await weekSummary(db, USER, NOW);
+    expect(summary.workouts).toBe(1);
+    expect(summary.volumeTonnes).toBe(1);
+    expect(summary.personalRecords).toBe(1);
+    expect(kept).toBeTruthy();
+  });
+});

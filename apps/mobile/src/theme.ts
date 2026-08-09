@@ -36,6 +36,7 @@ export interface ColorPalette {
   accent: string;
   accentSoft: string;
   accentBorder: string;
+  accentLift: string;
   warning: string;
   warningSoft: string;
   danger: string;
@@ -74,6 +75,9 @@ export const darkColors: ColorPalette = {
   accent: '#9184D9', // --color-accent
   accentSoft: '#27273F', // accent 14% over bg
   accentBorder: '#4D4977', // accent 45% over bg
+  // --color-accent-400. Used for the numerals inside a completed set: they sit on accentSoft,
+  // where the base accent is close enough in tone to read as dimmed rather than confirmed.
+  accentLift: '#B5ABFC',
 
   /* Status — only `danger` has a Nocturne token; the rest are tuned to sit beside it rather
      than carried over, since a saturated amber or sky blue reads as foreign on this ground. */
@@ -114,6 +118,9 @@ export const lightColors: ColorPalette = {
   accent: '#5D5294', // --color-accent-700
   accentSoft: '#D4D5E9', // accent-700 12% over bg
   accentBorder: '#AEABCE', // accent-700 40% over bg
+  // Inverted, as the whole light ramp is: on a pale accentSoft the lift has to be darker than
+  // the accent, not lighter, or the completed numerals disappear instead of standing out.
+  accentLift: '#453C73',
 
   /* Status — each pulled darker for contrast, and each soft fill hand-tuned rather than mixed:
      a straight mix over this indigo ground turns every tint the same mauve. */

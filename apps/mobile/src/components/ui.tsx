@@ -468,7 +468,18 @@ export function Banner({
  * caller via `style` (width/height/borderRadius), so one primitive covers a title-sized bar, a
  * full-width line, or a short trailing one.
  */
-export function Skeleton({ style }: { style?: StyleProp<ViewStyle> }) {
+export function Skeleton({
+  style,
+  /**
+   * Milliseconds to wait before this bar starts pulsing. A stack of placeholders all breathing
+   * in unison reads as one flashing block; offsetting each by 200ms turns it into a wave, which
+   * is the difference between "broken" and "working on it".
+   */
+  delay = 0,
+}: {
+  style?: StyleProp<ViewStyle>;
+  delay?: number;
+}) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const pulse = useRef(new Animated.Value(0)).current;
@@ -480,9 +491,14 @@ export function Skeleton({ style }: { style?: StyleProp<ViewStyle> }) {
         Animated.timing(pulse, { toValue: 0, duration: 700, useNativeDriver: true }),
       ]),
     );
-    loop.start();
-    return () => loop.stop();
-  }, [pulse]);
+    // The delay is a one-off before the loop rather than part of it, so the stagger offsets the
+    // phase once instead of adding a pause to every cycle.
+    const timer = setTimeout(() => loop.start(), delay);
+    return () => {
+      clearTimeout(timer);
+      loop.stop();
+    };
+  }, [pulse, delay]);
 
   return (
     <Animated.View
