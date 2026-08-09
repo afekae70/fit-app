@@ -11,9 +11,11 @@
  */
 
 import type { ExerciseSeed } from '@fit/shared/catalog';
-import { memo, useMemo } from 'react';
+import { memo, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
+  Animated,
+  Easing,
   Pressable,
   StyleSheet,
   Text,
@@ -147,6 +149,47 @@ function SteppedField({
         <Text style={buttonTextStyle}>+</Text>
       </Pressable>
     </View>
+  );
+}
+
+/**
+ * The tick, with the design system's `pop` on the way in: scale .7 -> 1.12 -> 1.
+ *
+ * The overshoot is the point — a mark that simply appears reads as a state change, while one
+ * that springs past its size and settles reads as a thing you just did. Native-driven start to
+ * finish, and each set owns its own value: a single shared one would pop every row in the card
+ * whenever any set was ticked.
+ */
+function DoneMark({ done, style }: { done: boolean; style: StyleProp<TextStyle> }) {
+  const pop = useRef(new Animated.Value(done ? 1 : 0)).current;
+  const wasDone = useRef(done);
+
+  useEffect(() => {
+    // Only animate the transition into done. Unticking is a correction, and celebrating a
+    // correction is noise.
+    if (done && !wasDone.current) {
+      pop.setValue(0);
+      Animated.timing(pop, {
+        toValue: 1,
+        duration: 260,
+        easing: Easing.out(Easing.back(2.2)),
+        useNativeDriver: true,
+      }).start();
+    } else if (!done) {
+      pop.setValue(0);
+    }
+    wasDone.current = done;
+  }, [done, pop]);
+
+  return (
+    <Animated.Text
+      style={[
+        style,
+        { transform: [{ scale: done ? pop.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }) : 1 }] },
+      ]}
+    >
+      ✓
+    </Animated.Text>
   );
 }
 
@@ -351,7 +394,10 @@ function ExerciseCardImpl({
             accessibilityLabel={`${t('workout.markDone')}. ${t('workout.longPressDelete')}`}
             hitSlop={4}
           >
-            <Text style={[styles.doneMark, set.done_at !== null && styles.doneMarkActive]}>✓</Text>
+            <DoneMark
+              done={set.done_at !== null}
+              style={[styles.doneMark, set.done_at !== null && styles.doneMarkActive]}
+            />
           </Pressable>
         </View>
         );

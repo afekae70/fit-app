@@ -29,6 +29,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCurrentUserId } from '../src/auth/CurrentUserProvider.js';
 import { ExerciseVisual } from '../src/components/ExerciseVisual.js';
 import { getExecutor } from '../src/db/provider.js';
+import { summariseAllProgress } from '../src/db/progression.js';
 import { listRecentExerciseKeys } from '../src/db/workouts.js';
 import { useTheme } from '../src/ThemeProvider.js';
 import { fontSize, radius, spacing, type ColorPalette } from '../src/theme.js';
@@ -70,6 +71,14 @@ export default function ExercisePickerScreen() {
   const [query, setQuery] = useState('');
   const [muscle, setMuscle] = useState<string | null>(null);
   const [recentKeys, setRecentKeys] = useState<string[]>([]);
+  /**
+   * Estimated 1RM per exercise, loaded once for the whole screen rather than per row.
+   * `summariseAllProgress` walks every logged exercise; running it inside a row renderer would
+   * re-run it on every scroll frame and stall the list.
+   */
+  const [oneRepMax, setOneRepMax] = useState<Map<string, { latest: number; delta: number | null }>>(
+    new Map(),
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -77,6 +86,19 @@ export default function ExercisePickerScreen() {
       const db = await getExecutor();
       const keys = await listRecentExerciseKeys(db, userId);
       if (!cancelled) setRecentKeys(keys);
+
+      const summaries = await summariseAllProgress(db, userId, { minSessions: 1 });
+      if (cancelled) return;
+      setOneRepMax(
+        new Map(
+          summaries
+            .filter((s) => s.latestE1rm !== null)
+            .map((s) => [
+              s.exerciseKey,
+              { latest: s.latestE1rm as number, delta: s.assessment.e1rmDeltaKg },
+            ]),
+        ),
+      );
     })();
     return () => {
       cancelled = true;
@@ -214,6 +236,25 @@ export default function ExercisePickerScreen() {
                 {t(`muscle.${item.primaryMuscle}`)}
                 {item.isUnilateral ? ' · ⇄' : ''}
               </Text>
+              {(() => {
+                const best = oneRepMax.get(item.nameEn);
+                if (!best) return null;
+                const delta = best.delta;
+                return (
+                  <View style={styles.rowStats}>
+                    <Text style={styles.rowE1rm}>
+                      {Math.round(best.latest)} {t('common.kg')}
+                    </Text>
+                    <Text style={styles.rowE1rmLabel}>{t('progress.estimated1rm')}</Text>
+                    {delta !== null && Math.abs(delta) >= 0.5 ? (
+                      <Text style={[styles.rowDelta, delta < 0 && styles.rowDeltaDown]}>
+                        {delta > 0 ? '+' : ''}
+                        {delta.toFixed(1)}
+                      </Text>
+                    ) : null}
+                  </View>
+                );
+              })()}
             </View>
             <Text style={styles.rowChevron}>{isHebrew ? '‹' : '›'}</Text>
           </Pressable>
@@ -245,6 +286,11 @@ const createStyles = (colors: ColorPalette) =>
     rowMain: ViewStyle;
     rowTitle: TextStyle;
     rowSub: TextStyle;
+    rowStats: ViewStyle;
+    rowE1rm: TextStyle;
+    rowE1rmLabel: TextStyle;
+    rowDelta: TextStyle;
+    rowDeltaDown: TextStyle;
     rowChevron: TextStyle;
     empty: TextStyle;
   }>({
@@ -320,6 +366,11 @@ const createStyles = (colors: ColorPalette) =>
   rowMain: { flex: 1 },
   rowTitle: { color: colors.text, fontSize: fontSize.md, textAlign: 'auto' },
   rowSub: { color: colors.textMuted, fontSize: fontSize.xs, marginTop: 2, textAlign: 'auto' },
+  rowStats: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.xs, marginTop: 3 },
+  rowE1rm: { color: colors.accent, fontSize: fontSize.sm, fontWeight: '700' },
+  rowE1rmLabel: { color: colors.textFaint, fontSize: fontSize.xxs },
+  rowDelta: { color: colors.accent, fontSize: fontSize.xxs, fontWeight: '700' },
+  rowDeltaDown: { color: colors.textMuted },
   rowChevron: { color: colors.textMuted, fontSize: fontSize.lg },
   empty: {
     color: colors.textMuted,

@@ -18,6 +18,7 @@ import { useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Animated,
+  Easing,
   Pressable,
   StyleSheet,
   Text,
@@ -47,7 +48,13 @@ function usePressScale() {
 function FadeIn({ style, children }: { style?: StyleProp<ViewStyle>; children: ReactNode }) {
   const progress = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.timing(progress, { toValue: 1, duration: 280, useNativeDriver: true }).start();
+    // The design system's `fu`: 260ms, opacity 0->1, translateY 8->0, eased out.
+    Animated.timing(progress, {
+      toValue: 1,
+      duration: 260,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
   }, [progress]);
 
   return (
@@ -482,7 +489,7 @@ export function Skeleton({ style }: { style?: StyleProp<ViewStyle> }) {
       style={[
         styles.skeletonBar,
         style,
-        { opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.4, 0.9] }) },
+        { opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0.75] }) },
       ]}
     />
   );

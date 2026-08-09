@@ -61,7 +61,7 @@ export function PrToast({ data, onDone }: { data: PrToastData | null; onDone: ()
           opacity: anim,
           transform: [
             { translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [-14, 0] }) },
-            { scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] }) },
+            { scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }) },
           ],
         },
       ]}
