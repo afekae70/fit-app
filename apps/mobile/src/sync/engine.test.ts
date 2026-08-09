@@ -548,3 +548,72 @@ describe('table descriptors', () => {
     }
   });
 });
+
+describe('blank sets', () => {
+  async function seedBlankSet(sessionId: string, at: string): Promise<string> {
+    const exerciseId = 'bbbbbbbb-0000-4000-8000-00000000000b';
+    const setId = 'cccccccc-0000-4000-8000-00000000000b';
+    await db.run(
+      `INSERT INTO session_exercises (id, session_id, exercise_key, order_index, updated_at)
+         VALUES (?, ?, 'Bench Press', 9, ?)`,
+      [exerciseId, sessionId, at],
+    );
+    // No reps, no duration, no distance: the placeholder row the UI creates the moment an
+    // exercise is added, before anything has been typed into it.
+    await db.run(
+      `INSERT INTO sets (id, session_exercise_id, set_index, completed_at, updated_at)
+         VALUES (?, ?, 1, ?, ?)`,
+      [setId, exerciseId, at, at],
+    );
+    return setId;
+  }
+
+  it('does not send a set with nothing recorded in it', async () => {
+    const at = '2026-02-01T10:00:00.000Z';
+    const sessionId = await seedSession(at);
+    await seedBlankSet(sessionId, at);
+    const server = createFakeServer();
+
+    await runSync(db, server, USER, localClock('2026-02-01T11:00:00.000Z'));
+
+    // The real server rejects it, and a rejected row fails its whole batch and stops sync for
+    // every table — so this is the difference between sync working and sync not working at all.
+    expect(server.rows('sets')).toHaveLength(0);
+  });
+
+  it('sends it as soon as reps are entered', async () => {
+    const at = '2026-02-01T10:00:00.000Z';
+    const sessionId = await seedSession(at);
+    const setId = await seedBlankSet(sessionId, at);
+    const server = createFakeServer();
+    await runSync(db, server, USER, localClock('2026-02-01T11:00:00.000Z'));
+
+    await db.run(`UPDATE sets SET reps = 8, weight_kg = 60, updated_at = ? WHERE id = ?`, [
+      '2026-02-01T12:00:00.000Z',
+      setId,
+    ]);
+    await runSync(db, server, USER, localClock('2026-02-01T13:00:00.000Z'));
+
+    expect(server.rows('sets').map((r) => r.id)).toEqual([setId]);
+  });
+
+  it('still sends the deletion of a blank set', async () => {
+    const at = '2026-02-01T10:00:00.000Z';
+    const sessionId = await seedSession(at);
+    const setId = await seedBlankSet(sessionId, at);
+    const server = createFakeServer();
+    await runSync(db, server, USER, localClock('2026-02-01T11:00:00.000Z'));
+
+    await db.run(`UPDATE sets SET deleted_at = ?, updated_at = ? WHERE id = ?`, [
+      '2026-02-01T12:00:00.000Z',
+      '2026-02-01T12:00:00.000Z',
+      setId,
+    ]);
+    const result = await runSync(db, server, USER, localClock('2026-02-01T13:00:00.000Z'));
+
+    // A tombstone has no reps either. Filtering it the same way would leave the row alive on the
+    // other device with no way to ever remove it.
+    expect(result.pushed).toBe(1);
+    expect(server.rows('sets')[0]?.deleted_at).toBe('2026-02-01T12:00:00.000Z');
+  });
+});

@@ -135,10 +135,15 @@ export function buildPushQuery(table: SyncTable): string {
   }
 
   const columns = table.columns.map((c) => `t0.${c}`).join(', ');
+  // A soft-deleted row always travels — that is the only way the other device learns of the
+  // delete — so `pushWhere` never applies to one. Without the escape, deleting a blank set would
+  // hold its tombstone back and leave that row alive on the server permanently.
+  const extra = table.pushWhere ? `AND (${table.pushWhere} OR t0.deleted_at IS NOT NULL)` : '';
   return `SELECT ${columns} FROM ${table.table} t0
     ${joins.join('\n    ')}
     WHERE ${alias}.user_id = ?
       AND (? IS NULL OR t0.updated_at IS NULL OR t0.updated_at > ?)
+      ${extra}
     ORDER BY t0.updated_at`;
 }
 

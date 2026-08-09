@@ -38,6 +38,16 @@ export interface SyncTable {
   /** A JSON string in SQLite, `jsonb` in Postgres. */
   readonly json: readonly string[];
   readonly scope: SyncScope;
+  /**
+   * An extra SQL condition a row must satisfy to be pushed, on the alias `t0`.
+   *
+   * For rows that are real locally but meaningless to the server. Only `sets` uses it, and the
+   * reason is specific: the app creates a set the moment an exercise is added, empty, because
+   * that row is the thing you type into. Until something is typed it holds nothing — and the
+   * server rejects it, which does not merely skip the row but fails its whole batch and stops
+   * sync for every table.
+   */
+  readonly pushWhere?: string;
 }
 
 export const SYNC_TABLES: readonly SyncTable[] = [
@@ -124,6 +134,11 @@ export const SYNC_TABLES: readonly SyncTable[] = [
     booleans: ['is_warmup', 'to_failure'],
     json: [],
     scope: { kind: 'parent', table: 'session_exercises', column: 'session_exercise_id' },
+    // A set with no reps, no duration and no distance records nothing. It is a placeholder the
+    // UI put there to be typed into, and sending it is what the server's own check constraint
+    // objects to. Holding it back locally is both the smaller change and the more honest one:
+    // an empty row is not training data, and the moment anything is entered it syncs normally.
+    pushWhere: '(t0.reps IS NOT NULL OR t0.duration_seconds IS NOT NULL OR t0.distance_m IS NOT NULL)',
   },
   {
     table: 'body_metrics',
