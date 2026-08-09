@@ -110,6 +110,7 @@ export const en = {
     needSexForBmr: 'Choose which formula to use (male/female) to see your targets.',
   },
   workout: {
+    setDone: 'Mark set {{index}} as done',
     startTitle: 'Ready to train?',
     startSubtitle: 'Everything saves on-device — works with no signal',
     startButton: 'Start workout',
