@@ -20,7 +20,12 @@ export interface PrToastData {
   reps: number;
 }
 
-const VISIBLE_MS = 1900;
+// The handoff's numbers. 2600ms is long enough to read an exercise name and a weight without
+// becoming something you wait out — and there is deliberately no confetti and no full-screen
+// takeover, because a PR happens mid-workout with a bar still to rack.
+const VISIBLE_MS = 2600;
+const ENTER_MS = 300;
+const EXIT_MS = 220;
 
 export function PrToast({ data, onDone }: { data: PrToastData | null; onDone: () => void }) {
   const { t } = useTranslation();
@@ -32,11 +37,18 @@ export function PrToast({ data, onDone }: { data: PrToastData | null; onDone: ()
     if (!data) return;
     anim.setValue(0);
     const sequence = Animated.sequence([
-      Animated.spring(anim, { toValue: 1, friction: 6, tension: 80, useNativeDriver: true }),
+      Animated.timing(anim, {
+        toValue: 1,
+        duration: ENTER_MS,
+        // The handoff's curve: a fast start that settles rather than bounces. A spring overshoot
+        // here read as celebratory in a way the rest of this palette is not.
+        easing: Easing.bezier(0.22, 1, 0.36, 1),
+        useNativeDriver: true,
+      }),
       Animated.delay(VISIBLE_MS),
       Animated.timing(anim, {
         toValue: 0,
-        duration: 220,
+        duration: EXIT_MS,
         easing: Easing.in(Easing.cubic),
         useNativeDriver: true,
       }),
