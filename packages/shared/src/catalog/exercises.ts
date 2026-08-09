@@ -250,6 +250,35 @@ export const EXERCISE_SEED: readonly ExerciseSeed[] = [
 ] as const;
 
 /**
+ * Muscle groups offered as filters, in the order they should appear.
+ *
+ * **Derived, not hand-listed.** A hardcoded list was the original bug: the catalogue grew twice
+ * and the filters did not, leaving 33 exercises across five groups — rear delts, traps,
+ * obliques, forearms, lower back — with no way to reach them by filter at all. Anything with at
+ * least one exercise now gets a chip automatically, so adding an exercise can never again
+ * silently hide a whole muscle group.
+ *
+ * `PRIORITY` only fixes the order of the groups that usually head a session, so the chips do
+ * not reshuffle as the catalogue grows. Everything else follows, most-covered first.
+ */
+const PRIORITY: readonly string[] = [
+  'chest', 'lats', 'mid_back', 'quads', 'hamstrings', 'glutes',
+  'front_delts', 'side_delts', 'rear_delts', 'biceps', 'triceps', 'core', 'calves', 'cardio',
+];
+
+export const FILTERABLE_MUSCLES: readonly string[] = (() => {
+  const counts = new Map<string, number>();
+  for (const exercise of EXERCISE_SEED) {
+    counts.set(exercise.primaryMuscle, (counts.get(exercise.primaryMuscle) ?? 0) + 1);
+  }
+  const ranked = PRIORITY.filter((m) => counts.has(m));
+  const rest = [...counts.keys()]
+    .filter((m) => !PRIORITY.includes(m))
+    .sort((a, b) => (counts.get(b) ?? 0) - (counts.get(a) ?? 0) || a.localeCompare(b));
+  return [...ranked, ...rest];
+})();
+
+/**
  * Muscle groups referenced above. Kept as a list so the seed can assert that every
  * `primaryMuscle` / `secondaryMuscles` entry is a known value — a typo would otherwise
  * silently break muscle-group filtering and the AI's volume-per-muscle analysis.

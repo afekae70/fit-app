@@ -10,7 +10,7 @@
  * overwhelming majority of picks happen.
  */
 
-import { EXERCISE_SEED, type ExerciseSeed } from '@fit/shared/catalog';
+import { EXERCISE_SEED, FILTERABLE_MUSCLES, type ExerciseSeed } from '@fit/shared/catalog';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -38,22 +38,6 @@ const EXERCISE_BY_KEY = new Map<string, ExerciseSeed>(
   EXERCISE_SEED.map((exercise) => [exercise.nameEn, exercise]),
 );
 
-/** Muscle groups offered as quick filters, ordered by how often they head a session. */
-const FILTER_MUSCLES = [
-  'chest',
-  'lats',
-  'mid_back',
-  'quads',
-  'hamstrings',
-  'glutes',
-  'front_delts',
-  'side_delts',
-  'biceps',
-  'triceps',
-  'core',
-  'calves',
-  'cardio',
-] as const;
 
 export default function ExercisePickerScreen() {
   const { t, i18n } = useTranslation();
@@ -177,7 +161,7 @@ export default function ExercisePickerScreen() {
       <FlatList
         horizontal
         showsHorizontalScrollIndicator={false}
-        data={[null, ...FILTER_MUSCLES]}
+        data={[null, ...FILTERABLE_MUSCLES]}
         keyExtractor={(m) => m ?? 'all'}
         contentContainerStyle={styles.filterRow}
         renderItem={({ item }) => {

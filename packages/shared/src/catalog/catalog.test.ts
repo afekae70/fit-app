@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { EQUIPMENT_SEED } from './equipment.js';
-import { EXERCISE_SEED, MUSCLE_GROUPS } from './exercises.js';
+import { EXERCISE_SEED, FILTERABLE_MUSCLES, MUSCLE_GROUPS } from './exercises.js';
 
 // Note: this catalogue is bundled into the mobile app, so these checks guard the offline
 // experience too — a bad equipmentSlug here means an exercise that can never be matched
@@ -174,5 +174,35 @@ describe('exercise seed', () => {
 
   it('has a usable catalogue size', () => {
     expect(EXERCISE_SEED.length).toBeGreaterThanOrEqual(100);
+  });
+});
+
+describe('filterable muscles', () => {
+  it('offers a chip for every muscle that has an exercise', () => {
+    // The regression: the picker's list was hardcoded, the catalogue grew, and 33 exercises
+    // across five groups became unreachable by filter with no error anywhere.
+    const withExercises = new Set(EXERCISE_SEED.map((e) => e.primaryMuscle));
+    const offered = new Set(FILTERABLE_MUSCLES);
+    const missing = [...withExercises].filter((m) => !offered.has(m));
+    expect(missing).toEqual([]);
+  });
+
+  it('offers no chip that would return an empty list', () => {
+    const withExercises = new Set(EXERCISE_SEED.map((e) => e.primaryMuscle));
+    const empty = FILTERABLE_MUSCLES.filter((m) => !withExercises.has(m));
+    expect(empty).toEqual([]);
+  });
+
+  it('leads with the groups that usually head a session', () => {
+    // Fixed so the chips do not reshuffle under the user as the catalogue grows.
+    expect(FILTERABLE_MUSCLES.slice(0, 3)).toEqual(['chest', 'lats', 'mid_back']);
+  });
+
+  it('includes rear delts, which the hardcoded list omitted', () => {
+    expect(FILTERABLE_MUSCLES).toContain('rear_delts');
+  });
+
+  it('lists every muscle exactly once', () => {
+    expect(new Set(FILTERABLE_MUSCLES).size).toBe(FILTERABLE_MUSCLES.length);
   });
 });
