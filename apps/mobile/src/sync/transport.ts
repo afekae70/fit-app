@@ -44,7 +44,19 @@ export function createSupabaseTransport(client: SupabaseClient): SyncTransport {
     async upsert(table, rows) {
       if (rows.length === 0) return;
       const { error } = await client.from(table).upsert(rows, { onConflict: 'id' });
-      if (error) throw new SyncTransportError(table, 'upsert', error);
+      if (!error) return;
+
+      // Postgres names the constraint but never the row, and a batch is up to 200 of them. The
+      // first real sync failed on `sets_has_measurement_check` and finding out *which* set meant
+      // reasoning backwards from the constraint to the app behaviour that produces it. Re-sending
+      // one row at a time on failure costs a handful of requests on a path that has already
+      // failed, and turns the next occurrence into an id that can be looked up directly.
+      for (const row of rows) {
+        const { error: rowError } = await client.from(table).upsert([row], { onConflict: 'id' });
+        if (rowError) throw new SyncTransportError(table, `upsert of row ${String(row.id)}`, rowError);
+      }
+      // Every row passed on its own, so the batch failure was not about any single row's contents
+      // — a timeout, or a conflict between two rows in the same statement. Nothing left to report.
     },
 
     async changedSince(table, since, limit) {
