@@ -49,6 +49,8 @@ export interface SetRowProps {
   onChangeWeight: (next: number) => void;
   onChangeReps: (next: number) => void;
   onToggle: () => void;
+  /** Long-press the index chip. Absent on a card that cannot lose sets. */
+  onRemove?: () => void;
 }
 
 export function SetRow({
@@ -59,6 +61,7 @@ export function SetRow({
   onChangeWeight,
   onChangeReps,
   onToggle,
+  onRemove,
 }: SetRowProps) {
   const { t } = useTranslation();
   const { colors } = useTheme();
@@ -114,9 +117,19 @@ export function SetRow({
 
   return (
     <Animated.View style={[s.row, rowStyle]}>
-      <View style={s.indexChip}>
+      {/* Deleting a set is a long-press on its number, not a button. The handoff's card has no
+          delete control and putting one there would crowd a row built for one thumb — but the
+          capability existed before this card did, and losing it silently would be worse than
+          either. Hidden, reachable, and impossible to hit while tapping the stepper beside it. */}
+      <Pressable
+        onLongPress={onRemove}
+        disabled={!onRemove}
+        accessibilityRole={onRemove ? 'button' : undefined}
+        accessibilityLabel={onRemove ? t('workout.removeSet') : undefined}
+        style={s.indexChip}
+      >
         <Text style={s.indexText}>{index}</Text>
-      </View>
+      </Pressable>
 
       <Animated.View style={[s.field, fieldStyle]}>
         <Stepper label="−" onPress={() => onChangeWeight(stepWeight(weightKg, -1))} />

@@ -40,6 +40,9 @@ export interface ExercisePanelProps {
   onChangeReps: (setIndex: number, next: number) => void;
   onToggle: (setIndex: number) => void;
   onAddSet: () => void;
+  onRemoveSet?: (setIndex: number) => void;
+  /** Long-press the exercise name. */
+  onRemoveExercise?: () => void;
 }
 
 export function ExercisePanel({
@@ -51,6 +54,8 @@ export function ExercisePanel({
   onChangeReps,
   onToggle,
   onAddSet,
+  onRemoveSet,
+  onRemoveExercise,
 }: ExercisePanelProps) {
   const { t } = useTranslation();
   const { colors } = useTheme();
@@ -64,7 +69,11 @@ export function ExercisePanel({
     <View style={s.card}>
       <View style={s.header}>
         <View style={s.headerText}>
-          <Text style={s.name}>{name}</Text>
+          {/* Same reasoning as the set number: the card the handoff drew has no remove control,
+              and the capability predates the card. */}
+          <Pressable onLongPress={onRemoveExercise} disabled={!onRemoveExercise}>
+            <Text style={s.name}>{name}</Text>
+          </Pressable>
           {previousLabel ? (
             <Text style={s.previous} numberOfLines={1}>
               {t('workout.lastTime')}: {previousLabel}
@@ -102,6 +111,7 @@ export function ExercisePanel({
             onChangeWeight={(next) => onChangeWeight(index, next)}
             onChangeReps={(next) => onChangeReps(index, next)}
             onToggle={() => onToggle(index)}
+            onRemove={onRemoveSet ? () => onRemoveSet(index) : undefined}
           />
         ))}
       </View>

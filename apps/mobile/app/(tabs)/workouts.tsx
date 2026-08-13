@@ -33,6 +33,7 @@ import {
   type PreviousSet,
 } from '../../src/components/ExerciseCard.js';
 import { FinishSummary } from '../../src/components/FinishSummary.js';
+import { ExercisePanel } from '../../src/components/workout/ExercisePanel.js';
 import { WorkoutHeader } from '../../src/components/workout/WorkoutHeader.js';
 import { PrToast, type PrToastData } from '../../src/components/PrToast.js';
 import { RestTimer } from '../../src/components/RestTimer.js';
@@ -505,17 +506,53 @@ export default function WorkoutsScreen() {
           exercises.map((exercise) => {
             const seed = EXERCISE_BY_KEY.get(exercise.exercise_key);
             if (!seed) return null;
+            const prescription = targets[exercise.exercise_key] ?? null;
             return (
-              <ExerciseCard
+              <ExercisePanel
                 key={exercise.id}
-                exercise={seed}
-                sets={exercise.sets}
-                previousSets={previous[exercise.exercise_key] ?? null}
-                target={targets[exercise.exercise_key] ?? null}
+                name={seed.nameHe}
+                // The panel works in positions; the repository works in row ids. Mapped here
+                // rather than pushing ids into the component, so the card stays a view of a list
+                // and knows nothing about how the rows are stored.
+                sets={exercise.sets.map((set) => ({
+                  weightKg: set.weight_kg,
+                  reps: set.reps,
+                  done: set.done_at !== null,
+                }))}
+                previous={
+                  previous[exercise.exercise_key]?.map((p) => ({
+                    weightKg: p.weight_kg,
+                    reps: p.reps,
+                  })) ?? null
+                }
+                target={
+                  prescription
+                    ? {
+                        sets: prescription.target_sets,
+                        repsMin: prescription.target_reps_min,
+                        repsMax: prescription.target_reps_max,
+                      }
+                    : null
+                }
+                onChangeWeight={(i, next) => {
+                  const set = exercise.sets[i];
+                  if (set) patchSet(set.id, { weight_kg: next });
+                }}
+                onChangeReps={(i, next) => {
+                  const set = exercise.sets[i];
+                  if (set) patchSet(set.id, { reps: next });
+                }}
+                onToggle={(i) => {
+                  const set = exercise.sets[i];
+                  // The panel exposes a toggle; the repository wants the state to move to. The
+                  // flip happens here so the card never has to know the current value twice.
+                  if (set) toggleDone(set.id, set.done_at === null);
+                }}
                 onAddSet={() => addSet(exercise.id)}
-                onRemoveSet={deleteSet}
-                onToggleDone={toggleDone}
-                onUpdateSet={patchSet}
+                onRemoveSet={(i) => {
+                  const set = exercise.sets[i];
+                  if (set) deleteSet(set.id);
+                }}
                 onRemoveExercise={() => dropExercise(exercise.id)}
               />
             );
