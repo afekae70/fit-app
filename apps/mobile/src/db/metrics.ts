@@ -18,6 +18,7 @@ import {
   type Goal,
 } from '@fit/shared/calculations';
 
+import type { UnitSystem } from '../units.js';
 import type { SqlExecutor } from './executor.js';
 import type { Clock, IdFactory } from './workouts.js';
 
@@ -36,6 +37,8 @@ export interface ProfileRow {
   height_cm: number | null;
   activity_level: string | null;
   goal: string | null;
+  unit_system: string | null;
+  default_rest_seconds: number | null;
   updated_at: string;
 }
 
@@ -48,6 +51,10 @@ export interface ProfileInput {
   heightCm?: number | null;
   activityLevel?: ActivityLevel | null;
   goal?: Goal | null;
+  /** Display preference only — every stored measurement stays metric. See src/units.ts. */
+  unitSystem?: UnitSystem | null;
+  /** Fallback rest between sets. Null turns the timer off; there is no separate flag. */
+  defaultRestSeconds?: number | null;
 }
 
 export async function getProfile(db: SqlExecutor): Promise<ProfileRow | null> {
@@ -71,8 +78,9 @@ export async function saveProfile(
   if (!existing) {
     await db.run(
       `INSERT INTO profile
-         (id, display_name, birth_date, sex, bmr_formula_sex, height_cm, activity_level, goal, updated_at)
-       VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, display_name, birth_date, sex, bmr_formula_sex, height_cm, activity_level, goal,
+          unit_system, default_rest_seconds, updated_at)
+       VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         input.displayName ?? null,
         input.birthDate ?? null,
@@ -81,6 +89,8 @@ export async function saveProfile(
         input.heightCm ?? null,
         input.activityLevel ?? null,
         input.goal ?? null,
+        input.unitSystem ?? null,
+        input.defaultRestSeconds ?? null,
         now,
       ],
     );
@@ -102,6 +112,8 @@ export async function saveProfile(
   set('height_cm', input.heightCm);
   set('activity_level', input.activityLevel);
   set('goal', input.goal);
+  set('unit_system', input.unitSystem);
+  set('default_rest_seconds', input.defaultRestSeconds);
 
   assignments.push('updated_at = ?');
   params.push(now);

@@ -13,7 +13,9 @@
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
 
+import { useUnitSystem } from '../settings.js';
 import { colors, fontSize, spacing } from '../theme.js';
+import { kgToDisplay, weightUnitKey } from '../units.js';
 
 export interface WeightSparklineProps {
   /** Smoothed points, oldest first. */
@@ -23,6 +25,7 @@ export interface WeightSparklineProps {
 
 export function WeightSparkline({ points, height = 96 }: WeightSparklineProps) {
   const { t } = useTranslation();
+  const unitSystem = useUnitSystem();
 
   if (points.length < 2) return null;
 
@@ -54,13 +57,15 @@ export function WeightSparkline({ points, height = 96 }: WeightSparklineProps) {
         })}
       </View>
 
+      {/* Only the axis labels convert. The plotted shape is identical either way — the
+          conversion is linear, so the line's form carries no unit. */}
       <View style={styles.axis}>
         <Text style={styles.axisLabel}>
-          {min.toFixed(1)} {t('common.kg')}
+          {kgToDisplay(min, unitSystem).toFixed(1)} {t(`common.${weightUnitKey(unitSystem)}`)}
         </Text>
         <Text style={styles.axisCaption}>{t('metrics.movingAverage')}</Text>
         <Text style={styles.axisLabel}>
-          {max.toFixed(1)} {t('common.kg')}
+          {kgToDisplay(max, unitSystem).toFixed(1)} {t(`common.${weightUnitKey(unitSystem)}`)}
         </Text>
       </View>
     </View>

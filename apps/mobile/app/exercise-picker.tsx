@@ -44,7 +44,7 @@ const FILTER_MUSCLES = [
 export default function ExercisePickerScreen() {
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ sessionId?: string }>();
+  const params = useLocalSearchParams<{ sessionId?: string; planDayId?: string }>();
   const isHebrew = i18n.language === 'he';
 
   const [query, setQuery] = useState('');
@@ -69,6 +69,17 @@ export default function ExercisePickerScreen() {
   const choose = (exercise: ExerciseSeed) => {
     // exercise_key is always the English name — the stable catalogue key, independent of UI
     // language. Storing the localised name would break history when the language changes.
+    //
+    // The caller identifies itself by which id it passed in: a plan day is being built, or a
+    // live session is being logged. One picker serves both rather than two near-identical
+    // screens diverging over time.
+    if (params.planDayId) {
+      router.replace({
+        pathname: '/(tabs)/plan',
+        params: { planDayId: params.planDayId, addExercise: exercise.nameEn },
+      });
+      return;
+    }
     router.replace({
       pathname: '/(tabs)/workouts',
       params: { sessionId: params.sessionId ?? '', addExercise: exercise.nameEn },

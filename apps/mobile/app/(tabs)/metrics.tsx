@@ -43,7 +43,9 @@ import {
   type TargetsGap,
 } from '../../src/db/metrics.js';
 import { getExecutor, newId } from '../../src/db/provider.js';
+import { useUnitSystem } from '../../src/settings.js';
 import { colors, fontSize, radius, spacing } from '../../src/theme.js';
+import { displayWeightToKg, formatWeight, kgToDisplay, weightUnitKey } from '../../src/units.js';
 
 const GAP_MESSAGE: Record<TargetsGap, string> = {
   no_weight: 'metrics.noDataHint',
@@ -64,6 +66,8 @@ const SOURCE_LABEL: Record<string, string> = {
 export default function MetricsScreen() {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
+  const unitSystem = useUnitSystem();
+  const weightUnit = t(`common.${weightUnitKey(unitSystem)}`);
 
   const [metrics, setMetrics] = useState<BodyMetricRow[]>([]);
   const [profile, setProfile] = useState<ProfileRow | null>(null);
@@ -84,11 +88,16 @@ export default function MetricsScreen() {
   }, [reload]);
 
   const save = async () => {
-    const value = Number(entry.replace(',', '.').trim());
-    if (!Number.isFinite(value) || value <= 0 || value > 500) return;
+    const typed = Number(entry.replace(',', '.').trim());
+    if (!Number.isFinite(typed) || typed <= 0) return;
+
+    // Sanity-check in kilograms, after conversion. Bounding the typed number instead would put
+    // the ceiling at 500 lb for imperial users — a different limit depending on the setting.
+    const weightKg = displayWeightToKg(typed, unitSystem);
+    if (weightKg > 500) return;
 
     const db = await getExecutor();
-    await recordBodyMetric(db, newId, { weightKg: value, source: 'manual' });
+    await recordBodyMetric(db, newId, { weightKg, source: 'manual' });
     setEntry('');
     await reload();
   };
@@ -152,7 +161,7 @@ export default function MetricsScreen() {
           <TextInput
             value={entry}
             onChangeText={setEntry}
-            placeholder={t('metrics.weightPlaceholder')}
+            placeholder={`${t('metrics.weightPlaceholder')} (${weightUnit})`}
             placeholderTextColor={colors.textMuted}
             keyboardType="numeric"
             inputMode="decimal"
@@ -172,8 +181,8 @@ export default function MetricsScreen() {
         {latest ? (
           <Stat
             label={t('metrics.currentWeight')}
-            value={String(latest.weight_kg)}
-            unit={t('common.kg')}
+            value={formatWeight(latest.weight_kg, unitSystem) ?? '—'}
+            unit={weightUnit}
             emphasis
           />
         ) : (
@@ -196,8 +205,11 @@ export default function MetricsScreen() {
                       ? t('metrics.trendGaining')
                       : t('metrics.trendStable')
                 }
-                value={`${rate.kgPerWeek > 0 ? '+' : ''}${rate.kgPerWeek.toFixed(2)}`}
-                unit={`${t('common.kg')} / ${t('metrics.perWeek')}`}
+                // A rate is a weight per week, so it converts like a weight. The threshold
+                // comparisons above stay in kg — they are judgements about the body, not
+                // about the display.
+                value={`${rate.kgPerWeek > 0 ? '+' : ''}${kgToDisplay(rate.kgPerWeek, unitSystem).toFixed(2)}`}
+                unit={`${weightUnit} / ${t('metrics.perWeek')}`}
               />
               {!rate.isReliable ? <Banner tone="info">{t('metrics.unreliable')}</Banner> : null}
             </>
@@ -208,8 +220,8 @@ export default function MetricsScreen() {
               <View style={styles.divider} />
               <Stat
                 label={t('metrics.expectedRate')}
-                value={`${expected > 0 ? '+' : ''}${expected.toFixed(2)}`}
-                unit={`${t('common.kg')} / ${t('metrics.perWeek')}`}
+                value={`${expected > 0 ? '+' : ''}${kgToDisplay(expected, unitSystem).toFixed(2)}`}
+                unit={`${weightUnit} / ${t('metrics.perWeek')}`}
               />
               {drift === 0 ? (
                 <Banner tone="info">{t('metrics.onTrack')}</Banner>
@@ -293,7 +305,7 @@ export default function MetricsScreen() {
             >
               <View style={styles.historyMain}>
                 <Text style={styles.historyWeight}>
-                  {metric.weight_kg} {t('common.kg')}
+                  {formatWeight(metric.weight_kg, unitSystem) ?? '—'} {weightUnit}
                 </Text>
                 <Text style={styles.historyMeta}>
                   {new Date(metric.measured_at).toLocaleDateString()} ·{' '}

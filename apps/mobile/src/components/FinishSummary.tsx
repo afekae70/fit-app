@@ -22,7 +22,9 @@ import {
   type ViewStyle,
 } from 'react-native';
 
+import { useUnitSystem } from '../settings.js';
 import { colors, fontSize, fontWeight, radius, spacing } from '../theme.js';
+import { formatVolume, weightUnitKey } from '../units.js';
 import { Banner, Button, MetricTile } from './ui.js';
 
 export interface FinishSummaryProps {
@@ -59,6 +61,7 @@ export function FinishSummary({
   onImportFromWatch,
 }: FinishSummaryProps) {
   const { t } = useTranslation();
+  const unitSystem = useUnitSystem();
   const [name, setName] = useState(initialName ?? '');
 
   return (
@@ -76,8 +79,8 @@ export function FinishSummary({
             <MetricTile value={String(exerciseCount)} label={t('workout.summaryExercises')} />
             <MetricTile value={String(setCount)} label={t('workout.summarySets')} />
             <MetricTile
-              value={volumeKg > 0 ? Math.round(volumeKg).toLocaleString() : '—'}
-              label={`${t('workout.summaryVolume')} (${t('common.kg')})`}
+              value={volumeKg > 0 ? (formatVolume(volumeKg, unitSystem) ?? '—') : '—'}
+              label={`${t('workout.summaryVolume')} (${t(`common.${weightUnitKey(unitSystem)}`)})`}
             />
           </View>
 

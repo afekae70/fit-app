@@ -28,7 +28,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ExerciseCard } from '../../src/components/ExerciseCard.js';
 import { FinishSummary } from '../../src/components/FinishSummary.js';
+import { RestTimer } from '../../src/components/RestTimer.js';
 import { WorkoutHome, type TemplateEntry } from '../../src/components/WorkoutHome.js';
+import { resolveRestSeconds, restSecondsByExerciseKey } from '../../src/db/plans.js';
 import { getExecutor, newId } from '../../src/db/provider.js';
 import {
   addExerciseToSession,
@@ -48,7 +50,9 @@ import {
   type SessionExerciseWithSets,
   type SessionSummaryRow,
 } from '../../src/db/workouts.js';
+import { useSettings } from '../../src/settings.js';
 import { colors, fontSize, radius, spacing } from '../../src/theme.js';
+import { formatVolume, weightUnitKey } from '../../src/units.js';
 
 const EXERCISE_BY_KEY = new Map<string, ExerciseSeed>(
   EXERCISE_SEED.map((exercise) => [exercise.nameEn, exercise]),
@@ -68,6 +72,8 @@ function elapsedMinutes(startedAt: string, endMs: number): number {
 export default function WorkoutsScreen() {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
+  const { settings } = useSettings();
+  const unitSystem = settings.unitSystem;
   const params = useLocalSearchParams<{ addExercise?: string; sessionId?: string }>();
 
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -81,6 +87,15 @@ export default function WorkoutsScreen() {
   const [sessionName, setSessionName] = useState<string | null>(null);
   const [templates, setTemplates] = useState<TemplateEntry[]>([]);
   const [history, setHistory] = useState<SessionSummaryRow[]>([]);
+
+  /*
+   * Rest timer. `plannedRest` is the day's prescription keyed by exercise, loaded once when the
+   * session opens; `restEndsAt` is a wall-clock deadline rather than a countdown, so putting
+   * the phone in a pocket between sets cannot desync it.
+   */
+  const [plannedRest, setPlannedRest] = useState<Record<string, number>>({});
+  const [restEndsAt, setRestEndsAt] = useState<number | null>(null);
+  const [restTotal, setRestTotal] = useState(0);
 
   /** Refresh the idle-state lists (templates + history). */
   const reloadHome = useCallback(async () => {
@@ -96,6 +111,10 @@ export default function WorkoutsScreen() {
     setExercises(loaded);
     setStartedAt(session?.started_at ?? null);
     setSessionName(session?.name ?? null);
+
+    // Only sessions started from a plan have per-exercise rest; everything else falls back to
+    // the profile default at the moment a set is logged.
+    setPlannedRest(session?.plan_day_id ? await restSecondsByExerciseKey(db, session.plan_day_id) : {});
 
     const nextBests: Record<string, { weight_kg: number; reps: number } | null> = {};
     for (const exercise of loaded) {
@@ -169,6 +188,10 @@ export default function WorkoutsScreen() {
     setStartedAt(null);
     setSessionName(null);
     setExercises([]);
+    // A countdown left running over the finished-workout screen would be resting for a set
+    // that is no longer part of anything.
+    setRestEndsAt(null);
+    setPlannedRest({});
     handledParam.current = null;
     await reloadHome();
   }, [reloadHome]);
@@ -238,6 +261,29 @@ export default function WorkoutsScreen() {
     [sessionId, reload, t],
   );
 
+  /**
+   * Begin resting after a working set.
+   *
+   * The plan's prescription for that exercise wins over the profile default; if neither is
+   * set, nothing happens at all rather than a timer appearing with an invented duration.
+   */
+  const startRest = useCallback(
+    (exerciseKey: string) => {
+      const seconds = resolveRestSeconds(plannedRest[exerciseKey], settings.defaultRestSeconds);
+      if (seconds === null) return;
+      setRestTotal(seconds);
+      setRestEndsAt(Date.now() + seconds * 1000);
+    },
+    [plannedRest, settings.defaultRestSeconds],
+  );
+
+  const extendRest = useCallback((seconds: number) => {
+    setRestTotal((total) => total + seconds);
+    // Extended from the deadline, not from now — tapping +30 with ten seconds left should
+    // leave forty, not thirty.
+    setRestEndsAt((current) => (current === null ? null : current + seconds * 1000));
+  }, []);
+
   const totals = useMemo(() => {
     let sets = 0;
     let volume = 0;
@@ -286,7 +332,7 @@ export default function WorkoutsScreen() {
           <Text style={styles.topSub}>
             {totals.sets} {t('workout.totalSets')}
             {totals.volume > 0
-              ? ` · ${Math.round(totals.volume).toLocaleString()} ${t('common.kg')}`
+              ? ` · ${formatVolume(totals.volume, unitSystem)} ${t(`common.${weightUnitKey(unitSystem)}`)}`
               : ''}
           </Text>
         </View>
@@ -308,6 +354,13 @@ export default function WorkoutsScreen() {
         initialName={sessionName}
         onConfirm={confirmFinish}
         onCancel={() => setSummaryOpen(false)}
+      />
+
+      <RestTimer
+        endsAt={restEndsAt}
+        totalSeconds={restTotal}
+        onExtend={extendRest}
+        onDismiss={() => setRestEndsAt(null)}
       />
 
       <ScrollView
@@ -334,6 +387,7 @@ export default function WorkoutsScreen() {
                 onRemoveSet={deleteSet}
                 onUpdateSet={patchSet}
                 onRemoveExercise={() => dropExercise(exercise.id)}
+                onSetLogged={startRest}
               />
             );
           })

@@ -16,7 +16,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Banner, Card, EmptyState, Hint, ScreenTitle } from '../../src/components/ui.js';
 import { summariseAllProgress, type ExerciseProgressSummary } from '../../src/db/progression.js';
 import { getExecutor } from '../../src/db/provider.js';
+import { useUnitSystem } from '../../src/settings.js';
 import { colors, fontSize, fontWeight, radius, spacing } from '../../src/theme.js';
+import { kgToDisplay, weightUnitKey } from '../../src/units.js';
 
 const EXERCISE_BY_KEY = new Map<string, ExerciseSeed>(
   EXERCISE_SEED.map((exercise) => [exercise.nameEn, exercise]),
@@ -42,6 +44,8 @@ export default function ProgressScreen() {
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
   const isHebrew = i18n.language === 'he';
+  const unitSystem = useUnitSystem();
+  const weightUnit = t(`common.${weightUnitKey(unitSystem)}`);
 
   const [summaries, setSummaries] = useState<ExerciseProgressSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -101,15 +105,19 @@ export default function ProgressScreen() {
                 <View style={styles.figures}>
                   <View style={styles.figure}>
                     <Text style={styles.figureValue}>
-                      {summary.latestE1rm === null ? '—' : summary.latestE1rm.toFixed(1)}
+                      {summary.latestE1rm === null
+                        ? '—'
+                        : kgToDisplay(summary.latestE1rm, unitSystem).toFixed(1)}
                     </Text>
                     <Text style={styles.figureLabel}>
-                      {t('progress.current')} · {t('progress.estimated1rm')}
+                      {t('progress.current')} · {t('progress.estimated1rm')} ({weightUnit})
                     </Text>
                   </View>
                   <View style={styles.figure}>
                     <Text style={styles.figureValue}>
-                      {summary.bestE1rm === null ? '—' : summary.bestE1rm.toFixed(1)}
+                      {summary.bestE1rm === null
+                        ? '—'
+                        : kgToDisplay(summary.bestE1rm, unitSystem).toFixed(1)}
                     </Text>
                     <Text style={styles.figureLabel}>{t('progress.best')}</Text>
                   </View>
@@ -128,7 +136,7 @@ export default function ProgressScreen() {
                       ]}
                     >
                       {delta > 0 ? '+' : ''}
-                      {delta.toFixed(1)}
+                      {kgToDisplay(delta, unitSystem).toFixed(1)}
                     </Text>
                     <Text style={styles.figureLabel}>{t('progress.change')}</Text>
                   </View>
@@ -138,7 +146,7 @@ export default function ProgressScreen() {
                   {summary.sessionCount} {t('progress.sessions')}
                   {volumeSlope !== null
                     ? ` · ${t('progress.volumeTrend')} ${volumeSlope > 0 ? '+' : ''}${Math.round(
-                        volumeSlope,
+                        kgToDisplay(volumeSlope, unitSystem),
                       )} ${t('progress.perSession')}`
                     : ''}
                 </Text>

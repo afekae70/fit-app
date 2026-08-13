@@ -33,7 +33,9 @@ import {
   type SessionExerciseWithSets,
   type WorkoutSessionRow,
 } from '../../src/db/workouts.js';
+import { useUnitSystem } from '../../src/settings.js';
 import { colors, fontSize, radius, spacing } from '../../src/theme.js';
+import { formatVolume, formatWeight, weightUnitKey } from '../../src/units.js';
 
 const EXERCISE_BY_KEY = new Map<string, ExerciseSeed>(
   EXERCISE_SEED.map((exercise) => [exercise.nameEn, exercise]),
@@ -44,6 +46,8 @@ export default function SessionDetailScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const isHebrew = i18n.language === 'he';
+  const unitSystem = useUnitSystem();
+  const weightUnit = t(`common.${weightUnitKey(unitSystem)}`);
 
   const [session, setSession] = useState<WorkoutSessionRow | null>(null);
   const [exercises, setExercises] = useState<SessionExerciseWithSets[]>([]);
@@ -176,7 +180,7 @@ export default function SessionDetailScreen() {
         </Text>
         {volume > 0 ? (
           <Text style={styles.stat}>
-            {Math.round(volume).toLocaleString()} {t('common.kg')}
+            {formatVolume(volume, unitSystem)} {weightUnit}
           </Text>
         ) : null}
       </View>
@@ -198,7 +202,7 @@ export default function SessionDetailScreen() {
                   {set.is_warmup === 1 ? t('workout.warmupShort') : set.set_index}
                 </Text>
                 <Text style={styles.setValue}>
-                  {set.weight_kg !== null ? `${set.weight_kg} ${t('common.kg')}` : ''}
+                  {set.weight_kg !== null ? `${formatWeight(set.weight_kg, unitSystem)} ${weightUnit}` : ''}
                   {set.weight_kg !== null && set.reps !== null ? ' × ' : ''}
                   {set.reps !== null ? `${set.reps}` : ''}
                   {set.duration_seconds !== null ? `${set.duration_seconds} ${t('workout.seconds')}` : ''}

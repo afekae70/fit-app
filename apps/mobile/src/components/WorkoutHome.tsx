@@ -19,7 +19,9 @@ import {
 } from 'react-native';
 
 import type { SessionSummaryRow } from '../db/workouts.js';
+import { useUnitSystem } from '../settings.js';
 import { colors, fontSize, radius, spacing } from '../theme.js';
+import { formatVolume, weightUnitKey } from '../units.js';
 
 export interface TemplateEntry {
   id: string;
@@ -61,6 +63,7 @@ export function WorkoutHome({
   contentPadding,
 }: WorkoutHomeProps) {
   const { t } = useTranslation();
+  const unitSystem = useUnitSystem();
 
   return (
     <ScrollView
@@ -129,7 +132,7 @@ export function WorkoutHome({
                     {session.exercise_count} {t('history.exercises')} · {session.set_count}{' '}
                     {t('history.sets')}
                     {session.volume_load > 0
-                      ? ` · ${Math.round(session.volume_load).toLocaleString()} ${t('common.kg')}`
+                      ? ` · ${formatVolume(session.volume_load, unitSystem)} ${t(`common.${weightUnitKey(unitSystem)}`)}`
                       : ''}
                   </Text>
                 </View>

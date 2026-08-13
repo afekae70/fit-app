@@ -8,7 +8,8 @@
  * Once auth lands, these inputs come from the user's stored profile instead of local state.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { router } from 'expo-router';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Pressable,
@@ -46,8 +47,17 @@ import {
 } from '../../src/components/ui.js';
 import { getLatestWeight, getProfile, recordBodyMetric, saveProfile } from '../../src/db/metrics.js';
 import { getExecutor, newId } from '../../src/db/provider.js';
-import { setAppLanguage, type Language } from '../../src/i18n/index.js';
+import { useUnitSystem } from '../../src/settings.js';
 import { colors, fontSize, spacing } from '../../src/theme.js';
+import {
+  cmToDisplay,
+  displayHeightToCm,
+  displayWeightToKg,
+  heightUnitKey,
+  isEditedWeight,
+  kgToDisplay,
+  weightUnitKey,
+} from '../../src/units.js';
 
 /**
  * Convert an entered age to a date of birth.
@@ -82,16 +92,24 @@ function parseNumber(raw: string): number | null {
 }
 
 export default function TodayScreen() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
+  const unitSystem = useUnitSystem();
 
+  /*
+   * Weight and height are held twice over: the canonical metric value that every calculation
+   * and every write uses, and the string currently in the field. Deriving one from the other
+   * on each render is what looks obvious and does not work — reformatting mid-edit would eat
+   * the decimal point the moment "80." parsed to 80.
+   */
+  const [weightKg, setWeightKg] = useState<number | null>(80);
+  const [heightCm, setHeightCm] = useState<number | null>(180);
   const [weightRaw, setWeightRaw] = useState('80');
   const [heightRaw, setHeightRaw] = useState('180');
   const [ageRaw, setAgeRaw] = useState('30');
   const [sex, setSex] = useState<SexChoice>('male');
   const [activityLevel, setActivityLevel] = useState<ActivityLevel>('moderate');
   const [goal, setGoal] = useState<Goal>('cut');
-  const [reloadNeeded, setReloadNeeded] = useState(false);
   const [hydrated, setHydrated] = useState(false);
 
   // Load the saved profile and latest weight once. Until this completes, the fields show
@@ -103,25 +121,46 @@ export default function TodayScreen() {
       const [profile, latest] = await Promise.all([getProfile(db), getLatestWeight(db)]);
       if (cancelled) return;
 
-      if (profile?.height_cm) setHeightRaw(String(profile.height_cm));
+      if (profile?.height_cm) {
+        setHeightCm(profile.height_cm);
+        setHeightRaw(String(cmToDisplay(profile.height_cm, unitSystem)));
+      }
       if (profile?.birth_date) setAgeRaw(String(ageFromBirthDate(profile.birth_date)));
       if (profile?.sex === 'male' || profile?.sex === 'female') setSex(profile.sex);
       if (profile?.activity_level) setActivityLevel(profile.activity_level as ActivityLevel);
       if (profile?.goal) setGoal(profile.goal as Goal);
-      if (latest?.weight_kg) setWeightRaw(String(latest.weight_kg));
+      if (latest?.weight_kg) {
+        setWeightKg(latest.weight_kg);
+        setWeightRaw(String(kgToDisplay(latest.weight_kg, unitSystem)));
+      }
 
       setHydrated(true);
     })();
     return () => {
       cancelled = true;
     };
+    // Runs once; the unit system is read for the initial formatting only, and a later change
+    // is handled by the reformat effect below rather than by reloading the profile.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /*
+   * Re-render the fields when — and only when — the unit system actually changes. Keyed off a
+   * ref rather than the dependency array because the canonical values also change on every
+   * keystroke, and reformatting then would fight the user for the cursor.
+   */
+  const shownSystem = useRef(unitSystem);
+  useEffect(() => {
+    if (shownSystem.current === unitSystem) return;
+    shownSystem.current = unitSystem;
+    setWeightRaw(weightKg === null ? '' : String(kgToDisplay(weightKg, unitSystem)));
+    setHeightRaw(heightCm === null ? '' : String(cmToDisplay(heightCm, unitSystem)));
+  }, [unitSystem, weightKg, heightCm]);
 
   // Persist profile edits so the metrics tab (and later the AI coach) can read them.
   useEffect(() => {
     if (!hydrated) return;
     const ageYears = parseNumber(ageRaw);
-    const heightCm = parseNumber(heightRaw);
     void (async () => {
       const db = await getExecutor();
       await saveProfile(db, {
@@ -132,11 +171,9 @@ export default function TodayScreen() {
         goal,
       });
     })();
-  }, [hydrated, ageRaw, heightRaw, sex, activityLevel, goal]);
+  }, [hydrated, ageRaw, heightCm, sex, activityLevel, goal]);
 
   const results = useMemo(() => {
-    const weightKg = parseNumber(weightRaw);
-    const heightCm = parseNumber(heightRaw);
     const ageYears = parseNumber(ageRaw);
     if (weightKg === null || heightCm === null || ageYears === null) return null;
 
@@ -161,13 +198,7 @@ export default function TodayScreen() {
       bmiValue,
       bmiLabel: bmiCategory(bmiValue),
     };
-  }, [weightRaw, heightRaw, ageRaw, sex, activityLevel, goal]);
-
-  const toggleLanguage = async () => {
-    const next: Language = i18n.language === 'he' ? 'en' : 'he';
-    const result = await setAppLanguage(next);
-    setReloadNeeded(result.needsReloadForRtl);
-  };
+  }, [weightKg, heightCm, ageRaw, sex, activityLevel, goal]);
 
   return (
     <ScrollView
@@ -180,19 +211,15 @@ export default function TodayScreen() {
     >
       <View style={styles.header}>
         <Text style={styles.appName}>{t('common.appName')}</Text>
-        <Pressable onPress={toggleLanguage} style={styles.langButton} accessibilityRole="button">
-          <Text style={styles.langButtonText}>{t('dev.languageToggle')}</Text>
+        <Pressable
+          onPress={() => router.push('/settings')}
+          style={styles.settingsButton}
+          accessibilityRole="button"
+          accessibilityLabel={t('settings.open')}
+        >
+          <Text style={styles.settingsButtonText}>⚙</Text>
         </Pressable>
       </View>
-
-      {reloadNeeded ? (
-        <Banner tone="warning">
-          {/* forceRTL only applies on the next bundle load — see src/i18n/index.ts */}
-          {i18n.language === 'he'
-            ? 'השפה הוחלפה. סגור ופתח את האפליקציה כדי להחליף גם את כיוון הפריסה.'
-            : 'Language changed. Reopen the app to switch layout direction too.'}
-        </Banner>
-      ) : null}
 
       <Card>
         <SectionTitle>{t('profile.title')}</SectionTitle>
@@ -201,26 +228,41 @@ export default function TodayScreen() {
         <NumberField
           label={t('profile.weight')}
           value={weightRaw}
-          suffix={t('common.kg')}
-          onChangeText={setWeightRaw}
+          suffix={t(`common.${weightUnitKey(unitSystem)}`)}
+          onChangeText={(next) => {
+            setWeightRaw(next);
+            const parsed = parseNumber(next);
+            setWeightKg(parsed === null ? null : displayWeightToKg(parsed, unitSystem));
+          }}
           // Committed on blur rather than per keystroke: typing "80" passes through "8",
           // and recording that would put a phantom 8 kg weigh-in in the history.
           onEndEditing={() => {
-            const value = parseNumber(weightRaw);
-            if (value === null || !hydrated) return;
+            const typed = parseNumber(weightRaw);
+            if (typed === null || !hydrated) return;
             void (async () => {
               const db = await getExecutor();
               const latest = await getLatestWeight(db);
-              if (latest?.weight_kg === value) return; // no change, no duplicate row
-              await recordBodyMetric(db, newId, { weightKg: value, source: 'manual' });
+              // Compared in display units, not kilograms. In imperial the stored value does
+              // not survive a display round-trip exactly, so a kilogram comparison would call
+              // an untouched field an edit and log a duplicate weigh-in every time this tab
+              // was opened. See isEditedWeight in src/units.ts.
+              if (!isEditedWeight(latest?.weight_kg ?? null, typed, unitSystem)) return;
+              await recordBodyMetric(db, newId, {
+                weightKg: displayWeightToKg(typed, unitSystem),
+                source: 'manual',
+              });
             })();
           }}
         />
         <NumberField
           label={t('profile.height')}
           value={heightRaw}
-          suffix={t('common.cm')}
-          onChangeText={setHeightRaw}
+          suffix={t(`common.${heightUnitKey(unitSystem)}`)}
+          onChangeText={(next) => {
+            setHeightRaw(next);
+            const parsed = parseNumber(next);
+            setHeightCm(parsed === null ? null : displayHeightToCm(parsed, unitSystem));
+          }}
         />
         <NumberField
           label={t('profile.age')}
@@ -339,8 +381,8 @@ const styles = StyleSheet.create<{
   content: ViewStyle;
   header: ViewStyle;
   appName: TextStyle;
-  langButton: ViewStyle;
-  langButtonText: TextStyle;
+  settingsButton: ViewStyle;
+  settingsButtonText: TextStyle;
   divider: ViewStyle;
   macroRow: ViewStyle;
   statusRow: ViewStyle;
@@ -365,16 +407,18 @@ const styles = StyleSheet.create<{
     fontSize: fontSize.xl,
     fontWeight: '800',
   },
-  langButton: {
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.md,
+  settingsButton: {
+    width: 36,
+    height: 36,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  langButtonText: {
-    color: colors.textMuted,
-    fontSize: fontSize.sm,
+  settingsButtonText: {
+    color: colors.textSecondary,
+    fontSize: fontSize.md,
   },
   divider: {
     height: 1,

@@ -24,7 +24,18 @@ import {
 } from 'react-native';
 
 import type { SetRow } from '../db/workouts.js';
+import { useUnitSystem } from '../settings.js';
 import { colors, fontSize, radius, spacing } from '../theme.js';
+import {
+  displayDistanceToMetres,
+  displayWeightToKg,
+  distanceUnitKey,
+  formatVolume,
+  isEditedWeight,
+  kgToDisplay,
+  metresToDisplay,
+  weightUnitKey,
+} from '../units.js';
 
 export interface ExerciseCardProps {
   exercise: ExerciseSeed;
@@ -34,6 +45,14 @@ export interface ExerciseCardProps {
   onRemoveSet: (setId: string) => void;
   onUpdateSet: (setId: string, patch: Record<string, number | boolean | null>) => void;
   onRemoveExercise: () => void;
+  /**
+   * A working set was just performed — starts the rest countdown.
+   *
+   * Fired from the two moments that actually mean "I finished that set": committing a changed
+   * value into a set's fields, and adding the next set. Warmups do not fire it, since resting
+   * a full three minutes after an empty-bar warmup is not what anyone wants.
+   */
+  onSetLogged?: (exerciseKey: string) => void;
 }
 
 /** Parse a typed value, treating an empty field as "cleared" rather than zero. */
@@ -52,9 +71,12 @@ function ExerciseCardImpl({
   onRemoveSet,
   onUpdateSet,
   onRemoveExercise,
+  onSetLogged,
 }: ExerciseCardProps) {
   const { t, i18n } = useTranslation();
   const isHebrew = i18n.language === 'he';
+  const unitSystem = useUnitSystem();
+  const weightUnit = t(`common.${weightUnitKey(unitSystem)}`);
   const loadType = exercise.loadType ?? 'weight_reps';
 
   const showsWeight = loadType === 'weight_reps' || loadType === 'bodyweight_plus';
@@ -75,7 +97,7 @@ function ExerciseCardImpl({
           <Text style={styles.title}>{isHebrew ? exercise.nameHe : exercise.nameEn}</Text>
           <Text style={styles.subtitle}>
             {previousBest
-              ? `${t('workout.lastTime')}: ${previousBest.weight_kg}${t('common.kg')} × ${previousBest.reps}`
+              ? `${t('workout.lastTime')}: ${kgToDisplay(previousBest.weight_kg, unitSystem)}${weightUnit} × ${previousBest.reps}`
               : t('workout.noHistory')}
           </Text>
         </View>
@@ -93,7 +115,9 @@ function ExerciseCardImpl({
         <View style={styles.columnHeader}>
           <Text style={[styles.columnLabel, styles.headerIndex]}>#</Text>
           {showsWeight ? (
-            <Text style={[styles.columnLabel, styles.headerInput]}>{t('workout.weight')}</Text>
+            <Text style={[styles.columnLabel, styles.headerInput]}>
+              {t('workout.weight')} ({weightUnit})
+            </Text>
           ) : null}
           {showsReps ? (
             <Text style={[styles.columnLabel, styles.headerInput]}>{t('workout.reps')}</Text>
@@ -123,10 +147,21 @@ function ExerciseCardImpl({
 
           {showsWeight ? (
             <TextInput
-              defaultValue={set.weight_kg === null ? '' : String(set.weight_kg)}
-              onEndEditing={(e) =>
-                onUpdateSet(set.id, { weightKg: parseField(e.nativeEvent.text) })
-              }
+              // Keyed on the unit system as well as the set: the field is uncontrolled, so
+              // switching units mid-workout has to remount it for the new defaultValue to
+              // take — otherwise the row would keep showing kilograms labelled as pounds.
+              key={`${set.id}-${unitSystem}`}
+              defaultValue={set.weight_kg === null ? '' : String(kgToDisplay(set.weight_kg, unitSystem))}
+              onEndEditing={(e) => {
+                const typed = parseField(e.nativeEvent.text);
+                // Blur fires whether or not anything was typed. Writing regardless would
+                // walk the stored weight by the display rounding error on every tap-through.
+                if (!isEditedWeight(set.weight_kg, typed, unitSystem)) return;
+                onUpdateSet(set.id, {
+                  weightKg: typed === null ? null : displayWeightToKg(typed, unitSystem),
+                });
+                if (set.is_warmup === 0) onSetLogged?.(exercise.nameEn);
+              }}
               keyboardType="numeric"
               inputMode="decimal"
               style={styles.input}
@@ -139,7 +174,14 @@ function ExerciseCardImpl({
           {showsReps ? (
             <TextInput
               defaultValue={set.reps === null ? '' : String(set.reps)}
-              onEndEditing={(e) => onUpdateSet(set.id, { reps: parseField(e.nativeEvent.text) })}
+              onEndEditing={(e) => {
+                const typed = parseField(e.nativeEvent.text);
+                // Same discipline as the weight field: blur fires whether or not anything
+                // changed, and an unchanged blur is not a set being performed.
+                if (typed === set.reps) return;
+                onUpdateSet(set.id, { reps: typed });
+                if (set.is_warmup === 0) onSetLogged?.(exercise.nameEn);
+              }}
               keyboardType="number-pad"
               inputMode="numeric"
               style={styles.input}
@@ -166,15 +208,21 @@ function ExerciseCardImpl({
 
           {showsDistance ? (
             <TextInput
-              defaultValue={set.distance_m === null ? '' : String(set.distance_m)}
-              onEndEditing={(e) =>
-                onUpdateSet(set.id, { distanceM: parseField(e.nativeEvent.text) })
+              key={`${set.id}-dist-${unitSystem}`}
+              defaultValue={
+                set.distance_m === null ? '' : String(metresToDisplay(set.distance_m, unitSystem))
               }
+              onEndEditing={(e) => {
+                const typed = parseField(e.nativeEvent.text);
+                onUpdateSet(set.id, {
+                  distanceM: typed === null ? null : displayDistanceToMetres(typed, unitSystem),
+                });
+              }}
               keyboardType="numeric"
               inputMode="decimal"
               style={styles.input}
               selectTextOnFocus
-              placeholder={t('workout.meters')}
+              placeholder={t(`common.${distanceUnitKey(unitSystem)}`)}
               placeholderTextColor={colors.textMuted}
             />
           ) : null}
@@ -191,14 +239,23 @@ function ExerciseCardImpl({
         </View>
       ))}
 
-      <Pressable onPress={onAddSet} style={styles.addSet} accessibilityRole="button">
+      {/* Adding the next set is the other honest "I just finished one" signal — and it is the
+          only one available when the plan pre-filled the numbers and nothing was typed. */}
+      <Pressable
+        onPress={() => {
+          onAddSet();
+          onSetLogged?.(exercise.nameEn);
+        }}
+        style={styles.addSet}
+        accessibilityRole="button"
+      >
         <Text style={styles.addSetText}>+ {t('workout.addSet')}</Text>
       </Pressable>
 
       {volume > 0 ? (
         <Text style={styles.volume}>
-          {workingSets.length} {t('workout.totalSets')} · {Math.round(volume).toLocaleString()}{' '}
-          {t('common.kg')} {t('workout.totalVolume')}
+          {workingSets.length} {t('workout.totalSets')} · {formatVolume(volume, unitSystem)}{' '}
+          {weightUnit} {t('workout.totalVolume')}
         </Text>
       ) : null}
     </View>

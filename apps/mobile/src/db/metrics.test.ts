@@ -78,6 +78,10 @@ const fullProfile: ProfileRow = {
   height_cm: 180,
   activity_level: 'moderate',
   goal: 'cut',
+  // Display preferences: null is what every profile holds until settings is opened, and none
+  // of the physiology below reads them — every stored measurement is metric regardless.
+  unit_system: null,
+  default_rest_seconds: null,
   updated_at: clock(),
 };
 
@@ -99,6 +103,34 @@ describe('profile', () => {
     // Changing the goal from one screen must not blank height entered on another.
     expect(profile?.height_cm).toBe(180);
     expect(profile?.sex).toBe('male');
+  });
+
+  it('persists the display preferences', async () => {
+    await saveProfile(db, { unitSystem: 'imperial', defaultRestSeconds: 90 }, clock);
+
+    const profile = await getProfile(db);
+    expect(profile?.unit_system).toBe('imperial');
+    expect(profile?.default_rest_seconds).toBe(90);
+  });
+
+  it('lets the rest timer be cleared without disturbing the units', async () => {
+    await saveProfile(db, { unitSystem: 'imperial', defaultRestSeconds: 90 }, clock);
+    // Null is the off switch for the timer — it must be written, not skipped as "no change".
+    await saveProfile(db, { defaultRestSeconds: null }, clock);
+
+    const profile = await getProfile(db);
+    expect(profile?.default_rest_seconds).toBeNull();
+    expect(profile?.unit_system).toBe('imperial');
+  });
+
+  it('does not touch the preferences when another screen saves the profile', async () => {
+    await saveProfile(db, { unitSystem: 'imperial', defaultRestSeconds: 90 }, clock);
+    // The Today tab writes these on every edit and knows nothing about the settings screen.
+    await saveProfile(db, { heightCm: 180, goal: 'bulk' }, clock);
+
+    const profile = await getProfile(db);
+    expect(profile?.unit_system).toBe('imperial');
+    expect(profile?.default_rest_seconds).toBe(90);
   });
 
   it('keeps exactly one profile row no matter how often it is saved', async () => {

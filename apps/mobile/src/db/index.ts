@@ -9,7 +9,12 @@
 
 import * as SQLite from 'expo-sqlite';
 
-import { CREATE_SCHEMA_SQL, MIGRATIONS, SCHEMA_VERSION } from './schema.js';
+import {
+  CREATE_SCHEMA_SQL,
+  isDuplicateColumnError,
+  pendingMigrations,
+  SCHEMA_VERSION,
+} from './schema.js';
 
 const DATABASE_NAME = 'fit.db';
 
@@ -27,23 +32,14 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version;');
   const current = row?.user_version ?? 0;
 
-  if (current >= SCHEMA_VERSION) return;
-
-  const pending = Object.keys(MIGRATIONS)
-    .map(Number)
-    .filter((version) => version > current)
-    .sort((a, b) => a - b);
-
-  for (const version of pending) {
-    const sql = MIGRATIONS[version];
-    if (!sql) continue;
+  // One statement at a time, each with its own guard. Running a version as a single batch
+  // would mean a swallowed "duplicate column" on the first statement silently skipping the
+  // rest of it — the schema left half-upgraded while user_version claims it is finished.
+  for (const { sql } of pendingMigrations(current)) {
     try {
       await db.execAsync(sql);
     } catch (error) {
-      // A fresh install already has the column from CREATE_SCHEMA_SQL, so ALTER TABLE fails
-      // with "duplicate column". That is expected and harmless; anything else is not.
-      const message = error instanceof Error ? error.message : String(error);
-      if (!/duplicate column/i.test(message)) throw error;
+      if (!isDuplicateColumnError(error)) throw error;
     }
   }
 
@@ -76,6 +72,9 @@ export async function resetDb(): Promise<void> {
     DROP TABLE IF EXISTS sets;
     DROP TABLE IF EXISTS session_exercises;
     DROP TABLE IF EXISTS workout_sessions;
+    DROP TABLE IF EXISTS plan_day_exercises;
+    DROP TABLE IF EXISTS plan_days;
+    DROP TABLE IF EXISTS plans;
     DROP TABLE IF EXISTS nutrition_targets;
     DROP TABLE IF EXISTS body_metrics;
     DROP TABLE IF EXISTS profile;
