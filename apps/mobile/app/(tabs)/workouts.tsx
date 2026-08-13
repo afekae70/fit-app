@@ -33,6 +33,7 @@ import {
   type PreviousSet,
 } from '../../src/components/ExerciseCard.js';
 import { FinishSummary } from '../../src/components/FinishSummary.js';
+import { WorkoutHeader } from '../../src/components/workout/WorkoutHeader.js';
 import { PrToast, type PrToastData } from '../../src/components/PrToast.js';
 import { RestTimer } from '../../src/components/RestTimer.js';
 import { DEFAULT_REST_SECONDS, REST_STEP_SECONDS } from '../../src/components/restTime.js';
@@ -440,41 +441,21 @@ export default function WorkoutsScreen() {
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top + spacing.md }]}>
-      <View style={styles.topBar}>
-        <View style={styles.topMain}>
-          <Text style={styles.sessionName} numberOfLines={1}>
-            {sessionName ?? t('workout.activeTitle')}
-          </Text>
-          {/* Progress, not a clock. The Nocturne prototype puts a running elapsed time here; it
-              is deliberately still absent — a ticking timer pressures people to cut rest short,
-              which is why it was removed in the first place (see CLAUDE.md). Sets completed is
-              the same reassurance without the pressure. */}
-          <Text style={styles.topSub}>
-            {t('workout.setsProgress', { done: totals.done, total: totals.sets })}
-            {totals.volume > 0
-              ? ` · ${Math.round(totals.volume).toLocaleString()} ${t('common.kg')}`
-              : ''}
-          </Text>
-        </View>
-        <Pressable
-          onPress={() => setSummaryOpen(true)}
-          style={styles.finishButton}
-          accessibilityRole="button"
-        >
-          <Text style={styles.finishButtonText}>{t('workout.finishButton')}</Text>
-        </Pressable>
-      </View>
+      <WorkoutHeader
+        name={sessionName ?? t('workout.activeTitle')}
+        doneSets={totals.done}
+        totalSets={totals.sets}
+        startedAt={startedAt ?? new Date().toISOString()}
+        progress={totals.sets === 0 ? 0 : totals.done / totals.sets}
+      />
 
-      {totals.sets > 0 ? (
-        <View style={styles.progressTrack}>
-          <View
-            style={[
-              styles.progressFill,
-              { width: `${Math.round((totals.done / totals.sets) * 100)}%` },
-            ]}
-          />
-        </View>
-      ) : null}
+      <Pressable
+        onPress={() => setSummaryOpen(true)}
+        style={styles.finishButton}
+        accessibilityRole="button"
+      >
+        <Text style={styles.finishButtonText}>{t('workout.finishButton')}</Text>
+      </Pressable>
 
       <PrToast data={prToast} onDone={() => setPrToast(null)} />
 

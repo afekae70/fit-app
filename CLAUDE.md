@@ -84,7 +84,11 @@ npm run typecheck && npm test
 - **`expo-updates`** was removed on purpose. On Android's New Architecture any crash left a
   permanently blank Activity with a destroyed React context (expo/expo#41543). Do not reinstall
   it to add OTA updates without re-testing that specific failure.
-- **A running clock during a workout.** Total duration appears in the finish summary instead;
-  a ticking timer pressures people to cut rest short.
+- ~~**A running clock during a workout.**~~ Reinstated by the 2026 design handoff, which puts
+  elapsed time in the workout header at 26/500. The original reasoning still stands — a ticking
+  timer pressures people to cut rest short — and it is the reason the clock is *read-only* and
+  sits in the header, where nothing is tappable, rather than beside the rest controls. If it
+  turns out to change behaviour the way the first version did, `WorkoutHeader` is the one place
+  to remove it from.
 - **Automatic application of AI output.** Plans and menus render as cards the user reviews. The
   Apply button is the only path that writes to the plan tables.
