@@ -116,6 +116,13 @@ export function TodayWorkoutCard({
         />
       </View>
 
+      {/* Stated once, plainly, and never as a debt to repay: the plan has already moved on, and
+          the next line down is today's workout. Guilt is the fastest way to make someone stop
+          opening an app they were using to build a habit. */}
+      {workout.missedYesterday ? (
+        <Text style={s.missed}>{t('home.missedYesterday', { day: workout.missedYesterday })}</Text>
+      ) : null}
+
       <View style={s.pillRow}>
         {shown.map((name) => (
           <View key={name} style={s.pill}>
@@ -246,6 +253,7 @@ const createStyles = (colors: ColorPalette) =>
     workoutTitle: TextStyle;
     workoutMeta: TextStyle;
     accentBar: ViewStyle;
+    missed: TextStyle;
     pillRow: ViewStyle;
     pill: ViewStyle;
     pillText: TextStyle;
@@ -319,6 +327,7 @@ const createStyles = (colors: ColorPalette) =>
     workoutMeta: { color: colors.textMuted, fontSize: 13, lineHeight: 20, textAlign: 'auto' },
     accentBar: { width: 6, borderRadius: 3 },
 
+    missed: { color: colors.textFaint, fontSize: 12, textAlign: 'auto' },
     pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
     pill: {
       paddingVertical: 6,

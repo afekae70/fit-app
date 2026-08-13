@@ -10,7 +10,7 @@
 import { EXERCISE_SEED } from '@fit/shared';
 
 import type { SqlExecutor } from './executor.js';
-import { getNextPlanDay, getActivePlan, listPlanDayExercises } from './plans.js';
+import { getActivePlan, listPlanDayExercises, listPlanDays } from './plans.js';
 
 /** Minutes allowed per working set, for the "~52 min" estimate. Sets are ~40s plus 90s rest. */
 const MINUTES_PER_SET = 2.2;
@@ -26,38 +26,115 @@ export interface TodayWorkout {
   estimatedMinutes: number;
   /** Every exercise name in order — the screen shows the first two and counts the rest. */
   exerciseNames: string[];
+  /**
+   * The day that was scheduled yesterday and not trained, if there was one.
+   *
+   * Reported rather than rescheduled. The plan has already moved on; this only says what was
+   * missed, so the screen can note it without turning it into a debt.
+   */
+  missedYesterday: string | null;
 }
 
 /**
- * The workout to offer on the home screen, or null when there is no active plan.
+ * The workout scheduled for today, or null when there is no active plan.
  *
- * "Next" is whichever day is most overdue, not whichever matches today's weekday — see
- * `getNextPlanDay`. A four-day split does not line up with a seven-day week.
+ * **The rotation follows the calendar, not completion.** Each day advances one position through
+ * the plan whether or not the previous one was trained. Miss Monday and Tuesday is still
+ * Tuesday's workout — Monday's is simply recorded as missed.
+ *
+ * This replaced a queue, where the most overdue day stayed at the front until it was done. The
+ * queue never loses work, which sounds better and is worse to live with: skip one session and
+ * every day afterwards shows the wrong workout, drifting further behind the split you actually
+ * train, until the plan is describing a week you are not having. A calendar rotation is always
+ * telling the truth about today, and the cost is that a missed day stays missed — which is also
+ * the truth.
+ *
+ * Anchored on the last session actually trained from this plan, so the rotation stays in step
+ * with reality rather than with a start date you have long since drifted from.
  */
 export async function getTodayWorkout(
   db: SqlExecutor,
   userId: string,
+  now = new Date(),
 ): Promise<TodayWorkout | null> {
   const plan = await getActivePlan(db, userId);
   if (!plan) return null;
 
-  const day = await getNextPlanDay(db, userId, plan.id);
+  const days = await listPlanDays(db, plan.id);
+  if (days.length === 0) return null;
+
+  const { position, missedPosition } = await rotate(db, userId, plan.id, days.length, now);
+
+  const day = days[position];
   if (!day) return null;
 
   const exercises = await listPlanDayExercises(db, day.id);
   if (exercises.length === 0) return null;
 
   const setCount = exercises.reduce((sum, e) => sum + (e.target_sets ?? DEFAULT_SETS), 0);
+  const missed = missedPosition === null ? null : days[missedPosition] ?? null;
 
   return {
     planDayId: day.id,
     planName: plan.name,
-    dayName: day.name ?? `יום ${day.day_index}`,
+    dayName: dayLabel(day),
     exerciseCount: exercises.length,
     setCount,
     estimatedMinutes: Math.round(setCount * MINUTES_PER_SET),
     exerciseNames: exercises.map((e) => displayName(e.exercise_key)),
+    missedYesterday: missed ? dayLabel(missed) : null,
   };
+}
+
+const dayLabel = (day: { day_index: number; name: string | null }): string =>
+  day.name ?? `יום ${day.day_index}`;
+
+/**
+ * Where in the rotation today sits, and whether yesterday's slot went untrained.
+ *
+ * With no history at all the plan starts at its first day — a brand-new plan should open on day
+ * one, not on whatever position an arbitrary anchor date happens to land on.
+ */
+async function rotate(
+  db: SqlExecutor,
+  userId: string,
+  planId: string,
+  length: number,
+  now: Date,
+): Promise<{ position: number; missedPosition: number | null }> {
+  const last = await db.get<{ day: string; plan_day_id: string }>(
+    `SELECT date(ws.started_at, 'localtime') AS day, ws.plan_day_id
+       FROM workout_sessions ws
+       JOIN plan_days pd ON pd.id = ws.plan_day_id
+      WHERE ws.user_id = ? AND ws.deleted_at IS NULL AND pd.plan_id = ?
+      ORDER BY ws.started_at DESC
+      LIMIT 1`,
+    [userId, planId],
+  );
+  if (!last) return { position: 0, missedPosition: null };
+
+  const days = await listPlanDays(db, planId);
+  const trainedPosition = days.findIndex((d) => d.id === last.plan_day_id);
+  if (trainedPosition < 0) return { position: 0, missedPosition: null };
+
+  const elapsed = daysBetween(last.day, localDay(now));
+  // Trained today already: today's slot is the one just done, and nothing was missed.
+  if (elapsed <= 0) return { position: trainedPosition, missedPosition: null };
+
+  const position = (trainedPosition + elapsed) % length;
+  // Only the immediately preceding slot is reported. A week away would otherwise produce a list
+  // of misses, which is a scolding rather than a note — and the streak strip already shows the
+  // shape of a gap that size.
+  const missedPosition = elapsed > 1 ? (trainedPosition + elapsed - 1) % length : null;
+  return { position, missedPosition };
+}
+
+/** Whole local days from one `YYYY-MM-DD` to another. */
+function daysBetween(from: string, to: string): number {
+  const a = Date.parse(`${from}T00:00:00`);
+  const b = Date.parse(`${to}T00:00:00`);
+  if (Number.isNaN(a) || Number.isNaN(b)) return 0;
+  return Math.round((b - a) / 86_400_000);
 }
 
 const HEBREW_BY_KEY = new Map(EXERCISE_SEED.map((e) => [e.nameEn, e.nameHe]));

@@ -213,6 +213,7 @@ export const en = {
     settings: 'Settings',
   },
   home: {
+    missedYesterday: 'Yesterday ({{day}}) was missed',
     greetingMorning: 'Good morning',
     greetingAfternoon: 'Good afternoon',
     greetingEvening: 'Good evening',

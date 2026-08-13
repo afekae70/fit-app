@@ -71,26 +71,91 @@ async function seedPlan(days: { name: string; exercises: [string, number | null]
 }
 
 describe('getTodayWorkout', () => {
-  it('offers the most overdue day, not today\'s weekday', async () => {
-    const [pushDay, pullDay] = await seedPlan([
+  it('starts a brand-new plan on its first day', async () => {
+    await seedPlan([
       { name: 'דחיפה A', exercises: [['Barbell Bench Press', 4]] },
       { name: 'משיכה A', exercises: [['Barbell Row', 4]] },
     ]);
-    // Push was trained yesterday, pull never — so pull is the one that is due.
-    await logWorkout('2026-08-04T09:00:00', [{ exercise: 'Barbell Bench Press', weight: 80, reps: 5 }], {
-      planDayId: pushDay,
+    expect((await getTodayWorkout(db, USER, NOW))?.dayName).toBe('דחיפה A');
+  });
+
+  it('advances one slot per calendar day, trained or not', async () => {
+    const [push, pull] = await seedPlan([
+      { name: 'דחיפה A', exercises: [['Barbell Bench Press', 4]] },
+      { name: 'משיכה A', exercises: [['Barbell Row', 4]] },
+      { name: 'רגליים', exercises: [['Barbell Back Squat', 4]] },
+    ]);
+    // Trained push two days ago and nothing since. The old queue would still be offering pull,
+    // for ever; the calendar has moved on twice.
+    await logWorkout('2026-08-03T09:00:00', [{ exercise: 'Barbell Bench Press', weight: 80, reps: 5 }], {
+      planDayId: push,
     });
 
-    const today = await getTodayWorkout(db, USER);
+    const today = await getTodayWorkout(db, USER, NOW);
+    expect(today?.dayName).toBe('רגליים');
+    expect(pull).toBeTruthy();
+  });
+
+  it("names yesterday's slot as missed", async () => {
+    const [push] = await seedPlan([
+      { name: 'דחיפה A', exercises: [['Barbell Bench Press', 4]] },
+      { name: 'משיכה A', exercises: [['Barbell Row', 4]] },
+      { name: 'רגליים', exercises: [['Barbell Back Squat', 4]] },
+    ]);
+    await logWorkout('2026-08-03T09:00:00', [{ exercise: 'Barbell Bench Press', weight: 80, reps: 5 }], {
+      planDayId: push,
+    });
+
+    // Two days on: yesterday was pull's slot, and it went untrained.
+    expect((await getTodayWorkout(db, USER, NOW))?.missedYesterday).toBe('משיכה A');
+  });
+
+  it('reports nothing missed when yesterday was the day trained', async () => {
+    const [push] = await seedPlan([
+      { name: 'דחיפה A', exercises: [['Barbell Bench Press', 4]] },
+      { name: 'משיכה A', exercises: [['Barbell Row', 4]] },
+    ]);
+    await logWorkout('2026-08-04T09:00:00', [{ exercise: 'Barbell Bench Press', weight: 80, reps: 5 }], {
+      planDayId: push,
+    });
+
+    const today = await getTodayWorkout(db, USER, NOW);
     expect(today?.dayName).toBe('משיכה A');
-    expect(today?.planDayId).toBe(pullDay);
+    expect(today?.missedYesterday).toBeNull();
+  });
+
+  it('stays on the day already trained today', async () => {
+    const [push] = await seedPlan([
+      { name: 'דחיפה A', exercises: [['Barbell Bench Press', 4]] },
+      { name: 'משיכה A', exercises: [['Barbell Row', 4]] },
+    ]);
+    await logWorkout('2026-08-05T07:00:00', [{ exercise: 'Barbell Bench Press', weight: 80, reps: 5 }], {
+      planDayId: push,
+    });
+
+    const today = await getTodayWorkout(db, USER, NOW);
+    // Finishing a workout must not immediately roll the card on to tomorrow's.
+    expect(today?.dayName).toBe('דחיפה A');
+    expect(today?.missedYesterday).toBeNull();
+  });
+
+  it('wraps around the end of the plan', async () => {
+    const [push] = await seedPlan([
+      { name: 'דחיפה A', exercises: [['Barbell Bench Press', 4]] },
+      { name: 'משיכה A', exercises: [['Barbell Row', 4]] },
+    ]);
+    // Two days after training slot 0 of a two-day plan lands back on slot 0.
+    await logWorkout('2026-08-03T09:00:00', [{ exercise: 'Barbell Bench Press', weight: 80, reps: 5 }], {
+      planDayId: push,
+    });
+    expect((await getTodayWorkout(db, USER, NOW))?.dayName).toBe('דחיפה A');
   });
 
   it('counts sets and estimates a duration from them', async () => {
     await seedPlan([
       { name: 'דחיפה A', exercises: [['Barbell Bench Press', 4], ['Overhead Press', 3]] },
     ]);
-    const today = await getTodayWorkout(db, USER);
+    const today = await getTodayWorkout(db, USER, NOW);
     expect(today?.exerciseCount).toBe(2);
     expect(today?.setCount).toBe(7);
     expect(today?.estimatedMinutes).toBeGreaterThan(10);
@@ -98,24 +163,23 @@ describe('getTodayWorkout', () => {
 
   it('assumes three sets for an exercise with no target', async () => {
     await seedPlan([{ name: 'דחיפה A', exercises: [['Barbell Bench Press', null]] }]);
-    expect((await getTodayWorkout(db, USER))?.setCount).toBe(3);
+    expect((await getTodayWorkout(db, USER, NOW))?.setCount).toBe(3);
   });
 
   it('gives Hebrew names, because the card is read not queried', async () => {
     await seedPlan([{ name: 'דחיפה A', exercises: [['Barbell Bench Press', 3]] }]);
-    const today = await getTodayWorkout(db, USER);
-    // The catalogue key is English; the screen must never show it.
+    const today = await getTodayWorkout(db, USER, NOW);
     expect(today?.exerciseNames[0]).not.toBe('Barbell Bench Press');
     expect(today?.exerciseNames[0]).toMatch(/[֐-׿]/);
   });
 
   it('is null with no active plan, rather than inventing one', async () => {
-    expect(await getTodayWorkout(db, USER)).toBeNull();
+    expect(await getTodayWorkout(db, USER, NOW)).toBeNull();
   });
 
   it('is null for a plan day with no exercises', async () => {
     await seedPlan([{ name: 'ריק', exercises: [] }]);
-    expect(await getTodayWorkout(db, USER)).toBeNull();
+    expect(await getTodayWorkout(db, USER, NOW)).toBeNull();
   });
 });
 

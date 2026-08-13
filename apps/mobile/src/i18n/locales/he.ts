@@ -206,6 +206,7 @@ export const he = {
     settings: 'הגדרות',
   },
   home: {
+    missedYesterday: 'אתמול ({{day}}) לא בוצע',
     greetingMorning: 'בוקר טוב',
     greetingAfternoon: 'צהריים טובים',
     greetingEvening: 'ערב טוב',
