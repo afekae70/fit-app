@@ -5,7 +5,7 @@
  * mid-session (or the OS killing it while the phone sits in a pocket between sets) loses
  * nothing. React state is a render cache reloaded from the database after each mutation.
  *
- * The screen is deliberately dumb about set counts. It renders one ExerciseCard per
+ * The screen is deliberately dumb about set counts. It renders one ExercisePanel per
  * session_exercise row and lets each card manage its own sets — which is what makes 4 sets of
  * chest press and 2 of face pulls fall out naturally rather than needing special handling.
  */
@@ -27,17 +27,13 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
-import {
-  ExerciseCard,
-  type ExerciseTarget,
-  type PreviousSet,
-} from '../../src/components/ExerciseCard.js';
+import type { ExerciseTarget, PreviousSet } from '../../src/components/ExerciseCard.js';
 import { FinishSummary } from '../../src/components/FinishSummary.js';
 import { ExercisePanel } from '../../src/components/workout/ExercisePanel.js';
+import { EXTEND_SECONDS, RestBanner } from '../../src/components/workout/RestBanner.js';
 import { WorkoutHeader } from '../../src/components/workout/WorkoutHeader.js';
 import { PrToast, type PrToastData } from '../../src/components/PrToast.js';
-import { RestTimer } from '../../src/components/RestTimer.js';
-import { DEFAULT_REST_SECONDS, REST_STEP_SECONDS } from '../../src/components/restTime.js';
+import { DEFAULT_REST_SECONDS } from '../../src/components/restTime.js';
 import { EmptyState, SkeletonScreen } from '../../src/components/ui.js';
 import { WorkoutHome, type TemplateEntry } from '../../src/components/WorkoutHome.js';
 import { listPlanDayExercises } from '../../src/db/plans.js';
@@ -106,7 +102,7 @@ export default function WorkoutsScreen() {
   const [templates, setTemplates] = useState<TemplateEntry[]>([]);
   const [history, setHistory] = useState<SessionSummaryRow[]>([]);
   const [prToast, setPrToast] = useState<PrToastData | null>(null);
-  // Held as an absolute deadline, not a countdown — see RestTimer for why a tick counter drifts
+  // Held as an absolute deadline, not a countdown — see RestBanner for why a tick counter drifts
   // and stalls when the phone sleeps mid-set.
   const [rest, setRest] = useState<{ deadline: number; total: number } | null>(null);
   // A set that already triggered a celebration stays quiet on further edits this session —
@@ -460,22 +456,22 @@ export default function WorkoutsScreen() {
 
       <PrToast data={prToast} onDone={() => setPrToast(null)} />
 
-      <RestTimer
+      <RestBanner
         deadline={rest?.deadline ?? null}
         totalSeconds={rest?.total ?? DEFAULT_REST_SECONDS}
         nextLabel={nextSetLabel}
-        onAddTime={() =>
+        onExtend={() =>
           setRest((current) =>
             current
               ? {
-                  deadline: current.deadline + REST_STEP_SECONDS * 1000,
-                  total: current.total + REST_STEP_SECONDS,
+                  deadline: current.deadline + EXTEND_SECONDS * 1000,
+                  total: current.total + EXTEND_SECONDS,
                 }
               : current,
           )
         }
         onSkip={() => setRest(null)}
-        onFinished={() => setRest(null)}
+        onComplete={() => setRest(null)}
       />
 
       <FinishSummary
