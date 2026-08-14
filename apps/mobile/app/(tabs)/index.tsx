@@ -25,6 +25,7 @@ import {
   TodayWorkoutCard,
   WeekSummaryRow,
 } from '../../src/components/home/TodayCards.js';
+import { FadeSlideIn } from '../../src/components/motion.js';
 import { Skeleton } from '../../src/components/ui.js';
 import {
   getTodayWorkout,
@@ -119,14 +120,22 @@ export default function TodayScreen() {
         <LoadingPanel />
       ) : data.workout ? (
         <>
-          <TodayWorkoutCard workout={data.workout} onStart={startWorkout} />
-          <StreakCard
-            days={data.strip}
-            streakWeeks={Math.floor(data.streak.currentDays / 7)}
-            trainedThisWeek={data.summary.workouts}
-            targetPerWeek={WEEKLY_TARGET}
-          />
-          <WeekSummaryRow summary={data.summary} />
+          {/* Staggered in the order they are read: what to train, then the streak that argues
+              for doing it, then the week behind it. */}
+          <FadeSlideIn index={0}>
+            <TodayWorkoutCard workout={data.workout} onStart={startWorkout} />
+          </FadeSlideIn>
+          <FadeSlideIn index={1}>
+            <StreakCard
+              days={data.strip}
+              streakWeeks={Math.floor(data.streak.currentDays / 7)}
+              trainedThisWeek={data.summary.workouts}
+              targetPerWeek={WEEKLY_TARGET}
+            />
+          </FadeSlideIn>
+          <FadeSlideIn index={2}>
+            <WeekSummaryRow summary={data.summary} />
+          </FadeSlideIn>
         </>
       ) : (
         <EmptyPanel onStartEmpty={startWorkout} onPickPlan={() => router.push('/(tabs)/plan')} />

@@ -28,6 +28,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
+import { FadeSlideIn } from '../../src/components/motion.js';
 import {
   Banner,
   Button,
@@ -244,8 +245,8 @@ export default function PlanScreen() {
               const isNext = day.id === nextDayId;
               const label = day.name?.trim() || `${t('plan.day')} ${day.day_index}`;
               return (
+                <FadeSlideIn key={day.id} index={index}>
                 <Pressable
-                  key={day.id}
                   onPress={() => router.push({ pathname: '/plan-day/[id]', params: { id: day.id } })}
                   style={[styles.dayCard, isNext && styles.dayCardNext]}
                   accessibilityRole="button"
@@ -301,6 +302,7 @@ export default function PlanScreen() {
                     <Text style={styles.emptyDayHint}>{t('plan.dayEmptyHint')}</Text>
                   )}
                 </Pressable>
+                </FadeSlideIn>
               );
             })
           )}

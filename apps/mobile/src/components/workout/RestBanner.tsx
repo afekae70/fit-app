@@ -35,14 +35,14 @@ import Svg, { Circle } from 'react-native-svg';
 import { formatRemaining, restRingOffset } from '../../workout/derived.js';
 import { hapticLight } from '../../haptics.js';
 import { useTheme } from '../../ThemeProvider.js';
-import { radius, type ColorPalette } from '../../theme.js';
+import { duration, radius, type ColorPalette } from '../../theme.js';
 
 const RING_SIZE = 48;
 const RING_STROKE = 3;
 const RING_RADIUS = (RING_SIZE - RING_STROKE) / 2;
 const CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
-const FADE_MS = 240;
+const FADE_MS = duration.normal;
 /** What "+30" adds. Named because it appears in the label and the handler and must not drift. */
 export const EXTEND_SECONDS = 30;
 

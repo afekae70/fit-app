@@ -37,11 +37,13 @@ import { hapticLight, hapticSuccess } from '../../haptics.js';
 import { useTheme } from '../../ThemeProvider.js';
 import { useUnit } from '../../UnitsProvider.js';
 import { kgToDisplay, weightUnitKey } from '../../units.js';
-import { radius, type ColorPalette } from '../../theme.js';
+import { duration, radius, type ColorPalette } from '../../theme.js';
 
 /** The handoff's timings. The tint settles before the glyph finishes popping, which is the point. */
-const TINT_MS = 180;
-const POP_MS = 320;
+// On the shared scale (theme.ts) rather than picked here: a tint responding at one speed on
+// this row and another on the segmented control is exactly the drift the scale exists to stop.
+const TINT_MS = duration.quick;
+const POP_MS = duration.slow;
 
 export interface SetRowProps {
   index: number;

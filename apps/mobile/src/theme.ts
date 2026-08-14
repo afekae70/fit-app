@@ -191,3 +191,40 @@ export const lineHeight = {
   normal: 22,
   relaxed: 26,
 } as const;
+
+/**
+ * Motion.
+ *
+ * A scale, for the same reason `spacing` is one: durations picked per component drift apart, and
+ * the drift is what makes an interface feel assembled rather than designed. Everything already
+ * animating in this app sat between 180ms and 320ms — these are those values, named, so the next
+ * one lands on the same grid instead of near it.
+ *
+ * The ceiling is deliberate. Nothing here is longer than `slow`, because this is an app used
+ * between sets with a barbell waiting: an animation the user has to wait out is a worse
+ * interface than no animation. Anything longer is ambient (the gradient background) and belongs
+ * to the component that owns it, not to this scale.
+ */
+export const duration = {
+  /** Colour and tint changes — fast enough to read as a response, not a transition. */
+  instant: 120,
+  /** The default. Entrances, exits, most state changes. */
+  quick: 180,
+  /** Entrances that travel a distance, and anything the eye should follow. */
+  normal: 260,
+  /** Celebrations and the few moments worth dwelling on. */
+  slow: 320,
+} as const;
+
+/**
+ * Stagger between items in a list.
+ *
+ * Small on purpose: at 40ms a six-card screen is fully in within a quarter second of the last
+ * card starting, and the effect reads as one movement with depth rather than as items queueing.
+ * The cap matters more than the step — without it, the twelfth row of a long list would arrive
+ * half a second after the first, which is a loading screen pretending to be a flourish.
+ */
+export const stagger = {
+  step: 40,
+  maxSteps: 6,
+} as const;

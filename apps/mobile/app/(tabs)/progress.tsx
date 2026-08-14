@@ -128,19 +128,19 @@ export default function ProgressScreen() {
 
       {volume.some((w) => w.volumeKg > 0) ? (
         <>
-          <Card>
+          <Card index={0}>
             <SectionTitle>{t('progress.weeklyVolume')}</SectionTitle>
             <WeeklyVolumeChart weeks={volume} />
           </Card>
 
-          <Card>
+          <Card index={1}>
             <SectionTitle>{t('progress.consistency')}</SectionTitle>
             <Hint>{t('progress.consistencyHint')}</Hint>
             <ConsistencyGrid days={heat} />
           </Card>
 
           {records.length > 0 ? (
-            <Card>
+            <Card index={2}>
               <SectionTitle>{t('progress.records')}</SectionTitle>
               <PersonalRecordList records={records} isHebrew={isHebrew} />
             </Card>
@@ -154,7 +154,7 @@ export default function ProgressScreen() {
         <>
           <Hint>{t('progress.subtitle')}</Hint>
 
-          {summaries.map((summary) => {
+          {summaries.map((summary, cardIndex) => {
             const trend = classify(summary);
             const seed = EXERCISE_BY_KEY.get(summary.exerciseKey);
             const label = seed ? (isHebrew ? seed.nameHe : seed.nameEn) : summary.exerciseKey;
@@ -163,7 +163,9 @@ export default function ProgressScreen() {
             const trendTint = trendColor(trend, colors);
 
             return (
-              <Card key={summary.exerciseKey}>
+              // Offset past the chart cards above so the screen reads as one sequence rather
+              // than two lists starting at the same moment.
+              <Card key={summary.exerciseKey} index={cardIndex + 3}>
                 <View style={styles.cardHeader}>
                   <Text style={styles.exerciseName}>{label}</Text>
                   <View style={[styles.badge, { borderColor: trendTint }]}>

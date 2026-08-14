@@ -18,7 +18,6 @@ import { useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Animated,
-  Easing,
   Pressable,
   StyleSheet,
   Text,
@@ -29,8 +28,17 @@ import {
   type ViewStyle,
 } from 'react-native';
 
+import { FadeSlideIn } from './motion.js';
 import { useTheme } from '../ThemeProvider.js';
-import { fontSize, fontWeight, lineHeight, radius, spacing, type ColorPalette } from '../theme.js';
+import {
+  duration,
+  fontSize,
+  fontWeight,
+  lineHeight,
+  radius,
+  spacing,
+  type ColorPalette,
+} from '../theme.js';
 
 /** Shared tactile feedback for Button and Segmented — a small scale dip under the finger. */
 function usePressScale() {
@@ -42,33 +50,28 @@ function usePressScale() {
 }
 
 /**
- * Shared mount entrance for Card, Banner, and EmptyState — a soft rise instead of popping in,
- * so a whole screen of data reads as settling into place rather than just appearing.
+ * Shared mount entrance for Card, Banner and EmptyState.
+ *
+ * Delegates to `FadeSlideIn` rather than reimplementing the design system's `fu` — one
+ * implementation of an entrance means one place its duration, travel and easing are decided,
+ * and it is also how these three inherit reduce-motion support without each asking for it.
+ *
+ * `index` staggers a screen of cards so they arrive in sequence instead of together. Optional
+ * and defaulting to 0: a lone card should not wait for a queue of one.
  */
-function FadeIn({ style, children }: { style?: StyleProp<ViewStyle>; children: ReactNode }) {
-  const progress = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    // The design system's `fu`: 260ms, opacity 0->1, translateY 8->0, eased out.
-    Animated.timing(progress, {
-      toValue: 1,
-      duration: 260,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start();
-  }, [progress]);
-
+function FadeIn({
+  style,
+  children,
+  index,
+}: {
+  style?: StyleProp<ViewStyle>;
+  children: ReactNode;
+  index?: number;
+}) {
   return (
-    <Animated.View
-      style={[
-        {
-          opacity: progress,
-          transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }],
-        },
-        style,
-      ]}
-    >
+    <FadeSlideIn style={style} index={index}>
       {children}
-    </Animated.View>
+    </FadeSlideIn>
   );
 }
 
@@ -80,16 +83,23 @@ export function Card({
   children,
   style,
   tone = 'default',
+  index,
 }: {
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
   /** `accent` marks the one card on screen that is the primary action. */
   tone?: 'default' | 'accent';
+  /**
+   * Position in a stack of cards. Staggers the entrance so a screenful arrives in sequence
+   * rather than as one flash. Omit it for a card that stands alone — a queue of one only adds
+   * a delay before anything appears.
+   */
+  index?: number;
 }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   return (
-    <FadeIn style={[styles.card, tone === 'accent' && styles.cardAccent, style]}>
+    <FadeIn style={[styles.card, tone === 'accent' && styles.cardAccent, style]} index={index}>
       {children}
     </FadeIn>
   );
@@ -255,7 +265,7 @@ function SegmentButton<T extends string>({
   useEffect(() => {
     Animated.timing(activeProgress, {
       toValue: active ? 1 : 0,
-      duration: 180,
+      duration: duration.quick,
       useNativeDriver: false,
     }).start();
   }, [active, activeProgress]);

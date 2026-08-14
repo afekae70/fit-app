@@ -14,7 +14,7 @@ import { Animated, Easing, StyleSheet, Text, type TextStyle, type ViewStyle } fr
 import { useTheme } from '../ThemeProvider.js';
 import { useUnit } from '../UnitsProvider.js';
 import { kgToDisplay } from '../units.js';
-import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../theme.js';
+import { duration, fontSize, fontWeight, radius, spacing, type ColorPalette } from '../theme.js';
 
 export interface PrToastData {
   exerciseLabel: string;
@@ -26,8 +26,10 @@ export interface PrToastData {
 // becoming something you wait out — and there is deliberately no confetti and no full-screen
 // takeover, because a PR happens mid-workout with a bar still to rack.
 const VISIBLE_MS = 2600;
-const ENTER_MS = 300;
-const EXIT_MS = 220;
+// VISIBLE_MS below stays a literal: it is how long the toast dwells, which is a reading-speed
+// judgement rather than a transition, and has no business on a scale of transition durations.
+const ENTER_MS = duration.normal;
+const EXIT_MS = duration.quick;
 
 export function PrToast({ data, onDone }: { data: PrToastData | null; onDone: () => void }) {
   const { t } = useTranslation();

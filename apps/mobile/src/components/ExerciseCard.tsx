@@ -41,7 +41,7 @@ import {
   weightUnitKey,
 } from '../units.js';
 import { WEIGHT_STEP_KG, WEIGHT_STEP_LB } from '../workout/derived.js';
-import { fontSize, radius, spacing, type ColorPalette } from '../theme.js';
+import { duration, fontSize, radius, spacing, type ColorPalette } from '../theme.js';
 
 export interface PreviousSet {
   set_index: number;
@@ -182,7 +182,7 @@ function DoneMark({ done, style }: { done: boolean; style: StyleProp<TextStyle> 
       pop.setValue(0);
       Animated.timing(pop, {
         toValue: 1,
-        duration: 260,
+        duration: duration.normal,
         easing: Easing.out(Easing.back(2.2)),
         useNativeDriver: true,
       }).start();
