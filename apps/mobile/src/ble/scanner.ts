@@ -98,7 +98,7 @@ interface ConnectedDeviceLike {
  */
 function loadBlePlx(): BlePlxModule | null {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-return
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     return require('react-native-ble-plx') as BlePlxModule;
   } catch {
     return null;

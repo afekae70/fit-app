@@ -34,8 +34,11 @@ jobs:
       - name: Install
         run: npm ci
 
-      # The two commands CLAUDE.md names as the gate before saying anything works. Run as
-      # separate steps so a red build says which half broke without opening the log.
+      # The gate CLAUDE.md names before saying anything works, plus lint. Separate steps so a
+      # red build says which one broke without opening the log.
+      - name: Lint
+        run: npm run lint
+
       - name: Typecheck
         run: npm run typecheck
 

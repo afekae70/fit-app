@@ -20,9 +20,14 @@
     "db:seed": "npm run db:seed --workspace @fit/api"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "@types/node": "^22.10.2",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "globals": "^15.15.0",
     "prettier": "^3.4.2",
     "typescript": "^5.7.2",
+    "typescript-eslint": "^8.67.0",
     "vitest": "^2.1.8"
   },
   "overridesReason": "React Native tolerates exactly ONE copy of React; two instances cause 'Invalid hook call' crashes at runtime rather than a build failure. Transitive deps regularly pull a second React version, so this pins the tree to one copy. The version must track the Expo SDK — 19.1.0 for SDK 54 (React Native 0.81). Update it in lockstep whenever the SDK moves.",

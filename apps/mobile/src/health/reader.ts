@@ -55,7 +55,7 @@ const SDK_PROVIDER_UPDATE_REQUIRED = 2;
 
 function loadHealthConnect(): HealthConnectModule | null {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-return
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     return require('react-native-health-connect') as HealthConnectModule;
   } catch {
     return null;

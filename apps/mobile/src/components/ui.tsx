@@ -129,9 +129,7 @@ export function ScreenHeader({ title }: { title: string }) {
     <View style={styles.screenHeaderRow}>
       <ScreenTitle>{title}</ScreenTitle>
       <Pressable
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- settings.tsx is new;
-        // expo-router's typed-routes union regenerates on the next `expo start`/build.
-        onPress={() => router.push('/settings' as any)}
+        onPress={() => router.push('/settings')}
         accessibilityRole="button"
         accessibilityLabel={t('settings.title')}
         hitSlop={8}

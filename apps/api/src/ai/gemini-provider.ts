@@ -97,7 +97,7 @@ export class GeminiProvider implements CoachProvider {
         // Typed loosely on purpose: the caller hands over a plain JSON Schema object (derived
         // from the Zod schemas in packages/shared) and the SDK's own Schema type is a narrower
         // subset. Asserting here would claim a compatibility that is the caller's to guarantee.
-        responseSchema: jsonSchema as never,
+        responseSchema: jsonSchema,
         maxOutputTokens: 8192,
       },
     });

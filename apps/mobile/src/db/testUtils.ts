@@ -34,19 +34,19 @@ export function createTestExecutor(): SqlExecutor & { close: () => void } {
   db.exec('PRAGMA foreign_keys = ON;');
 
   return {
-    // eslint-disable-next-line @typescript-eslint/require-await
+     
     async run(sql, params = []) {
       db.prepare(sql).run(...(params as never[]));
     },
-    // eslint-disable-next-line @typescript-eslint/require-await
+     
     async all<T>(sql: string, params: unknown[] = []) {
       return db.prepare(sql).all(...(params as never[])) as T[];
     },
-    // eslint-disable-next-line @typescript-eslint/require-await
+     
     async get<T>(sql: string, params: unknown[] = []) {
       return (db.prepare(sql).get(...(params as never[])) ?? null) as T | null;
     },
-    // eslint-disable-next-line @typescript-eslint/require-await
+     
     async exec(sql) {
       db.exec(sql);
     },

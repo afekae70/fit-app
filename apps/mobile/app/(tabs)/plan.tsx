@@ -10,7 +10,6 @@
  * trained rather than mapping onto weekdays.
  */
 
-import { EXERCISE_SEED, type ExerciseSeed } from '@fit/shared/catalog';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -55,10 +54,6 @@ import { getActiveSession } from '../../src/db/workouts.js';
 import { useTheme } from '../../src/ThemeProvider.js';
 import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../../src/theme.js';
 
-const EXERCISE_BY_KEY = new Map<string, ExerciseSeed>(
-  EXERCISE_SEED.map((exercise) => [exercise.nameEn, exercise]),
-);
-
 type DayStatus = {
   id: string;
   day_index: number;
@@ -92,7 +87,7 @@ export default function PlanScreen() {
     setPlan(active);
 
     if (active) {
-      setDays((await listPlanDayStatus(db, userId, active.id)) as DayStatus[]);
+      setDays((await listPlanDayStatus(db, userId, active.id)));
       setNextDayId((await getNextPlanDay(db, userId, active.id))?.id ?? null);
     } else {
       setDays([]);

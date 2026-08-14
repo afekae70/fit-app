@@ -112,7 +112,7 @@ export default function WorkoutsScreen() {
   /** Refresh the idle-state lists (templates + history). */
   const reloadHome = useCallback(async () => {
     const db = await getExecutor();
-    setTemplates((await listNamedTemplates(db, userId)) as TemplateEntry[]);
+    setTemplates((await listNamedTemplates(db, userId)));
     setHistory(await listSessionSummaries(db, userId, 50));
   }, [userId]);
 
@@ -188,6 +188,10 @@ export default function WorkoutsScreen() {
     return () => {
       cancelled = true;
     };
+    // `userId` is covered transitively: both callbacks are memoised on it, so a change of
+    // account already produces new identities here and re-runs this effect. The rule cannot see
+    // through a useCallback to know that.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reload, reloadHome]);
 
 

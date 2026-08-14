@@ -196,6 +196,11 @@ export default function NutritionScreen() {
     return () => {
       cancelled = true;
     };
+    // Hydration runs once by design. `unit` is read only to format the initial strings — a later
+    // change is handled by the reformat effect below, and re-running this one would refetch and
+    // overwrite whatever the user had already typed. `userId` cannot change under this component:
+    // AppGate remounts the whole subtree on a change of account.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Persist profile edits so the metrics tab (and later the AI coach) can read them.
@@ -212,6 +217,10 @@ export default function NutritionScreen() {
         goal,
       });
     })();
+    // `userId` is deliberately absent. Adding it would fire this save during the frame an
+    // account changes, writing the previous user's form values onto the new user's profile —
+    // and AppGate remounts on that change anyway, so there is nothing to react to here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated, ageRaw, heightCm, sex, activityLevel, goal]);
 
   /*
@@ -286,9 +295,7 @@ export default function NutritionScreen() {
       <View style={styles.header}>
         <Text style={styles.appName}>{t('common.appName')}</Text>
         <Pressable
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- settings.tsx is new;
-          // expo-router's typed-routes union regenerates on the next `expo start`/build.
-          onPress={() => router.push('/settings' as any)}
+          onPress={() => router.push('/settings')}
           style={styles.langButton}
           accessibilityRole="button"
           accessibilityLabel={t('settings.title')}

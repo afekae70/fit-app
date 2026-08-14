@@ -19,11 +19,11 @@ import { claimLocalData, type ClaimStorage } from './claimLocalData.js';
 function createFakeStorage(): ClaimStorage {
   const store = new Map<string, string>();
   return {
-    // eslint-disable-next-line @typescript-eslint/require-await
+     
     async getItem(key) {
       return store.get(key) ?? null;
     },
-    // eslint-disable-next-line @typescript-eslint/require-await
+     
     async setItem(key, value) {
       store.set(key, value);
     },

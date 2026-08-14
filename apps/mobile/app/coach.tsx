@@ -194,6 +194,9 @@ export default function CoachChatScreen() {
         );
       }
     })();
+    // Once, on mount. `userId` cannot change under this screen — AppGate remounts the subtree
+    // on a change of account.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const send = () => {
@@ -300,9 +303,7 @@ export default function CoachChatScreen() {
           <Text style={styles.viewProgress}>📈 {t('coach.viewProgress')}</Text>
         </Pressable>
         <Pressable
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- settings.tsx is new;
-          // expo-router's typed-routes union regenerates on the next `expo start`/build.
-          onPress={() => router.push('/settings' as any)}
+          onPress={() => router.push('/settings')}
           accessibilityRole="button"
           accessibilityLabel={t('settings.title')}
           hitSlop={8}

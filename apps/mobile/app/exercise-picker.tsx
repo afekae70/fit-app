@@ -121,8 +121,10 @@ export default function ExercisePickerScreen() {
     // exercise_key is always the English name — the stable catalogue key, independent of UI
     // language. Storing the localised name would break history when the language changes.
     const target = {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- returnTo is a runtime
-      // string, so it cannot satisfy expo-router's generated union of literal route types.
+      // `returnTo` is a runtime string, so it cannot satisfy expo-router's generated union of
+      // literal route types. The disable has to sit on the line the cast is on -- the previous
+      // one was above a continuation comment and therefore suppressed nothing.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
       pathname: (params.returnTo ?? '/(tabs)/workouts') as any,
       params: {
         sessionId: params.sessionId ?? '',

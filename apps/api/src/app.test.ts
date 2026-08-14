@@ -4,7 +4,7 @@
  * because postgres.js connects lazily and neither route below issues a query.
  */
 
-import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair, type JWK } from 'jose';
+import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair } from 'jose';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { buildApp } from './app.js';
@@ -36,7 +36,7 @@ describe('buildApp', () => {
     // `createRemoteJWKSet` against the fake SUPABASE_URL above, which would try a real fetch.
     const { publicKey, privateKey } = await generateKeyPair('ES256', { extractable: true });
     const publicJwk = await exportJWK(publicKey);
-    const jwks = createLocalJWKSet({ keys: [{ ...publicJwk, kid: KID, alg: 'ES256' } as JWK] });
+    const jwks = createLocalJWKSet({ keys: [{ ...publicJwk, kid: KID, alg: 'ES256' }] });
     signToken = (claims) =>
       new SignJWT(claims)
         .setProtectedHeader({ alg: 'ES256', kid: KID })

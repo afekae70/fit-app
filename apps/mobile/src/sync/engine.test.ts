@@ -50,12 +50,12 @@ function createFakeServer(startAt = Date.parse('2026-03-01T00:00:00.000Z')): Fak
       table(name).set(row.id as string, { ...row, updated_at: row.updated_at ?? now() });
     },
 
-    // eslint-disable-next-line @typescript-eslint/require-await
+     
     async ensureProfile() {
       /* the real one guards a foreign key the fake does not model */
     },
 
-    // eslint-disable-next-line @typescript-eslint/require-await
+     
     async upsert(name, rows) {
       if (server.failNextUpsert) {
         server.failNextUpsert = false;
@@ -72,7 +72,7 @@ function createFakeServer(startAt = Date.parse('2026-03-01T00:00:00.000Z')): Fak
       }
     },
 
-    // eslint-disable-next-line @typescript-eslint/require-await
+     
     async changedSince(name, since, limit) {
       return [...table(name).values()]
         .filter((r) => since === null || Date.parse(r.updated_at as string) > Date.parse(since))
@@ -80,7 +80,7 @@ function createFakeServer(startAt = Date.parse('2026-03-01T00:00:00.000Z')): Fak
         .slice(0, limit);
     },
 
-    // eslint-disable-next-line @typescript-eslint/require-await
+     
     async fetchById(name, id) {
       return table(name).get(id) ?? null;
     },

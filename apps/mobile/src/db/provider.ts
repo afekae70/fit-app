@@ -19,6 +19,11 @@ export function createExpoExecutor(db: SQLiteDatabase): SqlExecutor {
       await db.runAsync(sql, params as SQLiteBindParams);
     },
     async all<T>(sql: string, params: unknown[] = []) {
+      // The assertion is redundant to the compiler only because getAllAsync is typed `any[]`,
+      // and `any[]` goes into `T[]` unchallenged. Deleting it (which is what
+      // no-unnecessary-type-assertion will suggest) leaves `T` unused and this seam silently
+      // untyped -- the rule is measuring the cast against a lie it was handed.
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
       return (await db.getAllAsync(sql, params as SQLiteBindParams)) as T[];
     },
     async get<T>(sql: string, params: unknown[] = []) {

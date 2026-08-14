@@ -72,6 +72,9 @@ export function createSupabaseTransport(client: SupabaseClient): SyncTransport {
     async fetchById(table, id) {
       // `maybeSingle` returns null instead of erroring when there is no row — which is the
       // expected answer here, not a failure: the parent may have been hard-deleted upstream.
+      // The client cannot type a table chosen at runtime, so `data` arrives as `any`; the
+      // cast on the return is what narrows it.
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       const { data, error } = await client.from(table).select('*').eq('id', id).maybeSingle();
       if (error) throw new SyncTransportError(table, 'fetchById', error);
       return (data as Row | null) ?? null;

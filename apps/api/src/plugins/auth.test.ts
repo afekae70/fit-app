@@ -10,7 +10,7 @@
  */
 
 import Fastify from 'fastify';
-import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair, type JWK } from 'jose';
+import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair } from 'jose';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import authPlugin from './auth.js';
@@ -20,7 +20,7 @@ const KID = 'test-key-1';
 async function buildTestApp() {
   const { publicKey, privateKey } = await generateKeyPair('ES256', { extractable: true });
   const publicJwk = await exportJWK(publicKey);
-  const jwks = createLocalJWKSet({ keys: [{ ...publicJwk, kid: KID, alg: 'ES256' } as JWK] });
+  const jwks = createLocalJWKSet({ keys: [{ ...publicJwk, kid: KID, alg: 'ES256' }] });
 
   async function signToken(claims: Record<string, unknown>, expiresIn = '1h') {
     return new SignJWT(claims)
