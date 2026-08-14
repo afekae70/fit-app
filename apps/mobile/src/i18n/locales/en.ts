@@ -506,6 +506,12 @@ export const en = {
     unitsImperial: 'Imperial',
     unitsHint:
       'Display only. Everything is stored metric, so switching here changes nothing you have already logged — only how it is shown.',
+    remindersTitle: 'Reminders',
+    reminderWeekly: 'Weekly planning reminder',
+    reminderWeeklyHint: 'A notification on Saturday at 19:00 to plan the week ahead.',
+    reminderOn: 'On',
+    reminderOff: 'Off',
+    reminderDenied: 'Notification permission was denied. You can change it in device settings.',
     account: 'Account',
   },
   errorBoundary: {

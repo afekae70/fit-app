@@ -497,6 +497,12 @@ export const he = {
     unitsImperial: 'אימפריאלי',
     unitsHint:
       'תצוגה בלבד. הכול נשמר במערכת המטרית, אז החלפה כאן לא משנה שום נתון שכבר רשמת — רק איך הוא מוצג.',
+    remindersTitle: 'תזכורות',
+    reminderWeekly: 'תזכורת תכנון שבועית',
+    reminderWeeklyHint: 'התראה בשבת ב-19:00 להזכיר לתכנן את השבוע הבא.',
+    reminderOn: 'פעיל',
+    reminderOff: 'כבוי',
+    reminderDenied: 'ההרשאה להתראות נדחתה. אפשר לשנות אותה בהגדרות המכשיר.',
     account: 'חשבון',
   },
   errorBoundary: {

@@ -6,7 +6,7 @@
  */
 
 import { router } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView, StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -15,8 +15,21 @@ import type { UnitPreference } from '@fit/shared';
 
 import { useAuth } from '../src/auth/AuthProvider.js';
 import { SyncCard } from '../src/components/SyncCard.js';
-import { Banner, Button, Card, ScreenTitle, Segmented, SectionTitle } from '../src/components/ui.js';
+import {
+  Banner,
+  Button,
+  Card,
+  Hint,
+  ScreenTitle,
+  Segmented,
+  SectionTitle,
+} from '../src/components/ui.js';
 import { setAppLanguage, type Language } from '../src/i18n/index.js';
+import {
+  cancelWeeklyReminder,
+  isWeeklyReminderScheduled,
+  scheduleWeeklyReminder,
+} from '../src/notifications.js';
 import { useTheme, type ColorScheme } from '../src/ThemeProvider.js';
 import { useUnits } from '../src/UnitsProvider.js';
 import { fontSize, spacing, type ColorPalette } from '../src/theme.js';
@@ -31,6 +44,37 @@ export default function SettingsScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [reloadNeeded, setReloadNeeded] = useState(false);
+  const [reminderOn, setReminderOn] = useState(false);
+  const [reminderDenied, setReminderDenied] = useState(false);
+
+  // Read from the OS rather than stored: the user can revoke notification permission outside
+  // the app, and a toggle that says "on" while nothing is scheduled is worse than no toggle.
+  useEffect(() => {
+    let cancelled = false;
+    void isWeeklyReminderScheduled().then((on) => {
+      if (!cancelled) setReminderOn(on);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const toggleReminder = async (next: 'on' | 'off') => {
+    if (next === 'off') {
+      await cancelWeeklyReminder();
+      setReminderOn(false);
+      setReminderDenied(false);
+      return;
+    }
+    const scheduled = await scheduleWeeklyReminder({
+      title: t('settings.reminderWeekly'),
+      body: t('week.unplanned'),
+    });
+    setReminderOn(scheduled);
+    // Only a refusal is worth reporting. A build without the native module also returns false,
+    // but there is nothing the user could do about that and no message that would help.
+    setReminderDenied(!scheduled);
+  };
 
   // setAppLanguage never restarts the app itself (see its file header for why) — the banner
   // below is how a direction change actually reaches the user's eyes.
@@ -92,6 +136,22 @@ export default function SettingsScreen() {
           ]}
         />
         <Text style={styles.unitsHint}>{t('settings.unitsHint')}</Text>
+      </Card>
+
+      <Card>
+        <SectionTitle>{t('settings.remindersTitle')}</SectionTitle>
+        <Hint>{t('settings.reminderWeeklyHint')}</Hint>
+
+        <Segmented<'on' | 'off'>
+          label={t('settings.reminderWeekly')}
+          selected={reminderOn ? 'on' : 'off'}
+          onSelect={(next) => void toggleReminder(next)}
+          options={[
+            { value: 'on', label: t('settings.reminderOn') },
+            { value: 'off', label: t('settings.reminderOff') },
+          ]}
+        />
+        {reminderDenied ? <Banner tone="warning">{t('settings.reminderDenied')}</Banner> : null}
       </Card>
 
       {session ? <SyncCard /> : null}
