@@ -27,6 +27,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
   type TextStyle,
   type ViewStyle,
@@ -36,7 +37,7 @@ import { stepReps, stepWeight } from '../../workout/derived.js';
 import { hapticLight, hapticSuccess } from '../../haptics.js';
 import { useTheme } from '../../ThemeProvider.js';
 import { useUnit } from '../../UnitsProvider.js';
-import { kgToDisplay, weightUnitKey } from '../../units.js';
+import { displayWeightToKg, kgToDisplay, weightUnitKey } from '../../units.js';
 import { duration, radius, type ColorPalette } from '../../theme.js';
 
 /** The handoff's timings. The tint settles before the glyph finishes popping, which is the point. */
@@ -44,6 +45,19 @@ import { duration, radius, type ColorPalette } from '../../theme.js';
 // this row and another on the segmented control is exactly the drift the scale exists to stop.
 const TINT_MS = duration.quick;
 const POP_MS = duration.slow;
+
+/**
+ * Parse a typed number, treating an empty or unparseable field as "leave it alone".
+ *
+ * Returning null rather than 0 matters: clearing the field and tapping away should not silently
+ * record a set lifted with no weight.
+ */
+function parseTyped(raw: string): number | null {
+  const normalised = raw.replace(',', '.').trim();
+  if (normalised === '') return null;
+  const value = Number(normalised);
+  return Number.isFinite(value) && value >= 0 ? value : null;
+}
 
 export interface SetRowProps {
   index: number;
@@ -139,9 +153,25 @@ export function SetRow({
       <Animated.View style={[s.field, fieldStyle]}>
         <Stepper label="−" onPress={() => onChangeWeight(stepWeight(weightKg, -1, unit))} />
         <View style={s.value}>
-          <Text style={[s.numeral, { color: numeralColor }]} numberOfLines={1}>
-            {weightKg === null ? '—' : kgToDisplay(weightKg, unit)}
-          </Text>
+          {/* Editable as well as steppable. The steppers cover the common nudge, but a weight
+              two plates away is a lot of taps — and a number you cannot type into reads as a
+              display rather than a field. Uncontrolled and re-keyed on the committed value, so
+              typing is never fought mid-entry. */}
+          <TextInput
+            key={`w-${weightKg ?? 'empty'}-${unit}`}
+            defaultValue={weightKg === null ? '' : String(kgToDisplay(weightKg, unit))}
+            onEndEditing={(e) => {
+              const typed = parseTyped(e.nativeEvent.text);
+              if (typed === null) return;
+              onChangeWeight(displayWeightToKg(typed, unit));
+            }}
+            keyboardType="numeric"
+            inputMode="decimal"
+            selectTextOnFocus
+            placeholder="—"
+            placeholderTextColor={colors.textFaint}
+            style={[s.numeral, s.numeralInput, { color: numeralColor }]}
+          />
           <Text style={s.unit}>{t(`common.${weightUnitKey(unit)}`)}</Text>
         </View>
         <Stepper label="+" onPress={() => onChangeWeight(stepWeight(weightKg, 1, unit))} />
@@ -150,9 +180,21 @@ export function SetRow({
       <Animated.View style={[s.field, fieldStyle]}>
         <Stepper label="−" onPress={() => onChangeReps(stepReps(reps, -1))} />
         <View style={s.value}>
-          <Text style={[s.numeral, { color: numeralColor }]} numberOfLines={1}>
-            {reps ?? '—'}
-          </Text>
+          <TextInput
+            key={`r-${reps ?? 'empty'}`}
+            defaultValue={reps === null ? '' : String(reps)}
+            onEndEditing={(e) => {
+              const typed = parseTyped(e.nativeEvent.text);
+              if (typed === null) return;
+              onChangeReps(Math.round(typed));
+            }}
+            keyboardType="number-pad"
+            inputMode="numeric"
+            selectTextOnFocus
+            placeholder="—"
+            placeholderTextColor={colors.textFaint}
+            style={[s.numeral, s.numeralInput, { color: numeralColor }]}
+          />
         </View>
         <Stepper label="+" onPress={() => onChangeReps(stepReps(reps, 1))} />
       </Animated.View>
@@ -214,6 +256,7 @@ const createStyles = (colors: ColorPalette) =>
     field: ViewStyle;
     value: ViewStyle;
     numeral: TextStyle;
+    numeralInput: TextStyle;
     unit: TextStyle;
     stepper: ViewStyle;
     stepperPressed: ViewStyle;
@@ -253,6 +296,14 @@ const createStyles = (colors: ColorPalette) =>
     value: { flex: 1, flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center', gap: 2 },
     // Tabular so the row does not shift as the number ticks between 8 and 10.
     numeral: { fontSize: 21, fontWeight: '500', fontVariant: ['tabular-nums'] },
+    // A TextInput carries platform padding and a minimum height a Text does not. Zeroed so
+    // swapping one for the other does not change the 48px row the handoff specifies.
+    numeralInput: {
+      padding: 0,
+      margin: 0,
+      minHeight: 0,
+      textAlign: 'center',
+    },
     unit: { color: colors.textFaint, fontSize: 10 },
 
     stepper: { width: 34, height: 48, alignItems: 'center', justifyContent: 'center' },

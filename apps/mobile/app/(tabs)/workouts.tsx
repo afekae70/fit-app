@@ -58,6 +58,7 @@ import {
   updateSet,
   type SessionExerciseWithSets,
   type SessionSummaryRow,
+  type SetInput,
 } from '../../src/db/workouts.js';
 import { hapticLight, hapticSuccess } from '../../src/haptics.js';
 import { useTheme } from '../../src/ThemeProvider.js';
@@ -327,7 +328,10 @@ export default function WorkoutsScreen() {
   );
 
   const patchSet = useCallback(
-    (setId: string, patch: Record<string, number | boolean | null>) => {
+    // Typed as SetInput, not Record<string, …>. A loose index signature is what let
+    // `{ weight_kg: … }` compile here while updateSet reads `weightKg` — the write was silently
+    // dropped and the weight simply never changed on screen.
+    (setId: string, patch: SetInput) => {
       void (async () => {
         const db = await getExecutor();
         await updateSet(db, setId, patch);
@@ -450,14 +454,6 @@ export default function WorkoutsScreen() {
         progress={totals.sets === 0 ? 0 : totals.done / totals.sets}
       />
 
-      <Pressable
-        onPress={() => setSummaryOpen(true)}
-        style={styles.finishButton}
-        accessibilityRole="button"
-      >
-        <Text style={styles.finishButtonText}>{t('workout.finishButton')}</Text>
-      </Pressable>
-
       <PrToast data={prToast} onDone={() => setPrToast(null)} />
 
       <RestBanner
@@ -536,7 +532,7 @@ export default function WorkoutsScreen() {
                 }
                 onChangeWeight={(i, next) => {
                   const set = exercise.sets[i];
-                  if (set) patchSet(set.id, { weight_kg: next });
+                  if (set) patchSet(set.id, { weightKg: next });
                 }}
                 onChangeReps={(i, next) => {
                   const set = exercise.sets[i];
@@ -565,6 +561,18 @@ export default function WorkoutsScreen() {
           accessibilityRole="button"
         >
           <Text style={styles.addExerciseText}>+ {t('workout.addExercise')}</Text>
+        </Pressable>
+
+        {/* Finishing lives at the end of the sets, not under the header. It is the last thing
+            you do, and at the top it sat directly under the progress bar where a mis-tap ends
+            the workout. Scrolled rather than pinned: RestBanner owns the bottom of the screen
+            while resting, and two bars competing for that strip is worse than one scroll. */}
+        <Pressable
+          onPress={() => setSummaryOpen(true)}
+          style={styles.finishButton}
+          accessibilityRole="button"
+        >
+          <Text style={styles.finishButtonText}>{t('workout.finishButton')}</Text>
         </Pressable>
       </ScrollView>
     </View>
@@ -615,13 +623,16 @@ const createStyles = (colors: ColorPalette) =>
   },
   progressFill: { height: '100%', backgroundColor: colors.accent, borderRadius: 2 },
   finishButton: {
+    marginTop: spacing.lg,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.accentBorder,
+    backgroundColor: colors.accentSoft,
     borderRadius: radius.pill,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
+    alignItems: 'center',
   },
-  finishButtonText: { color: colors.text, fontSize: fontSize.sm, fontWeight: '700' },
+  finishButtonText: { color: colors.accent, fontSize: fontSize.md, fontWeight: '700' },
   addExercise: {
     marginTop: spacing.sm,
     paddingVertical: spacing.md,
