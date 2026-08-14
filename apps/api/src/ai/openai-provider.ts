@@ -14,9 +14,9 @@
  *
  * `streamChat` here is text-only: it wraps every delta as a `{ type: 'text' }` event to satisfy
  * `CoachProvider`, but does not declare the `propose_workout_plan` / `propose_nutrition_menu`
- * tools the Claude path does — OpenAI function-calling streams arguments as a different event
- * shape and would need its own accumulation logic. Until that is built, plan/menu proposals only
- * work when `AI_PROVIDER=claude`.
+ * tools the Claude and Gemini paths do — OpenAI function-calling streams arguments as a
+ * different event shape and would need its own accumulation logic. Until that is built, this is
+ * the one provider where the coach answers but never offers a card mid-conversation.
  */
 
 import OpenAI from 'openai';

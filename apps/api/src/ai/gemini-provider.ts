@@ -18,17 +18,70 @@
  *    same reason the OpenAI path defends it: a schema the provider cannot express degrades to
  *    ordinary generation rather than failing loudly.
  *
- * `streamChat` here is text-only, exactly as the OpenAI path is: it wraps every chunk as a
- * `{ type: 'text' }` event to satisfy `CoachProvider` but does not declare the
- * `propose_workout_plan` / `propose_nutrition_menu` tools. Gemini streams function calls in its
- * own shape and would need its own accumulation logic. Until that is built, plan and menu
- * proposals in chat only work when `AI_PROVIDER=claude` — the coach still answers normally here,
- * it simply will not offer a card mid-conversation.
+ *  - **Function calls arrive whole.** Claude streams a tool's JSON as `input_json_delta`
+ *    fragments that have to be accumulated per content-block index; Gemini does not. Its
+ *    `partialArgs`/`willContinue` fields are documented as unsupported on the Gemini API, so a
+ *    `functionCall` part is complete when it appears and `args` is already an object. That
+ *    removes the entire class of bug the Claude path's accumulator exists to avoid — there is
+ *    no fragment to drop and no index to confuse.
+ *  - **Refusal is a finish reason, not a stop reason.** There is no `refusal` verdict; the
+ *    candidate comes back with `SAFETY`, `PROHIBITED_CONTENT` and friends, or the prompt itself
+ *    is rejected via `promptFeedback.blockReason` with no candidate at all. Both are mapped to
+ *    `CoachRefusalError` so the route treats them the same way it treats Claude's.
  */
 
-import { GoogleGenAI, type Content } from '@google/genai';
+import {
+  aiNutritionMenuSchema,
+  aiWorkoutPlanSchema,
+  PROPOSE_NUTRITION_MENU_TOOL,
+  PROPOSE_WORKOUT_PLAN_TOOL,
+} from '@fit/shared/schemas';
+import { GoogleGenAI, type Content, type Tool } from '@google/genai';
 
+import { CoachRefusalError } from './provider.js';
 import type { CoachContext, CoachMessage, CoachProvider, CoachStreamEvent } from './provider.js';
+
+/**
+ * The same two tools the Claude path declares, in Gemini's shape.
+ *
+ * `parametersJsonSchema` rather than `parameters`: the shared package hands over a plain JSON
+ * Schema (from `zodToJsonSchema`), and `parameters` wants the SDK's narrower `Schema` type.
+ * Passing the raw schema to the field built to accept one avoids a cast that would claim a
+ * compatibility nobody has checked.
+ */
+const TOOLS: Tool[] = [
+  {
+    functionDeclarations: [
+      {
+        name: PROPOSE_WORKOUT_PLAN_TOOL.name,
+        description: PROPOSE_WORKOUT_PLAN_TOOL.description,
+        parametersJsonSchema: PROPOSE_WORKOUT_PLAN_TOOL.input_schema,
+      },
+      {
+        name: PROPOSE_NUTRITION_MENU_TOOL.name,
+        description: PROPOSE_NUTRITION_MENU_TOOL.description,
+        parametersJsonSchema: PROPOSE_NUTRITION_MENU_TOOL.input_schema,
+      },
+    ],
+  },
+];
+
+/**
+ * Finish reasons that mean the model declined, as opposed to failed.
+ *
+ * Kept as an explicit set rather than "anything that is not STOP": `MAX_TOKENS` is a truncation
+ * and `MALFORMED_FUNCTION_CALL` is a fault on our side of the schema — neither is a refusal, and
+ * reporting them as one would tell the user the coach would not answer when in fact it tried.
+ */
+const REFUSAL_FINISH_REASONS = new Set([
+  'SAFETY',
+  'RECITATION',
+  'BLOCKLIST',
+  'PROHIBITED_CONTENT',
+  'SPII',
+  'IMAGE_SAFETY',
+  'IMAGE_PROHIBITED_CONTENT',
+]);
 
 export interface GeminiProviderOptions {
   apiKey: string;
@@ -71,8 +124,15 @@ export class GeminiProvider implements CoachProvider {
       config: {
         systemInstruction: this.systemInstruction(ctx),
         maxOutputTokens: 4096,
+        tools: TOOLS,
       },
     });
+
+    // Whichever verdict the last chunk carried. Read after the loop rather than thrown from
+    // inside it, matching the Claude path: a refusal can land after some prose has already gone
+    // out, and the caller needs to learn the answer was truncated rather than never started.
+    let finishReason: string | undefined;
+    let blockReason: string | undefined;
 
     for await (const chunk of stream) {
       const text = chunk.text;
@@ -80,7 +140,45 @@ export class GeminiProvider implements CoachProvider {
       // metadata. Yielding an empty event would put a no-op through the SSE stream and, on the
       // client, look briefly like the coach said nothing.
       if (text) yield { type: 'text', text };
+
+      for (const call of chunk.functionCalls ?? []) {
+        // `name` and `args` are both optional on the SDK's type. A call with neither is not
+        // something to parse — skipping beats throwing on a shape the model is not supposed to
+        // be able to produce.
+        if (!call.name) continue;
+        yield this.parseToolCall(call.name, call.args ?? {});
+      }
+
+      const candidateFinish = chunk.candidates?.[0]?.finishReason;
+      if (candidateFinish) finishReason = candidateFinish;
+      const promptBlock = chunk.promptFeedback?.blockReason;
+      if (promptBlock) blockReason = promptBlock;
     }
+
+    // A blocked prompt never produces a candidate, so it is reported on its own field and has to
+    // be checked separately rather than folded into the finish reason.
+    if (blockReason) throw new CoachRefusalError(blockReason);
+    if (finishReason && REFUSAL_FINISH_REASONS.has(finishReason)) {
+      throw new CoachRefusalError(finishReason);
+    }
+  }
+
+  /**
+   * Validate a function call against the same Zod schema its declaration was generated from.
+   *
+   * Unlike the Claude path there is no JSON to parse — `args` arrives as an object — but it is
+   * still validated rather than trusted. A schema shown to a model is not a schema it always
+   * obeys, and an unvalidated plan reaching the UI would be a card the user could apply to their
+   * training with fields the app never checked.
+   */
+  private parseToolCall(toolName: string, args: Record<string, unknown>): CoachStreamEvent {
+    if (toolName === PROPOSE_WORKOUT_PLAN_TOOL.name) {
+      return { type: 'plan_proposal', plan: aiWorkoutPlanSchema.parse(args) };
+    }
+    if (toolName === PROPOSE_NUTRITION_MENU_TOOL.name) {
+      return { type: 'nutrition_proposal', menu: aiNutritionMenuSchema.parse(args) };
+    }
+    throw new Error(`Unknown tool call from model: ${toolName}`);
   }
 
   async generatePlan<T>(
@@ -94,10 +192,12 @@ export class GeminiProvider implements CoachProvider {
       config: {
         systemInstruction: this.systemInstruction(ctx),
         responseMimeType: 'application/json',
-        // Typed loosely on purpose: the caller hands over a plain JSON Schema object (derived
-        // from the Zod schemas in packages/shared) and the SDK's own Schema type is a narrower
-        // subset. Asserting here would claim a compatibility that is the caller's to guarantee.
-        responseSchema: jsonSchema,
+        // `responseJsonSchema`, not `responseSchema`. The caller hands over a plain JSON Schema
+        // (derived from the Zod schemas in packages/shared) and `responseSchema` wants the SDK's
+        // narrower `Schema` type. The SDK does migrate a raw schema across for backward
+        // compatibility, but naming the right field says what is being passed instead of relying
+        // on it being rescued.
+        responseJsonSchema: jsonSchema,
         maxOutputTokens: 8192,
       },
     });
