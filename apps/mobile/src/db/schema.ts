@@ -26,7 +26,7 @@
  * TEXT (lexicographically sortable, which is what the history queries rely on).
  */
 
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 
 /**
  * Incremental migrations, keyed by the version they upgrade TO.
@@ -230,6 +230,9 @@ export const MIGRATIONS: Record<number, string> = {
     ALTER TABLE plan_days          ADD COLUMN remote_updated_at TEXT;
     ALTER TABLE plan_day_exercises ADD COLUMN remote_updated_at TEXT;
   `,
+  10: `
+    ALTER TABLE profile ADD COLUMN unit_preference TEXT;
+  `,
 };
 
 export const CREATE_SCHEMA_SQL = `
@@ -249,6 +252,11 @@ CREATE TABLE IF NOT EXISTS profile (
   height_cm        REAL,
   activity_level   TEXT,
   goal             TEXT,
+  -- 'metric' | 'imperial'. Display only: every measurement in this database stays metric no
+  -- matter what this says. Named to match profiles.unit_preference on the server, so the
+  -- column lines up if profile ever joins SYNC_TABLES. NULL means never chosen -- see
+  -- parseUnitPreference in @fit/shared.
+  unit_preference  TEXT,
   updated_at       TEXT NOT NULL
 );
 

@@ -27,6 +27,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useCurrentUserId } from '../src/auth/CurrentUserProvider.js';
+import { useUnit } from '../src/UnitsProvider.js';
+import { kgToDisplay, weightUnitKey } from '../src/units.js';
 import { ExerciseVisual } from '../src/components/ExerciseVisual.js';
 import { getExecutor } from '../src/db/provider.js';
 import { summariseAllProgress } from '../src/db/progression.js';
@@ -49,6 +51,7 @@ export default function ExercisePickerScreen() {
   }>();
   const isHebrew = i18n.language === 'he';
   const userId = useCurrentUserId();
+  const unit = useUnit();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -227,7 +230,8 @@ export default function ExercisePickerScreen() {
                 return (
                   <View style={styles.rowStats}>
                     <Text style={styles.rowE1rm}>
-                      {Math.round(best.latest)} {t('common.kg')}
+                      {Math.round(kgToDisplay(best.latest, unit))}{' '}
+                      {t(`common.${weightUnitKey(unit)}`)}
                     </Text>
                     <Text style={styles.rowE1rmLabel}>{t('progress.estimated1rm')}</Text>
                     {delta !== null && Math.abs(delta) >= 0.5 ? (

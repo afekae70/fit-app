@@ -9,7 +9,7 @@
  */
 
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Pressable,
@@ -38,6 +38,16 @@ import {
 
 import { useAuth } from '../src/auth/AuthProvider.js';
 import { useCurrentUserId } from '../src/auth/CurrentUserProvider.js';
+import { useUnit } from '../src/UnitsProvider.js';
+import {
+  cmToDisplay,
+  displayHeightToCm,
+  displayWeightToKg,
+  heightUnitKey,
+  isEditedWeight,
+  kgToDisplay,
+  weightUnitKey,
+} from '../src/units.js';
 import { getDailyBrief } from '../src/coach/dailyBrief.js';
 import {
   Banner,
@@ -96,6 +106,16 @@ export default function NutritionScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
+  const unit = useUnit();
+
+  /*
+   * Weight and height are held twice: the canonical metric value every calculation and write
+   * uses, and the string currently in the field. Deriving one from the other on each render is
+   * what looks obvious and does not work — reformatting mid-edit would eat the decimal point
+   * the moment "80." parsed to 80.
+   */
+  const [weightKg, setWeightKg] = useState<number | null>(80);
+  const [heightCm, setHeightCm] = useState<number | null>(180);
   const [weightRaw, setWeightRaw] = useState('80');
   const [heightRaw, setHeightRaw] = useState('180');
   const [ageRaw, setAgeRaw] = useState('30');
@@ -158,12 +178,18 @@ export default function NutritionScreen() {
       ]);
       if (cancelled) return;
 
-      if (profile?.height_cm) setHeightRaw(String(profile.height_cm));
+      if (profile?.height_cm) {
+        setHeightCm(profile.height_cm);
+        setHeightRaw(String(cmToDisplay(profile.height_cm, unit)));
+      }
       if (profile?.birth_date) setAgeRaw(String(ageFromBirthDate(profile.birth_date)));
       if (profile?.sex === 'male' || profile?.sex === 'female') setSex(profile.sex);
       if (profile?.activity_level) setActivityLevel(profile.activity_level as ActivityLevel);
       if (profile?.goal) setGoal(profile.goal as Goal);
-      if (latest?.weight_kg) setWeightRaw(String(latest.weight_kg));
+      if (latest?.weight_kg) {
+        setWeightKg(latest.weight_kg);
+        setWeightRaw(String(kgToDisplay(latest.weight_kg, unit)));
+      }
 
       setHydrated(true);
     })();
@@ -176,7 +202,6 @@ export default function NutritionScreen() {
   useEffect(() => {
     if (!hydrated) return;
     const ageYears = parseNumber(ageRaw);
-    const heightCm = parseNumber(heightRaw);
     void (async () => {
       const db = await getExecutor();
       await saveProfile(db, userId, {
@@ -187,11 +212,22 @@ export default function NutritionScreen() {
         goal,
       });
     })();
-  }, [hydrated, ageRaw, heightRaw, sex, activityLevel, goal]);
+  }, [hydrated, ageRaw, heightCm, sex, activityLevel, goal]);
+
+  /*
+   * Reformat the fields when — and only when — the unit changes. Keyed off a ref rather than the
+   * dependency array because the canonical values also change on every keystroke, and
+   * reformatting then would fight the user for the cursor.
+   */
+  const shownUnit = useRef(unit);
+  useEffect(() => {
+    if (shownUnit.current === unit) return;
+    shownUnit.current = unit;
+    setWeightRaw(weightKg === null ? '' : String(kgToDisplay(weightKg, unit)));
+    setHeightRaw(heightCm === null ? '' : String(cmToDisplay(heightCm, unit)));
+  }, [unit, weightKg, heightCm]);
 
   const results = useMemo(() => {
-    const weightKg = parseNumber(weightRaw);
-    const heightCm = parseNumber(heightRaw);
     const ageYears = parseNumber(ageRaw);
     if (weightKg === null || heightCm === null || ageYears === null) return null;
 
@@ -216,7 +252,7 @@ export default function NutritionScreen() {
       bmiValue,
       bmiLabel: bmiCategory(bmiValue),
     };
-  }, [weightRaw, heightRaw, ageRaw, sex, activityLevel, goal]);
+  }, [weightKg, heightCm, ageRaw, sex, activityLevel, goal]);
 
   const renderMacroBar = (label: string, grams: number, share: number, color: string) => (
     <View key={label} style={styles.macroBarBlock}>
@@ -297,26 +333,40 @@ export default function NutritionScreen() {
         <NumberField
           label={t('profile.weight')}
           value={weightRaw}
-          suffix={t('common.kg')}
-          onChangeText={setWeightRaw}
+          suffix={t(`common.${weightUnitKey(unit)}`)}
+          onChangeText={(next) => {
+            setWeightRaw(next);
+            const parsed = parseNumber(next);
+            setWeightKg(parsed === null ? null : displayWeightToKg(parsed, unit));
+          }}
           // Committed on blur rather than per keystroke: typing "80" passes through "8",
           // and recording that would put a phantom 8 kg weigh-in in the history.
           onEndEditing={() => {
-            const value = parseNumber(weightRaw);
-            if (value === null || !hydrated) return;
+            const typed = parseNumber(weightRaw);
+            if (typed === null || !hydrated) return;
             void (async () => {
               const db = await getExecutor();
               const latest = await getLatestWeight(db, userId);
-              if (latest?.weight_kg === value) return; // no change, no duplicate row
-              await recordBodyMetric(db, userId, newId, { weightKg: value, source: 'manual' });
+              // Compared in display units, not kilograms. In imperial a stored value does not
+              // survive a display round-trip exactly, so a kilogram comparison would call an
+              // untouched field an edit and log a duplicate weigh-in on every visit.
+              if (!isEditedWeight(latest?.weight_kg ?? null, typed, unit)) return;
+              await recordBodyMetric(db, userId, newId, {
+                weightKg: displayWeightToKg(typed, unit),
+                source: 'manual',
+              });
             })();
           }}
         />
         <NumberField
           label={t('profile.height')}
           value={heightRaw}
-          suffix={t('common.cm')}
-          onChangeText={setHeightRaw}
+          suffix={t(`common.${heightUnitKey(unit)}`)}
+          onChangeText={(next) => {
+            setHeightRaw(next);
+            const parsed = parseNumber(next);
+            setHeightCm(parsed === null ? null : displayHeightToCm(parsed, unit));
+          }}
         />
         <NumberField
           label={t('profile.age')}

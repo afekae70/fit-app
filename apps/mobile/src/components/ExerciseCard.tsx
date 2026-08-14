@@ -30,6 +30,17 @@ import type { SetRow } from '../db/workouts.js';
 import { hapticLight } from '../haptics.js';
 import { ExerciseVisual } from './ExerciseVisual.js';
 import { useTheme } from '../ThemeProvider.js';
+import { useUnit } from '../UnitsProvider.js';
+import {
+  displayDistanceToMetres,
+  displayWeightToKg,
+  distanceUnitKey,
+  formatVolume,
+  kgToDisplay,
+  metresToDisplay,
+  weightUnitKey,
+} from '../units.js';
+import { WEIGHT_STEP_KG, WEIGHT_STEP_LB } from '../workout/derived.js';
 import { fontSize, radius, spacing, type ColorPalette } from '../theme.js';
 
 export interface PreviousSet {
@@ -207,6 +218,7 @@ function ExerciseCardImpl({
   const { t, i18n } = useTranslation();
   const isHebrew = i18n.language === 'he';
   const { colors } = useTheme();
+  const unit = useUnit();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const loadType = exercise.loadType ?? 'weight_reps';
 
@@ -232,10 +244,11 @@ function ExerciseCardImpl({
     .filter((set) => set.is_warmup === 0)
     .map((set) => {
       if (set.duration_seconds !== null) return `${set.duration_seconds}${t('workout.seconds')}`;
-      if (set.distance_m !== null) return `${set.distance_m}${t('workout.meters')}`;
+      if (set.distance_m !== null)
+        return `${metresToDisplay(set.distance_m, unit)}${t(`common.${distanceUnitKey(unit)}`)}`;
       if (set.weight_kg === null && set.reps === null) return null;
       if (set.weight_kg === null) return `${set.reps}`;
-      return `${set.weight_kg}×${set.reps ?? '?'}`;
+      return `${kgToDisplay(set.weight_kg, unit)}×${set.reps ?? '?'}`;
     })
     .filter((entry): entry is string => entry !== null)
     .join(' · ');
@@ -315,11 +328,22 @@ function ExerciseCardImpl({
 
           {showsWeight ? (
             <SteppedField
-              value={set.weight_kg}
-              step={2.5}
+              // The stepper is unit-agnostic on purpose: it is handed the number the user is
+              // reading and the grid that number lives on, and hands one back in the same space.
+              // Converting here rather than inside it keeps kilograms the only thing stored.
+              value={set.weight_kg === null ? null : kgToDisplay(set.weight_kg, unit)}
+              step={unit === 'imperial' ? WEIGHT_STEP_LB : WEIGHT_STEP_KG}
               decimals={2}
-              placeholder={hint(previous?.weight_kg)}
-              onCommit={(weightKg) => onUpdateSet(set.id, { weightKg })}
+              placeholder={hint(
+                previous?.weight_kg === null || previous?.weight_kg === undefined
+                  ? previous?.weight_kg
+                  : kgToDisplay(previous.weight_kg, unit),
+              )}
+              onCommit={(display) =>
+                onUpdateSet(set.id, {
+                  weightKg: display === null ? null : displayWeightToKg(display, unit),
+                })
+              }
               colors={colors}
               inputStyle={styles.input}
               groupStyle={styles.stepperGroup}
@@ -364,18 +388,26 @@ function ExerciseCardImpl({
 
           {showsDistance ? (
             <TextInput
-              defaultValue={set.distance_m === null ? '' : String(set.distance_m)}
-              onEndEditing={(e) =>
-                onUpdateSet(set.id, { distanceM: parseField(e.nativeEvent.text) })
+              // Re-keyed on the unit so an uncontrolled field picks up the converted
+              // defaultValue; without it a switch mid-workout would leave metres labelled yards.
+              key={`${set.id}-dist-${unit}`}
+              defaultValue={
+                set.distance_m === null ? '' : String(metresToDisplay(set.distance_m, unit))
               }
+              onEndEditing={(e) => {
+                const typed = parseField(e.nativeEvent.text);
+                onUpdateSet(set.id, {
+                  distanceM: typed === null ? null : displayDistanceToMetres(typed, unit),
+                });
+              }}
               keyboardType="numeric"
               inputMode="decimal"
               style={styles.input}
               selectTextOnFocus
               placeholder={
                 previous?.distance_m === null || previous?.distance_m === undefined
-                  ? t('workout.meters')
-                  : String(previous.distance_m)
+                  ? t(`common.${distanceUnitKey(unit)}`)
+                  : String(metresToDisplay(previous.distance_m, unit))
               }
               placeholderTextColor={colors.textFaint}
             />
@@ -416,8 +448,8 @@ function ExerciseCardImpl({
 
       {volume > 0 ? (
         <Text style={styles.volume}>
-          {workingSets.length} {t('workout.totalSets')} · {Math.round(volume).toLocaleString()}{' '}
-          {t('common.kg')} {t('workout.totalVolume')}
+          {workingSets.length} {t('workout.totalSets')} · {formatVolume(volume, unit)}{' '}
+          {t(`common.${weightUnitKey(unit)}`)} {t('workout.totalVolume')}
         </Text>
       ) : null}
     </View>

@@ -33,6 +33,8 @@ import {
 } from 'react-native';
 
 import { useTheme } from '../ThemeProvider.js';
+import { useUnit } from '../UnitsProvider.js';
+import { formatVolume, weightUnitKey } from '../units.js';
 import { hapticSuccess } from '../haptics.js';
 import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../theme.js';
 import { Banner, Button } from './ui.js';
@@ -145,6 +147,7 @@ export function FinishSummary({
 }: FinishSummaryProps) {
   const { t } = useTranslation();
   const { colors } = useTheme();
+  const unit = useUnit();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [name, setName] = useState(initialName ?? '');
 
@@ -221,8 +224,11 @@ export function FinishSummary({
             />
             <CountUpTile
               target={volumeKg}
-              format={(n) => (n > 0 ? n.toLocaleString() : '—')}
-              label={`${t('workout.summaryVolume')} (${t('common.kg')})`}
+              // Converted inside format, not by changing `target`: CountUpTile animates the
+              // number it is given, and handing it pounds would make the count-up itself the
+              // place units are decided.
+              format={(n) => (n > 0 ? (formatVolume(n, unit) ?? '—') : '—')}
+              label={`${t('workout.summaryVolume')} (${t(`common.${weightUnitKey(unit)}`)})`}
               delay={240}
             />
           </View>

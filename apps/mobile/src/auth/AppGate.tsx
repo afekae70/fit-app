@@ -29,6 +29,7 @@ import { AuthGate } from './AuthGate.js';
 import { useAuth } from './AuthProvider.js';
 import { CurrentUserProvider } from './CurrentUserProvider.js';
 import { SyncProvider } from '../sync/SyncProvider.js';
+import { UnitsProvider } from '../UnitsProvider.js';
 
 const LOCAL_USER_ID = 'local';
 
@@ -71,7 +72,12 @@ export function AppGate({ children }: { children: ReactNode }) {
   // that user's own cursors rather than inheriting the previous account's.
   return (
     <CurrentUserProvider userId={userId}>
-      <SyncProvider userId={userId}>{children}</SyncProvider>
+      <SyncProvider userId={userId}>
+        {/* Below CurrentUserProvider for the same reason as SyncProvider: the preference is a
+            per-user profile field, so switching account must reload it rather than inherit the
+            previous person's units. */}
+        <UnitsProvider userId={userId}>{children}</UnitsProvider>
+      </SyncProvider>
     </CurrentUserProvider>
   );
 }

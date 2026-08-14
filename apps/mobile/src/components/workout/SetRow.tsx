@@ -35,6 +35,8 @@ import {
 import { stepReps, stepWeight } from '../../workout/derived.js';
 import { hapticLight, hapticSuccess } from '../../haptics.js';
 import { useTheme } from '../../ThemeProvider.js';
+import { useUnit } from '../../UnitsProvider.js';
+import { kgToDisplay, weightUnitKey } from '../../units.js';
 import { radius, type ColorPalette } from '../../theme.js';
 
 /** The handoff's timings. The tint settles before the glyph finishes popping, which is the point. */
@@ -65,6 +67,7 @@ export function SetRow({
 }: SetRowProps) {
   const { t } = useTranslation();
   const { colors } = useTheme();
+  const unit = useUnit();
   const s = useMemo(() => createStyles(colors), [colors]);
 
   const tint = useRef(new Animated.Value(done ? 1 : 0)).current;
@@ -132,14 +135,14 @@ export function SetRow({
       </Pressable>
 
       <Animated.View style={[s.field, fieldStyle]}>
-        <Stepper label="−" onPress={() => onChangeWeight(stepWeight(weightKg, -1))} />
+        <Stepper label="−" onPress={() => onChangeWeight(stepWeight(weightKg, -1, unit))} />
         <View style={s.value}>
           <Text style={[s.numeral, { color: numeralColor }]} numberOfLines={1}>
-            {weightKg ?? '—'}
+            {weightKg === null ? '—' : kgToDisplay(weightKg, unit)}
           </Text>
-          <Text style={s.unit}>{t('units.kg')}</Text>
+          <Text style={s.unit}>{t(`common.${weightUnitKey(unit)}`)}</Text>
         </View>
-        <Stepper label="+" onPress={() => onChangeWeight(stepWeight(weightKg, 1))} />
+        <Stepper label="+" onPress={() => onChangeWeight(stepWeight(weightKg, 1, unit))} />
       </Animated.View>
 
       <Animated.View style={[s.field, fieldStyle]}>

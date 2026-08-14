@@ -326,6 +326,55 @@ describe('migration 9 — the server clock gets its own column', () => {
   });
 });
 
+describe('migration 10 — unit preference', () => {
+  const columnsOfProfile = (db: { prepare(sql: string): { all(): unknown[] } }) =>
+    (db.prepare(`PRAGMA table_info(profile)`).all() as { name: string }[]).map((c) => c.name);
+
+  it('adds unit_preference on an upgraded device', () => {
+    const db = seededV6Database();
+    startUpLikeTheApp(db);
+
+    expect(columnsOfProfile(db)).toContain('unit_preference');
+    db.close();
+  });
+
+  it('reaches a fresh install too', () => {
+    const fresh = new DatabaseSync(':memory:');
+    startUpLikeTheApp(fresh);
+
+    expect(columnsOfProfile(fresh)).toContain('unit_preference');
+    fresh.close();
+  });
+
+  it('leaves it null rather than defaulting to metric in the column', () => {
+    // Null means "never chosen", which is not the same fact as "chose metric" — and the
+    // distinction is what lets a future default (say, from the device locale) apply only to
+    // people who have not expressed a preference. `parseUnitPreference` in @fit/shared is the
+    // single place that turns the absence into a usable value.
+    const db = seededV6Database();
+    startUpLikeTheApp(db);
+    db.exec(
+      `INSERT INTO profile (user_id, updated_at) VALUES ('u1', '2026-01-01T09:00:00.000Z');`,
+    );
+
+    const row = db.prepare(`SELECT unit_preference FROM profile WHERE user_id = 'u1'`).get() as {
+      unit_preference: string | null;
+    };
+    expect(row.unit_preference).toBeNull();
+    db.close();
+  });
+
+  it('is safe to run twice, as a half-finished upgrade would be', () => {
+    const db = seededV6Database();
+    startUpLikeTheApp(db);
+    // Second pass hits "duplicate column" on every ALTER and must swallow it, not throw.
+    expect(() => startUpLikeTheApp(db)).not.toThrow();
+
+    expect(columnsOfProfile(db)).toContain('unit_preference');
+    db.close();
+  });
+});
+
 describe('the schema version', () => {
   it('matches the highest migration', () => {
     // These two are what decide whether a migration ever runs. If a migration is added and the

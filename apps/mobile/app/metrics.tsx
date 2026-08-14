@@ -30,6 +30,13 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useCurrentUserId } from '../src/auth/CurrentUserProvider.js';
+import { useUnit } from '../src/UnitsProvider.js';
+import {
+  displayWeightToKg,
+  formatWeight,
+  kgToDisplay,
+  weightUnitKey,
+} from '../src/units.js';
 import {
   checkScanAvailability,
   scanForReading,
@@ -96,6 +103,8 @@ export default function MetricsScreen() {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const userId = useCurrentUserId();
+  const unit = useUnit();
+  const weightUnit = t(`common.${weightUnitKey(unit)}`);
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -192,8 +201,12 @@ export default function MetricsScreen() {
   };
 
   const save = async () => {
-    const value = Number(entry.replace(',', '.').trim());
-    if (!Number.isFinite(value) || value <= 0 || value > 500) return;
+    const typed = Number(entry.replace(',', '.').trim());
+    if (!Number.isFinite(typed) || typed <= 0) return;
+    // Bounded in kilograms, after conversion. Capping the typed number instead would put the
+    // ceiling at 500 lb for imperial users — a different limit depending on a display setting.
+    const value = displayWeightToKg(typed, unit);
+    if (value > 500) return;
 
     const db = await getExecutor();
     await recordBodyMetric(db, userId, newId, { weightKg: value, source: 'manual' });
@@ -301,7 +314,7 @@ export default function MetricsScreen() {
           <TextInput
             value={entry}
             onChangeText={setEntry}
-            placeholder={t('metrics.weightPlaceholder')}
+            placeholder={`${t('metrics.weightPlaceholder')} (${weightUnit})`}
             placeholderTextColor={colors.textMuted}
             keyboardType="numeric"
             inputMode="decimal"
@@ -321,8 +334,8 @@ export default function MetricsScreen() {
         {latest ? (
           <Stat
             label={t('metrics.currentWeight')}
-            value={String(latest.weight_kg)}
-            unit={t('common.kg')}
+            value={formatWeight(latest.weight_kg, unit) ?? '—'}
+            unit={weightUnit}
             emphasis
           />
         ) : (
@@ -345,8 +358,10 @@ export default function MetricsScreen() {
                       ? t('metrics.trendGaining')
                       : t('metrics.trendStable')
                 }
-                value={`${rate.kgPerWeek > 0 ? '+' : ''}${rate.kgPerWeek.toFixed(2)}`}
-                unit={`${t('common.kg')} / ${t('metrics.perWeek')}`}
+                // The value converts; the ±0.05 thresholds above stay in kilograms. Those are
+                // judgements about the body, not about how the number is displayed.
+                value={`${rate.kgPerWeek > 0 ? '+' : ''}${kgToDisplay(rate.kgPerWeek, unit).toFixed(2)}`}
+                unit={`${weightUnit} / ${t('metrics.perWeek')}`}
               />
               {!rate.isReliable ? <Banner tone="info">{t('metrics.unreliable')}</Banner> : null}
             </>
@@ -357,8 +372,8 @@ export default function MetricsScreen() {
               <View style={styles.divider} />
               <Stat
                 label={t('metrics.expectedRate')}
-                value={`${expected > 0 ? '+' : ''}${expected.toFixed(2)}`}
-                unit={`${t('common.kg')} / ${t('metrics.perWeek')}`}
+                value={`${expected > 0 ? '+' : ''}${kgToDisplay(expected, unit).toFixed(2)}`}
+                unit={`${weightUnit} / ${t('metrics.perWeek')}`}
               />
               {drift === 0 ? (
                 <Banner tone="info">{t('metrics.onTrack')}</Banner>
@@ -464,7 +479,7 @@ export default function MetricsScreen() {
                 <View style={styles.historyRow}>
                   <View style={styles.historyMain}>
                     <Text style={styles.historyWeight}>
-                      {metric.weight_kg} {t('common.kg')}
+                      {formatWeight(metric.weight_kg, unit)} {weightUnit}
                     </Text>
                     <Text style={styles.historyMeta}>
                       {new Date(metric.measured_at).toLocaleDateString()} ·{' '}

@@ -28,6 +28,8 @@ import {
 } from 'react-native';
 
 import { useTheme } from '../ThemeProvider.js';
+import { useUnit } from '../UnitsProvider.js';
+import { kgToDisplay, weightUnitKey } from '../units.js';
 import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../theme.js';
 import { Segmented } from './ui.js';
 
@@ -43,6 +45,7 @@ const RANGE_DAYS: Record<Exclude<Range, 'all'>, number> = { week: 7, month: 30 }
 export function WeightSparkline({ points, height = 96 }: WeightSparklineProps) {
   const { t } = useTranslation();
   const { colors } = useTheme();
+  const unit = useUnit();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [range, setRange] = useState<Range>('month');
@@ -114,7 +117,8 @@ export function WeightSparkline({ points, height = 96 }: WeightSparklineProps) {
         {scrubbed ? (
           <View style={[styles.tooltip, { left: `${tooltipLeftPct}%` }]} pointerEvents="none">
             <Text style={styles.tooltipWeight}>
-              {scrubbed.weightKg.toFixed(1)} {t('common.kg')}
+              {kgToDisplay(scrubbed.weightKg, unit).toFixed(1)}{' '}
+              {t(`common.${weightUnitKey(unit)}`)}
             </Text>
             <Text style={styles.tooltipDate}>
               {scrubbed.date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
@@ -144,11 +148,11 @@ export function WeightSparkline({ points, height = 96 }: WeightSparklineProps) {
 
       <View style={styles.axis}>
         <Text style={styles.axisLabel}>
-          {min.toFixed(1)} {t('common.kg')}
+          {kgToDisplay(min, unit).toFixed(1)} {t(`common.${weightUnitKey(unit)}`)}
         </Text>
         <Text style={styles.axisCaption}>{t('metrics.movingAverage')}</Text>
         <Text style={styles.axisLabel}>
-          {max.toFixed(1)} {t('common.kg')}
+          {kgToDisplay(max, unit).toFixed(1)} {t(`common.${weightUnitKey(unit)}`)}
         </Text>
       </View>
     </View>

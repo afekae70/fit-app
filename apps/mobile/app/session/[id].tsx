@@ -29,6 +29,14 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
+import { useUnit } from '../../src/UnitsProvider.js';
+import {
+  distanceUnitKey,
+  formatVolume,
+  formatWeight,
+  metresToDisplay,
+  weightUnitKey,
+} from '../../src/units.js';
 import { ExerciseCard, type PreviousSet } from '../../src/components/ExerciseCard.js';
 import { SkeletonScreen } from '../../src/components/ui.js';
 import { getExecutor, newId } from '../../src/db/provider.js';
@@ -61,6 +69,7 @@ export default function SessionDetailScreen() {
   const { id, addExercise } = useLocalSearchParams<{ id: string; addExercise?: string }>();
   const isHebrew = i18n.language === 'he';
   const userId = useCurrentUserId();
+  const unit = useUnit();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -280,7 +289,7 @@ export default function SessionDetailScreen() {
         </Text>
         {volume > 0 ? (
           <Text style={styles.stat}>
-            {Math.round(volume).toLocaleString()} {t('common.kg')}
+            {formatVolume(volume, unit)} {t(`common.${weightUnitKey(unit)}`)}
           </Text>
         ) : null}
       </View>
@@ -333,13 +342,17 @@ export default function SessionDetailScreen() {
                       {set.is_warmup === 1 ? t('workout.warmupShort') : set.set_index}
                     </Text>
                     <Text style={styles.setValue}>
-                      {set.weight_kg !== null ? `${set.weight_kg} ${t('common.kg')}` : ''}
+                      {set.weight_kg !== null
+                        ? `${formatWeight(set.weight_kg, unit)} ${t(`common.${weightUnitKey(unit)}`)}`
+                        : ''}
                       {set.weight_kg !== null && set.reps !== null ? ' × ' : ''}
                       {set.reps !== null ? `${set.reps}` : ''}
                       {set.duration_seconds !== null
                         ? `${set.duration_seconds} ${t('workout.seconds')}`
                         : ''}
-                      {set.distance_m !== null ? `${set.distance_m} ${t('workout.meters')}` : ''}
+                      {set.distance_m !== null
+                        ? `${metresToDisplay(set.distance_m, unit)} ${t(`common.${distanceUnitKey(unit)}`)}`
+                        : ''}
                     </Text>
                   </View>
                 ))}

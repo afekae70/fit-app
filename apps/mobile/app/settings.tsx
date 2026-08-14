@@ -11,11 +11,14 @@ import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView, StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import type { UnitPreference } from '@fit/shared';
+
 import { useAuth } from '../src/auth/AuthProvider.js';
 import { SyncCard } from '../src/components/SyncCard.js';
 import { Banner, Button, Card, ScreenTitle, Segmented, SectionTitle } from '../src/components/ui.js';
 import { setAppLanguage, type Language } from '../src/i18n/index.js';
 import { useTheme, type ColorScheme } from '../src/ThemeProvider.js';
+import { useUnits } from '../src/UnitsProvider.js';
 import { fontSize, spacing, type ColorPalette } from '../src/theme.js';
 
 export default function SettingsScreen() {
@@ -24,6 +27,7 @@ export default function SettingsScreen() {
   const isHebrew = i18n.language === 'he';
   const { session, signOut } = useAuth();
   const { scheme, toggleScheme, colors } = useTheme();
+  const { unit, setUnit } = useUnits();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [reloadNeeded, setReloadNeeded] = useState(false);
@@ -77,6 +81,17 @@ export default function SettingsScreen() {
             { value: 'en', label: 'English' },
           ]}
         />
+
+        <Segmented<UnitPreference>
+          label={t('settings.units')}
+          selected={unit}
+          onSelect={setUnit}
+          options={[
+            { value: 'metric', label: t('settings.unitsMetric') },
+            { value: 'imperial', label: t('settings.unitsImperial') },
+          ]}
+        />
+        <Text style={styles.unitsHint}>{t('settings.unitsHint')}</Text>
       </Card>
 
       {session ? <SyncCard /> : null}
@@ -99,6 +114,7 @@ const createStyles = (colors: ColorPalette) =>
     content: ViewStyle;
     header: ViewStyle;
     back: TextStyle;
+    unitsHint: TextStyle;
     email: TextStyle;
     signOutSpacer: ViewStyle;
   }>({
@@ -106,6 +122,12 @@ const createStyles = (colors: ColorPalette) =>
     content: { paddingHorizontal: spacing.lg },
     header: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.lg },
     back: { color: colors.accent, fontSize: fontSize.xl, fontWeight: '700' },
+    unitsHint: {
+      color: colors.textFaint,
+      fontSize: fontSize.xs,
+      marginTop: spacing.sm,
+      textAlign: 'auto',
+    },
     email: { color: colors.textSecondary, fontSize: fontSize.sm, textAlign: 'auto' },
     signOutSpacer: { height: spacing.md },
   });

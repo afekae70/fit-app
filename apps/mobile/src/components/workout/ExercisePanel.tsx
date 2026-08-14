@@ -17,6 +17,10 @@ import { Pressable, StyleSheet, Text, View, type TextStyle, type ViewStyle } fro
 
 import { exerciseVolume, type DerivedSet } from '../../workout/derived.js';
 import { useTheme } from '../../ThemeProvider.js';
+import type { UnitPreference } from '@fit/shared';
+
+import { useUnit } from '../../UnitsProvider.js';
+import { formatVolume, kgToDisplay, weightUnitKey } from '../../units.js';
 import { radius, type ColorPalette } from '../../theme.js';
 import { SetRow } from './SetRow.js';
 
@@ -59,11 +63,12 @@ export function ExercisePanel({
 }: ExercisePanelProps) {
   const { t } = useTranslation();
   const { colors } = useTheme();
+  const unit = useUnit();
   const s = useMemo(() => createStyles(colors), [colors]);
 
   const volume = exerciseVolume(sets);
   const targetLabel = target ? formatTarget(target, t) : null;
-  const previousLabel = previous && previous.length > 0 ? formatPrevious(previous) : null;
+  const previousLabel = previous && previous.length > 0 ? formatPrevious(previous, unit) : null;
 
   return (
     <View style={s.card}>
@@ -128,7 +133,7 @@ export function ExercisePanel({
             nobody asked for. */}
         {volume > 0 ? (
           <Text style={s.volume}>
-            {Math.round(volume).toLocaleString()} {t('units.kg')} {t('workout.volume')}
+            {formatVolume(volume, unit)} {t(`common.${weightUnitKey(unit)}`)} {t('workout.volume')}
           </Text>
         ) : null}
       </View>
@@ -150,10 +155,14 @@ function formatTarget(target: ExerciseTarget, t: (key: string) => string): strin
   return reps ? `${t('workout.target')} ${sets} × ${reps}` : `${t('workout.target')} ${sets}`;
 }
 
-/** `82.5×8 · 82.5×7 · 80×7` — every set of the last session, in order. */
-function formatPrevious(previous: readonly PreviousSet[]): string {
+/** `82.5×8 · 82.5×7 · 80×7` — every set of the last session, in order, in the reader's units. */
+function formatPrevious(previous: readonly PreviousSet[], unit: UnitPreference): string {
   return previous
-    .map((p) => (p.weightKg === null ? `${p.reps ?? '—'}` : `${p.weightKg}×${p.reps ?? '—'}`))
+    .map((p) =>
+      p.weightKg === null
+        ? `${p.reps ?? '—'}`
+        : `${kgToDisplay(p.weightKg, unit)}×${p.reps ?? '—'}`,
+    )
     .join(' · ');
 }
 

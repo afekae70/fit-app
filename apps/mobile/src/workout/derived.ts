@@ -11,6 +11,10 @@
  * quietly wrong looks exactly like a volume that is right.
  */
 
+import type { UnitPreference } from '@fit/shared';
+
+import { displayWeightToKg, kgToDisplay } from '../units.js';
+
 export interface DerivedSet {
   weightKg: number | null;
   reps: number | null;
@@ -155,8 +159,16 @@ const clamp01 = (n: number): number => (n < 0 ? 0 : n > 1 ? 1 : n);
 /* Steppers                                                                    */
 /* -------------------------------------------------------------------------- */
 
-/** The handoff's step sizes: plates come in 2.5kg pairs, reps in ones. */
+/**
+ * The handoff's step sizes: plates come in 2.5kg pairs, reps in ones.
+ *
+ * The imperial grid is 5 lb rather than a converted 2.5 kg, because it describes the same
+ * physical fact in the other system — American plates come in 45/25/10/5/2.5 lb, so a pair of
+ * fives is the smallest ordinary jump. Stepping by 5.51 lb (2.5 kg converted) would land on
+ * numbers no rack can actually make.
+ */
 export const WEIGHT_STEP_KG = 2.5;
+export const WEIGHT_STEP_LB = 5;
 export const REPS_STEP = 1;
 
 /**
@@ -165,13 +177,24 @@ export const REPS_STEP = 1;
  * Snapped rather than simply added: a value carried over from a previous session (82.5) or typed
  * by hand (83) should still land on a plate-loadable number after a tap, not drift 0.5 off the
  * grid and stay there for the rest of the workout.
+ *
+ * Snapping happens in the unit the user is *reading*, then converts back — the grid is a fact
+ * about the plates in front of them, not about the storage format. Stored values stay metric
+ * either way.
  */
-export function stepWeight(current: number | null, direction: 1 | -1): number {
-  const from = current ?? 0;
-  const stepped = Math.round(from / WEIGHT_STEP_KG) * WEIGHT_STEP_KG + direction * WEIGHT_STEP_KG;
-  // Rounded again because 2.5 has no exact binary form: 0.1 + 2.5 lands on 2.6000000000000005,
-  // which would then render with a tail of decimals in a 21px numeral field.
-  return Math.max(0, Math.round(stepped * 100) / 100);
+export function stepWeight(
+  current: number | null,
+  direction: 1 | -1,
+  unit: UnitPreference = 'metric',
+): number {
+  const step = unit === 'imperial' ? WEIGHT_STEP_LB : WEIGHT_STEP_KG;
+  const fromDisplay = current === null ? 0 : kgToDisplay(current, unit);
+  const steppedDisplay = Math.round(fromDisplay / step) * step + direction * step;
+
+  const kg = displayWeightToKg(Math.max(0, steppedDisplay), unit);
+  // Rounded because neither 2.5 nor the pound ratio has an exact binary form: 0.1 + 2.5 lands on
+  // 2.6000000000000005, which would render with a tail of decimals in a 21px numeral field.
+  return Math.max(0, Math.round(kg * 100) / 100);
 }
 
 /** Reps never go below zero, and a set that has none yet starts at one on the first tap up. */

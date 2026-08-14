@@ -29,6 +29,8 @@ import { I18nManager } from 'react-native';
 
 import { useAuth } from '../src/auth/AuthProvider.js';
 import { useCurrentUserId } from '../src/auth/CurrentUserProvider.js';
+import { useUnit } from '../src/UnitsProvider.js';
+import { formatWeight, weightUnitKey } from '../src/units.js';
 import { getExecutor } from '../src/db/provider.js';
 import { getLatestWeight } from '../src/db/metrics.js';
 import { getWorkoutStreak } from '../src/db/workouts.js';
@@ -42,6 +44,7 @@ export default function ProfileScreen() {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const userId = useCurrentUserId();
+  const unit = useUnit();
   const { session } = useAuth();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -100,7 +103,9 @@ export default function ProfileScreen() {
         <Text style={styles.name}>{name}</Text>
         <Text style={styles.subtitle}>
           {t('profileScreen.trainsPerWeek', { count: WEEKLY_TARGET })}
-          {weightKg !== null ? ` · ${weightKg} ${t('units.kg')}` : ''}
+          {weightKg !== null
+            ? ` · ${formatWeight(weightKg, unit)} ${t(`common.${weightUnitKey(unit)}`)}`
+            : ''}
         </Text>
       </View>
 

@@ -12,6 +12,8 @@ import { useTranslation } from 'react-i18next';
 import { Animated, Easing, StyleSheet, Text, type TextStyle, type ViewStyle } from 'react-native';
 
 import { useTheme } from '../ThemeProvider.js';
+import { useUnit } from '../UnitsProvider.js';
+import { kgToDisplay } from '../units.js';
 import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../theme.js';
 
 export interface PrToastData {
@@ -30,6 +32,7 @@ const EXIT_MS = 220;
 export function PrToast({ data, onDone }: { data: PrToastData | null; onDone: () => void }) {
   const { t } = useTranslation();
   const { colors } = useTheme();
+  const unit = useUnit();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const anim = useRef(new Animated.Value(0)).current;
 
@@ -80,7 +83,7 @@ export function PrToast({ data, onDone }: { data: PrToastData | null; onDone: ()
     >
       <Text style={styles.emoji}>🏆</Text>
       <Text style={styles.text} numberOfLines={1}>
-        {t('workout.newPr')} {data.exerciseLabel} {data.weightKg}×{data.reps}
+        {t('workout.newPr')} {data.exerciseLabel} {kgToDisplay(data.weightKg, unit)}×{data.reps}
       </Text>
     </Animated.View>
   );

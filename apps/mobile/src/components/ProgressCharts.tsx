@@ -18,6 +18,8 @@ import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
 
 import { useTheme } from '../ThemeProvider.js';
+import { useUnit } from '../UnitsProvider.js';
+import { kgToDisplay, weightUnitKey } from '../units.js';
 import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../theme.js';
 
 const EXERCISE_BY_KEY = new Map<string, ExerciseSeed>(
@@ -30,6 +32,7 @@ const CHART_HEIGHT = 96;
 export function WeeklyVolumeChart({ weeks }: { weeks: readonly WeeklyVolume[] }) {
   const { t } = useTranslation();
   const { colors } = useTheme();
+  const unit = useUnit();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const peak = Math.max(...weeks.map((w) => w.volumeKg), 1);
@@ -56,7 +59,10 @@ export function WeeklyVolumeChart({ weeks }: { weeks: readonly WeeklyVolume[] })
       </View>
       <View style={styles.axis}>
         <Text style={styles.axisLabel}>
-          {(peak / 1000).toFixed(1)} {t('progress.tonnes')}
+          {/* Thousands either way. A tonne of pounds is not a unit anyone uses, so imperial
+              gets "k lb" rather than a converted tonne. */}
+          {(kgToDisplay(peak, unit) / 1000).toFixed(1)}{' '}
+          {unit === 'imperial' ? t('progress.thousandLb') : t('progress.tonnes')}
         </Text>
         <Text style={styles.axisLabel}>
           {weeks.length} {t('progress.weeks')}
@@ -134,6 +140,7 @@ export function PersonalRecordList({
 }) {
   const { t } = useTranslation();
   const { colors } = useTheme();
+  const unit = useUnit();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   return (
@@ -154,7 +161,7 @@ export function PersonalRecordList({
             </View>
             <Text style={styles.prValue}>
               {record.weightKg}
-              <Text style={styles.prUnit}> {t('common.kg')}</Text>
+              <Text style={styles.prUnit}> {t(`common.${weightUnitKey(unit)}`)}</Text>
             </Text>
           </View>
         );

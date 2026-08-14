@@ -41,6 +41,9 @@ const fullProfile: ProfileRow = {
   height_cm: 180,
   activity_level: 'moderate',
   goal: 'cut',
+  // Null is what every profile holds until settings is opened. None of the physiology below
+  // reads it — stored measurements are metric regardless of what the user reads them in.
+  unit_preference: null,
   updated_at: clock(),
 };
 
@@ -79,6 +82,27 @@ describe('profile', () => {
 
     expect((await getProfile(db, USER))?.height_cm).toBe(180);
     expect((await getProfile(db, 'user-2'))?.height_cm).toBe(165);
+  });
+
+  it('persists the unit preference', async () => {
+    await saveProfile(db, USER, { unitPreference: 'imperial' }, clock);
+    expect((await getProfile(db, USER))?.unit_preference).toBe('imperial');
+  });
+
+  it('does not disturb the unit preference when another screen saves the profile', async () => {
+    await saveProfile(db, USER, { unitPreference: 'imperial' }, clock);
+    // The Today tab writes these on every edit and knows nothing about the settings screen.
+    await saveProfile(db, USER, { heightCm: 180, goal: 'bulk' }, clock);
+
+    expect((await getProfile(db, USER))?.unit_preference).toBe('imperial');
+  });
+
+  it('keeps two users unit preferences independent', async () => {
+    await saveProfile(db, USER, { unitPreference: 'imperial' }, clock);
+    await saveProfile(db, 'user-2', { unitPreference: 'metric' }, clock);
+
+    expect((await getProfile(db, USER))?.unit_preference).toBe('imperial');
+    expect((await getProfile(db, 'user-2'))?.unit_preference).toBe('metric');
   });
 });
 

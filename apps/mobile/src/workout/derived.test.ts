@@ -161,4 +161,40 @@ describe('steppers', () => {
     expect(stepReps(null, -1)).toBe(0);
     expect(stepReps(0, -1)).toBe(0);
   });
+
+  describe('in imperial', () => {
+    /** What the user reads, which is the space the grid is supposed to live in. */
+    const asLb = (kg: number) => Math.round((kg / 0.45359237) * 10) / 10;
+
+    it('moves in whole 5 lb steps, not a converted 2.5 kg', () => {
+      // 225 lb is a rack number. A 2.5 kg step would take it to 230.5, which no pair of plates
+      // in an American gym can make.
+      const from225 = 225 * 0.45359237;
+      expect(asLb(stepWeight(from225, 1, 'imperial'))).toBe(230);
+      expect(asLb(stepWeight(from225, -1, 'imperial'))).toBe(220);
+    });
+
+    it('snaps an off-grid value onto the pound grid', () => {
+      // 100 kg reads as 220.5 lb — one tap up should reach 225, not 225.5.
+      expect(asLb(stepWeight(100, 1, 'imperial'))).toBe(225);
+      expect(asLb(stepWeight(100, -1, 'imperial'))).toBe(215);
+    });
+
+    it('does not accumulate drift across many taps', () => {
+      // Each step re-snaps in display space, so the kilogram rounding cannot compound.
+      let w = stepWeight(null, 1, 'imperial');
+      for (let i = 0; i < 20; i += 1) w = stepWeight(w, 1, 'imperial');
+      expect(asLb(w)).toBe(105);
+    });
+
+    it('never goes below zero', () => {
+      expect(stepWeight(0, -1, 'imperial')).toBe(0);
+      expect(stepWeight(1, -1, 'imperial')).toBe(0);
+    });
+
+    it('still defaults to the metric grid when no unit is given', () => {
+      // Every existing caller passes two arguments; none of them may silently change behaviour.
+      expect(stepWeight(80, 1)).toBe(82.5);
+    });
+  });
 });

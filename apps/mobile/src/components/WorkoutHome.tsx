@@ -22,6 +22,8 @@ import {
 
 import type { SessionSummaryRow } from '../db/workouts.js';
 import { useTheme } from '../ThemeProvider.js';
+import { useUnit } from '../UnitsProvider.js';
+import { formatVolume, weightUnitKey } from '../units.js';
 import { fontSize, radius, spacing, type ColorPalette } from '../theme.js';
 import { EmptyState, ScreenHeader } from './ui.js';
 
@@ -70,6 +72,7 @@ export function WorkoutHome({
 }: WorkoutHomeProps) {
   const { t } = useTranslation();
   const { colors } = useTheme();
+  const unit = useUnit();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   return (
@@ -139,7 +142,7 @@ export function WorkoutHome({
                     {session.exercise_count} {t('history.exercises')} · {session.set_count}{' '}
                     {t('history.sets')}
                     {session.volume_load > 0
-                      ? ` · ${Math.round(session.volume_load).toLocaleString()} ${t('common.kg')}`
+                      ? ` · ${formatVolume(session.volume_load, unit)} ${t(`common.${weightUnitKey(unit)}`)}`
                       : ''}
                   </Text>
                 </View>

@@ -17,6 +17,7 @@ import {
   type ActivityLevel,
   type Goal,
 } from '@fit/shared/calculations';
+import type { UnitPreference } from '@fit/shared';
 
 import type { SqlExecutor } from './executor.js';
 import type { Clock, IdFactory } from './workouts.js';
@@ -36,6 +37,7 @@ export interface ProfileRow {
   height_cm: number | null;
   activity_level: string | null;
   goal: string | null;
+  unit_preference: string | null;
   updated_at: string;
 }
 
@@ -48,6 +50,8 @@ export interface ProfileInput {
   heightCm?: number | null;
   activityLevel?: ActivityLevel | null;
   goal?: Goal | null;
+  /** Display preference only — every stored measurement stays metric. See src/units.ts. */
+  unitPreference?: UnitPreference | null;
 }
 
 export async function getProfile(db: SqlExecutor, userId: string): Promise<ProfileRow | null> {
@@ -72,8 +76,9 @@ export async function saveProfile(
   if (!existing) {
     await db.run(
       `INSERT INTO profile
-         (user_id, display_name, birth_date, sex, bmr_formula_sex, height_cm, activity_level, goal, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (user_id, display_name, birth_date, sex, bmr_formula_sex, height_cm, activity_level,
+          goal, unit_preference, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         userId,
         input.displayName ?? null,
@@ -83,6 +88,7 @@ export async function saveProfile(
         input.heightCm ?? null,
         input.activityLevel ?? null,
         input.goal ?? null,
+        input.unitPreference ?? null,
         now,
       ],
     );
@@ -104,6 +110,7 @@ export async function saveProfile(
   set('height_cm', input.heightCm);
   set('activity_level', input.activityLevel);
   set('goal', input.goal);
+  set('unit_preference', input.unitPreference);
 
   assignments.push('updated_at = ?');
   params.push(now);
