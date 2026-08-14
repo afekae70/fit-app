@@ -33,7 +33,7 @@ import { ExercisePanel } from '../../src/components/workout/ExercisePanel.js';
 import { EXTEND_SECONDS, RestBanner } from '../../src/components/workout/RestBanner.js';
 import { WorkoutHeader } from '../../src/components/workout/WorkoutHeader.js';
 import { PrToast, type PrToastData } from '../../src/components/PrToast.js';
-import { DEFAULT_REST_SECONDS } from '../../src/components/restTime.js';
+import { DEFAULT_REST_SECONDS } from '../../src/workout/derived.js';
 import { EmptyState, SkeletonScreen } from '../../src/components/ui.js';
 import { WorkoutHome, type TemplateEntry } from '../../src/components/WorkoutHome.js';
 import { listPlanDayExercises } from '../../src/db/plans.js';

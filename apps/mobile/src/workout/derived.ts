@@ -115,6 +115,15 @@ export function nextSet(exercises: readonly DerivedExercise[]): NextSet | null {
 /* -------------------------------------------------------------------------- */
 
 /**
+ * Rest length when nothing prescribes one.
+ *
+ * Lived in `components/restTime.ts` alongside the pre-handoff timer's arithmetic. That module
+ * went with `RestTimer`; the constant did not, because it is a training default rather than a
+ * rendering detail, and this is where the rest maths now lives.
+ */
+export const DEFAULT_REST_SECONDS = 90;
+
+/**
  * `stroke-dashoffset` for the countdown ring, given a circumference.
  *
  * Full circle at the start, empty at zero: offset = C × (1 − remaining/total), exactly as the
