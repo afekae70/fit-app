@@ -64,8 +64,9 @@ export function parseSseChunk(buffer: string): { frames: SseFrame[]; rest: strin
 
 /**
  * Structural checks, not full schema validation. The server already validated the tool call's
- * JSON against `aiWorkoutPlanSchema`/`aiNutritionMenuSchema` before ever emitting the event (see
- * `ClaudeProvider.parseToolCall`) — a malformed payload cannot leave the API. This just guards
+ * JSON against `aiWorkoutPlanSchema`/`aiNutritionMenuSchema` before ever emitting the event —
+ * every provider that can propose validates in its own `parseToolCall`, so a malformed payload
+ * cannot leave the API whichever one is selected. This just guards
  * against a corrupt frame the same way the `delta`/`refusal` cases already do, without pulling
  * zod and the exercise catalogue into the mobile bundle for a check that can't actually fire.
  */

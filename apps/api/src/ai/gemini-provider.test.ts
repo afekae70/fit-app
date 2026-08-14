@@ -31,7 +31,9 @@ import type { CoachContext } from './provider.js';
 import { CoachRefusalError } from './provider.js';
 
 // Imported after the mock is registered, matching vi.mock's hoisting contract.
-const { GeminiProvider } = await import('./gemini-provider.js');
+const { GeminiProvider, __toGeminiSchemaForTests: toGeminiSchema } = await import(
+  './gemini-provider.js'
+);
 
 /** Gemini's stream is a plain async iterable of chunks — no `finalMessage()` equivalent. */
 function fakeStream(chunks: unknown[]) {
@@ -286,21 +288,98 @@ describe('GeminiProvider.streamChat — refusals', () => {
   });
 });
 
+describe('toGeminiSchema', () => {
+  it('drops the keywords Gemini does not document support for', () => {
+    // zodToJsonSchema emits all three from `.min()`/`.max()`/`.positive()` on the shared schemas.
+    const out = toGeminiSchema({
+      type: 'object',
+      properties: {
+        planName: { type: 'string', minLength: 1, maxLength: 60 },
+        grams: { type: 'number', exclusiveMinimum: 0 },
+      },
+      required: ['planName'],
+    }) as { properties: Record<string, unknown>; required: string[] };
+
+    expect(out.properties.planName).toEqual({ type: 'string' });
+    expect(out.properties.grams).toEqual({ type: 'number' });
+    expect(out.required).toEqual(['planName']);
+  });
+
+  it('keeps a property literally named like a dropped keyword', () => {
+    // `properties` keys are field names, not keywords. Filtering them by the keyword set would
+    // delete real fields — `minLength` is a plausible thing for a schema to describe.
+    const out = toGeminiSchema({
+      type: 'object',
+      properties: { minLength: { type: 'number', minimum: 0 } },
+    }) as { properties: Record<string, unknown> };
+
+    expect(out.properties.minLength).toEqual({ type: 'number', minimum: 0 });
+  });
+
+  it('recurses through items, anyOf and $defs', () => {
+    const out = toGeminiSchema({
+      $defs: { day: { type: 'string', maxLength: 5 } },
+      type: 'array',
+      items: { anyOf: [{ type: 'string', minLength: 2 }, { type: 'null' }] },
+    }) as { $defs: Record<string, unknown>; items: { anyOf: unknown[] } };
+
+    expect(out.$defs.day).toEqual({ type: 'string' });
+    expect(out.items.anyOf).toEqual([{ type: 'string' }, { type: 'null' }]);
+  });
+
+  it('leaves the real tool schemas free of unsupported keywords', async () => {
+    // The end-to-end assertion: whatever the shared package grows next, what reaches Gemini
+    // stays inside the documented subset.
+    const SUPPORTED = new Set(['$id','$defs','$ref','$anchor','type','format','title','description',
+      'enum','items','prefixItems','minItems','maxItems','minimum','maximum','anyOf','oneOf',
+      'properties','additionalProperties','required','propertyOrdering']);
+    const offenders: string[] = [];
+    const walk = (node: unknown, path: string): void => {
+      if (Array.isArray(node)) { node.forEach((n, i) => walk(n, `${path}[${i}]`)); return; }
+      if (node === null || typeof node !== 'object') return;
+      for (const [k, v] of Object.entries(node)) {
+        if (!SUPPORTED.has(k)) offenders.push(`${path}.${k}`);
+        if (k === 'properties' || k === '$defs') {
+          for (const [n, sub] of Object.entries(v as Record<string, unknown>)) walk(sub, `${path}.${n}`);
+        } else if (v && typeof v === 'object') walk(v, `${path}.${k}`);
+      }
+    };
+
+    generateContentStreamMock.mockReturnValueOnce(fakeStream([]));
+    await drain(makeProvider().streamChat(ctx, []));
+
+    const sent = generateContentStreamMock.mock.calls.at(-1)?.[0] as {
+      config?: { tools?: { functionDeclarations?: { parametersJsonSchema?: unknown }[] }[] };
+    };
+    const declarations = sent.config?.tools?.[0]?.functionDeclarations ?? [];
+
+    // Guards the assertion below from passing because nothing was inspected.
+    expect(declarations).toHaveLength(2);
+    for (const declaration of declarations) walk(declaration.parametersJsonSchema, '$');
+
+    expect(offenders).toEqual([]);
+  });
+});
+
 describe('GeminiProvider.generatePlan', () => {
   it('constrains output with the schema and parses the result', async () => {
     generateContentMock.mockResolvedValueOnce({ text: JSON.stringify(validPlan) });
 
-    const schema = { type: 'object', properties: {} };
+    const schema = { type: 'object', properties: { a: { type: 'string', minLength: 3 } } };
     const out = await makeProvider().generatePlan(ctx, schema, 'make me a plan');
 
     expect(out).toEqual(validPlan);
     const call = generateContentMock.mock.calls.at(-1)?.[0] as {
-      config?: { responseMimeType?: string; responseJsonSchema?: unknown };
+      config?: {
+        responseMimeType?: string;
+        responseJsonSchema?: { properties: Record<string, unknown> };
+      };
     };
     expect(call.config?.responseMimeType).toBe('application/json');
     // The field built to take a raw JSON Schema, rather than the narrower one the SDK would
-    // have had to rescue it from.
-    expect(call.config?.responseJsonSchema).toBe(schema);
+    // have had to rescue it from — and sanitised, since a caller's schema can carry the same
+    // unsupported keywords the shared ones do.
+    expect(call.config?.responseJsonSchema?.properties.a).toEqual({ type: 'string' });
   });
 
   it('names the provider when the model returns prose instead of JSON', async () => {
