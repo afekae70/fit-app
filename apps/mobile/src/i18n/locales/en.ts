@@ -483,6 +483,7 @@ export const en = {
     current: 'This week',
     hint: 'Pick a workout for each day. A day left undecided stays with the automatic rotation.',
     seeded: 'Pre-filled from last week — change what differs.',
+    today: 'Today',
     rest: 'Rest',
     clear: 'Clear',
     undecided: 'Undecided — follows the rotation',

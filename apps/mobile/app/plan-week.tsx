@@ -41,6 +41,7 @@ import {
   nextWeekStart,
   seedWeekFromPrevious,
   setScheduledDay,
+  weekDates,
   weekStart,
   type ScheduledDay,
 } from '../src/db/schedule.js';
@@ -121,8 +122,26 @@ export default function PlanWeekScreen() {
     void load(next);
   };
 
-  const thisWeek = weekStart(localDate(new Date()));
-  const comingWeek = nextWeekStart(localDate(new Date()));
+  const today = localDate(new Date());
+  const thisWeek = weekStart(today);
+  const comingWeek = nextWeekStart(today);
+
+  /**
+   * The date span of a week, e.g. "16–22 באוג׳".
+   *
+   * On a Saturday the two weeks are one day apart and both contain a "Saturday" row — the label
+   * alone is genuinely ambiguous, and picking the wrong one silently schedules a workout seven
+   * days from the one you meant. The range is what disambiguates it.
+   */
+  const rangeLabel = (start: string) => {
+    const days = weekDates(start);
+    const fmt = (d: string, withMonth: boolean) =>
+      new Date(`${d}T00:00:00`).toLocaleDateString(i18n.language, {
+        day: 'numeric',
+        ...(withMonth ? { month: 'short' } : {}),
+      });
+    return `${fmt(days[0] ?? start, false)}–${fmt(days[6] ?? start, true)}`;
+  };
 
   if (loading) return <SkeletonScreen paddingTop={insets.top + spacing.xxl} />;
 
@@ -150,6 +169,7 @@ export default function PlanWeekScreen() {
           <Text style={[styles.toggleText, start === comingWeek && styles.toggleTextOn]}>
             {t('week.next')}
           </Text>
+          <Text style={styles.toggleRange}>{rangeLabel(comingWeek)}</Text>
         </Pressable>
         <Pressable
           onPress={() => switchTo(thisWeek)}
@@ -159,6 +179,7 @@ export default function PlanWeekScreen() {
           <Text style={[styles.toggleText, start === thisWeek && styles.toggleTextOn]}>
             {t('week.current')}
           </Text>
+          <Text style={styles.toggleRange}>{rangeLabel(thisWeek)}</Text>
         </Pressable>
       </View>
 
@@ -173,17 +194,22 @@ export default function PlanWeekScreen() {
             <FadeSlideIn key={day.date} index={index}>
               <Card>
                 <View style={styles.dayHeader}>
-                  <Text style={styles.dayName}>
+                  <Text style={[styles.dayName, day.date === today && styles.dayNameToday]}>
                     {new Date(`${day.date}T00:00:00`).toLocaleDateString(i18n.language, {
                       weekday: 'long',
                     })}
                   </Text>
-                  <Text style={styles.dayDate}>
-                    {new Date(`${day.date}T00:00:00`).toLocaleDateString(i18n.language, {
-                      day: 'numeric',
-                      month: 'short',
-                    })}
-                  </Text>
+                  <View style={styles.dayMeta}>
+                    {day.date === today ? (
+                      <Text style={styles.todayBadge}>{t('week.today')}</Text>
+                    ) : null}
+                    <Text style={styles.dayDate}>
+                      {new Date(`${day.date}T00:00:00`).toLocaleDateString(i18n.language, {
+                        day: 'numeric',
+                        month: 'short',
+                      })}
+                    </Text>
+                  </View>
                 </View>
 
                 <ScrollView
@@ -259,8 +285,12 @@ const createStyles = (colors: ColorPalette) =>
     toggleChipOn: ViewStyle;
     toggleText: TextStyle;
     toggleTextOn: TextStyle;
+    toggleRange: TextStyle;
     dayHeader: ViewStyle;
     dayName: TextStyle;
+    dayNameToday: TextStyle;
+    dayMeta: ViewStyle;
+    todayBadge: TextStyle;
     dayDate: TextStyle;
     chipRow: ViewStyle;
     chip: ViewStyle;
@@ -293,6 +323,7 @@ const createStyles = (colors: ColorPalette) =>
     toggleChipOn: { borderColor: colors.accentBorder, backgroundColor: colors.accentSoft },
     toggleText: { color: colors.textMuted, fontSize: fontSize.sm },
     toggleTextOn: { color: colors.accent, fontWeight: fontWeight.bold },
+    toggleRange: { color: colors.textFaint, fontSize: fontSize.xxs, marginTop: 2, textAlign: 'center' },
 
     dayHeader: {
       flexDirection: 'row',
@@ -301,6 +332,18 @@ const createStyles = (colors: ColorPalette) =>
       marginBottom: spacing.sm,
     },
     dayName: { color: colors.text, fontSize: fontSize.md, fontWeight: fontWeight.bold, textAlign: 'auto' },
+    dayNameToday: { color: colors.accent },
+    dayMeta: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    todayBadge: {
+      color: colors.accent,
+      fontSize: fontSize.xxs,
+      fontWeight: fontWeight.bold,
+      backgroundColor: colors.accentSoft,
+      borderRadius: radius.pill,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xxs,
+      overflow: 'hidden',
+    },
     dayDate: { color: colors.textMuted, fontSize: fontSize.xs },
 
     chipRow: { gap: spacing.sm, paddingVertical: spacing.xxs },
