@@ -307,6 +307,14 @@ export default function PlanScreen() {
             })
           )}
 
+          <Pressable
+            onPress={() => router.push('/plan-week')}
+            style={styles.addDayButton}
+            accessibilityRole="button"
+          >
+            <Text style={styles.addDayText}>🗓️ {t('week.planNext')}</Text>
+          </Pressable>
+
           {days.length > 0 ? (
             <Pressable
               onPress={duplicate}

@@ -35,8 +35,9 @@ import {
   type TodayWorkout,
   type WeekSummary,
 } from '../../src/db/home.js';
-import { getExecutor } from '../../src/db/provider.js';
-import { getWorkoutStreak, type WorkoutStreak } from '../../src/db/workouts.js';
+import { startSessionFromPlanDay } from '../../src/db/plans.js';
+import { getExecutor, newId } from '../../src/db/provider.js';
+import { getActiveSession, getWorkoutStreak, type WorkoutStreak } from '../../src/db/workouts.js';
 import { hapticLight } from '../../src/haptics.js';
 import { useTheme } from '../../src/ThemeProvider.js';
 import { radius, type ColorPalette } from '../../src/theme.js';
@@ -91,10 +92,29 @@ export default function TodayScreen() {
     void load().finally(() => setRefreshing(false));
   }, [load]);
 
+  /**
+   * Open today's planned workout, already populated.
+   *
+   * This used to only navigate, which left the user on the Workouts tab facing a Start button
+   * and an empty session — the plan was named on the card they had just tapped and then not
+   * carried across. `getTodayWorkout` already resolves which plan day today is, so starting it
+   * here is what the card was always promising.
+   *
+   * An already-open session wins: starting a second would strand the first unfinished, and
+   * resuming is what someone returning mid-workout expects anyway.
+   */
   const startWorkout = useCallback(() => {
     void hapticLight();
-    router.push('/(tabs)/workouts');
-  }, []);
+    void (async () => {
+      const db = await getExecutor();
+      const planDayId = data?.workout?.planDayId;
+
+      if (!(await getActiveSession(db, userId)) && planDayId) {
+        await startSessionFromPlanDay(db, userId, newId, planDayId);
+      }
+      router.push('/(tabs)/workouts');
+    })();
+  }, [userId, data]);
 
   return (
     <ScrollView

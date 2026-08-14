@@ -11,6 +11,7 @@ import { EXERCISE_SEED } from '@fit/shared';
 
 import type { SqlExecutor } from './executor.js';
 import { getActivePlan, listPlanDayExercises, listPlanDays } from './plans.js';
+import { localDate, scheduledFor } from './schedule.js';
 
 /** Minutes allowed per working set, for the "~52 min" estimate. Sets are ~40s plus 90s rest. */
 const MINUTES_PER_SET = 2.2;
@@ -63,9 +64,37 @@ export async function getTodayWorkout(
   const days = await listPlanDays(db, plan.id);
   if (days.length === 0) return null;
 
-  const { position, missedPosition } = await rotate(db, userId, plan.id, days.length, now);
+  /*
+   * The weekly calendar outranks the rotation, but only where a decision exists.
+   *
+   *   a plan day  -> that workout, regardless of where the rotation had drifted to
+   *   null        -> a rest day the user chose; today has no workout
+   *   undefined   -> nothing decided, so the rotation below still owns the date
+   *
+   * Which is why `scheduledFor` distinguishes null from undefined: folding them together would
+   * either refill a rest day or ignore the calendar entirely.
+   */
+  const committed = await scheduledFor(db, userId, localDate(now));
+  if (committed === null) return null;
 
-  const day = days[position];
+  let day = null as (typeof days)[number] | null;
+  let missedPosition: number | null = null;
+
+  if (committed === undefined) {
+    const rotated = await rotate(db, userId, plan.id, days.length, now);
+    day = days[rotated.position] ?? null;
+    missedPosition = rotated.missedPosition;
+  } else {
+    // A committed day that has since been deleted from the plan leaves the date stranded. Fall
+    // back to the rotation rather than showing nothing, which would read as "no plan".
+    day = days.find((d) => d.id === committed) ?? null;
+    if (!day) {
+      const rotated = await rotate(db, userId, plan.id, days.length, now);
+      day = days[rotated.position] ?? null;
+      missedPosition = rotated.missedPosition;
+    }
+  }
+
   if (!day) return null;
 
   const exercises = await listPlanDayExercises(db, day.id);
@@ -84,6 +113,21 @@ export async function getTodayWorkout(
     exerciseNames: exercises.map((e) => displayName(e.exercise_key)),
     missedYesterday: missed ? dayLabel(missed) : null,
   };
+}
+
+/**
+ * Whether today is a rest day the user deliberately scheduled.
+ *
+ * Separate from `getTodayWorkout` returning null, which also covers "no plan at all" and "the
+ * plan has no days". The screen needs to tell those apart: one deserves "rest day", the other
+ * an invitation to build a plan.
+ */
+export async function isScheduledRestDay(
+  db: SqlExecutor,
+  userId: string,
+  now = new Date(),
+): Promise<boolean> {
+  return (await scheduledFor(db, userId, localDate(now))) === null;
 }
 
 const dayLabel = (day: { day_index: number; name: string | null }): string =>

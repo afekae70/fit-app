@@ -26,7 +26,7 @@
  * TEXT (lexicographically sortable, which is what the history queries rely on).
  */
 
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;
 
 /**
  * Incremental migrations, keyed by the version they upgrade TO.
@@ -232,6 +232,22 @@ export const MIGRATIONS: Record<number, string> = {
   `,
   10: `
     ALTER TABLE profile ADD COLUMN unit_preference TEXT;
+  `,
+  // The weekly calendar. A new table, so CREATE_SCHEMA_SQL covers fresh installs; repeated here
+  // for devices that already hold data, which is the only path that would otherwise miss it.
+  11: `
+    CREATE TABLE IF NOT EXISTS scheduled_days (
+      id            TEXT PRIMARY KEY NOT NULL,
+      user_id       TEXT NOT NULL,
+      scheduled_on  TEXT NOT NULL,
+      plan_day_id   TEXT,
+      updated_at    TEXT,
+      deleted_at    TEXT,
+      UNIQUE (user_id, scheduled_on)
+    );
+
+    CREATE INDEX IF NOT EXISTS scheduled_days_user_date_idx
+      ON scheduled_days (user_id, scheduled_on);
   `,
 };
 
@@ -440,6 +456,36 @@ CREATE TABLE IF NOT EXISTS plan_day_exercises (
 CREATE INDEX IF NOT EXISTS plan_days_plan_idx ON plan_days (plan_id, day_index);
 CREATE INDEX IF NOT EXISTS plan_day_exercises_day_idx
   ON plan_day_exercises (plan_day_id, order_index);
+
+-- The weekly calendar: which workout is intended on a given date.
+--
+-- A deliberate departure from plan_days.day_index, which is a position in a rotation and
+-- carries a comment saying it is explicitly NOT a weekday. Both now exist and answer different
+-- questions: the rotation is what comes next if you simply train, the calendar is what you sat
+-- down and committed to for a particular week. The calendar wins when a row exists for today;
+-- absent one, the rotation still decides, so a user who never opens the week editor sees no
+-- change at all.
+--
+-- Keyed by date rather than by weekday, because the whole point is planning a SPECIFIC coming
+-- week — a weekday-keyed table could not tell "this Sunday" from "every Sunday", and the ritual
+-- the feature exists for is the former.
+--
+-- A NULL plan_day_id is meaningful: it is a rest day the user chose, which is not the same fact
+-- as having no row (nothing decided). No foreign key, matching workout_sessions.plan_day_id —
+-- plan days are soft-deleted, so a constraint would either block the delete or take the history
+-- with it.
+CREATE TABLE IF NOT EXISTS scheduled_days (
+  id            TEXT PRIMARY KEY NOT NULL,
+  user_id       TEXT NOT NULL,
+  scheduled_on  TEXT NOT NULL,
+  plan_day_id   TEXT,
+  updated_at    TEXT,
+  deleted_at    TEXT,
+  UNIQUE (user_id, scheduled_on)
+);
+
+CREATE INDEX IF NOT EXISTS scheduled_days_user_date_idx
+  ON scheduled_days (user_id, scheduled_on);
 
 CREATE TABLE IF NOT EXISTS outbox (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { getTodayWorkout, weekStrip, weekSummary } from './home.js';
+import { getTodayWorkout, isScheduledRestDay, weekStrip, weekSummary } from './home.js';
+import { setScheduledDay } from './schedule.js';
 import type { SqlExecutor } from './executor.js';
 import { createTestExecutor } from './testUtils.js';
 
@@ -69,6 +70,56 @@ async function seedPlan(days: { name: string; exercises: [string, number | null]
   }
   return dayIds;
 }
+
+describe('getTodayWorkout — the weekly calendar', () => {
+  // NOW is 2026-08-05, a Wednesday.
+  const TODAY = '2026-08-05';
+
+  it('shows the committed day even when the rotation had drifted elsewhere', async () => {
+    const [push, pull] = await seedPlan([
+      { name: 'דחיפה A', exercises: [['Barbell Bench Press', 4]] },
+      { name: 'משיכה A', exercises: [['Barbell Row', 4]] },
+      { name: 'רגליים', exercises: [['Barbell Back Squat', 4]] },
+    ]);
+    // Rotation would land on legs (trained push two days ago); the calendar says pull.
+    await logWorkout('2026-08-03T09:00:00', [{ exercise: 'Barbell Bench Press', weight: 80, reps: 5 }], {
+      planDayId: push,
+    });
+    expect(pull).toBeTruthy();
+    await setScheduledDay(db, USER, () => id('sched'), TODAY, pull ?? null);
+
+    expect((await getTodayWorkout(db, USER, NOW))?.dayName).toBe('משיכה A');
+  });
+
+  it('treats a scheduled rest day as no workout, and says so', async () => {
+    await seedPlan([{ name: 'דחיפה A', exercises: [['Barbell Bench Press', 4]] }]);
+    await setScheduledDay(db, USER, () => id('sched'), TODAY, null);
+
+    expect(await getTodayWorkout(db, USER, NOW)).toBeNull();
+    // Distinct from "no plan" — the screen shows a rest card rather than an invitation to build.
+    expect(await isScheduledRestDay(db, USER, NOW)).toBe(true);
+  });
+
+  it('leaves the rotation in charge of a date nobody decided', async () => {
+    await seedPlan([
+      { name: 'דחיפה A', exercises: [['Barbell Bench Press', 4]] },
+      { name: 'משיכה A', exercises: [['Barbell Row', 4]] },
+    ]);
+    // Committing a different date must not affect today.
+    await setScheduledDay(db, USER, () => id('sched'), '2026-08-06', null);
+
+    expect((await getTodayWorkout(db, USER, NOW))?.dayName).toBe('דחיפה A');
+    expect(await isScheduledRestDay(db, USER, NOW)).toBe(false);
+  });
+
+  it('falls back to the rotation when the committed day was deleted from the plan', async () => {
+    await seedPlan([{ name: 'דחיפה A', exercises: [['Barbell Bench Press', 4]] }]);
+    await setScheduledDay(db, USER, () => id('sched'), TODAY, 'a-day-that-no-longer-exists');
+
+    // Stranded rather than silently blank: showing nothing would read as "you have no plan".
+    expect((await getTodayWorkout(db, USER, NOW))?.dayName).toBe('דחיפה A');
+  });
+});
 
 describe('getTodayWorkout', () => {
   it('starts a brand-new plan on its first day', async () => {
