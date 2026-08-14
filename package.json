@@ -7,8 +7,9 @@
     "apps/*",
     "packages/*"
   ],
+  "enginesReason": "22.5 is the floor, not 20: the repository tests run real SQL against node:sqlite (src/db/testUtils.ts), which was added in 22.5. On an older Node every database test fails at import rather than at an assertion, which looks like a broken checkout rather than a wrong engine.",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.5"
   },
   "scripts": {
     "test": "npm run test --workspaces --if-present",
