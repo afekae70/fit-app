@@ -107,3 +107,52 @@ export function selectAdvertisementPayload(input: {
 
   return null;
 }
+
+/**
+ * Bluetooth SIG company identifiers, as they appear little-endian at the head of manufacturer
+ * data — which is why the hex here reads back-to-front from the assigned numbers list.
+ */
+const KNOWN_COMPANIES: Record<string, string> = {
+  '4c00': 'Apple',
+  '7500': 'Samsung',
+  '0600': 'Microsoft',
+  '0e00': 'Google',
+  d007: 'Tuya',
+  '5d00': 'Gree',
+};
+
+/**
+ * Names that give a device away without any usable manufacturer data.
+ *
+ * Anchored or word-bounded on purpose. An unanchored /tv/i matches any name containing those
+ * two letters, and the entire value of this table is that a device it stays silent about is
+ * worth connecting to — a false match hides the one row that mattered.
+ */
+const KNOWN_NAME_PATTERNS: [RegExp, string][] = [
+  [/^govee/i, 'Govee'],
+  [/^\[?tv\]?[\s_-]|samsung|qled/i, 'TV'],
+  [/webos|^\[lg\]/i, 'LG'],
+  [/^jbl[\s_-]/i, 'JBL'],
+  [/^gr-ac/i, 'Gree'],
+];
+
+/**
+ * Which brand, if any, this advertiser is recognisably from.
+ *
+ * Returns null for anything unrecognised, which is deliberately the interesting answer: a
+ * body-composition scale from a factory that also ships four other brands has no entry in any
+ * table, and "not a television" is the most this can honestly narrow it to.
+ */
+export function classifyVendor(device: {
+  name: string | null;
+  manufacturerDataHex: string | null;
+}): string | null {
+  const company = device.manufacturerDataHex?.slice(0, 4).toLowerCase();
+  if (company && KNOWN_COMPANIES[company]) return KNOWN_COMPANIES[company];
+
+  for (const [pattern, vendor] of KNOWN_NAME_PATTERNS) {
+    if (device.name && pattern.test(device.name)) return vendor;
+  }
+
+  return null;
+}

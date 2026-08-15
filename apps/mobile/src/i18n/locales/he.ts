@@ -122,6 +122,7 @@ export const he = {
     unnamed: '(ללא שם)',
     recognised: 'מזוהה על ידי {{adapter}}',
     changing: 'שידורים משתנים — כאן נמצא המשקל:',
+    knownVendor: 'מותג מוכר — כנראה לא המשקל',
     tapToConnect: 'לחץ כדי להתחבר ולקרוא את המכשיר',
     status: {
       connecting: 'מתחבר…',

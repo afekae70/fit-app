@@ -38,7 +38,13 @@
 import { PermissionsAndroid, Platform } from 'react-native';
 
 import { selectAdapter, type ScaleReading } from './adapter.js';
-import { base64ToBytes, fullUuid, selectAdvertisementPayload, shortUuid } from './encoding.js';
+import {
+  base64ToBytes,
+  classifyVendor,
+  fullUuid,
+  selectAdvertisementPayload,
+  shortUuid,
+} from './encoding.js';
 
 /** Bluetooth SIG Weight Scale Service and its Weight Measurement characteristic. */
 const WEIGHT_SERVICE = '181d';
@@ -368,10 +374,17 @@ export interface SightedDevice {
    * values counts, which is what a scale reporting a rising weight does.
    */
   changing: boolean;
+  /**
+   * A recognised consumer brand rather than a candidate — a television, a phone, a light.
+   *
+   * Triage, not identification: it exists so a list of thirty advertisers can be reduced to the
+   * three worth connecting to. Being wrong costs a wasted connection attempt, so the table
+   * stays conservative and anything unrecognised is treated as a candidate.
+   */
+  vendor: string | null;
   /** Whether one of the shipped adapters claims it. */
   adapterId: string | null;
 }
-
 /**
  * List everything advertising nearby, decoded no further than hex.
  *
@@ -430,9 +443,19 @@ export async function scanDiagnostics(
      * announcing itself repeats one or two forever. Sorting by frame count alone put a chatty
      * TV above a scale on the first run of this screen.
      */
+    /*
+     * Candidates first, then the ones whose bytes moved, then the loudest.
+     *
+     * Vendor leads because the practical question this screen has to answer is "which of these
+     * thirty rows do I connect to". Twenty-seven of them are televisions, phones and light
+     * bulbs; putting them below the fold is worth more than any other ordering.
+     */
     const snapshot = () =>
       [...seen.values()].sort(
-        (a, b) => Number(b.changing) - Number(a.changing) || b.frames - a.frames,
+        (a, b) =>
+          Number(a.vendor !== null) - Number(b.vendor !== null) ||
+          Number(b.changing) - Number(a.changing) ||
+          b.frames - a.frames,
       );
 
     const finish = () => {
@@ -483,6 +506,7 @@ export async function scanDiagnostics(
         frames: 0,
         payloadsHex: [],
         changing: false,
+        vendor: null,
         adapterId: null,
       };
 
@@ -513,6 +537,8 @@ export async function scanDiagnostics(
       }
       bySource.set(device.id, sources);
       entry.changing = [...sources.values()].some((values) => values.size > 1);
+
+      entry.vendor = classifyVendor(entry);
 
       entry.adapterId =
         selectAdapter({
@@ -724,7 +750,9 @@ export function formatDiagnostics(devices: readonly SightedDevice[]): string {
     .map((device) => {
       const lines = [
         `${device.name ?? '(no name)'}  [${device.id}]`,
-        `  frames: ${device.frames}${device.adapterId ? `  adapter: ${device.adapterId}` : ''}`,
+        `  frames: ${device.frames}` +
+          (device.vendor ? `  vendor: ${device.vendor}` : '  CANDIDATE') +
+          (device.adapterId ? `  adapter: ${device.adapterId}` : ''),
       ];
       if (device.changing) lines.push('  CHANGING while watched');
       if (device.serviceUuids.length > 0) lines.push(`  services: ${device.serviceUuids.join(', ')}`);

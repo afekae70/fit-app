@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   base64ToBytes,
+  classifyVendor,
   fullUuid,
   selectAdvertisementPayload,
   shortUuid,
@@ -116,5 +117,52 @@ describe('selectAdvertisementPayload', () => {
         serviceUuids: ['181b'],
       }),
     ).toBeNull();
+  });
+});
+
+describe('classifyVendor', () => {
+  // Every fixture below is a real advertisement captured in the room where the scale is,
+  // during the scans that failed to find it. The point of the table is not to identify these
+  // devices for their own sake — it is to get twenty-odd of them out of the way so the one
+  // worth connecting to is not buried.
+
+  it('names the big vendors from the company id at the head of manufacturer data', () => {
+    expect(
+      classifyVendor({ name: null, manufacturerDataHex: '4c000100000000000000000000000080000000' }),
+    ).toBe('Apple');
+    expect(
+      classifyVendor({
+        name: 'Samsung Q60BA 50 TV',
+        manufacturerDataHex: '75004204018066a0d05b25c1f3a2d05b25c1f201ccf279000000',
+      }),
+    ).toBe('Samsung');
+    expect(
+      classifyVendor({ name: 'TY', manufacturerDataHex: 'd007800300000c00bb6c210d8e308a8650e4' }),
+    ).toBe('Tuya');
+  });
+
+  it('falls back to the name when the company id is unhelpful', () => {
+    expect(classifyVendor({ name: 'Govee_H6061_6648', manufacturerDataHex: '0388ec00010300' })).toBe(
+      'Govee',
+    );
+    expect(classifyVendor({ name: '[LG] webOS TV UJ670Y', manufacturerDataHex: null })).toBe('LG');
+    expect(classifyVendor({ name: '50" QLED', manufacturerDataHex: null })).toBe('TV');
+  });
+
+  it('leaves an unrecognised device unclassified, which is the interesting answer', () => {
+    // The two candidates the scans surfaced. A scale from a factory that also ships four other
+    // brands appears in no table, so "not a television" is as far as this can honestly narrow.
+    expect(classifyVendor({ name: 'U-ACGFDA6', manufacturerDataHex: null })).toBeNull();
+    expect(
+      classifyVendor({ name: null, manufacturerDataHex: 'c00d1cfa13880808255a0a55a343ac' }),
+    ).toBeNull();
+    expect(classifyVendor({ name: '3010002602250020', manufacturerDataHex: null })).toBeNull();
+  });
+
+  it('does not let a loose "TV" swallow an unrelated name', () => {
+    // An unanchored /tv/i would classify these as televisions and hide them below the fold —
+    // the one failure mode of this table that actually costs something.
+    expect(classifyVendor({ name: 'BTVS-201', manufacturerDataHex: null })).toBeNull();
+    expect(classifyVendor({ name: 'FITVIEW', manufacturerDataHex: null })).toBeNull();
   });
 });

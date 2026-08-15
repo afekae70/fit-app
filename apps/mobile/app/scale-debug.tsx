@@ -210,10 +210,17 @@ export default function ScaleDebugScreen() {
                   ]}
                 >
                   <View style={styles.deviceHeader}>
-                    <Text style={styles.deviceName} numberOfLines={1}>
+                    <Text
+                      style={[styles.deviceName, device.vendor !== null && styles.deviceKnown]}
+                      numberOfLines={1}
+                    >
                       {device.name ?? t('scaleDebug.unnamed')}
                     </Text>
-                    <Text style={styles.frames}>{device.frames}×</Text>
+                    {/* A recognised brand is a reason NOT to tap this row, so it is stated
+                        plainly rather than left for the user to infer from the name. */}
+                    <Text style={styles.frames}>
+                      {device.vendor ?? `${device.frames}×`}
+                    </Text>
                   </View>
                   <Text style={styles.deviceId}>{device.id}</Text>
 
@@ -255,7 +262,9 @@ export default function ScaleDebugScreen() {
                   <Text style={styles.connectHint}>
                     {exploring === device.id
                       ? t(`scaleDebug.status.${exploreStatus ?? 'connecting'}`)
-                      : t('scaleDebug.tapToConnect')}
+                      : device.vendor === null
+                        ? t('scaleDebug.tapToConnect')
+                        : t('scaleDebug.knownVendor')}
                   </Text>
                 </Pressable>
               ))}
@@ -361,6 +370,7 @@ const createStyles = (colors: ColorPalette) =>
       gap: spacing.sm,
     },
     deviceName: { color: colors.text, fontSize: fontSize.sm, fontWeight: '500', flex: 1, textAlign: 'auto' },
+    deviceKnown: { color: colors.textFaint, fontWeight: '400' },
     frames: { color: colors.textFaint, fontSize: fontSize.xs, fontVariant: ['tabular-nums'] },
     deviceId: { color: colors.textFaint, fontSize: fontSize.xs },
     recognised: { color: colors.accent, fontSize: fontSize.xs, textAlign: 'auto' },

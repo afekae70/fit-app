@@ -129,6 +129,7 @@ export const en = {
     unnamed: '(no name)',
     recognised: 'Recognised by {{adapter}}',
     changing: 'Changing broadcasts — the weight is in here:',
+    knownVendor: 'Known brand — probably not the scale',
     tapToConnect: 'Tap to connect and read this device',
     status: {
       connecting: 'Connecting…',
