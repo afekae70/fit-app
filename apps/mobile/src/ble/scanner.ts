@@ -79,7 +79,10 @@ interface BleManagerLike {
   ): void;
   stopDeviceScan(): void;
   destroy(): void;
-  connectToDevice(id: string): Promise<ConnectedDeviceLike>;
+  connectToDevice(
+    id: string,
+    options?: { autoConnect?: boolean; timeout?: number; refreshGatt?: string },
+  ): Promise<ConnectedDeviceLike>;
   cancelDeviceConnection(id: string): Promise<unknown>;
 }
 
@@ -562,11 +565,17 @@ export interface ExploreResult {
  * Reads are attempted and allowed to fail: plenty of characteristics advertise `read` and then
  * reject it without pairing, and one such refusal must not abandon the other forty.
  */
+export type ExploreStatus = 'connecting' | 'waiting_for_device' | 'reading' | 'listening';
+
 export async function exploreDevice(
   deviceId: string,
-  options: { listenMs?: number; onUpdate?: (result: ExploreResult) => void } = {},
+  options: {
+    listenMs?: number;
+    onUpdate?: (result: ExploreResult) => void;
+    onStatus?: (status: ExploreStatus) => void;
+  } = {},
 ): Promise<ExploreResult> {
-  const { listenMs = 30_000, onUpdate } = options;
+  const { listenMs = 30_000, onUpdate, onStatus } = options;
 
   const availability = await checkScanAvailability();
   if (!availability.available) throw new ScanError(availability.reason);
@@ -587,9 +596,11 @@ export async function exploreDevice(
   const subscriptions: { remove(): void }[] = [];
 
   try {
-    const connected = await manager.connectToDevice(deviceId);
+    const connected = await connectPatiently(manager, deviceId, onStatus);
     result.deviceName = connected.name;
     await connected.discoverAllServicesAndCharacteristics();
+
+    onStatus?.('reading');
 
     for (const service of await connected.services()) {
       for (const characteristic of await service.characteristics()) {
@@ -631,6 +642,7 @@ export async function exploreDevice(
       }
     }
 
+    onStatus?.('listening');
     onUpdate?.({ ...result, characteristics: [...found] });
     await new Promise((resolve) => setTimeout(resolve, listenMs));
   } catch (error) {
@@ -642,6 +654,43 @@ export async function exploreDevice(
   }
 
   return result;
+}
+
+/**
+ * Connect, allowing for a device that is asleep right now.
+ *
+ * A scale powers its radio down seconds after the weight settles and wakes only when it is
+ * stepped on, so the first attempt frequently lands on a device that is no longer listening —
+ * "Device ... was disconnected", which reads like a fault and is really a timing problem.
+ *
+ * First a direct attempt, which is fast and succeeds whenever the device happens to be awake.
+ * If that fails, Android's `autoConnect` takes over: rather than reaching out once, it registers
+ * interest and completes the moment the device next advertises. That turns "connect at exactly
+ * the right instant" into "press connect, then go and stand on the scale", which is the only
+ * version of this a person can actually perform.
+ */
+async function connectPatiently(
+  manager: BleManagerLike,
+  deviceId: string,
+  onStatus?: (status: ExploreStatus) => void,
+): Promise<ConnectedDeviceLike> {
+  onStatus?.('connecting');
+  try {
+    return await manager.connectToDevice(deviceId, {
+      autoConnect: false,
+      timeout: 10_000,
+      // Android caches a device's service list across connections and will happily serve a
+      // stale one, which shows up as a scale exposing nothing at all.
+      refreshGatt: 'OnConnected',
+    });
+  } catch {
+    onStatus?.('waiting_for_device');
+    return manager.connectToDevice(deviceId, {
+      autoConnect: true,
+      timeout: 45_000,
+      refreshGatt: 'OnConnected',
+    });
+  }
 }
 
 /** An exploration as plain text, for pasting into a bug report. */

@@ -24,6 +24,7 @@ import {
   ScanError,
   scanDiagnostics,
   type ExploreResult,
+  type ExploreStatus,
   type SightedDevice,
 } from '../src/ble/scanner.js';
 import { Banner, Card, Hint, ScreenHeader, SectionTitle } from '../src/components/ui.js';
@@ -53,6 +54,7 @@ export default function ScaleDebugScreen() {
   const [devices, setDevices] = useState<SightedDevice[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [exploring, setExploring] = useState<string | null>(null);
+  const [exploreStatus, setExploreStatus] = useState<ExploreStatus | null>(null);
   const [exploration, setExploration] = useState<ExploreResult | null>(null);
   // A ref, not state: the scan loop polls this every 250 ms and must see the current value
   // without the closure it was created with going stale.
@@ -100,13 +102,18 @@ export default function ScaleDebugScreen() {
     (deviceId: string) => {
       void hapticLight();
       setExploring(deviceId);
+      setExploreStatus('connecting');
       setExploration(null);
       setError(null);
 
       void (async () => {
         try {
           setExploration(
-            await exploreDevice(deviceId, { listenMs: LISTEN_MS, onUpdate: setExploration }),
+            await exploreDevice(deviceId, {
+              listenMs: LISTEN_MS,
+              onUpdate: setExploration,
+              onStatus: setExploreStatus,
+            }),
           );
         } catch (caught) {
           setError(
@@ -114,6 +121,7 @@ export default function ScaleDebugScreen() {
           );
         } finally {
           setExploring(null);
+          setExploreStatus(null);
         }
       })();
     },
@@ -245,7 +253,9 @@ export default function ScaleDebugScreen() {
 
                   {/* The offer that matters once broadcasting has been ruled out. */}
                   <Text style={styles.connectHint}>
-                    {exploring === device.id ? t('scaleDebug.connecting') : t('scaleDebug.tapToConnect')}
+                    {exploring === device.id
+                      ? t(`scaleDebug.status.${exploreStatus ?? 'connecting'}`)
+                      : t('scaleDebug.tapToConnect')}
                   </Text>
                 </Pressable>
               ))}
@@ -263,7 +273,11 @@ export default function ScaleDebugScreen() {
           {exploration.error ? <Banner tone="warning">{exploration.error}</Banner> : null}
 
           {exploring ? (
-            <Hint>{t('scaleDebug.standOnNow')}</Hint>
+            <Hint>
+              {exploreStatus === 'waiting_for_device'
+                ? t('scaleDebug.wakeItUp')
+                : t('scaleDebug.standOnNow')}
+            </Hint>
           ) : (
             <Pressable
               onPress={shareExploration}
