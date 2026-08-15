@@ -498,7 +498,6 @@ export const en = {
     restTodayHint: 'This is how you planned the week. You can still start a workout anyway.',
   },
   settings: {
-    reloadForRtl: 'Language changed. Reopen the app to switch layout direction too.',
     title: 'Settings',
     appearance: 'Appearance',
     theme: 'Theme',

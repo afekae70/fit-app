@@ -41,7 +41,6 @@ export default function SettingsScreen() {
   const { unit, setUnit } = useUnits();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
-  const [reloadNeeded, setReloadNeeded] = useState(false);
   const [reminderOn, setReminderOn] = useState(false);
   const [reminderDenied, setReminderDenied] = useState(false);
 
@@ -74,12 +73,11 @@ export default function SettingsScreen() {
     setReminderDenied(!scheduled);
   };
 
-  // setAppLanguage never restarts the app itself (see its file header for why) — the banner
-  // below is how a direction change actually reaches the user's eyes.
+  // No "reopen the app" prompt any more: the root View's `direction` follows i18next, so the
+  // layout mirrors as the language changes (see app/_layout.tsx).
   const changeLanguage = async (next: Language) => {
     if (next === i18n.language) return;
-    const result = await setAppLanguage(next);
-    setReloadNeeded(result.directionChanged);
+    await setAppLanguage(next);
   };
 
   return (
@@ -92,8 +90,6 @@ export default function SettingsScreen() {
     >
       {/* No gear here — it would link to the screen you are already on. */}
       <ScreenHeader title={t('settings.title')} back settings={false} />
-
-      {reloadNeeded ? <Banner tone="warning">{t('settings.reloadForRtl')}</Banner> : null}
 
       <Card>
         <SectionTitle>{t('settings.appearance')}</SectionTitle>

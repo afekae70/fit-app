@@ -156,18 +156,41 @@ export default function WorkoutsScreen() {
     return loaded;
   }, [userId]);
 
-  // Deleting a session happens on the detail screen, and this tab stays mounted underneath it.
-  // Without this the user comes back to a list that still shows the workout they just deleted —
-  // it looks like the delete silently failed. Same reasoning as plan.tsx.
-  //
-  // Guarded on `sessionId`: mid-workout this tab shows the logging UI, not the history list, and
-  // the trips that happen then (the exercise picker) already reload the session themselves. A
-  // blanket refresh would be pointless work over a screen the user is actively typing into.
+  /*
+   * On focus, pick up whatever happened while this tab was in the background.
+   *
+   * Two different things arrive here. A session may have been STARTED elsewhere — the Today
+   * card and the Plan screen both create one and then navigate here — and a session may have
+   * been DELETED on the detail screen, which sits above this tab.
+   *
+   * Checking for an active session is the half that was missing. Tabs stay mounted, and the
+   * resume logic below runs only on mount, so a session created after that was never adopted:
+   * the tab kept showing the idle home list with the freshly created workout sitting in its
+   * history, which reads as Start having opened and immediately closed a workout.
+   *
+   * Skipped entirely while a session is already on screen — the user is typing into it, and the
+   * detours that happen then (the exercise picker) reload it themselves.
+   */
   useFocusEffect(
     useCallback(() => {
       if (sessionId) return;
-      void reloadHome();
-    }, [sessionId, reloadHome]),
+      let cancelled = false;
+      void (async () => {
+        const db = await getExecutor();
+        const active = await getActiveSession(db, userId);
+        if (cancelled) return;
+
+        if (active) {
+          setSessionId(active.id);
+          await reload(active.id);
+          return;
+        }
+        await reloadHome();
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [sessionId, userId, reload, reloadHome]),
   );
 
   // Resume whatever session was left open — being backgrounded mid-workout is the normal

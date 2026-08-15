@@ -101,17 +101,6 @@ export function initI18n(language: Language = DEFAULT_LANGUAGE): typeof i18next 
   return i18next;
 }
 
-export interface LanguageChangeResult {
-  language: Language;
-  /**
-   * True when the layout direction had to change. The native RTL flag is already written by
-   * the time this returns — only the *running* UI hasn't picked it up yet, since that requires
-   * a bundle reload this function deliberately doesn't attempt (see the file header). The
-   * caller shows a "reopen the app" hint whenever this is true.
-   */
-  directionChanged: boolean;
-}
-
 /**
  * Switch language, and flip the stored layout-direction flag with it.
  *
@@ -119,20 +108,19 @@ export interface LanguageChangeResult {
  * instant this returns, it just doesn't paint until the app restarts. See the file header for
  * why this doesn't attempt that restart itself.
  */
-export async function setAppLanguage(language: Language): Promise<LanguageChangeResult> {
+export async function setAppLanguage(language: Language): Promise<void> {
   await i18next.changeLanguage(language);
 
   // Persisted, so the choice survives a relaunch. Previously nothing was stored and startup
   // re-read the device locale every time, which silently undid the user's choice.
   void SecureStore.setItemAsync(STORAGE_KEY, language).catch(() => {});
 
+  // Still written, so a COLD start comes up in the right direction natively before any React
+  // code runs. It is no longer what mirrors the running UI — the root View's `direction` does
+  // that, in place — so there is nothing left for the caller to prompt about.
   const shouldBeRtl = isRtlLanguage(language);
-  const directionChanged = I18nManager.isRTL !== shouldBeRtl;
-
-  if (directionChanged) {
+  if (I18nManager.isRTL !== shouldBeRtl) {
     I18nManager.allowRTL(shouldBeRtl);
     I18nManager.forceRTL(shouldBeRtl);
   }
-
-  return { language, directionChanged };
 }
