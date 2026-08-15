@@ -129,6 +129,9 @@ export const en = {
     unnamed: '(no name)',
     recognised: 'Recognised by {{adapter}}',
     changing: 'Changing broadcasts — the weight is in here:',
+    tapToConnect: 'Tap to connect and read this device',
+    connecting: 'Connected — reading…',
+    standOnNow: 'Step on the scale now and stay until the number locks. Every channel capable of pushing data is being watched at once.',
     share: 'Share the output',
   },
   workout: {

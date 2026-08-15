@@ -18,9 +18,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BLE_REASON_MESSAGE } from '../src/ble/messages.js';
 import {
+  exploreDevice,
   formatDiagnostics,
+  formatExploration,
   ScanError,
   scanDiagnostics,
+  type ExploreResult,
   type SightedDevice,
 } from '../src/ble/scanner.js';
 import { Banner, Card, Hint, ScreenHeader, SectionTitle } from '../src/components/ui.js';
@@ -37,6 +40,9 @@ import { fontSize, radius, spacing, type ColorPalette } from '../src/theme.js';
  */
 const SCAN_MS = 60_000;
 
+/** How long to hold the connection open while the weight is meant to change. */
+const LISTEN_MS = 30_000;
+
 export default function ScaleDebugScreen() {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
@@ -46,6 +52,8 @@ export default function ScaleDebugScreen() {
   const [scanning, setScanning] = useState(false);
   const [devices, setDevices] = useState<SightedDevice[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [exploring, setExploring] = useState<string | null>(null);
+  const [exploration, setExploration] = useState<ExploreResult | null>(null);
   // A ref, not state: the scan loop polls this every 250 ms and must see the current value
   // without the closure it was created with going stale.
   const stopRequested = useRef(false);
@@ -80,6 +88,43 @@ export default function ScaleDebugScreen() {
     void hapticLight();
     stopRequested.current = true;
   }, []);
+
+  /**
+   * Connect to one device and record everything it exposes and pushes.
+   *
+   * The passive scan cannot see a scale that only talks once connected, which two scans now
+   * suggest is what this one does. Thirty seconds is long enough to step on and let the number
+   * settle while every notifiable characteristic is subscribed at once.
+   */
+  const explore = useCallback(
+    (deviceId: string) => {
+      void hapticLight();
+      setExploring(deviceId);
+      setExploration(null);
+      setError(null);
+
+      void (async () => {
+        try {
+          setExploration(
+            await exploreDevice(deviceId, { listenMs: LISTEN_MS, onUpdate: setExploration }),
+          );
+        } catch (caught) {
+          setError(
+            caught instanceof ScanError ? t(BLE_REASON_MESSAGE[caught.reason]) : String(caught),
+          );
+        } finally {
+          setExploring(null);
+        }
+      })();
+    },
+    [t],
+  );
+
+  const shareExploration = useCallback(() => {
+    if (!exploration) return;
+    void hapticLight();
+    void Share.share({ message: formatExploration(exploration) }).catch(() => undefined);
+  }, [exploration]);
 
   /**
    * Hand the dump to the system share sheet.
@@ -145,9 +190,16 @@ export default function ScaleDebugScreen() {
               )}
 
               {devices.map((device) => (
-                <View
+                <Pressable
                   key={device.id}
-                  style={[styles.device, device.payloadsHex.length > 1 && styles.deviceChanging]}
+                  onPress={() => explore(device.id)}
+                  disabled={scanning || exploring !== null}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [
+                    styles.device,
+                    device.changing && styles.deviceChanging,
+                    pressed && styles.devicePressed,
+                  ]}
                 >
                   <View style={styles.deviceHeader}>
                     <Text style={styles.deviceName} numberOfLines={1}>
@@ -190,10 +242,57 @@ export default function ScaleDebugScreen() {
                       ))}
                     </View>
                   ) : null}
-                </View>
+
+                  {/* The offer that matters once broadcasting has been ruled out. */}
+                  <Text style={styles.connectHint}>
+                    {exploring === device.id ? t('scaleDebug.connecting') : t('scaleDebug.tapToConnect')}
+                  </Text>
+                </Pressable>
               ))}
             </>
           )}
+        </Card>
+      ) : null}
+
+      {exploration ? (
+        <Card>
+          <SectionTitle>
+            {exploration.deviceName ?? t('scaleDebug.unnamed')} · {exploration.characteristics.length}
+          </SectionTitle>
+
+          {exploration.error ? <Banner tone="warning">{exploration.error}</Banner> : null}
+
+          {exploring ? (
+            <Hint>{t('scaleDebug.standOnNow')}</Hint>
+          ) : (
+            <Pressable
+              onPress={shareExploration}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.copyButton, pressed && styles.buttonPressed]}
+            >
+              <Text style={styles.copyText}>⤴ {t('scaleDebug.share')}</Text>
+            </Pressable>
+          )}
+
+          {exploration.characteristics.map((characteristic) => (
+            <View
+              key={`${characteristic.serviceUuid}/${characteristic.uuid}`}
+              style={[styles.device, characteristic.notifications.length > 0 && styles.deviceChanging]}
+            >
+              <Text style={styles.mono}>
+                {characteristic.serviceUuid}/{characteristic.uuid} [{characteristic.properties}]
+              </Text>
+              {characteristic.readHex ? (
+                <Text style={styles.mono}>= {characteristic.readHex}</Text>
+              ) : null}
+              {/* A characteristic that pushed anything is the whole point of connecting. */}
+              {characteristic.notifications.map((hex, index) => (
+                <Text key={`${hex}-${index}`} style={styles.mono}>
+                  → {hex}
+                </Text>
+              ))}
+            </View>
+          ))}
         </Card>
       ) : null}
     </ScrollView>
@@ -233,6 +332,8 @@ const createStyles = (colors: ColorPalette) =>
       paddingTop: spacing.sm,
       gap: 2,
     },
+    devicePressed: { opacity: 0.6 },
+    connectHint: { color: colors.accent, fontSize: fontSize.xs, textAlign: 'auto', marginTop: 2 },
     // The one thing worth spotting at a glance in a list of twenty-odd televisions.
     deviceChanging: {
       borderStartWidth: 2,

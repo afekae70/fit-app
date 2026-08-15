@@ -101,6 +101,27 @@ interface ConnectedDeviceLike {
     characteristicUUID: string,
     listener: (error: unknown, characteristic: { value?: string | null } | null) => void,
   ): { remove(): void };
+  services(): Promise<ServiceLike[]>;
+}
+
+interface ServiceLike {
+  uuid: string;
+  characteristics(): Promise<CharacteristicLike[]>;
+}
+
+interface CharacteristicLike {
+  uuid: string;
+  serviceUUID: string;
+  isReadable: boolean;
+  isNotifiable: boolean;
+  isIndicatable: boolean;
+  isWritableWithResponse: boolean;
+  isWritableWithoutResponse: boolean;
+  value?: string | null;
+  read(): Promise<CharacteristicLike>;
+  monitor(
+    listener: (error: unknown, characteristic: CharacteristicLike | null) => void,
+  ): { remove(): void };
 }
 
 /**
@@ -333,8 +354,17 @@ export interface SightedDevice {
   manufacturerDataHex: string | null;
   /** How many advertisements arrived — a scale under load re-broadcasts constantly. */
   frames: number;
-  /** Distinct payloads seen, newest last. A changing payload is a live measurement. */
+  /** Distinct payloads seen, newest last, across every source. */
   payloadsHex: string[];
+  /**
+   * Whether any single source changed its bytes while we watched.
+   *
+   * Per source, not across sources: a device advertising two different services was previously
+   * counted as "changing" because two payloads had been collected, and that false positive
+   * flagged a Tuya switch and cleared nothing. Only a source that emitted two *different*
+   * values counts, which is what a scale reporting a rising weight does.
+   */
+  changing: boolean;
   /** Whether one of the shipped adapters claims it. */
   adapterId: string | null;
 }
@@ -382,6 +412,9 @@ export async function scanDiagnostics(
 
   const manager = new ble.BleManager();
   const seen = new Map<string, SightedDevice>();
+  // deviceId -> source key -> the distinct values that source has emitted. Kept beside the
+  // results rather than inside them so `SightedDevice` stays plain data the UI can render.
+  const bySource = new Map<string, Map<string, Set<string>>>();
 
   return new Promise<SightedDevice[]>((resolve) => {
     let done = false;
@@ -396,7 +429,7 @@ export async function scanDiagnostics(
      */
     const snapshot = () =>
       [...seen.values()].sort(
-        (a, b) => b.payloadsHex.length - a.payloadsHex.length || b.frames - a.frames,
+        (a, b) => Number(b.changing) - Number(a.changing) || b.frames - a.frames,
       );
 
     const finish = () => {
@@ -446,6 +479,7 @@ export async function scanDiagnostics(
         manufacturerDataHex,
         frames: 0,
         payloadsHex: [],
+        changing: false,
         adapterId: null,
       };
 
@@ -459,13 +493,23 @@ export async function scanDiagnostics(
       Object.assign(entry.serviceData, serviceData);
       if (manufacturerDataHex) entry.manufacturerDataHex = manufacturerDataHex;
 
-      // Capped: a scale advertising for fifteen seconds would otherwise produce hundreds of
-      // lines, and the first few distinct payloads carry the same information.
-      for (const payload of [...Object.values(serviceData), manufacturerDataHex ?? '']) {
-        if (payload && !entry.payloadsHex.includes(payload) && entry.payloadsHex.length < 12) {
+      // Tracked per source so "changing" means one source's bytes moved, not that a device
+      // happens to advertise on two services. Capped, because a scale advertising for a minute
+      // would otherwise produce hundreds of lines that all say the same thing.
+      const sources = bySource.get(device.id) ?? new Map<string, Set<string>>();
+      const incoming: [string, string][] = Object.entries(serviceData);
+      if (manufacturerDataHex) incoming.push(['mfg', manufacturerDataHex]);
+
+      for (const [source, payload] of incoming) {
+        const values = sources.get(source) ?? new Set<string>();
+        if (values.size < 12) values.add(payload);
+        sources.set(source, values);
+        if (!entry.payloadsHex.includes(payload) && entry.payloadsHex.length < 16) {
           entry.payloadsHex.push(payload);
         }
       }
+      bySource.set(device.id, sources);
+      entry.changing = [...sources.values()].some((values) => values.size > 1);
 
       entry.adapterId =
         selectAdapter({
@@ -477,6 +521,143 @@ export async function scanDiagnostics(
       seen.set(device.id, entry);
     });
   });
+}
+
+/* -------------------------------------------------------------------------- */
+/* Connect and explore                                                         */
+/* -------------------------------------------------------------------------- */
+
+export interface ExploredCharacteristic {
+  serviceUuid: string;
+  uuid: string;
+  /** Compact property list: r, w, W (no response), n (notify), i (indicate). */
+  properties: string;
+  /** The value read at connect time, hex, when the characteristic is readable. */
+  readHex: string | null;
+  /** Everything that arrived by notification, hex, newest last. */
+  notifications: string[];
+}
+
+export interface ExploreResult {
+  deviceId: string;
+  deviceName: string | null;
+  characteristics: ExploredCharacteristic[];
+  /** Set when the connection itself failed — the device may be held by another app. */
+  error: string | null;
+}
+
+/**
+ * Connect to one device, list everything it exposes, and record what it pushes.
+ *
+ * The passive scanner cannot see a scale that reports over GATT rather than in its
+ * advertisement, and the scales sold with the OKOK app are largely of that kind: they advertise
+ * a name, wait to be connected, and only then notify a weight on a vendor characteristic. Two
+ * unfiltered scans produced no device behaving like a broadcasting scale, which is what makes
+ * this the next thing to try rather than the first.
+ *
+ * Every notifiable characteristic is subscribed to at once instead of guessing which one
+ * carries the weight. Vendor UUIDs are arbitrary by definition — the only way to learn which
+ * one matters is to watch them all while the number on the scale changes.
+ *
+ * Reads are attempted and allowed to fail: plenty of characteristics advertise `read` and then
+ * reject it without pairing, and one such refusal must not abandon the other forty.
+ */
+export async function exploreDevice(
+  deviceId: string,
+  options: { listenMs?: number; onUpdate?: (result: ExploreResult) => void } = {},
+): Promise<ExploreResult> {
+  const { listenMs = 30_000, onUpdate } = options;
+
+  const availability = await checkScanAvailability();
+  if (!availability.available) throw new ScanError(availability.reason);
+  if (!(await requestAndroidPermissions())) throw new ScanError('permission_denied');
+
+  const ble = loadBlePlx();
+  if (!ble) throw new ScanError('no_native_module');
+
+  const manager = new ble.BleManager();
+  const found: ExploredCharacteristic[] = [];
+  const result: ExploreResult = {
+    deviceId,
+    deviceName: null,
+    characteristics: found,
+    error: null,
+  };
+
+  const subscriptions: { remove(): void }[] = [];
+
+  try {
+    const connected = await manager.connectToDevice(deviceId);
+    result.deviceName = connected.name;
+    await connected.discoverAllServicesAndCharacteristics();
+
+    for (const service of await connected.services()) {
+      for (const characteristic of await service.characteristics()) {
+        const entry: ExploredCharacteristic = {
+          serviceUuid: shortUuid(service.uuid),
+          uuid: shortUuid(characteristic.uuid),
+          properties:
+            (characteristic.isReadable ? 'r' : '') +
+            (characteristic.isWritableWithResponse ? 'w' : '') +
+            (characteristic.isWritableWithoutResponse ? 'W' : '') +
+            (characteristic.isNotifiable ? 'n' : '') +
+            (characteristic.isIndicatable ? 'i' : ''),
+          readHex: null,
+          notifications: [],
+        };
+        found.push(entry);
+
+        if (characteristic.isReadable) {
+          try {
+            const read = await characteristic.read();
+            if (read.value) entry.readHex = bytesToHex(base64ToBytes(read.value));
+          } catch {
+            /* refused without pairing — expected, and not a reason to stop */
+          }
+        }
+
+        if (characteristic.isNotifiable || characteristic.isIndicatable) {
+          subscriptions.push(
+            characteristic.monitor((error, updated) => {
+              if (error || !updated?.value) return;
+              const hex = bytesToHex(base64ToBytes(updated.value));
+              // Capped per characteristic: a scale streaming for thirty seconds would otherwise
+              // bury the interesting frames under hundreds of near-identical ones.
+              if (entry.notifications.length < 40) entry.notifications.push(hex);
+              onUpdate?.({ ...result, characteristics: [...found] });
+            }),
+          );
+        }
+      }
+    }
+
+    onUpdate?.({ ...result, characteristics: [...found] });
+    await new Promise((resolve) => setTimeout(resolve, listenMs));
+  } catch (error) {
+    result.error = error instanceof Error ? error.message : String(error);
+  } finally {
+    for (const subscription of subscriptions) subscription.remove();
+    await manager.cancelDeviceConnection(deviceId).catch(() => undefined);
+    manager.destroy();
+  }
+
+  return result;
+}
+
+/** An exploration as plain text, for pasting into a bug report. */
+export function formatExploration(result: ExploreResult): string {
+  const lines = [`${result.deviceName ?? '(no name)'}  [${result.deviceId}]`];
+  if (result.error) lines.push(`  ERROR: ${result.error}`);
+
+  for (const characteristic of result.characteristics) {
+    lines.push(
+      `  ${characteristic.serviceUuid}/${characteristic.uuid} [${characteristic.properties}]` +
+        (characteristic.readHex ? ` = ${characteristic.readHex}` : ''),
+    );
+    for (const hex of characteristic.notifications) lines.push(`    -> ${hex}`);
+  }
+
+  return lines.join('\n');
 }
 
 /** Lower-case hex, no separators — the form every BLE protocol note is written in. */
@@ -496,6 +677,7 @@ export function formatDiagnostics(devices: readonly SightedDevice[]): string {
         `${device.name ?? '(no name)'}  [${device.id}]`,
         `  frames: ${device.frames}${device.adapterId ? `  adapter: ${device.adapterId}` : ''}`,
       ];
+      if (device.changing) lines.push('  CHANGING while watched');
       if (device.serviceUuids.length > 0) lines.push(`  services: ${device.serviceUuids.join(', ')}`);
       for (const [uuid, hex] of Object.entries(device.serviceData)) {
         lines.push(`  serviceData[${uuid}]: ${hex}`);
