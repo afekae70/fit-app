@@ -7,14 +7,19 @@
  */
 
 import {
+  ageInYears,
   bmi as computeBmi,
+  bmiCategory,
   bmr as computeBmr,
   calorieTarget,
+  estimateBodyFatPctFromBmi,
+  leanBodyMassKg,
   macroSplit,
   resolveBmrSex,
   tdee as computeTdee,
   weeklyRateOfChange,
   type ActivityLevel,
+  type BmiCategory,
   type Goal,
 } from '@fit/shared/calculations';
 import type { UnitPreference } from '@fit/shared';
@@ -237,6 +242,82 @@ export async function getLastScaleDeviceId(
     [userId],
   );
   return row?.device_id ?? null;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Body composition                                                            */
+/* -------------------------------------------------------------------------- */
+
+export interface BodyComposition {
+  bmi: number;
+  bmiCategory: BmiCategory;
+  bodyFatPct: number | null;
+  /**
+   * Whether the fat figure was measured by a device or calculated from height, weight and age.
+   *
+   * Surfaced rather than hidden because the two are not interchangeable. This app's scale
+   * broadcasts weight and nothing else, so the estimate is what a user will normally see, and
+   * presenting arithmetic as a measurement would invite decisions it cannot support.
+   */
+  bodyFatIsEstimate: boolean;
+  /**
+   * Everything that is not fat: muscle, bone, organs, and the water in all of them.
+   *
+   * Deliberately not called muscle mass. Skeletal muscle is roughly half of lean mass, so
+   * labelling this figure "muscle" would overstate it about twofold. Separating the two needs a
+   * bio-impedance reading this scale does not provide.
+   */
+  leanMassKg: number | null;
+}
+
+/**
+ * Summarise what can honestly be said about body composition from a weigh-in.
+ *
+ * A measured body-fat percentage always wins over the estimate — the point of a device is that
+ * it looked at the body. When none exists, the Deurenberg-style estimate stands in, flagged.
+ *
+ * Nothing here is written back to `body_metrics`. That table records what a device reported, and
+ * seeding it with derived numbers would make a history of measurements indistinguishable from a
+ * history of arithmetic — including to the coach, which reads the same rows.
+ */
+export function summariseComposition(
+  profile: ProfileRow | null,
+  weightKg: number | null,
+  measuredBodyFatPct: number | null = null,
+  today = new Date(),
+): BodyComposition | null {
+  if (!weightKg || weightKg <= 0) return null;
+  if (!profile?.height_cm || profile.height_cm <= 0) return null;
+
+  const bmiValue = computeBmi(weightKg, profile.height_cm);
+
+  let bodyFatPct = measuredBodyFatPct;
+  let bodyFatIsEstimate = false;
+
+  if (bodyFatPct === null && profile.birth_date) {
+    // The estimator needs a male/female form. `bmr_formula_sex` is the answer this app already
+    // asks for when sex is 'other', so the same choice serves here rather than a second prompt.
+    const sex = (profile.bmr_formula_sex ?? profile.sex) as 'male' | 'female' | 'other' | null;
+    if (sex === 'male' || sex === 'female') {
+      const birth = new Date(profile.birth_date);
+      const ageYears = ageInYears(birth, today);
+      bodyFatPct = estimateBodyFatPctFromBmi({
+        weightKg,
+        heightCm: profile.height_cm,
+        ageYears,
+        sex,
+      });
+      bodyFatIsEstimate = bodyFatPct !== null;
+    }
+  }
+
+  return {
+    bmi: Number(bmiValue.toFixed(1)),
+    bmiCategory: bmiCategory(bmiValue),
+    bodyFatPct,
+    bodyFatIsEstimate,
+    leanMassKg: bodyFatPct === null ? null : Number(leanBodyMassKg(weightKg, bodyFatPct).toFixed(1)),
+  };
 }
 
 export async function deleteBodyMetric(

@@ -335,31 +335,15 @@ export const SCANNABLE_SERVICE_UUIDS: readonly string[] = [
 /* -------------------------------------------------------------------------- */
 
 /**
- * Estimate body-fat percentage from bio-impedance.
+ * Estimate body-fat percentage without an impedance reading.
  *
- * Impedance-based body fat is an ESTIMATE with meaningful error, and it swings with hydration,
- * recent food, and time of day far more than actual body composition does. It is worth
- * tracking as a trend and worth ignoring as an absolute figure — which is why the weight
+ * Re-exported rather than implemented here so there is exactly one copy: CLAUDE.md puts
+ * physiology in `packages/shared` precisely so the number on screen and the number the coach
+ * reasons about cannot drift apart, and a scale adapter is no place for a second version of it.
+ *
+ * Impedance-based body fat, where a scale offers it at all, is an estimate with meaningful error
+ * that swings with hydration and recent food far more than actual body composition does. It is
+ * worth tracking as a trend and worth ignoring as an absolute figure — which is why the weight
  * trend, not this, drives the calorie targets.
- *
- * Uses a Deurenberg-style relation from BMI, age and sex; it needs no impedance at all, and
- * on a consumer scale is about as defensible as the vendor's undisclosed proprietary formula.
  */
-export function estimateBodyFatPct(input: {
-  weightKg: number;
-  heightCm: number;
-  ageYears: number;
-  sex: 'male' | 'female';
-}): number | null {
-  const { weightKg, heightCm, ageYears, sex } = input;
-  if (heightCm <= 0 || weightKg <= 0) return null;
-
-  const heightM = heightCm / 100;
-  const bmi = weightKg / (heightM * heightM);
-  const sexFactor = sex === 'male' ? 1 : 0;
-
-  const pct = 1.2 * bmi + 0.23 * ageYears - 10.8 * sexFactor - 5.4;
-  if (!Number.isFinite(pct) || pct <= 0 || pct >= 70) return null;
-
-  return Number(pct.toFixed(1));
-}
+export { estimateBodyFatPctFromBmi as estimateBodyFatPct } from '@fit/shared/calculations';

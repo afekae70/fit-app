@@ -64,6 +64,7 @@ import {
   getProfile,
   listBodyMetrics,
   recordBodyMetric,
+  summariseComposition,
   summariseTrend,
   type BodyMetricRow,
   type ComputedTargets,
@@ -286,6 +287,13 @@ export default function MetricsScreen() {
   const latest = metrics[0] ?? null;
 
   const targetsResult = computeTargets(profile, latest?.weight_kg ?? null);
+  // Measured composition wins where a scale supplied it; the summary falls back to arithmetic
+  // and says which it used.
+  const composition = summariseComposition(
+    profile,
+    latest?.weight_kg ?? null,
+    latest?.body_fat_pct ?? null,
+  );
   const targets: ComputedTargets | null = targetsResult.ok ? targetsResult.targets : null;
 
   // Compare what the plan predicts against what the scale actually did.
@@ -386,6 +394,47 @@ export default function MetricsScreen() {
                 </Banner>
               )}
             </>
+          ) : null}
+        </Card>
+      ) : null}
+
+      {composition ? (
+        <Card>
+          <SectionTitle>{t('metrics.compositionTitle')}</SectionTitle>
+
+          <Stat
+            label={t('targets.bmi')}
+            value={composition.bmi.toFixed(1)}
+            hint={t(`metrics.bmiCategory.${composition.bmiCategory}`)}
+          />
+
+          {composition.bodyFatPct !== null ? (
+            <>
+              <Stat
+                label={t('metrics.bodyFat')}
+                value={`${composition.bodyFatPct}%`}
+                hint={
+                  composition.bodyFatIsEstimate
+                    ? t('metrics.bodyFatEstimated')
+                    : t('metrics.bodyFatMeasured')
+                }
+              />
+              {/* Lean mass, never "muscle". Skeletal muscle is roughly half of this figure, and
+                  the label is the only thing standing between the two. */}
+              <Stat
+                label={t('metrics.leanMass')}
+                value={formatWeight(composition.leanMassKg, unit) ?? '—'}
+                unit={weightUnit}
+                hint={t('metrics.leanMassHint')}
+              />
+            </>
+          ) : (
+            <Hint>{t('metrics.compositionNeedsSex')}</Hint>
+          )}
+
+          {/* Said once, plainly. Every figure above except BMI rests on it. */}
+          {composition.bodyFatIsEstimate ? (
+            <Hint>{t('metrics.compositionCaveat')}</Hint>
           ) : null}
         </Card>
       ) : null}

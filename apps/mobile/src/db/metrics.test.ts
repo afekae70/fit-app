@@ -15,6 +15,7 @@ import {
   listBodyMetrics,
   getLastScaleDeviceId,
   recordBodyMetric,
+  summariseComposition,
   saveProfile,
   snapshotTargets,
   summariseTrend,
@@ -419,5 +420,82 @@ describe('remembering which scale is yours', () => {
     // Deleting a bad reading is how someone corrects a stranger's weigh-in — it must also
     // stop that stranger's scale being preferred from then on.
     expect(await getLastScaleDeviceId(db, USER)).toBeNull();
+  });
+});
+
+describe('summariseComposition', () => {
+  const profile = {
+    user_id: USER,
+    display_name: null,
+    birth_date: '1996-04-10',
+    sex: 'male',
+    bmr_formula_sex: null,
+    height_cm: 178,
+    activity_level: 'moderate',
+    goal: 'cut',
+    unit_preference: 'metric',
+    updated_at: '2026-07-25T10:00:00.000Z',
+  };
+  const TODAY = new Date('2026-08-15T00:00:00Z');
+
+  it('computes BMI and its category from height and weight', () => {
+    const composition = summariseComposition(profile, 74.18, null, TODAY);
+    // 74.18 / 1.78^2 = 23.4
+    expect(composition?.bmi).toBe(23.4);
+    expect(composition?.bmiCategory).toBe('normal');
+  });
+
+  it('flags a body-fat figure it had to calculate', () => {
+    const composition = summariseComposition(profile, 74.18, null, TODAY);
+    expect(composition?.bodyFatIsEstimate).toBe(true);
+    expect(composition?.bodyFatPct).toBeGreaterThan(0);
+  });
+
+  it('prefers a measured percentage over its own estimate', () => {
+    // The whole point of a device is that it looked at the body. When one reports, arithmetic
+    // from height and age must not overrule it.
+    const composition = summariseComposition(profile, 74.18, 15.2, TODAY);
+    expect(composition?.bodyFatPct).toBe(15.2);
+    expect(composition?.bodyFatIsEstimate).toBe(false);
+  });
+
+  it('reports lean mass, not muscle mass', () => {
+    const composition = summariseComposition(profile, 80, 25, TODAY);
+    // 80 kg at 25% fat leaves 60 kg that is not fat — bone, organs and water included.
+    // Skeletal muscle is roughly half of that, which is why this is never labelled muscle.
+    expect(composition?.leanMassKg).toBe(60);
+  });
+
+  it('gives BMI without a fat figure when sex is unresolved', () => {
+    // 'other' with no bmr_formula_sex chosen: the Deurenberg forms differ by more than ten
+    // points of body fat, so guessing would be worse than saying nothing.
+    const composition = summariseComposition(
+      { ...profile, sex: 'other', bmr_formula_sex: null },
+      74.18,
+      null,
+      TODAY,
+    );
+    expect(composition?.bmi).toBe(23.4);
+    expect(composition?.bodyFatPct).toBeNull();
+    expect(composition?.leanMassKg).toBeNull();
+  });
+
+  it('uses the chosen BMR formula when sex is "other"', () => {
+    const composition = summariseComposition(
+      { ...profile, sex: 'other', bmr_formula_sex: 'female' },
+      74.18,
+      null,
+      TODAY,
+    );
+    expect(composition?.bodyFatIsEstimate).toBe(true);
+    // The female form omits the 10.8-point male adjustment, so it must read higher.
+    const male = summariseComposition(profile, 74.18, null, TODAY);
+    expect(composition!.bodyFatPct!).toBeGreaterThan(male!.bodyFatPct!);
+  });
+
+  it('returns nothing without a height or a weight to work from', () => {
+    expect(summariseComposition(profile, null, null, TODAY)).toBeNull();
+    expect(summariseComposition({ ...profile, height_cm: null }, 74.18, null, TODAY)).toBeNull();
+    expect(summariseComposition(null, 74.18, null, TODAY)).toBeNull();
   });
 });
