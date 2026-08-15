@@ -35,15 +35,38 @@ export interface ScaleReading {
   measuredAt?: string;
 }
 
+/**
+ * What an advertisement tells us about who is broadcasting, before anything is decoded.
+ *
+ * All the UUID fields it carries, not just the first one: a scale that advertises a battery
+ * service alongside its own used to be judged on whichever entry happened to come first in the
+ * array, which is device- and platform-dependent and therefore a coin toss.
+ */
+export interface AdvertisementIdentity {
+  /** Short (16-bit) service UUIDs listed in the advertisement. */
+  serviceUuids?: readonly string[];
+  /** Short UUIDs that actually carried service data — often the more reliable signal. */
+  serviceDataUuids?: readonly string[];
+  name?: string | null;
+}
+
 export interface ScaleAdapter {
   readonly id: string;
   readonly displayName: string;
   /** Service UUIDs (16-bit, lower-case hex) this adapter listens for. */
   readonly serviceUuids: readonly string[];
   /** Whether this adapter recognises the advertised data. */
-  matches(input: { serviceUuid?: string; name?: string | null }): boolean;
+  matches(input: AdvertisementIdentity): boolean;
   /** Decode a frame. Returns null when the frame is not a usable measurement. */
   parse(bytes: Uint8Array): ScaleReading | null;
+}
+
+/** Does any advertised UUID — listed or data-carrying — match one this adapter wants? */
+function advertisesAny(input: AdvertisementIdentity, wanted: readonly string[]): boolean {
+  const seen = [...(input.serviceUuids ?? []), ...(input.serviceDataUuids ?? [])].map((uuid) =>
+    uuid.toLowerCase(),
+  );
+  return seen.some((uuid) => wanted.some((want) => uuid.includes(want.toLowerCase())));
 }
 
 const u16le = (b: Uint8Array, offset: number): number =>
@@ -72,7 +95,7 @@ export const standardWeightScaleAdapter: ScaleAdapter = {
   displayName: 'Bluetooth Weight Scale (0x181D)',
   serviceUuids: ['181d'],
 
-  matches: ({ serviceUuid }) => serviceUuid?.toLowerCase().includes('181d') ?? false,
+  matches: (input) => advertisesAny(input, ['181d']),
 
   parse(bytes) {
     if (bytes.length < 3) return null;
@@ -121,9 +144,9 @@ export const miScale2Adapter: ScaleAdapter = {
   displayName: 'Xiaomi Mi Body Composition Scale 2',
   serviceUuids: ['181b'],
 
-  matches: ({ serviceUuid, name }) => {
-    if (serviceUuid?.toLowerCase().includes('181b')) return true;
-    const lower = name?.toLowerCase() ?? '';
+  matches: (input) => {
+    if (advertisesAny(input, ['181b'])) return true;
+    const lower = input.name?.toLowerCase() ?? '';
     return lower.includes('mibfs') || lower.includes('mi scale') || lower.includes('mi body');
   },
 
@@ -201,10 +224,7 @@ export const SCALE_ADAPTERS: readonly ScaleAdapter[] = [
 ];
 
 /** Pick the adapter that recognises a discovered device, if any. */
-export function selectAdapter(input: {
-  serviceUuid?: string;
-  name?: string | null;
-}): ScaleAdapter | null {
+export function selectAdapter(input: AdvertisementIdentity): ScaleAdapter | null {
   return SCALE_ADAPTERS.find((adapter) => adapter.matches(input)) ?? null;
 }
 

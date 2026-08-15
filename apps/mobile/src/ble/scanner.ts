@@ -15,15 +15,29 @@
  * `react-native-ble-plx` is imported lazily. It has no JS-only implementation, so a top-level
  * import would crash Expo Go on startup — before any code could explain why. Everything here
  * therefore reports unavailability instead of throwing.
+ *
+ * ## The manifest trap, which cost a working scan
+ *
+ * On Android 12+ `BLUETOOTH_SCAN` must be declared with
+ * `android:usesPermissionFlags="neverForLocation"`, or the system requires a runtime location
+ * grant on top of it and otherwise returns **zero devices with no error** — the scan appears to
+ * run perfectly and simply finds nothing.
+ *
+ * The `react-native-ble-plx` config plugin adds that flag, but only if `BLUETOOTH_SCAN` is not
+ * already in the manifest. `app.json` used to list it under `android.permissions`, Expo wrote it
+ * first without flags, and the plugin then skipped it. Do not put `BLUETOOTH_SCAN` or
+ * `ACCESS_FINE_LOCATION` back in `android.permissions` — the plugin owns both.
+ *
+ * Verify after any prebuild:
+ *
+ *     grep BLUETOOTH_SCAN android/app/src/main/AndroidManifest.xml
+ *
+ * and check `neverForLocation` is on the line.
  */
 
 import { PermissionsAndroid, Platform } from 'react-native';
 
-import {
-  SCANNABLE_SERVICE_UUIDS,
-  selectAdapter,
-  type ScaleReading,
-} from './adapter.js';
+import { selectAdapter, type ScaleReading } from './adapter.js';
 import { base64ToBytes, fullUuid, selectAdvertisementPayload, shortUuid } from './encoding.js';
 
 /** Bluetooth SIG Weight Scale Service and its Weight Measurement characteristic. */
@@ -224,7 +238,11 @@ export async function scanForReading(options: ScanOptions = {}): Promise<ScanRes
     onStatus?.('scanning');
 
     manager.startDeviceScan(
-      SCANNABLE_SERVICE_UUIDS.map(fullUuid),
+      // No service filter. Filtering here only ever matched a UUID present in the advertisement
+      // itself, and most cheap scales advertise a name and their measurement bytes with no
+      // service list at all — they were invisible before the adapters got a chance to look.
+      // Matching moved into `selectAdapter`, which can also key off the device name.
+      null,
       // allowDuplicates is required: an advertising scale re-broadcasts as the weight settles,
       // and without duplicates only the first (unsettled) frame would ever arrive.
       { allowDuplicates: true },
@@ -232,7 +250,8 @@ export async function scanForReading(options: ScanOptions = {}): Promise<ScanRes
         if (error || !device || settled) return;
 
         const adapter = selectAdapter({
-          serviceUuid: device.serviceUUIDs?.map(shortUuid)[0],
+          serviceUuids: device.serviceUUIDs?.map(shortUuid) ?? [],
+          serviceDataUuids: Object.keys(device.serviceData ?? {}).map(shortUuid),
           name: device.name ?? device.localName ?? null,
         });
         if (!adapter) return;
@@ -297,6 +316,157 @@ export async function scanForReading(options: ScanOptions = {}): Promise<ScanRes
       },
     );
   });
+}
+
+/* -------------------------------------------------------------------------- */
+/* Diagnostics                                                                 */
+/* -------------------------------------------------------------------------- */
+
+export interface SightedDevice {
+  id: string;
+  name: string | null;
+  /** Short service UUIDs listed in the advertisement. */
+  serviceUuids: string[];
+  /** Short UUID -> payload hex, for every service that carried data. */
+  serviceData: Record<string, string>;
+  /** Manufacturer data as hex. The first two bytes are the little-endian company id. */
+  manufacturerDataHex: string | null;
+  /** How many advertisements arrived — a scale under load re-broadcasts constantly. */
+  frames: number;
+  /** Distinct payloads seen, newest last. A changing payload is a live measurement. */
+  payloadsHex: string[];
+  /** Whether one of the shipped adapters claims it. */
+  adapterId: string | null;
+}
+
+/**
+ * List everything advertising nearby, decoded no further than hex.
+ *
+ * This exists because "the app found no scale" is not a diagnosis. Cheap body-composition
+ * scales are a genus, not a species: some speak the SIG Weight Scale service, some broadcast in
+ * manufacturer data, some only talk after a GATT connection, and the ones sold with the OKOK
+ * app use none of the UUIDs this app currently knows. Writing a parser for one by guessing gives
+ * a plausible wrong number rather than an error — the exact failure adapter.ts is built to
+ * avoid — so the frames get captured first and the parser is written against them.
+ *
+ * Payloads are kept per device and de-duplicated: a scale someone is standing on emits a
+ * different payload every few hundred milliseconds, and that changing run of bytes is what
+ * identifies the weight field. A key fob emits the same bytes forever.
+ */
+export async function scanDiagnostics(
+  options: { timeoutMs?: number } = {},
+): Promise<SightedDevice[]> {
+  const { timeoutMs = 15_000 } = options;
+
+  const availability = await checkScanAvailability();
+  if (!availability.available) throw new ScanError(availability.reason);
+  if (!(await requestAndroidPermissions())) throw new ScanError('permission_denied');
+
+  const ble = loadBlePlx();
+  if (!ble) throw new ScanError('no_native_module');
+
+  const manager = new ble.BleManager();
+  const seen = new Map<string, SightedDevice>();
+
+  return new Promise<SightedDevice[]>((resolve) => {
+    const finish = () => {
+      clearTimeout(timer);
+      try {
+        manager.stopDeviceScan();
+      } catch {
+        /* already torn down */
+      }
+      manager.destroy();
+      // Busiest first: the scale being stood on is the loudest thing in the room, and a list
+      // sorted by arrival order buries it under whatever a neighbour left switched on.
+      resolve([...seen.values()].sort((a, b) => b.frames - a.frames));
+    };
+
+    const timer = setTimeout(finish, timeoutMs);
+
+    manager.startDeviceScan(null, { allowDuplicates: true }, (error, device) => {
+      if (error || !device) return;
+
+      const name = device.name ?? device.localName ?? null;
+      const serviceData: Record<string, string> = {};
+      for (const [uuid, base64] of Object.entries(device.serviceData ?? {})) {
+        serviceData[shortUuid(uuid)] = bytesToHex(base64ToBytes(base64));
+      }
+      const manufacturerDataHex = device.manufacturerData
+        ? bytesToHex(base64ToBytes(device.manufacturerData))
+        : null;
+
+      const existing = seen.get(device.id);
+      const entry: SightedDevice = existing ?? {
+        id: device.id,
+        name,
+        serviceUuids: [],
+        serviceData: {},
+        manufacturerDataHex,
+        frames: 0,
+        payloadsHex: [],
+        adapterId: null,
+      };
+
+      entry.frames += 1;
+      // A name often only arrives in the scan response, several frames after the first sighting.
+      if (!entry.name && name) entry.name = name;
+      for (const uuid of device.serviceUUIDs ?? []) {
+        const short = shortUuid(uuid);
+        if (!entry.serviceUuids.includes(short)) entry.serviceUuids.push(short);
+      }
+      Object.assign(entry.serviceData, serviceData);
+      if (manufacturerDataHex) entry.manufacturerDataHex = manufacturerDataHex;
+
+      // Capped: a scale advertising for fifteen seconds would otherwise produce hundreds of
+      // lines, and the first few distinct payloads carry the same information.
+      for (const payload of [...Object.values(serviceData), manufacturerDataHex ?? '']) {
+        if (payload && !entry.payloadsHex.includes(payload) && entry.payloadsHex.length < 12) {
+          entry.payloadsHex.push(payload);
+        }
+      }
+
+      entry.adapterId =
+        selectAdapter({
+          serviceUuids: entry.serviceUuids,
+          serviceDataUuids: Object.keys(entry.serviceData),
+          name: entry.name,
+        })?.id ?? null;
+
+      seen.set(device.id, entry);
+    });
+  });
+}
+
+/** Lower-case hex, no separators — the form every BLE protocol note is written in. */
+export function bytesToHex(bytes: Uint8Array): string {
+  let out = '';
+  for (const byte of bytes) out += byte.toString(16).padStart(2, '0');
+  return out;
+}
+
+/** A diagnostics dump as plain text, for pasting into a bug report. */
+export function formatDiagnostics(devices: readonly SightedDevice[]): string {
+  if (devices.length === 0) return 'No BLE devices seen.';
+
+  return devices
+    .map((device) => {
+      const lines = [
+        `${device.name ?? '(no name)'}  [${device.id}]`,
+        `  frames: ${device.frames}${device.adapterId ? `  adapter: ${device.adapterId}` : ''}`,
+      ];
+      if (device.serviceUuids.length > 0) lines.push(`  services: ${device.serviceUuids.join(', ')}`);
+      for (const [uuid, hex] of Object.entries(device.serviceData)) {
+        lines.push(`  serviceData[${uuid}]: ${hex}`);
+      }
+      if (device.manufacturerDataHex) lines.push(`  manufacturerData: ${device.manufacturerDataHex}`);
+      if (device.payloadsHex.length > 1) {
+        lines.push('  payloads:');
+        for (const hex of device.payloadsHex) lines.push(`    ${hex}`);
+      }
+      return lines.join('\n');
+    })
+    .join('\n\n');
 }
 
 /** Encode bytes back to base64 for storage in `body_metrics.raw_payload`. */

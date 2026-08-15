@@ -98,8 +98,22 @@ describe('standard Bluetooth Weight Scale (0x181D)', () => {
   });
 
   it('matches on its service uuid', () => {
-    expect(standardWeightScaleAdapter.matches({ serviceUuid: '0000181D-0000-1000-8000-00805f9b34fb' })).toBe(true);
-    expect(standardWeightScaleAdapter.matches({ serviceUuid: '181b' })).toBe(false);
+    expect(
+      standardWeightScaleAdapter.matches({
+        serviceUuids: ['0000181D-0000-1000-8000-00805f9b34fb'],
+      }),
+    ).toBe(true);
+    expect(standardWeightScaleAdapter.matches({ serviceUuids: ['181b'] })).toBe(false);
+  });
+
+  it('matches when its uuid is not the first one advertised', () => {
+    // The regression this guards: only `serviceUUIDs[0]` used to be examined, so a scale that
+    // also advertises a battery service was recognised or not depending on array order.
+    expect(standardWeightScaleAdapter.matches({ serviceUuids: ['180f', '181d'] })).toBe(true);
+  });
+
+  it('matches on a uuid that only carried service data', () => {
+    expect(standardWeightScaleAdapter.matches({ serviceDataUuids: ['181d'] })).toBe(true);
   });
 });
 
@@ -183,7 +197,9 @@ describe('Mi Body Composition Scale 2 (0x181B)', () => {
   });
 
   it('matches by service uuid or advertised name', () => {
-    expect(miScale2Adapter.matches({ serviceUuid: '0000181B-0000-1000-8000-00805f9b34fb' })).toBe(true);
+    expect(
+      miScale2Adapter.matches({ serviceUuids: ['0000181B-0000-1000-8000-00805f9b34fb'] }),
+    ).toBe(true);
     expect(miScale2Adapter.matches({ name: 'MIBFS' })).toBe(true);
     expect(miScale2Adapter.matches({ name: 'Random Speaker' })).toBe(false);
   });
@@ -191,12 +207,12 @@ describe('Mi Body Composition Scale 2 (0x181B)', () => {
 
 describe('adapter selection', () => {
   it('picks the Mi adapter for 0x181B and the SIG adapter for 0x181D', () => {
-    expect(selectAdapter({ serviceUuid: '181b' })?.id).toBe('mi_scale_2');
-    expect(selectAdapter({ serviceUuid: '181d' })?.id).toBe('bt_sig_weight_scale');
+    expect(selectAdapter({ serviceUuids: ['181b'] })?.id).toBe('mi_scale_2');
+    expect(selectAdapter({ serviceUuids: ['181d'] })?.id).toBe('bt_sig_weight_scale');
   });
 
   it('returns null for an unrelated device', () => {
-    expect(selectAdapter({ serviceUuid: '180f', name: 'Headphones' })).toBeNull();
+    expect(selectAdapter({ serviceUuids: ['180f'], name: 'Headphones' })).toBeNull();
   });
 
   it('exposes both service uuids for scanning, without duplicates', () => {

@@ -115,6 +115,20 @@ export const en = {
     bmiMuscleCaveat: 'BMI cannot tell muscle from fat — it is often misleading for lifters.',
     needSexForBmr: 'Choose which formula to use (male/female) to see your targets.',
   },
+  scaleDebug: {
+    title: 'Bluetooth diagnostics',
+    intro:
+      'Scans everything advertising nearby and shows the raw bytes. Saves nothing — it is here only to identify which protocol your scale speaks.',
+    scan: 'Scan everything',
+    scanning: 'Scanning… (20s)',
+    standOn: 'Important: stand on the scale while this runs. A scale nobody is standing on switches off and broadcasts nothing.',
+    found: '{{count}} devices found',
+    none: 'Nothing found. Check that Bluetooth is on and the scale is awake.',
+    unnamed: '(no name)',
+    recognised: 'Recognised by {{adapter}}',
+    changing: 'Changing broadcasts — the weight is in here:',
+    share: 'Share the output',
+  },
   workout: {
     rest: 'Rest',
     upNext: 'Up next',
@@ -473,6 +487,7 @@ export const en = {
     bleExplain:
       'Bluetooth requires a development build — it does not work in Expo Go at all. The scale parsers are already written and tested.',
     bleSupported: 'Supported: Mi Body Composition Scale 2, and any standard scale (0x181D)',
+    bleDiagnostics: 'Scale not found? Bluetooth diagnostics',
     bleScan: 'Scan for scale',
     bleScanning: 'Looking for a scale…',
     bleScanHint: 'Tap, then step on the scale',

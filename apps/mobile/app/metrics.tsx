@@ -14,6 +14,7 @@ import {
   expectedKgPerWeek,
   movingAverage,
 } from '@fit/shared/calculations';
+import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -37,6 +38,7 @@ import {
   kgToDisplay,
   weightUnitKey,
 } from '../src/units.js';
+import { BLE_REASON_MESSAGE } from '../src/ble/messages.js';
 import {
   checkScanAvailability,
   scanForReading,
@@ -80,17 +82,6 @@ const GAP_MESSAGE: Record<TargetsGap, string> = {
   needs_bmr_formula_sex: 'metrics.missingFormulaSex',
 };
 
-/**
- * Each failure gets its own message, because each has a different remedy: install a development
- * build, turn Bluetooth on, or grant a permission. A single "scan failed" would leave the user
- * with nothing to act on.
- */
-const BLE_REASON_MESSAGE: Record<ScanUnavailableReason, string> = {
-  no_native_module: 'metrics.bleUnavailable',
-  bluetooth_off: 'metrics.bleOff',
-  permission_denied: 'metrics.blePermission',
-  not_supported_platform: 'metrics.bleUnavailable',
-};
 
 const SOURCE_LABEL: Record<string, string> = {
   manual: 'metrics.sourceManual',
@@ -466,6 +457,17 @@ export default function MetricsScreen() {
         )}
 
         <Text style={styles.bleSupported}>{t('metrics.bleSupported')}</Text>
+
+        {/* Offered unconditionally, including while the scan reports "no scale found" — that is
+            exactly the moment the answer is a list of what IS advertising, and the scale sold
+            with the OKOK app uses none of the UUIDs above. */}
+        <Pressable
+          onPress={() => router.push('/scale-debug')}
+          accessibilityRole="button"
+          style={styles.diagnosticsLink}
+        >
+          <Text style={styles.diagnosticsLinkText}>{t('metrics.bleDiagnostics')} ›</Text>
+        </Pressable>
       </Card>
 
       {metrics.length > 0 ? (
@@ -515,6 +517,8 @@ const createStyles = (colors: ColorPalette) =>
     scanButton: ViewStyle;
     scanButtonText: TextStyle;
     bleSupported: TextStyle;
+    diagnosticsLink: ViewStyle;
+    diagnosticsLinkText: TextStyle;
     historyRow: ViewStyle;
     historyMain: ViewStyle;
     historyWeight: TextStyle;
@@ -567,6 +571,8 @@ const createStyles = (colors: ColorPalette) =>
     marginTop: spacing.sm,
     textAlign: 'auto',
   },
+  diagnosticsLink: { minHeight: 44, justifyContent: 'center' },
+  diagnosticsLinkText: { color: colors.accent, fontSize: fontSize.sm, textAlign: 'auto' },
   historyRow: {
     flexDirection: 'row',
     alignItems: 'center',

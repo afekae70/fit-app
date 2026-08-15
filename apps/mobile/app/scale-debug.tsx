@@ -1,0 +1,228 @@
+/**
+ * Bluetooth diagnostics — what is actually advertising in the room.
+ *
+ * A tool, not a feature. It exists because "the app did not find my scale" has at least four
+ * different causes that all look identical from the outside: a missing manifest flag, a denied
+ * permission, a scale that only speaks after a GATT connection, or a protocol none of the
+ * shipped adapters knows. Guessing between them wastes a rebuild each time; this screen turns
+ * the question into a list of bytes.
+ *
+ * Reached from the smart-scale card on the metrics screen. It writes nothing to the database —
+ * a diagnostic that changes state is a diagnostic you cannot trust the second time you run it.
+ */
+
+import { useCallback, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { BLE_REASON_MESSAGE } from '../src/ble/messages.js';
+import {
+  formatDiagnostics,
+  ScanError,
+  scanDiagnostics,
+  type SightedDevice,
+} from '../src/ble/scanner.js';
+import { Banner, Card, Hint, ScreenHeader, SectionTitle } from '../src/components/ui.js';
+import { hapticLight } from '../src/haptics.js';
+import { useTheme } from '../src/ThemeProvider.js';
+import { fontSize, radius, spacing, type ColorPalette } from '../src/theme.js';
+
+/** Long enough to step on a scale and let it settle, short enough to stand still for. */
+const SCAN_MS = 20_000;
+
+export default function ScaleDebugScreen() {
+  const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
+  const [scanning, setScanning] = useState(false);
+  const [devices, setDevices] = useState<SightedDevice[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const scan = useCallback(() => {
+    void hapticLight();
+    setScanning(true);
+    setError(null);
+
+    void (async () => {
+      try {
+        setDevices(await scanDiagnostics({ timeoutMs: SCAN_MS }));
+      } catch (caught) {
+        setError(
+          caught instanceof ScanError ? t(BLE_REASON_MESSAGE[caught.reason]) : String(caught),
+        );
+      } finally {
+        setScanning(false);
+      }
+    })();
+  }, [t]);
+
+  /**
+   * Hand the dump to the system share sheet.
+   *
+   * `Share` is React Native core, so this adds no native dependency and no rebuild — the same
+   * reason SwipeableRow uses PanResponder. It also lands the text where it needs to go anyway:
+   * in a message to whoever is writing the parser.
+   */
+  const share = useCallback(() => {
+    if (!devices) return;
+    void hapticLight();
+    void Share.share({ message: formatDiagnostics(devices) }).catch(() => undefined);
+  }, [devices]);
+
+  return (
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={[
+        styles.content,
+        { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 28 },
+      ]}
+    >
+      <ScreenHeader title={t('scaleDebug.title')} back settings={false} />
+
+      <Card>
+        <Hint>{t('scaleDebug.intro')}</Hint>
+        <Pressable
+          onPress={scan}
+          disabled={scanning}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
+        >
+          <Text style={styles.buttonText}>
+            {scanning ? `⏳ ${t('scaleDebug.scanning')}` : `📡 ${t('scaleDebug.scan')}`}
+          </Text>
+        </Pressable>
+        {/* Said before the scan rather than after: the whole point is to capture a scale while
+            it is transmitting a changing weight, and a scale nobody is standing on goes to
+            sleep and broadcasts nothing at all. */}
+        <Hint>{t('scaleDebug.standOn')}</Hint>
+        {error ? <Banner tone="warning">{error}</Banner> : null}
+      </Card>
+
+      {devices ? (
+        <Card>
+          <SectionTitle>{t('scaleDebug.found', { count: devices.length })}</SectionTitle>
+
+          {devices.length === 0 ? (
+            <Hint>{t('scaleDebug.none')}</Hint>
+          ) : (
+            <>
+              <Pressable
+                onPress={share}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.copyButton, pressed && styles.buttonPressed]}
+              >
+                <Text style={styles.copyText}>⤴ {t('scaleDebug.share')}</Text>
+              </Pressable>
+
+              {devices.map((device) => (
+                <View key={device.id} style={styles.device}>
+                  <View style={styles.deviceHeader}>
+                    <Text style={styles.deviceName} numberOfLines={1}>
+                      {device.name ?? t('scaleDebug.unnamed')}
+                    </Text>
+                    <Text style={styles.frames}>{device.frames}×</Text>
+                  </View>
+                  <Text style={styles.deviceId}>{device.id}</Text>
+
+                  {device.adapterId ? (
+                    <Text style={styles.recognised}>
+                      {t('scaleDebug.recognised', { adapter: device.adapterId })}
+                    </Text>
+                  ) : null}
+
+                  {device.serviceUuids.length > 0 ? (
+                    <Text style={styles.mono}>services: {device.serviceUuids.join(', ')}</Text>
+                  ) : null}
+
+                  {Object.entries(device.serviceData).map(([uuid, hex]) => (
+                    <Text key={uuid} style={styles.mono}>
+                      data[{uuid}]: {hex}
+                    </Text>
+                  ))}
+
+                  {device.manufacturerDataHex ? (
+                    <Text style={styles.mono}>mfg: {device.manufacturerDataHex}</Text>
+                  ) : null}
+
+                  {/* More than one distinct payload means the bytes changed while we watched,
+                      which is what a scale being stood on looks like and what a doorbell
+                      does not. This is the line that identifies the device. */}
+                  {device.payloadsHex.length > 1 ? (
+                    <View style={styles.payloads}>
+                      <Text style={styles.payloadsLabel}>{t('scaleDebug.changing')}</Text>
+                      {device.payloadsHex.map((hex) => (
+                        <Text key={hex} style={styles.mono}>
+                          {hex}
+                        </Text>
+                      ))}
+                    </View>
+                  ) : null}
+                </View>
+              ))}
+            </>
+          )}
+        </Card>
+      ) : null}
+    </ScrollView>
+  );
+}
+
+const createStyles = (colors: ColorPalette) =>
+  StyleSheet.create({
+    screen: { flex: 1 },
+    content: { paddingHorizontal: spacing.lg, gap: spacing.md },
+
+    button: {
+      minHeight: 52,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      borderColor: colors.accent,
+      backgroundColor: colors.accentSoft,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    buttonPressed: { transform: [{ scale: 0.99 }] },
+    buttonText: { color: colors.accent, fontSize: fontSize.md, fontWeight: '500' },
+
+    copyButton: {
+      minHeight: 44,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      borderColor: colors.borderStrong,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    copyText: { color: colors.text, fontSize: fontSize.sm },
+
+    device: {
+      borderTopWidth: 1,
+      borderTopColor: colors.borderSubtle,
+      paddingTop: spacing.sm,
+      gap: 2,
+    },
+    deviceHeader: {
+      flexDirection: 'row',
+      alignItems: 'baseline',
+      justifyContent: 'space-between',
+      gap: spacing.sm,
+    },
+    deviceName: { color: colors.text, fontSize: fontSize.sm, fontWeight: '500', flex: 1, textAlign: 'auto' },
+    frames: { color: colors.textFaint, fontSize: fontSize.xs, fontVariant: ['tabular-nums'] },
+    deviceId: { color: colors.textFaint, fontSize: fontSize.xs },
+    recognised: { color: colors.accent, fontSize: fontSize.xs, textAlign: 'auto' },
+
+    // Hex is data, not prose: it stays left-to-right and monospaced even in a mirrored layout,
+    // because a reversed byte string is worse than useless.
+    mono: {
+      color: colors.textMuted,
+      fontSize: 11,
+      fontFamily: 'monospace',
+      writingDirection: 'ltr',
+      textAlign: 'left',
+    },
+    payloads: { marginTop: 4, gap: 1 },
+    payloadsLabel: { color: colors.textFaint, fontSize: fontSize.xs, textAlign: 'auto' },
+  });
