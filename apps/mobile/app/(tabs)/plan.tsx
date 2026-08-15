@@ -213,7 +213,7 @@ export default function PlanScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.accent} />
       }
     >
-      <ScreenHeader title={t('plan.title')} />
+      <ScreenHeader title={t('plan.title')} back />
 
       {!plan ? (
         <>

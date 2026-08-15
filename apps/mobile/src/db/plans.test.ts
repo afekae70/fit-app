@@ -28,6 +28,7 @@ import {
   removePlanDay,
   removePlanDayExercise,
   reorderPlanDay,
+  reorderPlanDayExercise,
   startSessionFromPlanDay,
   updatePlanDayExercise,
 } from './plans.js';
@@ -242,6 +243,61 @@ describe('prescriptions', () => {
       'Barbell Bench Press',
       'Face Pull',
     ]);
+  });
+});
+
+describe('reordering exercises within a day', () => {
+  async function seedDay() {
+    const plan = await createPlan(db, USER, newId, 'PPL', clock);
+    const day = await addPlanDay(db, newId, plan, 'Push');
+    const a = await addPlanDayExercise(db, newId, day, 'Barbell Bench Press');
+    const b = await addPlanDayExercise(db, newId, day, 'Overhead Press');
+    const c = await addPlanDayExercise(db, newId, day, 'Cable Fly');
+    return { day, a, b, c };
+  }
+
+  const order = async (day: string) =>
+    (await listPlanDayExercises(db, day)).map((e) => e.exercise_key);
+
+  it('moves an exercise from last to the middle', async () => {
+    const { day, c } = await seedDay();
+    // The reported case: it landed last and belongs third — here, second of three.
+    await reorderPlanDayExercise(db, day, c, 1);
+
+    expect(await order(day)).toEqual(['Barbell Bench Press', 'Cable Fly', 'Overhead Press']);
+  });
+
+  it('moves an exercise up to the front', async () => {
+    const { day, c } = await seedDay();
+    await reorderPlanDayExercise(db, day, c, 0);
+    expect(await order(day)).toEqual(['Cable Fly', 'Barbell Bench Press', 'Overhead Press']);
+  });
+
+  it('leaves order_index contiguous from 1', async () => {
+    // The UNIQUE constraint is what makes the two-phase park necessary; this is the assertion
+    // that would fail if a single-pass rewrite were ever substituted.
+    const { day, a } = await seedDay();
+    await reorderPlanDayExercise(db, day, a, 2);
+
+    const rows = await listPlanDayExercises(db, day);
+    expect(rows.map((r) => r.order_index)).toEqual([1, 2, 3]);
+  });
+
+  it('no-ops at either end rather than throwing', async () => {
+    const { day, a, c } = await seedDay();
+    const before = await order(day);
+
+    await reorderPlanDayExercise(db, day, a, -1);
+    await reorderPlanDayExercise(db, day, c, 99);
+
+    expect(await order(day)).toEqual(before);
+  });
+
+  it('ignores an exercise that is not in the day', async () => {
+    const { day } = await seedDay();
+    const before = await order(day);
+    await reorderPlanDayExercise(db, day, 'not-here', 0);
+    expect(await order(day)).toEqual(before);
   });
 });
 

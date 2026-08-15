@@ -36,12 +36,43 @@ async function logWorkout(
          VALUES (?, ?, ?, ?, ?)`,
       [exerciseId, sessionId, set.exercise, (index += 1), startedLocal],
     );
+    // `done_at`, not just `completed_at`: the first is when the row was created, the second is
+    // when the user ticked the set off. A fixture called logWorkout has to mean the latter, or it
+    // is modelling a session that was opened and abandoned.
     await db.run(
-      `INSERT INTO sets (id, session_exercise_id, set_index, weight_kg, reps, completed_at, updated_at)
-         VALUES (?, ?, 1, ?, ?, ?, ?)`,
-      [id('st'), exerciseId, set.weight, set.reps, startedLocal, startedLocal],
+      `INSERT INTO sets (id, session_exercise_id, set_index, weight_kg, reps, completed_at, done_at, updated_at)
+         VALUES (?, ?, 1, ?, ?, ?, ?, ?)`,
+      [id('st'), exerciseId, set.weight, set.reps, startedLocal, startedLocal, startedLocal],
     );
   }
+  return sessionId;
+}
+
+/**
+ * A session that was opened and nothing more — no ticked sets, not finished.
+ *
+ * Exactly what pressing "Start workout" on the home screen produces, which is the state that
+ * used to be indistinguishable from a completed workout.
+ */
+async function openSession(startedLocal: string, planDayId: string | null = null): Promise<string> {
+  const sessionId = id('ws');
+  await db.run(
+    `INSERT INTO workout_sessions (id, user_id, plan_day_id, started_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    [sessionId, USER, planDayId, startedLocal, startedLocal, startedLocal],
+  );
+  const exerciseId = id('se');
+  await db.run(
+    `INSERT INTO session_exercises (id, session_id, exercise_key, order_index, updated_at)
+       VALUES (?, ?, 'Barbell Bench Press', 1, ?)`,
+    [exerciseId, sessionId, startedLocal],
+  );
+  // Sets exist from the moment the session is created — laid out, untouched.
+  await db.run(
+    `INSERT INTO sets (id, session_exercise_id, set_index, completed_at, updated_at)
+       VALUES (?, ?, 1, ?, ?)`,
+    [id('st'), exerciseId, startedLocal, startedLocal],
+  );
   return sessionId;
 }
 
@@ -70,6 +101,53 @@ async function seedPlan(days: { name: string; exercises: [string, number | null]
   }
   return dayIds;
 }
+
+describe('opening a workout is not training it', () => {
+  // The regression: the Today card's Start button creates a session, and every "have you
+  // trained" query used to accept a bare session row as proof. Pressing Start therefore
+  // incremented the week count, lit the streak strip and consumed today's rotation slot —
+  // reporting the workout as done before a single rep.
+
+  it('does not count an opened session in the week summary', async () => {
+    await openSession('2026-08-03T09:00:00');
+    expect((await weekSummary(db, USER, NOW)).workouts).toBe(0);
+  });
+
+  it('does not light the streak strip for an opened session', async () => {
+    await openSession('2026-08-03T09:00:00');
+    const strip = await weekStrip(db, USER, NOW);
+    expect(strip.find((d) => d.date === '2026-08-03')?.state).toBe('rest');
+  });
+
+  it('does not advance the rotation for an opened session', async () => {
+    const [push] = await seedPlan([
+      { name: 'דחיפה A', exercises: [['Barbell Bench Press', 4]] },
+      { name: 'משיכה A', exercises: [['Barbell Row', 4]] },
+    ]);
+    await openSession('2026-08-03T09:00:00', push ?? null);
+
+    // Still day one: nothing has been trained, so the rotation has nowhere to have moved from.
+    expect((await getTodayWorkout(db, USER, NOW))?.dayName).toBe('דחיפה A');
+  });
+
+  it('counts a session as soon as one set is ticked, without waiting for the finish sheet', async () => {
+    // The other half. A session still in progress with real sets logged IS training, and
+    // requiring `ended_at` would make the strip lie in the opposite direction.
+    await logWorkout('2026-08-03T09:00:00', [
+      { exercise: 'Barbell Bench Press', weight: 80, reps: 5 },
+    ]);
+    expect((await weekSummary(db, USER, NOW)).workouts).toBe(1);
+  });
+
+  it('counts a finished session even with nothing ticked', async () => {
+    const sessionId = await openSession('2026-08-03T09:00:00');
+    await db.run(`UPDATE workout_sessions SET ended_at = ? WHERE id = ?`, [
+      '2026-08-03T10:00:00',
+      sessionId,
+    ]);
+    expect((await weekSummary(db, USER, NOW)).workouts).toBe(1);
+  });
+});
 
 describe('getTodayWorkout — the weekly calendar', () => {
   // NOW is 2026-08-05, a Wednesday.

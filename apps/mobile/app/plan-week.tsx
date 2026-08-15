@@ -15,7 +15,7 @@
  * not the same as resting it, and the chips say so.
  */
 
-import { router, useFocusEffect } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -31,7 +31,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useCurrentUserId } from '../src/auth/CurrentUserProvider.js';
 import { FadeSlideIn } from '../src/components/motion.js';
-import { Banner, Card, EmptyState, Hint, ScreenTitle, SkeletonScreen } from '../src/components/ui.js';
+import {
+  Banner,
+  Card,
+  EmptyState,
+  Hint,
+  ScreenHeader,
+  SkeletonScreen,
+} from '../src/components/ui.js';
 import { getActivePlan, listPlanDays } from '../src/db/plans.js';
 import { getExecutor, newId } from '../src/db/provider.js';
 import {
@@ -153,12 +160,7 @@ export default function PlanWeekScreen() {
         { paddingTop: insets.top + spacing.lg, paddingBottom: insets.bottom + spacing.xxl },
       ]}
     >
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} accessibilityRole="button" hitSlop={8}>
-          <Text style={styles.back}>{i18n.language === 'he' ? '›' : '‹'}</Text>
-        </Pressable>
-        <ScreenTitle>{t('week.title')}</ScreenTitle>
-      </View>
+      <ScreenHeader title={t('week.title')} back />
 
       <View style={styles.weekToggle}>
         <Pressable
@@ -278,8 +280,6 @@ const createStyles = (colors: ColorPalette) =>
   StyleSheet.create<{
     screen: ViewStyle;
     content: ViewStyle;
-    header: ViewStyle;
-    back: TextStyle;
     weekToggle: ViewStyle;
     toggleChip: ViewStyle;
     toggleChipOn: ViewStyle;
@@ -304,13 +304,6 @@ const createStyles = (colors: ColorPalette) =>
   }>({
     screen: { flex: 1 },
     content: { paddingHorizontal: spacing.lg },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.md,
-      marginBottom: spacing.lg,
-    },
-    back: { color: colors.accent, fontSize: fontSize.xl, fontWeight: '700' },
 
     weekToggle: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg },
     toggleChip: {

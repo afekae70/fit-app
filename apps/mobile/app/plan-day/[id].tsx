@@ -30,6 +30,7 @@ import {
   getPlanDay,
   removePlanDay,
   removePlanDayExercise,
+  reorderPlanDayExercise,
   renamePlanDay,
   updatePlanDayExercise,
   type PlanDayWithExercises,
@@ -103,6 +104,24 @@ export default function PlanDayScreen() {
     void (async () => {
       const db = await getExecutor();
       await updatePlanDayExercise(db, prescriptionId, { [field]: parseTarget(raw) });
+      await load();
+    })();
+  };
+
+  /**
+   * Nudge an exercise up or down the day.
+   *
+   * Arrows rather than drag, matching how the plan's days are reordered and for the reason
+   * written there: a drag inside a vertical ScrollView has to win a gesture race against the
+   * scroll, and the loser is always the user.
+   */
+  const move = (prescriptionId: string, delta: number) => {
+    if (!day) return;
+    const from = day.exercises.findIndex((e) => e.id === prescriptionId);
+    if (from < 0) return;
+    void (async () => {
+      const db = await getExecutor();
+      await reorderPlanDayExercise(db, day.id, prescriptionId, from + delta);
       await load();
     })();
   };
@@ -187,7 +206,7 @@ export default function PlanDayScreen() {
             <View style={styles.colActions} />
           </View>
 
-          {day.exercises.map((prescription) => {
+          {day.exercises.map((prescription, position) => {
             const seed = EXERCISE_BY_KEY.get(prescription.exercise_key);
             const label = seed
               ? isHebrew
@@ -241,6 +260,34 @@ export default function PlanDayScreen() {
                   placeholder="—"
                   placeholderTextColor={colors.textFaint}
                 />
+
+                <View style={styles.reorder}>
+                  <Pressable
+                    onPress={() => move(prescription.id, -1)}
+                    disabled={position === 0}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('plan.moveExerciseUp')}
+                    hitSlop={6}
+                  >
+                    <Text style={[styles.moveText, position === 0 && styles.moveTextOff]}>↑</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => move(prescription.id, 1)}
+                    disabled={position === day.exercises.length - 1}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('plan.moveExerciseDown')}
+                    hitSlop={6}
+                  >
+                    <Text
+                      style={[
+                        styles.moveText,
+                        position === day.exercises.length - 1 && styles.moveTextOff,
+                      ]}
+                    >
+                      ↓
+                    </Text>
+                  </Pressable>
+                </View>
 
                 <Pressable
                   onPress={() => removeExercise(prescription.id)}
@@ -296,6 +343,9 @@ const createStyles = (colors: ColorPalette) =>
     row: ViewStyle;
     exerciseName: TextStyle;
     input: TextStyle;
+    reorder: ViewStyle;
+    moveText: TextStyle;
+    moveTextOff: TextStyle;
     deleteText: TextStyle;
     addButton: ViewStyle;
     addButtonText: TextStyle;
@@ -352,6 +402,9 @@ const createStyles = (colors: ColorPalette) =>
     fontSize: fontSize.sm,
     textAlign: 'center',
   },
+  reorder: { flexDirection: 'row', gap: 6, alignItems: 'center' },
+  moveText: { color: colors.textSecondary, fontSize: fontSize.sm },
+  moveTextOff: { color: colors.textFaint },
   deleteText: { color: colors.textMuted, fontSize: fontSize.sm },
   addButton: {
     marginTop: spacing.md,

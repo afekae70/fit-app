@@ -50,6 +50,7 @@ import {
 } from '../src/units.js';
 import { getDailyBrief } from '../src/coach/dailyBrief.js';
 import {
+  BackButton,
   Banner,
   Card,
   Hint,
@@ -293,6 +294,7 @@ export default function NutritionScreen() {
       keyboardShouldPersistTaps="handled"
     >
       <View style={styles.header}>
+        <BackButton />
         <Text style={styles.appName}>{t('common.appName')}</Text>
         <Pressable
           onPress={() => router.push('/settings')}

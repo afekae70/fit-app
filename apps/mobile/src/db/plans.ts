@@ -641,6 +641,59 @@ export async function reorderPlanDay(
 }
 
 /**
+ * Move an exercise to a new position within its day.
+ *
+ * Order is not decoration in a training day — squats before leg extensions is the difference
+ * between a session that works and one that does not — so an exercise landing last when it
+ * belongs third has to be movable without deleting and re-adding it.
+ *
+ * Same two-phase renumber as `reorderPlanDay` above, for the same reason: `UNIQUE (plan_day_id,
+ * order_index)` is checked per row, so writing the final order directly collides the moment two
+ * exercises momentarily share an index. Parking the whole list above the range first makes the
+ * second pass collision-free by construction.
+ */
+export async function reorderPlanDayExercise(
+  db: SqlExecutor,
+  planDayId: string,
+  exerciseId: string,
+  toIndex: number,
+  clock: Clock = defaultClock,
+): Promise<void> {
+  const rows = await db.all<{ id: string }>(
+    `SELECT id FROM plan_day_exercises
+      WHERE plan_day_id = ? AND deleted_at IS NULL
+      ORDER BY order_index`,
+    [planDayId],
+  );
+  const from = rows.findIndex((r) => r.id === exerciseId);
+  if (from < 0) return;
+
+  const target = Math.max(0, Math.min(rows.length - 1, toIndex));
+  if (target === from) return;
+
+  const ordered = [...rows];
+  const [moved] = ordered.splice(from, 1);
+  if (!moved) return;
+  ordered.splice(target, 0, moved);
+
+  const at = clock();
+  const PARK = 100000;
+  for (const [offset, row] of ordered.entries()) {
+    await db.run(`UPDATE plan_day_exercises SET order_index = ? WHERE id = ?`, [
+      PARK + offset,
+      row.id,
+    ]);
+  }
+  for (const [offset, row] of ordered.entries()) {
+    await db.run(`UPDATE plan_day_exercises SET order_index = ?, updated_at = ? WHERE id = ?`, [
+      offset + 1,
+      at,
+      row.id,
+    ]);
+  }
+}
+
+/**
  * Copy every day of a plan, and its prescriptions, onto the end of the same plan.
  *
  * Appends rather than creating a second plan: the design's "duplicate week" is for building a

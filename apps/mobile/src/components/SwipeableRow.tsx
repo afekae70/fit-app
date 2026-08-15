@@ -15,7 +15,6 @@ import { useMemo, useRef, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Animated,
-  I18nManager,
   PanResponder,
   StyleSheet,
   Text,
@@ -24,26 +23,39 @@ import {
   type ViewStyle,
 } from 'react-native';
 
+import { isRtlLanguage, type Language } from '../i18n/index.js';
 import { useTheme } from '../ThemeProvider.js';
 import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../theme.js';
 
 const REVEAL_WIDTH = 88;
 const SWIPE_THRESHOLD = 56;
 const DISMISS_DISTANCE = 500;
-// The backdrop's label sits at the logical "end" (`paddingEnd`/`flex-end` below), which RN
-// mirrors to the correct physical side under RTL on its own — but a touch gesture's dx is
-// always a physical delta, so the reveal direction itself has to be flipped explicitly to keep
-// the two in sync. `I18nManager.isRTL`, not the active language, drives layout mirroring
-// throughout this app (see src/i18n/index.ts) — the two can briefly disagree right after a
-// language switch, before the "reopen the app" reload happens.
-const REVEAL_SIGN = I18nManager.isRTL ? 1 : -1;
 
 export function SwipeableRow({ children, onDelete }: { children: ReactNode; onDelete: () => void }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const translateX = useRef(new Animated.Value(0)).current;
   const dragStart = useRef(0);
+
+  /*
+   * Which way the row slides to reveal delete.
+   *
+   * The backdrop's label sits at the logical "end", which mirrors on its own — but a gesture's
+   * `dx` is a physical delta and does not, so the direction has to be flipped explicitly.
+   *
+   * Keyed on the active language, NOT `I18nManager.isRTL`. The app's layout direction now
+   * follows i18next immediately (see app/_layout.tsx) while the native flag only updates on the
+   * next launch, so reading the flag would leave the swipe running backwards against the layout
+   * it is part of for the rest of the session.
+   *
+   * Held in a ref because the PanResponder below is built once and its handlers would otherwise
+   * close over the sign that happened to be current on mount — the same reason WeightSparkline
+   * keeps its points in a ref.
+   */
+  const revealSign = isRtlLanguage(i18n.language as Language) ? 1 : -1;
+  const revealSignRef = useRef(revealSign);
+  revealSignRef.current = revealSign;
 
   const panResponder = useRef(
     PanResponder.create({
@@ -57,19 +69,20 @@ export function SwipeableRow({ children, onDelete }: { children: ReactNode; onDe
       onPanResponderMove: (_evt, gesture) => {
         const raw = dragStart.current + gesture.dx;
         // Only lets the row move in the reveal direction, up to the reveal width plus a
-        // little give — same clamp shape either way, just mirrored by REVEAL_SIGN.
+        // little give — same clamp shape either way, just mirrored by the reveal sign.
         const next =
-          REVEAL_SIGN < 0
+          revealSignRef.current < 0
             ? Math.min(0, Math.max(raw, -(REVEAL_WIDTH + 24)))
             : Math.max(0, Math.min(raw, REVEAL_WIDTH + 24));
         translateX.setValue(next);
       },
       onPanResponderRelease: (_evt, gesture) => {
         const dx = dragStart.current + gesture.dx;
-        const pastThreshold = REVEAL_SIGN < 0 ? dx < -SWIPE_THRESHOLD : dx > SWIPE_THRESHOLD;
+        const pastThreshold =
+          revealSignRef.current < 0 ? dx < -SWIPE_THRESHOLD : dx > SWIPE_THRESHOLD;
         if (pastThreshold) {
           Animated.timing(translateX, {
-            toValue: REVEAL_SIGN * DISMISS_DISTANCE,
+            toValue: revealSignRef.current * DISMISS_DISTANCE,
             duration: 180,
             useNativeDriver: true,
           }).start(({ finished }) => {

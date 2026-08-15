@@ -7,11 +7,9 @@
  */
 
 import { EXERCISE_SEED, type ExerciseSeed } from '@fit/shared/catalog';
-import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -28,7 +26,7 @@ import {
   Card,
   EmptyState,
   Hint,
-  ScreenTitle,
+  ScreenHeader,
   SectionTitle,
   SkeletonScreen,
 } from '../../src/components/ui.js';
@@ -119,12 +117,7 @@ export default function ProgressScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.accent} />
       }
     >
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} accessibilityRole="button" hitSlop={8}>
-          <Text style={styles.back}>{isHebrew ? '›' : '‹'}</Text>
-        </Pressable>
-        <ScreenTitle>{t('progress.title')}</ScreenTitle>
-      </View>
+      <ScreenHeader title={t('progress.title')} back />
 
       {volume.some((w) => w.volumeKg > 0) ? (
         <>
@@ -243,8 +236,6 @@ const createStyles = (colors: ColorPalette) =>
     content: ViewStyle;
     centered: ViewStyle;
     muted: TextStyle;
-    header: ViewStyle;
-    back: TextStyle;
     cardHeader: ViewStyle;
     exerciseName: TextStyle;
     badge: ViewStyle;
@@ -259,8 +250,6 @@ const createStyles = (colors: ColorPalette) =>
   content: { paddingHorizontal: spacing.lg },
   centered: { flex: 1, backgroundColor: colors.bg, alignItems: 'center' },
   muted: { color: colors.textMuted, fontSize: fontSize.sm },
-  header: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.lg },
-  back: { color: colors.accent, fontSize: fontSize.xl, fontWeight: fontWeight.bold },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',

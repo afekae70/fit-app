@@ -131,21 +131,84 @@ export function Divider() {
 
 /** Screen title paired with a settings shortcut — every tab root uses this now, so settings
  *  is reachable from wherever the user happens to be instead of only from Today and Coach. */
-export function ScreenHeader({ title }: { title: string }) {
+/**
+ * The back control, on its own.
+ *
+ * Exported because several screens (Coach, Nutrition, the exercise library) carry bespoke
+ * headers with their own links, and replacing those wholesale to gain a back button would throw
+ * away the thing they were built for. This keeps one chevron rule without demanding one header
+ * layout.
+ *
+ * Renders nothing when there is nowhere to go — a control that silently does nothing reads as
+ * broken, and on a tab root there is usually no stack to pop.
+ */
+export function BackButton() {
+  const { t, i18n } = useTranslation();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
+  if (!router.canGoBack()) return null;
+
+  // Points the way the language reads. Keyed on the active language rather than
+  // I18nManager.isRTL: layout direction now follows i18n immediately (see app/_layout.tsx) while
+  // the native flag only updates on relaunch, and a chevron disagreeing with the layout around
+  // it is exactly the half-flip that reads as a bug.
+  return (
+    <Pressable
+      onPress={() => router.back()}
+      accessibilityRole="button"
+      accessibilityLabel={t('common.back')}
+      hitSlop={8}
+    >
+      <Text style={styles.screenHeaderBack}>{i18n.language === 'he' ? '›' : '‹'}</Text>
+    </Pressable>
+  );
+}
+
+/**
+ * The one header every screen uses: an optional back control, the title, and the settings gear.
+ *
+ * Consolidated because six screens had grown their own copy of the same back Pressable and
+ * chevron. That mattered beyond tidiness — the chevron points the other way in Hebrew, so a
+ * duplicated rule is a rule that gets half-updated. It is decided here, once.
+ *
+ * `back` renders only when there is somewhere to go. A tab root usually has nothing to pop, and
+ * a control that silently does nothing is worse than an absent one.
+ */
+export function ScreenHeader({
+  title,
+  back = false,
+  settings = true,
+}: {
+  title: string;
+  back?: boolean;
+  settings?: boolean;
+}) {
   const { t } = useTranslation();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+
+  // Points back the way the language reads. Keyed on the active language rather than
+  // I18nManager.isRTL: the layout direction now follows i18n immediately (see app/_layout.tsx),
+  // while the native flag only updates on relaunch, and a chevron disagreeing with the layout
+  // around it is exactly the kind of half-flip that reads as a bug.
   return (
     <View style={styles.screenHeaderRow}>
-      <ScreenTitle>{title}</ScreenTitle>
-      <Pressable
-        onPress={() => router.push('/settings')}
-        accessibilityRole="button"
-        accessibilityLabel={t('settings.title')}
-        hitSlop={8}
-      >
-        <Text style={styles.screenHeaderGear}>⚙️</Text>
-      </Pressable>
+      <View style={styles.screenHeaderStart}>
+        {back ? <BackButton /> : null}
+        <ScreenTitle>{title}</ScreenTitle>
+      </View>
+
+      {settings ? (
+        <Pressable
+          onPress={() => router.push('/settings')}
+          accessibilityRole="button"
+          accessibilityLabel={t('settings.title')}
+          hitSlop={8}
+        >
+          <Text style={styles.screenHeaderGear}>⚙️</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -565,6 +628,8 @@ const createStyles = (colors: ColorPalette) =>
     cardAccent: ViewStyle;
     screenTitle: TextStyle;
     screenHeaderRow: ViewStyle;
+    screenHeaderStart: ViewStyle;
+    screenHeaderBack: TextStyle;
     screenHeaderGear: TextStyle;
     sectionTitle: TextStyle;
     hint: TextStyle;
@@ -646,6 +711,8 @@ const createStyles = (colors: ColorPalette) =>
       justifyContent: 'space-between',
       gap: spacing.md,
     },
+    screenHeaderStart: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, flex: 1 },
+    screenHeaderBack: { color: colors.accent, fontSize: fontSize.xl, fontWeight: '700' },
     screenHeaderGear: { fontSize: fontSize.lg, marginBottom: spacing.lg },
     // A label for the group below it, not a heading that competes with it. At full text colour
     // and body size in bold it carried the same weight as the numbers inside the card, so every

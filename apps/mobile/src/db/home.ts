@@ -13,6 +13,31 @@ import type { SqlExecutor } from './executor.js';
 import { getActivePlan, listPlanDayExercises, listPlanDays } from './plans.js';
 import { localDate, scheduledFor } from './schedule.js';
 
+/**
+ * What counts as having trained on a day.
+ *
+ * Opening a workout is not training it. Starting a session from the plan inserts a row dated
+ * today with its sets already laid out and none of them ticked — and until this predicate
+ * existed, that row alone was enough to increment the week's workout count, light up the streak
+ * strip, and convince the rotation that today's slot had been used. Pressing "Start" therefore
+ * reported the workout as done before a single rep.
+ *
+ * A session counts when it was finished, or when at least one set was actually ticked off. The
+ * second half matters as much as the first: a session still in progress with real sets logged is
+ * genuinely training, and waiting for the finish sheet would make the strip lie the other way.
+ *
+ * Abandoned sessions now never count, which is correct on its own terms — that was always a bug,
+ * it simply had no way to happen from the home screen before.
+ */
+const TRAINED = `(
+  ws.ended_at IS NOT NULL
+  OR EXISTS (
+    SELECT 1 FROM session_exercises se
+      JOIN sets s ON s.session_exercise_id = se.id AND s.deleted_at IS NULL
+     WHERE se.session_id = ws.id AND se.deleted_at IS NULL AND s.done_at IS NOT NULL
+  )
+)`;
+
 /** Minutes allowed per working set, for the "~52 min" estimate. Sets are ~40s plus 90s rest. */
 const MINUTES_PER_SET = 2.2;
 /** Sets assumed for a plan exercise that does not specify a target. */
@@ -151,6 +176,7 @@ async function rotate(
        FROM workout_sessions ws
        JOIN plan_days pd ON pd.id = ws.plan_day_id
       WHERE ws.user_id = ? AND ws.deleted_at IS NULL AND pd.plan_id = ?
+        AND ${TRAINED}
       ORDER BY ws.started_at DESC
       LIMIT 1`,
     [userId, planId],
@@ -216,10 +242,11 @@ export async function weekStrip(db: SqlExecutor, userId: string, now = new Date(
   start.setDate(start.getDate() - 6);
 
   const rows = await db.all<{ day: string }>(
-    `SELECT DISTINCT date(started_at, 'localtime') AS day
-       FROM workout_sessions
-      WHERE user_id = ? AND deleted_at IS NULL
-        AND date(started_at, 'localtime') >= ?`,
+    `SELECT DISTINCT date(ws.started_at, 'localtime') AS day
+       FROM workout_sessions ws
+      WHERE ws.user_id = ? AND ws.deleted_at IS NULL
+        AND date(ws.started_at, 'localtime') >= ?
+        AND ${TRAINED}`,
     [userId, localDay(start)],
   );
   const trained = new Set(rows.map((r) => r.day));
@@ -269,7 +296,8 @@ export async function weekSummary(
        LEFT JOIN session_exercises se ON se.session_id = ws.id AND se.deleted_at IS NULL
        LEFT JOIN sets s ON s.session_exercise_id = se.id AND s.deleted_at IS NULL
       WHERE ws.user_id = ? AND ws.deleted_at IS NULL
-        AND date(ws.started_at, 'localtime') >= ?`,
+        AND date(ws.started_at, 'localtime') >= ?
+        AND ${TRAINED}`,
     [userId, from],
   );
 

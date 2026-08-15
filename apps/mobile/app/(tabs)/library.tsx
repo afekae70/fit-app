@@ -26,6 +26,7 @@ import { MagnifyingGlass } from 'phosphor-react-native';
 import { EXERCISE_SEED, FILTERABLE_MUSCLES, type ExerciseSeed } from '@fit/shared';
 
 import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
+import { BackButton } from '../../src/components/ui.js';
 import { useTheme } from '../../src/ThemeProvider.js';
 import { radius, type ColorPalette } from '../../src/theme.js';
 import { getExecutor } from '../../src/db/provider.js';
@@ -84,7 +85,10 @@ export default function LibraryScreen() {
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top + 8 }]}>
-      <Text style={styles.title}>{t('library.title')}</Text>
+      <View style={styles.titleRow}>
+        <BackButton />
+        <Text style={styles.title}>{t('library.title')}</Text>
+      </View>
 
       <View style={styles.searchRow}>
         <MagnifyingGlass size={17} color={colors.textFaint} weight="regular" />
@@ -193,6 +197,7 @@ function ExerciseRow({
 const createStyles = (colors: ColorPalette) =>
   StyleSheet.create<{
     screen: ViewStyle;
+    titleRow: ViewStyle;
     title: TextStyle;
     searchRow: ViewStyle;
     searchInput: TextStyle;
@@ -222,6 +227,7 @@ const createStyles = (colors: ColorPalette) =>
     progressDelta: TextStyle;
   }>({
     screen: { flex: 1, paddingHorizontal: 20 },
+    titleRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
     title: {
       color: colors.text,
       fontSize: 24,

@@ -5,10 +5,9 @@
  * than convenience.
  */
 
-import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, ScrollView, StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
+import { ScrollView, StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { UnitPreference } from '@fit/shared';
@@ -20,7 +19,7 @@ import {
   Button,
   Card,
   Hint,
-  ScreenTitle,
+  ScreenHeader,
   Segmented,
   SectionTitle,
 } from '../src/components/ui.js';
@@ -37,7 +36,6 @@ import { fontSize, spacing, type ColorPalette } from '../src/theme.js';
 export default function SettingsScreen() {
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
-  const isHebrew = i18n.language === 'he';
   const { session, signOut } = useAuth();
   const { scheme, toggleScheme, colors } = useTheme();
   const { unit, setUnit } = useUnits();
@@ -92,12 +90,8 @@ export default function SettingsScreen() {
         { paddingTop: insets.top + spacing.lg, paddingBottom: insets.bottom + spacing.xxl },
       ]}
     >
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} accessibilityRole="button" hitSlop={8}>
-          <Text style={styles.back}>{isHebrew ? '›' : '‹'}</Text>
-        </Pressable>
-        <ScreenTitle>{t('settings.title')}</ScreenTitle>
-      </View>
+      {/* No gear here — it would link to the screen you are already on. */}
+      <ScreenHeader title={t('settings.title')} back settings={false} />
 
       {reloadNeeded ? <Banner tone="warning">{t('settings.reloadForRtl')}</Banner> : null}
 
@@ -172,16 +166,12 @@ const createStyles = (colors: ColorPalette) =>
   StyleSheet.create<{
     screen: ViewStyle;
     content: ViewStyle;
-    header: ViewStyle;
-    back: TextStyle;
     unitsHint: TextStyle;
     email: TextStyle;
     signOutSpacer: ViewStyle;
   }>({
     screen: { flex: 1 },
     content: { paddingHorizontal: spacing.lg },
-    header: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.lg },
-    back: { color: colors.accent, fontSize: fontSize.xl, fontWeight: '700' },
     unitsHint: {
       color: colors.textFaint,
       fontSize: fontSize.xs,

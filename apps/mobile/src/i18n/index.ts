@@ -4,11 +4,13 @@
  * Hebrew is the default, so RTL is the default layout direction. Two things about RTL on React
  * Native that shape this file:
  *
- *  1. `I18nManager.forceRTL()` only takes effect after the JS bundle reloads. There is no
- *     in-place way to mirror the current screen, so a direction change always needs a restart.
- *  2. Layout mirroring is driven by `I18nManager.isRTL`, NOT by which i18next language is
- *     active. Those can disagree (i18next switches instantly, RTL needs the reload), and that
- *     disagreement is exactly what `directionChanged` below asks the caller to resolve.
+ *  1. `I18nManager.forceRTL()` only takes effect after the JS bundle reloads. It is still
+ *     written here so a cold start comes up in the right direction natively, but it is no
+ *     longer what mirrors the running UI — app/_layout.tsx wraps the app in a View whose
+ *     `direction` follows i18next, which flips in place with no restart.
+ *  2. That means `I18nManager.isRTL` can lag the visible layout until the next launch. Anything
+ *     deciding handedness must key off the active language instead — see `SwipeableRow`, whose
+ *     swipe direction is a physical delta that does not mirror on its own.
  *
  * `setAppLanguage` deliberately does NOT call `Updates.reloadAsync()` to restart automatically.
  * This app doesn't use EAS Update (no channel configured, so the call would always be a no-op
@@ -21,7 +23,7 @@
  * carry that risk.
  */
 
-import { getLocales } from 'expo-localization';
+import * as SecureStore from 'expo-secure-store';
 import i18next from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import { I18nManager } from 'react-native';
@@ -52,16 +54,29 @@ type WidenStrings<T> = {
 type Resources = WidenStrings<typeof he>;
 const enTyped: Resources = en;
 
-/** Pick a starting language from the device locale, falling back to Hebrew. */
-export function detectDeviceLanguage(): Language {
-  const locales = getLocales();
-  const primary = locales[0]?.languageCode;
-  return SUPPORTED_LANGUAGES.includes(primary as Language)
-    ? (primary as Language)
-    : DEFAULT_LANGUAGE;
+const STORAGE_KEY = 'app-language';
+
+/**
+ * The language the user last chose, if any.
+ *
+ * Read asynchronously and applied after the first render, which the direction wrapper in
+ * app/_layout.tsx makes harmless — the layout follows i18next now, so a late switch repaints
+ * rather than needing a restart.
+ *
+ * Nothing stored means Hebrew. The device locale is deliberately NOT consulted: this app is
+ * Hebrew-first, and an English phone used to open it in English even though every screen was
+ * designed right-to-left.
+ */
+export async function loadStoredLanguage(): Promise<Language> {
+  try {
+    const stored = await SecureStore.getItemAsync(STORAGE_KEY);
+    return SUPPORTED_LANGUAGES.includes(stored as Language) ? (stored as Language) : DEFAULT_LANGUAGE;
+  } catch {
+    return DEFAULT_LANGUAGE;
+  }
 }
 
-export function initI18n(language: Language = detectDeviceLanguage()): typeof i18next {
+export function initI18n(language: Language = DEFAULT_LANGUAGE): typeof i18next {
   // Align the native layout direction with the starting language. On a cold start this is
   // applied before the first render, so no reload is needed for the initial language.
   const shouldBeRtl = isRtlLanguage(language);
@@ -106,6 +121,10 @@ export interface LanguageChangeResult {
  */
 export async function setAppLanguage(language: Language): Promise<LanguageChangeResult> {
   await i18next.changeLanguage(language);
+
+  // Persisted, so the choice survives a relaunch. Previously nothing was stored and startup
+  // re-read the device locale every time, which silently undid the user's choice.
+  void SecureStore.setItemAsync(STORAGE_KEY, language).catch(() => {});
 
   const shouldBeRtl = isRtlLanguage(language);
   const directionChanged = I18nManager.isRTL !== shouldBeRtl;
