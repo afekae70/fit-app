@@ -69,6 +69,88 @@ Two things worth knowing:
   file and in the Railway service's environment variables. It must never reach `app.json`, the
   mobile bundle, or a commit.
 
+## Building the APK locally
+
+`eas build` is the documented path above and needs no local toolchain. If the EAS plan is not
+available, the whole build can run on the machine — but three things about this repository make
+that harder than `./gradlew assembleRelease`, and each one fails in a way that does not name its
+own cause. Every one of them cost real debugging time.
+
+You need a JDK and the Android SDK installed, and `ANDROID_HOME` (or `android/local.properties`)
+pointing at the SDK.
+
+### 1. Build from a path with no Hebrew and no OneDrive
+
+`npx expo prebuild` run from this checkout creates `android/` and leaves it **empty**, silently.
+The project lives under a Hebrew directory name inside OneDrive, and prebuild does not cope with
+it. Copy the tree somewhere plain first:
+
+```bash
+git archive --format=tar HEAD | (mkdir -p /c/Users/you/fit-build && tar -x -C /c/Users/you/fit-build)
+cd /c/Users/you/fit-build && npm install
+```
+
+Work there for builds, and keep editing in the real checkout — copy `apps/mobile/app`,
+`apps/mobile/src` and `packages/shared/src` across before each build.
+
+### 2. Use `./gradlew` from git bash, never `gradlew.bat`
+
+`gradlew.bat` dies with `-classpath requires class path specification` — it builds an empty
+CLASSPATH next to `-jar`. The POSIX `gradlew` under git bash works.
+
+Note that `android/local.properties` is a Java properties file, so its paths need **forward**
+slashes. A Windows path with backslashes produces "The filename, directory name, or volume label
+syntax is incorrect", which reads like a missing SDK rather than an escaping problem.
+
+### 3. Re-apply two patches after every `prebuild --clean`
+
+Both live in generated files, so a clean prebuild wipes them.
+
+**Bundle the JS yourself.** Gradle's `createBundleReleaseJsAndAssets` passes `--entry-file`
+relative to `apps/mobile` while Metro resolves against the monorepo root, and the two never
+agree. Skipping the task with `-x` does not work either — downstream tasks query the skipped
+task's output provider and fail. Instead, tell Gradle release is "debuggable" purely so it stops
+bundling, in `android/app/build.gradle` inside the `react { }` block:
+
+```groovy
+debuggableVariants = ["debug", "release"]
+```
+
+then produce the bundle with an absolute entry path before each build:
+
+```bash
+cd apps/mobile
+npx expo export:embed --platform android --dev false \
+  --entry-file "C:/Users/you/fit-build/node_modules/expo-router/entry.js" \
+  --bundle-output "C:/Users/you/fit-build/apps/mobile/android/app/src/main/assets/index.android.bundle" \
+  --assets-dest "C:/Users/you/fit-build/apps/mobile/android/app/src/main/res"
+cd android && ./gradlew assembleRelease
+```
+
+**Check the Bluetooth permission.** `BLUETOOTH_SCAN` must carry
+`android:usesPermissionFlags="neverForLocation"`, or on Android 12+ every scan returns zero
+devices with no error at all. `app.json` deliberately does not list that permission so the
+`react-native-ble-plx` plugin can add it with the flag — see the header of
+`apps/mobile/src/ble/scanner.ts` for the full story. Verify:
+
+```bash
+grep BLUETOOTH_SCAN android/app/src/main/AndroidManifest.xml
+```
+
+A plain `expo prebuild` merges into the existing manifest and will happily preserve a broken
+line, so use `--clean` when this needs fixing.
+
+### Installing
+
+```bash
+adb install -r apps/mobile/android/app/build/outputs/apk/release/app-release.apk
+```
+
+Local release builds are signed with the debug key, so they update each other in place but
+**cannot** update an EAS-signed install — Android refuses, and the only way across is to
+uninstall, which takes the local database with it. Pick one signing route per device and stay on
+it.
+
 ## Accounts you may need to sign into
 
 - **Expo / EAS** — `npx eas-cli login` (builds, signing credentials)
