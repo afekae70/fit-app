@@ -501,7 +501,7 @@ export const he = {
     bleUnavailable: 'לא זמין ב-Expo Go',
     bleExplain:
       'בלוטות׳ דורש Development Build — הוא לא עובד ב-Expo Go בשום צורה. המפענחים למשקלים כבר כתובים ונבדקו.',
-    bleSupported: 'נתמכים: Mi Body Composition Scale 2, וכל משקל תקני (0x181D)',
+    bleSupported: 'נתמכים: משקל שידור ללא שם (OKOK), Mi Body Composition Scale 2, וכל משקל תקני (0x181D)',
     bleDiagnostics: 'המשקל לא נמצא? בדיקת בלוטות׳',
     bleScan: 'סרוק משקל',
     bleScanning: 'מחפש משקל…',

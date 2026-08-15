@@ -510,7 +510,7 @@ export const en = {
     bleUnavailable: 'Not available in Expo Go',
     bleExplain:
       'Bluetooth requires a development build — it does not work in Expo Go at all. The scale parsers are already written and tested.',
-    bleSupported: 'Supported: Mi Body Composition Scale 2, and any standard scale (0x181D)',
+    bleSupported: 'Supported: nameless broadcast scale (OKOK), Mi Body Composition Scale 2, and any standard scale (0x181D)',
     bleDiagnostics: 'Scale not found? Bluetooth diagnostics',
     bleScan: 'Scan for scale',
     bleScanning: 'Looking for a scale…',

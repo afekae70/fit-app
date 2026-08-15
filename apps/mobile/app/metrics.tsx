@@ -60,6 +60,7 @@ import { WeightSparkline } from '../src/components/WeightSparkline.js';
 import {
   computeTargets,
   deleteBodyMetric,
+  getLastScaleDeviceId,
   getProfile,
   listBodyMetrics,
   recordBodyMetric,
@@ -159,7 +160,11 @@ export default function MetricsScreen() {
 
     void (async () => {
       try {
-        const result = await scanForReading({ timeoutMs: 25_000 });
+        const db = await getExecutor();
+        const result = await scanForReading({
+          timeoutMs: 25_000,
+          preferDeviceId: await getLastScaleDeviceId(db, userId),
+        });
 
         if (!result) {
           setBleError(t('metrics.bleNoScale'));
@@ -167,7 +172,6 @@ export default function MetricsScreen() {
           return;
         }
 
-        const db = await getExecutor();
         await recordBodyMetric(db, userId, newId, {
           weightKg: result.reading.weightKg,
           bodyFatPct: result.reading.bodyFatPct ?? null,

@@ -215,6 +215,30 @@ export async function getLatestWeight(db: SqlExecutor, userId: string): Promise<
   );
 }
 
+/**
+ * The scale this user last weighed in on, if any.
+ *
+ * Identification of the nameless broadcast scale is a byte-shape match, and a neighbour's
+ * identical unit produces byte-identical frames. Once a device has been used successfully its id
+ * is known, so a later scan can prefer it over an equally plausible stranger rather than taking
+ * whichever advertisement arrived first.
+ *
+ * Read from history instead of a setting: the device id is already recorded on every reading,
+ * and a second copy in the profile could disagree with it.
+ */
+export async function getLastScaleDeviceId(
+  db: SqlExecutor,
+  userId: string,
+): Promise<string | null> {
+  const row = await db.get<{ device_id: string | null }>(
+    `SELECT device_id FROM body_metrics
+      WHERE user_id = ? AND source = 'ble_scale' AND device_id IS NOT NULL AND deleted_at IS NULL
+      ORDER BY measured_at DESC LIMIT 1`,
+    [userId],
+  );
+  return row?.device_id ?? null;
+}
+
 export async function deleteBodyMetric(
   db: SqlExecutor,
   userId: string,

@@ -217,6 +217,16 @@ export interface ScanOptions {
    * first of them records a weight substantially below the real one.
    */
   requireStabilised?: boolean;
+  /**
+   * The scale this user weighed in on last, when one is known.
+   *
+   * The nameless broadcast scale is recognised by the shape of its bytes, and a neighbour's
+   * identical unit is byte-identical — nothing in the frame says whose scale it is. So a known
+   * device wins outright for most of the scan, and only once it has clearly not appeared does
+   * anything else become acceptable. Preferring rather than requiring matters because the
+   * alternative strands anyone who replaces their scale.
+   */
+  preferDeviceId?: string | null;
   onStatus?: (status: 'scanning' | 'found_device' | 'connecting' | 'reading') => void;
 }
 
@@ -227,7 +237,7 @@ export interface ScanOptions {
  * (the scale is asleep, or out of range), not an error worth a stack trace.
  */
 export async function scanForReading(options: ScanOptions = {}): Promise<ScanResult | null> {
-  const { timeoutMs = 20_000, requireStabilised = true, onStatus } = options;
+  const { timeoutMs = 20_000, requireStabilised = true, preferDeviceId = null, onStatus } = options;
 
   const availability = await checkScanAvailability();
   if (!availability.available) {
@@ -265,6 +275,12 @@ export async function scanForReading(options: ScanOptions = {}): Promise<ScanRes
 
     const timer = setTimeout(() => finish(null), timeoutMs);
 
+    // Two thirds of the window belongs to the known scale; after that any match will do. A
+    // strict requirement would leave someone who replaced their scale scanning forever.
+    const exclusiveUntil = Date.now() + Math.round(timeoutMs * (2 / 3));
+    const isAcceptableDevice = (id: string) =>
+      !preferDeviceId || id === preferDeviceId || Date.now() > exclusiveUntil;
+
     onStatus?.('scanning');
 
     manager.startDeviceScan(
@@ -278,6 +294,7 @@ export async function scanForReading(options: ScanOptions = {}): Promise<ScanRes
       { allowDuplicates: true },
       (error, device) => {
         if (error || !device || settled) return;
+        if (!isAcceptableDevice(device.id)) return;
 
         let adapter = selectAdapter({
           serviceUuids: device.serviceUUIDs?.map(shortUuid) ?? [],

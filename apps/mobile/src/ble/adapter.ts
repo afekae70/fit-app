@@ -9,12 +9,18 @@
  * Scanning itself needs `react-native-ble-plx` in a development build; Bluetooth does not
  * work in Expo Go at all. See scanner.ts.
  *
- * Two adapters ship:
+ * Three adapters ship:
  *  - `standardWeightScaleAdapter` — the Bluetooth SIG Weight Scale Service (0x181D). Any
  *    spec-compliant scale works with no extra code.
  *  - `miScale2Adapter` — Xiaomi Mi Body Composition Scale 2, which broadcasts weight and
  *    impedance in a plain advertisement on service 0x181B. Reverse-engineered but stable and
  *    widely documented, and the cheapest reliable target.
+ *  - `namelessBroadcastScaleAdapter` — the unbranded body-composition scale sold with the OKOK
+ *    app, which advertises no name, no service UUID and no valid company id, and refuses GATT
+ *    connections. Reverse-engineered from captures off one unit and confirmed against its own
+ *    display; it is the only adapter matched by payload shape rather than identity, and the
+ *    only one where a second identical unit nearby is indistinguishable. See
+ *    `ScanOptions.preferDeviceId`.
  *
  * Deliberately NOT attempted: Withings, Renpho and Eufy encrypt their payloads or require
  * cloud pairing, so no local BLE parser can work for them — those need their cloud APIs.

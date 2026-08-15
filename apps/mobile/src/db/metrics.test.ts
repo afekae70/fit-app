@@ -13,6 +13,7 @@ import {
   getLatestWeight,
   getProfile,
   listBodyMetrics,
+  getLastScaleDeviceId,
   recordBodyMetric,
   saveProfile,
   snapshotTargets,
@@ -366,5 +367,57 @@ describe('target snapshots', () => {
 
     expect(await getCurrentTargets(db, 'user-2')).not.toBeNull();
     expect((await getCurrentTargets(db, USER))?.weight_kg_snapshot).toBe(79);
+  });
+});
+
+describe('remembering which scale is yours', () => {
+  // The nameless broadcast scale is recognised by the shape of its bytes, so a neighbour's
+  // identical unit is indistinguishable in the air. Knowing which device was used last is the
+  // only thing that lets a scan prefer the right one.
+
+  const weighIn = (deviceId: string | null, measuredAt: string, weightKg = 80) =>
+    recordBodyMetric(
+      db,
+      USER,
+      newId,
+      { weightKg, source: 'ble_scale', deviceId, measuredAt },
+      clock,
+    );
+
+  it('returns nothing before any Bluetooth weigh-in', async () => {
+    await recordBodyMetric(db, USER, newId, { weightKg: 80, source: 'manual' }, clock);
+    expect(await getLastScaleDeviceId(db, USER)).toBeNull();
+  });
+
+  it('returns the device from the most recent weigh-in', async () => {
+    await weighIn('AA:AA:AA:AA:AA:AA', '2026-07-01T08:00:00.000Z');
+    await weighIn('BB:BB:BB:BB:BB:BB', '2026-07-20T08:00:00.000Z');
+    // Newest wins, so replacing a scale takes one successful weigh-in to switch over.
+    expect(await getLastScaleDeviceId(db, USER)).toBe('BB:BB:BB:BB:BB:BB');
+  });
+
+  it('ignores manual entries made since the last scale reading', async () => {
+    await weighIn('AA:AA:AA:AA:AA:AA', '2026-07-01T08:00:00.000Z');
+    await recordBodyMetric(
+      db,
+      USER,
+      newId,
+      { weightKg: 79, source: 'manual', measuredAt: '2026-07-20T08:00:00.000Z' },
+      clock,
+    );
+    expect(await getLastScaleDeviceId(db, USER)).toBe('AA:AA:AA:AA:AA:AA');
+  });
+
+  it('does not hand one user another user’s scale', async () => {
+    await weighIn('AA:AA:AA:AA:AA:AA', '2026-07-01T08:00:00.000Z');
+    expect(await getLastScaleDeviceId(db, 'user-2')).toBeNull();
+  });
+
+  it('forgets a scale whose only reading was deleted', async () => {
+    const id = await weighIn('AA:AA:AA:AA:AA:AA', '2026-07-01T08:00:00.000Z');
+    await deleteBodyMetric(db, USER, id);
+    // Deleting a bad reading is how someone corrects a stranger's weigh-in — it must also
+    // stop that stranger's scale being preferred from then on.
+    expect(await getLastScaleDeviceId(db, USER)).toBeNull();
   });
 });
