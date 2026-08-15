@@ -120,8 +120,10 @@ export const en = {
     intro:
       'Scans everything advertising nearby and shows the raw bytes. Saves nothing — it is here only to identify which protocol your scale speaks.',
     scan: 'Scan everything',
-    scanning: 'Scanning… (20s)',
-    standOn: 'Important: stand on the scale while this runs. A scale nobody is standing on switches off and broadcasts nothing.',
+    stop: 'Stop scanning',
+    live: 'Scanning… {{count}} devices so far',
+    scanning: 'Scanning… step on the scale now',
+    standOn: 'Press scan, then step on the scale and stay on until the number locks. A scale nobody is standing on switches off and broadcasts nothing. A device with a bar down its side changed its broadcast while we watched — that is where to look.',
     found: '{{count}} devices found',
     none: 'Nothing found. Check that Bluetooth is on and the scale is awake.',
     unnamed: '(no name)',

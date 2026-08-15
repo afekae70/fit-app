@@ -353,10 +353,25 @@ export interface SightedDevice {
  * different payload every few hundred milliseconds, and that changing run of bytes is what
  * identifies the weight field. A key fob emits the same bytes forever.
  */
+export interface DiagnosticsOptions {
+  timeoutMs?: number;
+  /**
+   * Called as devices arrive, throttled to roughly four times a second.
+   *
+   * Live rather than a report at the end, because the question this tool answers is causal:
+   * does stepping on the scale make something appear? A list handed over after the fact cannot
+   * distinguish "the scale is not supported" from "the scale was asleep the whole time", and
+   * the first run of this screen hit exactly that wall.
+   */
+  onUpdate?: (devices: SightedDevice[]) => void;
+  /** Resolves early when this flips true — lets the screen offer a Stop button. */
+  shouldStop?: () => boolean;
+}
+
 export async function scanDiagnostics(
-  options: { timeoutMs?: number } = {},
+  options: DiagnosticsOptions = {},
 ): Promise<SightedDevice[]> {
-  const { timeoutMs = 15_000 } = options;
+  const { timeoutMs = 15_000, onUpdate, shouldStop } = options;
 
   const availability = await checkScanAvailability();
   if (!availability.available) throw new ScanError(availability.reason);
@@ -369,23 +384,49 @@ export async function scanDiagnostics(
   const seen = new Map<string, SightedDevice>();
 
   return new Promise<SightedDevice[]>((resolve) => {
+    let done = false;
+
+    /*
+     * Most-changing first, then busiest.
+     *
+     * Distinct payloads lead because that is the signature being hunted: a scale reporting a
+     * rising weight emits a different frame every few hundred milliseconds, while a television
+     * announcing itself repeats one or two forever. Sorting by frame count alone put a chatty
+     * TV above a scale on the first run of this screen.
+     */
+    const snapshot = () =>
+      [...seen.values()].sort(
+        (a, b) => b.payloadsHex.length - a.payloadsHex.length || b.frames - a.frames,
+      );
+
     const finish = () => {
+      if (done) return;
+      done = true;
       clearTimeout(timer);
+      clearInterval(ticker);
       try {
         manager.stopDeviceScan();
       } catch {
         /* already torn down */
       }
       manager.destroy();
-      // Busiest first: the scale being stood on is the loudest thing in the room, and a list
-      // sorted by arrival order buries it under whatever a neighbour left switched on.
-      resolve([...seen.values()].sort((a, b) => b.frames - a.frames));
+      resolve(snapshot());
     };
 
     const timer = setTimeout(finish, timeoutMs);
 
+    // One timer drives both the live updates and the stop check, rather than re-rendering on
+    // every advertisement — a busy room delivers hundreds a second and would thrash the UI.
+    const ticker = setInterval(() => {
+      if (shouldStop?.()) {
+        finish();
+        return;
+      }
+      onUpdate?.(snapshot());
+    }, 250);
+
     manager.startDeviceScan(null, { allowDuplicates: true }, (error, device) => {
-      if (error || !device) return;
+      if (error || !device || done) return;
 
       const name = device.name ?? device.localName ?? null;
       const serviceData: Record<string, string> = {};

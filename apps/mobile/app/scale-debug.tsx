@@ -11,7 +11,7 @@
  * a diagnostic that changes state is a diagnostic you cannot trust the second time you run it.
  */
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -28,8 +28,14 @@ import { hapticLight } from '../src/haptics.js';
 import { useTheme } from '../src/ThemeProvider.js';
 import { fontSize, radius, spacing, type ColorPalette } from '../src/theme.js';
 
-/** Long enough to step on a scale and let it settle, short enough to stand still for. */
-const SCAN_MS = 20_000;
+/**
+ * Long enough to start the scan, walk to the scale and let it settle.
+ *
+ * The first run of this screen used twenty seconds and caught nothing but televisions — a scale
+ * sleeps until it is stepped on and stays awake only briefly, so the window has to cover the
+ * walk over as well as the weighing. There is a Stop button for when it is done sooner.
+ */
+const SCAN_MS = 60_000;
 
 export default function ScaleDebugScreen() {
   const { t } = useTranslation();
@@ -40,15 +46,26 @@ export default function ScaleDebugScreen() {
   const [scanning, setScanning] = useState(false);
   const [devices, setDevices] = useState<SightedDevice[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // A ref, not state: the scan loop polls this every 250 ms and must see the current value
+  // without the closure it was created with going stale.
+  const stopRequested = useRef(false);
 
   const scan = useCallback(() => {
     void hapticLight();
+    stopRequested.current = false;
     setScanning(true);
     setError(null);
+    setDevices([]);
 
     void (async () => {
       try {
-        setDevices(await scanDiagnostics({ timeoutMs: SCAN_MS }));
+        setDevices(
+          await scanDiagnostics({
+            timeoutMs: SCAN_MS,
+            onUpdate: setDevices,
+            shouldStop: () => stopRequested.current,
+          }),
+        );
       } catch (caught) {
         setError(
           caught instanceof ScanError ? t(BLE_REASON_MESSAGE[caught.reason]) : String(caught),
@@ -58,6 +75,11 @@ export default function ScaleDebugScreen() {
       }
     })();
   }, [t]);
+
+  const stop = useCallback(() => {
+    void hapticLight();
+    stopRequested.current = true;
+  }, []);
 
   /**
    * Hand the dump to the system share sheet.
@@ -85,13 +107,12 @@ export default function ScaleDebugScreen() {
       <Card>
         <Hint>{t('scaleDebug.intro')}</Hint>
         <Pressable
-          onPress={scan}
-          disabled={scanning}
+          onPress={scanning ? stop : scan}
           accessibilityRole="button"
           style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
         >
           <Text style={styles.buttonText}>
-            {scanning ? `⏳ ${t('scaleDebug.scanning')}` : `📡 ${t('scaleDebug.scan')}`}
+            {scanning ? `■ ${t('scaleDebug.stop')}` : `📡 ${t('scaleDebug.scan')}`}
           </Text>
         </Pressable>
         {/* Said before the scan rather than after: the whole point is to capture a scale while
@@ -103,22 +124,31 @@ export default function ScaleDebugScreen() {
 
       {devices ? (
         <Card>
-          <SectionTitle>{t('scaleDebug.found', { count: devices.length })}</SectionTitle>
+          <SectionTitle>
+            {scanning
+              ? t('scaleDebug.live', { count: devices.length })
+              : t('scaleDebug.found', { count: devices.length })}
+          </SectionTitle>
 
           {devices.length === 0 ? (
-            <Hint>{t('scaleDebug.none')}</Hint>
+            <Hint>{scanning ? t('scaleDebug.scanning') : t('scaleDebug.none')}</Hint>
           ) : (
             <>
-              <Pressable
-                onPress={share}
-                accessibilityRole="button"
-                style={({ pressed }) => [styles.copyButton, pressed && styles.buttonPressed]}
-              >
-                <Text style={styles.copyText}>⤴ {t('scaleDebug.share')}</Text>
-              </Pressable>
+              {scanning ? null : (
+                <Pressable
+                  onPress={share}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [styles.copyButton, pressed && styles.buttonPressed]}
+                >
+                  <Text style={styles.copyText}>⤴ {t('scaleDebug.share')}</Text>
+                </Pressable>
+              )}
 
               {devices.map((device) => (
-                <View key={device.id} style={styles.device}>
+                <View
+                  key={device.id}
+                  style={[styles.device, device.payloadsHex.length > 1 && styles.deviceChanging]}
+                >
                   <View style={styles.deviceHeader}>
                     <Text style={styles.deviceName} numberOfLines={1}>
                       {device.name ?? t('scaleDebug.unnamed')}
@@ -202,6 +232,12 @@ const createStyles = (colors: ColorPalette) =>
       borderTopColor: colors.borderSubtle,
       paddingTop: spacing.sm,
       gap: 2,
+    },
+    // The one thing worth spotting at a glance in a list of twenty-odd televisions.
+    deviceChanging: {
+      borderStartWidth: 2,
+      borderStartColor: colors.accent,
+      paddingStart: spacing.sm,
     },
     deviceHeader: {
       flexDirection: 'row',
