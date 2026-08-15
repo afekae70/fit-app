@@ -234,9 +234,16 @@ export default function MetricsScreen() {
     commitDelete(id);
   }, [commitDelete]);
 
-  const swipeDelete = useCallback(
+  /**
+   * Begin deleting a reading, with a window to take it back.
+   *
+   * Reached from the swipe and from the row's delete button alike — both open the same undo
+   * window rather than one of them deleting outright, so the way it was triggered never changes
+   * whether the deletion can be reversed.
+   */
+  const requestDelete = useCallback(
     (id: string) => {
-      // Only one undo window open at a time — swiping a second row commits the first right away
+      // Only one undo window open at a time — deleting a second row commits the first right away
       // rather than silently discarding it.
       finalizePending();
       setPendingDeleteId(id);
@@ -481,7 +488,7 @@ export default function MetricsScreen() {
             .filter((metric) => metric.id !== pendingDeleteId)
             .slice(0, 30)
             .map((metric) => (
-              <SwipeableRow key={metric.id} onDelete={() => swipeDelete(metric.id)}>
+              <SwipeableRow key={metric.id} onDelete={() => requestDelete(metric.id)}>
                 <View style={styles.historyRow}>
                   <View style={styles.historyMain}>
                     <Text style={styles.historyWeight}>
@@ -495,6 +502,18 @@ export default function MetricsScreen() {
                   {metric.body_fat_pct !== null ? (
                     <Text style={styles.historyFat}>{metric.body_fat_pct}%</Text>
                   ) : null}
+                  {/* Visible rather than swipe-only. A hidden gesture is fine as an accelerator
+                      and useless as the sole way in: nothing on the row announced it, so a
+                      mis-recorded weigh-in looked permanent. */}
+                  <Pressable
+                    onPress={() => requestDelete(metric.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('metrics.delete')}
+                    hitSlop={8}
+                    style={({ pressed }) => [styles.historyDelete, pressed && styles.pressed]}
+                  >
+                    <Text style={styles.historyDeleteGlyph}>✕</Text>
+                  </Pressable>
                 </View>
               </SwipeableRow>
             ))}
@@ -527,6 +546,9 @@ const createStyles = (colors: ColorPalette) =>
     historyMain: ViewStyle;
     historyWeight: TextStyle;
     historyMeta: TextStyle;
+    historyDelete: ViewStyle;
+    historyDeleteGlyph: TextStyle;
+    pressed: ViewStyle;
     historyFat: TextStyle;
   }>({
   screen: { flex: 1, backgroundColor: colors.bg },
@@ -588,4 +610,15 @@ const createStyles = (colors: ColorPalette) =>
   historyWeight: { color: colors.text, fontSize: fontSize.md, textAlign: 'auto' },
   historyMeta: { color: colors.textMuted, fontSize: fontSize.xs, marginTop: 2, textAlign: 'auto' },
   historyFat: { color: colors.textMuted, fontSize: fontSize.sm },
+  // A 44pt target, but visually quiet: this sits on every row of a list people mostly read,
+  // and a loud destructive control on each line reads as an invitation.
+  historyDelete: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginStart: spacing.xs,
+  },
+  historyDeleteGlyph: { color: colors.textFaint, fontSize: fontSize.md },
+  pressed: { opacity: 0.6 },
 });
