@@ -37,12 +37,24 @@ export interface WeightSparklineProps {
   /** Smoothed points, oldest first, full history. */
   points: { date: Date; weightKg: number }[];
   height?: number;
+  /**
+   * Whether to offer the week/month/all switch.
+   *
+   * Off on the home screen, where this is a glance and not a tool — a segmented control there
+   * would be the only thing on the card asking to be operated. Tapping the card opens the
+   * metrics screen, which has the switch.
+   */
+  showRangePicker?: boolean;
 }
 
 type Range = 'week' | 'month' | 'all';
 const RANGE_DAYS: Record<Exclude<Range, 'all'>, number> = { week: 7, month: 30 };
 
-export function WeightSparkline({ points, height = 96 }: WeightSparklineProps) {
+export function WeightSparkline({
+  points,
+  height = 96,
+  showRangePicker = true,
+}: WeightSparklineProps) {
   const { t } = useTranslation();
   const { colors } = useTheme();
   const unit = useUnit();
@@ -96,16 +108,18 @@ export function WeightSparkline({ points, height = 96 }: WeightSparklineProps) {
 
   return (
     <View>
-      <Segmented<Range>
-        label={t('metrics.range')}
-        selected={range}
-        onSelect={setRange}
-        options={[
-          { value: 'week', label: t('metrics.rangeWeek') },
-          { value: 'month', label: t('metrics.rangeMonth') },
-          { value: 'all', label: t('metrics.rangeAll') },
-        ]}
-      />
+      {showRangePicker ? (
+        <Segmented<Range>
+          label={t('metrics.range')}
+          selected={range}
+          onSelect={setRange}
+          options={[
+            { value: 'week', label: t('metrics.rangeWeek') },
+            { value: 'month', label: t('metrics.rangeMonth') },
+            { value: 'all', label: t('metrics.rangeAll') },
+          ]}
+        />
+      ) : null}
 
       <View
         style={[styles.chart, { height }]}

@@ -7,9 +7,17 @@
  * being re-derived inside a component nothing can render under vitest.
  */
 
-import { EXERCISE_SEED } from '@fit/shared';
+import { EXERCISE_SEED, movingAverage } from '@fit/shared';
 
 import type { SqlExecutor } from './executor.js';
+import {
+  computeTargets,
+  getLatestWeight,
+  getProfile,
+  listBodyMetrics,
+  summariseTrend,
+  type TargetsResult,
+} from './metrics.js';
 import { getActivePlan, listPlanDayExercises, listPlanDays } from './plans.js';
 import { localDate, scheduledFor } from './schedule.js';
 
@@ -336,4 +344,80 @@ function localDay(d: Date): string {
   const month = `${d.getMonth() + 1}`.padStart(2, '0');
   const day = `${d.getDate()}`.padStart(2, '0');
   return `${d.getFullYear()}-${month}-${day}`;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Nutrition and bodyweight                                                    */
+/* -------------------------------------------------------------------------- */
+
+export interface HomeNutrition {
+  /** Calories and macros, or the one missing profile field that prevents computing them. */
+  targets: TargetsResult;
+  /**
+   * The 7-day moving average, oldest first — what the trend line plots.
+   *
+   * Smoothed rather than raw for the reason WeightSparkline's header gives: scale weight swings
+   * 1-2 kg on water and food alone, and a raw line makes a steady loss look like noise.
+   */
+  weightPoints: { date: Date; weightKg: number }[];
+  /** The most recent weigh-in, unsmoothed — the number the user actually saw on the scale. */
+  latestKg: number | null;
+  /** kg per week, only when there is enough spread for the trend to mean anything. */
+  ratePerWeek: number | null;
+}
+
+/**
+ * Everything the home screen's weight and nutrition cards need, in one pass.
+ *
+ * Gathered here rather than in the screen for the same reason as the rest of this module: the
+ * arithmetic is testable against a real database, and the screen stays a view.
+ *
+ * The targets are recomputed from the CURRENT weight rather than read from the last snapshot in
+ * `nutrition_targets`. Those snapshots exist so the coach can see what a target *was* in a given
+ * week; the home screen is answering "what should I eat today", and after a weigh-in that answer
+ * has already changed.
+ */
+export async function getHomeNutrition(
+  db: SqlExecutor,
+  userId: string,
+): Promise<HomeNutrition> {
+  const [profile, latest, metrics] = await Promise.all([
+    getProfile(db, userId),
+    getLatestWeight(db, userId),
+    listBodyMetrics(db, userId),
+  ]);
+
+  // listBodyMetrics returns newest-first; the trend maths expects oldest-first.
+  const { points, rate } = summariseTrend([...metrics].reverse());
+
+  return {
+    targets: computeTargets(profile, latest?.weight_kg ?? null),
+    weightPoints: movingAverage(points, 7),
+    latestKg: latest?.weight_kg ?? null,
+    // An unreliable rate is reported as none at all. A confident "+0.4 kg/week" drawn from two
+    // weigh-ins three days apart is worse than silence — it invites a diet change based on noise.
+    ratePerWeek: rate && rate.isReliable ? rate.kgPerWeek : null,
+  };
+}
+
+/**
+ * Each macro's share of the day's calories.
+ *
+ * Protein and carbs are 4 kcal/g, fat is 9 — so grams alone misrepresent the split badly, and a
+ * bar drawn from grams would show fat as a third of what it actually contributes.
+ *
+ * These are shares of the TARGET, not progress against an intake: there is no food log here, so
+ * the three numbers are the plan, not a comparison.
+ */
+export function macroShares(targets: {
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+}): { protein: number; carbs: number; fat: number } {
+  const protein = targets.proteinG * 4;
+  const carbs = targets.carbsG * 4;
+  const fat = targets.fatG * 9;
+  const total = protein + carbs + fat;
+  if (total <= 0) return { protein: 0, carbs: 0, fat: 0 };
+  return { protein: protein / total, carbs: carbs / total, fat: fat / total };
 }

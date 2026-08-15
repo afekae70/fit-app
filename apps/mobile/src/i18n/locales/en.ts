@@ -238,6 +238,7 @@ export const en = {
     pickPlan: 'Choose a plan',
     errorTitle: 'We could not load your workout',
     errorBody: 'Your data is safe on this device — only the read failed.',
+    nutritionMissing: 'Complete your profile to get calorie and macro targets',
   },
   sync: {
     title: 'Cloud sync',

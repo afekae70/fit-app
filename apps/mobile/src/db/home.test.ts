@@ -1,6 +1,14 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { getTodayWorkout, isScheduledRestDay, weekStrip, weekSummary } from './home.js';
+import {
+  getHomeNutrition,
+  getTodayWorkout,
+  isScheduledRestDay,
+  macroShares,
+  weekStrip,
+  weekSummary,
+} from './home.js';
+import { saveProfile } from './metrics.js';
 import { setScheduledDay } from './schedule.js';
 import type { SqlExecutor } from './executor.js';
 import { createTestExecutor } from './testUtils.js';
@@ -413,5 +421,114 @@ describe('weekSummary', () => {
     expect(summary.volumeTonnes).toBe(1);
     expect(summary.personalRecords).toBe(1);
     expect(kept).toBeTruthy();
+  });
+});
+
+describe('macroShares', () => {
+  it('weighs fat at 9 kcal per gram, not by grams', () => {
+    // 100 g of each: by grams that is a third apiece, by calories fat is nearly half.
+    const shares = macroShares({ proteinG: 100, carbsG: 100, fatG: 100 });
+    expect(shares.fat).toBeCloseTo(9 / 17, 5);
+    expect(shares.protein).toBeCloseTo(4 / 17, 5);
+    expect(shares.carbs).toBeCloseTo(4 / 17, 5);
+  });
+
+  it('sums to one', () => {
+    const shares = macroShares({ proteinG: 180, carbsG: 250, fatG: 70 });
+    expect(shares.protein + shares.carbs + shares.fat).toBeCloseTo(1, 10);
+  });
+
+  it('returns zeroes rather than NaN when every macro is zero', () => {
+    // A width of NaN% silently collapses the bar; a width of 0% is at least honest.
+    expect(macroShares({ proteinG: 0, carbsG: 0, fatG: 0 })).toEqual({
+      protein: 0,
+      carbs: 0,
+      fat: 0,
+    });
+  });
+});
+
+describe('getHomeNutrition', () => {
+  async function weighIn(dateLocal: string, kg: number, user = USER) {
+    await db.run(
+      `INSERT INTO body_metrics (id, user_id, measured_at, weight_kg, source, updated_at)
+         VALUES (?, ?, ?, ?, 'manual', ?)`,
+      [id('bm'), user, dateLocal, kg, dateLocal],
+    );
+  }
+
+  async function completeProfile(user = USER) {
+    await saveProfile(db, user, {
+      birthDate: '1996-04-10',
+      sex: 'male',
+      heightCm: 178,
+      activityLevel: 'moderate',
+      goal: 'cut',
+    });
+  }
+
+  it('names the one missing field instead of guessing at targets', async () => {
+    await completeProfile();
+    const withoutWeight = await getHomeNutrition(db, USER);
+    expect(withoutWeight.targets).toEqual({ ok: false, missing: 'no_weight' });
+    expect(withoutWeight.latestKg).toBeNull();
+    expect(withoutWeight.weightPoints).toEqual([]);
+
+    await weighIn('2026-08-05T07:00:00', 82);
+    const withoutProfile = await getHomeNutrition(db, OTHER);
+    expect(withoutProfile.targets.ok).toBe(false);
+  });
+
+  it('computes targets from the newest weigh-in', async () => {
+    await completeProfile();
+    await weighIn('2026-07-01T07:00:00', 90);
+    await weighIn('2026-08-05T07:00:00', 82);
+
+    const home = await getHomeNutrition(db, USER);
+    expect(home.latestKg).toBe(82);
+    if (!home.targets.ok) throw new Error('expected targets');
+    expect(home.targets.targets.weightKg).toBe(82);
+    expect(home.targets.targets.calorieTarget).toBeGreaterThan(0);
+    expect(home.targets.targets.proteinG).toBeGreaterThan(0);
+  });
+
+  it('plots the smoothed line oldest first', async () => {
+    await completeProfile();
+    // Three weeks: weeklyRateOfChange wants a 14-day span before it calls a rate reliable.
+    for (let day = 1; day <= 21; day += 1) {
+      const date = `2026-08-${String(day).padStart(2, '0')}T07:00:00`;
+      // A steady drop with a 1 kg scale swing on top, which is what smoothing is for.
+      await weighIn(date, 85 - day * 0.1 + (day % 2 === 0 ? 0.5 : -0.5));
+    }
+
+    const home = await getHomeNutrition(db, USER);
+    expect(home.weightPoints.length).toBeGreaterThan(1);
+
+    const dates = home.weightPoints.map((p) => p.date.getTime());
+    expect([...dates].sort((a, b) => a - b)).toEqual(dates);
+
+    const first = home.weightPoints[0]!.weightKg;
+    const last = home.weightPoints[home.weightPoints.length - 1]!.weightKg;
+    expect(last).toBeLessThan(first);
+    expect(home.ratePerWeek).toBeLessThan(0);
+  });
+
+  it('reports no rate when two weigh-ins are too close together to mean anything', async () => {
+    await completeProfile();
+    await weighIn('2026-08-04T07:00:00', 84);
+    await weighIn('2026-08-05T07:00:00', 82);
+
+    const home = await getHomeNutrition(db, USER);
+    expect(home.ratePerWeek).toBeNull();
+  });
+
+  it('ignores weigh-ins belonging to another user', async () => {
+    await completeProfile();
+    await weighIn('2026-08-05T07:00:00', 82);
+    await weighIn('2026-08-05T07:00:00', 61, OTHER);
+
+    const home = await getHomeNutrition(db, USER);
+    expect(home.latestKg).toBe(82);
+    expect(home.weightPoints.every((p) => p.weightKg > 70)).toBe(true);
   });
 });

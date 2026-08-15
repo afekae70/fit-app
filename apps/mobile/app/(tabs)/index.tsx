@@ -21,16 +21,20 @@ import { useAuth } from '../../src/auth/AuthProvider.js';
 import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
 import {
   GreetingRow,
+  NutritionCard,
   StreakCard,
   TodayWorkoutCard,
   WeekSummaryRow,
+  WeightTrendCard,
 } from '../../src/components/home/TodayCards.js';
 import { FadeSlideIn } from '../../src/components/motion.js';
 import { Skeleton } from '../../src/components/ui.js';
 import {
+  getHomeNutrition,
   getTodayWorkout,
   weekStrip,
   weekSummary,
+  type HomeNutrition,
   type StripDay,
   type TodayWorkout,
   type WeekSummary,
@@ -50,6 +54,7 @@ interface HomeData {
   strip: StripDay[];
   summary: WeekSummary;
   streak: WorkoutStreak;
+  nutrition: HomeNutrition;
 }
 
 export default function TodayScreen() {
@@ -67,13 +72,14 @@ export default function TodayScreen() {
   const load = useCallback(async () => {
     try {
       const db = await getExecutor();
-      const [workout, strip, summary, streak] = await Promise.all([
+      const [workout, strip, summary, streak, nutrition] = await Promise.all([
         getTodayWorkout(db, userId),
         weekStrip(db, userId),
         weekSummary(db, userId),
         getWorkoutStreak(db, userId),
+        getHomeNutrition(db, userId),
       ]);
-      setData({ workout, strip, summary, streak });
+      setData({ workout, strip, summary, streak, nutrition });
       setFailed(false);
     } catch {
       setFailed(true);
@@ -138,27 +144,62 @@ export default function TodayScreen() {
         <ErrorPanel onRetry={() => void load()} />
       ) : !data ? (
         <LoadingPanel />
-      ) : data.workout ? (
-        <>
-          {/* Staggered in the order they are read: what to train, then the streak that argues
-              for doing it, then the week behind it. */}
-          <FadeSlideIn index={0}>
-            <TodayWorkoutCard workout={data.workout} onStart={startWorkout} />
-          </FadeSlideIn>
-          <FadeSlideIn index={1}>
-            <StreakCard
-              days={data.strip}
-              streakWeeks={Math.floor(data.streak.currentDays / 7)}
-              trainedThisWeek={data.summary.workouts}
-              targetPerWeek={WEEKLY_TARGET}
-            />
-          </FadeSlideIn>
-          <FadeSlideIn index={2}>
-            <WeekSummaryRow summary={data.summary} />
-          </FadeSlideIn>
-        </>
       ) : (
-        <EmptyPanel onStartEmpty={startWorkout} onPickPlan={() => router.push('/(tabs)/plan')} />
+        <>
+          {data.workout ? (
+            <>
+              {/* Staggered in the order they are read: what to train, then the streak that argues
+                  for doing it, then the week behind it. */}
+              <FadeSlideIn index={0}>
+                <TodayWorkoutCard workout={data.workout} onStart={startWorkout} />
+              </FadeSlideIn>
+              <FadeSlideIn index={1}>
+                <StreakCard
+                  days={data.strip}
+                  streakWeeks={Math.floor(data.streak.currentDays / 7)}
+                  trainedThisWeek={data.summary.workouts}
+                  targetPerWeek={WEEKLY_TARGET}
+                />
+              </FadeSlideIn>
+              <FadeSlideIn index={2}>
+                <WeekSummaryRow summary={data.summary} />
+              </FadeSlideIn>
+            </>
+          ) : (
+            <EmptyPanel
+              onStartEmpty={startWorkout}
+              onPickPlan={() => router.push('/(tabs)/plan')}
+            />
+          )}
+
+          {/*
+            Below the training block, and outside the `data.workout` branch on purpose: a rest day
+            still has a calorie target and a weight to watch, and hiding them on the days someone
+            is most likely to eat off plan would be exactly backwards.
+
+            Withheld only from a genuinely brand-new account, where there is neither a weigh-in
+            nor a profile to compute from — the empty state above is deliberately two ways in and
+            not a dashboard, and two blank cards under it would undo that.
+          */}
+          {data.workout || hasBodyData(data.nutrition) ? (
+            <>
+              <FadeSlideIn index={data.workout ? 3 : 0}>
+                <WeightTrendCard
+                  latestKg={data.nutrition.latestKg}
+                  ratePerWeek={data.nutrition.ratePerWeek}
+                  points={data.nutrition.weightPoints}
+                  onPress={() => router.push('/metrics')}
+                />
+              </FadeSlideIn>
+              <FadeSlideIn index={data.workout ? 4 : 1}>
+                <NutritionCard
+                  targets={data.nutrition.targets}
+                  onPress={() => router.push('/metrics')}
+                />
+              </FadeSlideIn>
+            </>
+          ) : null}
+        </>
       )}
     </ScrollView>
   );
@@ -242,6 +283,11 @@ function ErrorPanel({ onRetry }: { onRetry: () => void }) {
 }
 
 /* -------------------------------------------------------------------------- */
+
+/** Is there anything for the weight and nutrition cards to say yet? */
+function hasBodyData(nutrition: HomeNutrition): boolean {
+  return nutrition.latestKg !== null || nutrition.targets.ok;
+}
 
 function greetingKey(now: Date): string {
   const hour = now.getHours();
