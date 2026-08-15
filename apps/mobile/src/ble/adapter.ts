@@ -57,6 +57,14 @@ export interface ScaleAdapter {
   readonly serviceUuids: readonly string[];
   /** Whether this adapter recognises the advertised data. */
   matches(input: AdvertisementIdentity): boolean;
+  /**
+   * Whether this adapter recognises a payload it has no name or UUID to go on.
+   *
+   * The cheapest scales advertise no name and no service list at all — nothing to match against
+   * but the bytes themselves. Only consulted after every identity match has failed, because
+   * shape-matching a raw payload is inherently weaker evidence than a service UUID.
+   */
+  matchesPayload?(bytes: Uint8Array): boolean;
   /** Decode a frame. Returns null when the frame is not a usable measurement. */
   parse(bytes: Uint8Array): ScaleReading | null;
 }
@@ -215,17 +223,100 @@ function parseMiTimestamp(bytes: Uint8Array): string | null {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Nameless 15-byte broadcast scale                                            */
+/* -------------------------------------------------------------------------- */
+
+/** Big-endian uint16 — this device is big-endian where the Mi Scale is little. */
+const u16be = (b: Uint8Array, offset: number): number =>
+  ((b[offset] ?? 0) << 8) | (b[offset + 1] ?? 0);
+
+/**
+ * A body-composition scale that advertises no name, no service UUID, and no valid company id.
+ *
+ * Identified from captures rather than documentation, because there is no documentation: the
+ * unit ships under the OKOK app (`com.chipsea.btcontrol.en`) and its advertisement is the only
+ * thing it will say to anyone. It refuses GATT connections outright, which is why four rounds of
+ * connect attempts got nowhere — it is a broadcaster, and the measurement was in the scan record
+ * the whole time.
+ *
+ * 15 bytes of manufacturer data:
+ *
+ *     0      0xC0, constant across every capture
+ *     1      sequence counter, seen running 0x0D, 0x0F, 0x10 on consecutive frames
+ *     2-3    weight, big-endian, hundredths of a kilogram
+ *     4-5    a second field, 0x1388 in every loaded frame and zero in every idle one
+ *     6-7    0x0808, constant
+ *     8      flags; bit 0 marks a live measurement (0x25 loaded, 0x24 idle)
+ *     9-14   the device's own MAC address
+ *
+ * The idle frame zeroes bytes 2-5 rather than omitting them, so a parser that ignored the flag
+ * byte would record a 0 kg weigh-in every few hundred milliseconds between measurements.
+ *
+ * Two fields are deliberately NOT decoded. `0x1388` is constant across every capture taken so
+ * far, which means nothing has yet distinguished "impedance that happens to repeat" from "a
+ * device constant" — publishing it as body fat would invent a measurement. Likewise the MAC tail
+ * is used to sanity-check the frame, not to identify a user.
+ */
+export const namelessBroadcastScaleAdapter: ScaleAdapter = {
+  id: 'nameless_broadcast_scale',
+  displayName: 'Broadcast body-composition scale (OKOK/Chipsea)',
+  serviceUuids: [],
+
+  // Nothing to match on: no name, no service UUID. Identity matching cannot see this device at
+  // all, which is what `matchesPayload` exists for.
+  matches: () => false,
+
+  matchesPayload(bytes) {
+    return (
+      bytes.length === 15 &&
+      bytes[0] === 0xc0 &&
+      bytes[6] === 0x08 &&
+      bytes[7] === 0x08 &&
+      // The flag byte only ever differs in its low bit between loaded and idle.
+      ((bytes[8] ?? 0) & 0xfe) === 0x24
+    );
+  },
+
+  parse(bytes) {
+    if (!namelessBroadcastScaleAdapter.matchesPayload?.(bytes)) return null;
+
+    const hasMeasurement = ((bytes[8] ?? 0) & 0x01) !== 0;
+    const raw = u16be(bytes, 2);
+    if (!hasMeasurement || raw === 0) return null;
+
+    const weightKg = raw / 100;
+    if (!Number.isFinite(weightKg) || weightKg < 2 || weightKg > 300) return null;
+
+    // Every frame carrying the flag is a settled reading — unlike the Mi Scale, this device
+    // simply stops broadcasting a value rather than streaming the climb.
+    return { weightKg: Number(weightKg.toFixed(2)), isStabilised: true };
+  },
+};
+
+/* -------------------------------------------------------------------------- */
 /* Registry                                                                    */
 /* -------------------------------------------------------------------------- */
 
 export const SCALE_ADAPTERS: readonly ScaleAdapter[] = [
   miScale2Adapter,
   standardWeightScaleAdapter,
+  namelessBroadcastScaleAdapter,
 ];
 
 /** Pick the adapter that recognises a discovered device, if any. */
 export function selectAdapter(input: AdvertisementIdentity): ScaleAdapter | null {
   return SCALE_ADAPTERS.find((adapter) => adapter.matches(input)) ?? null;
+}
+
+/**
+ * Pick an adapter by the shape of a payload, for devices that identify themselves not at all.
+ *
+ * Tried only after `selectAdapter` has failed. A service UUID is a claim the device makes about
+ * itself; a byte pattern is a guess we make about the device, and the weaker evidence should
+ * never pre-empt the stronger.
+ */
+export function selectAdapterByPayload(bytes: Uint8Array): ScaleAdapter | null {
+  return SCALE_ADAPTERS.find((adapter) => adapter.matchesPayload?.(bytes) ?? false) ?? null;
 }
 
 /** All service UUIDs worth scanning for. */

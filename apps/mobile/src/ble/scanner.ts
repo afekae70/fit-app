@@ -37,7 +37,7 @@
 
 import { PermissionsAndroid, Platform } from 'react-native';
 
-import { selectAdapter, type ScaleReading } from './adapter.js';
+import { selectAdapter, selectAdapterByPayload, type ScaleReading } from './adapter.js';
 import {
   base64ToBytes,
   classifyVendor,
@@ -279,19 +279,33 @@ export async function scanForReading(options: ScanOptions = {}): Promise<ScanRes
       (error, device) => {
         if (error || !device || settled) return;
 
-        const adapter = selectAdapter({
+        let adapter = selectAdapter({
           serviceUuids: device.serviceUUIDs?.map(shortUuid) ?? [],
           serviceDataUuids: Object.keys(device.serviceData ?? {}).map(shortUuid),
           name: device.name ?? device.localName ?? null,
         });
-        if (!adapter) return;
 
         // Path 1 — the measurement is in the advertisement.
-        const payload = selectAdvertisementPayload({
-          serviceData: device.serviceData,
-          manufacturerData: device.manufacturerData,
-          serviceUuids: adapter.serviceUuids,
-        });
+        let payload = adapter
+          ? selectAdvertisementPayload({
+              serviceData: device.serviceData,
+              manufacturerData: device.manufacturerData,
+              serviceUuids: adapter.serviceUuids,
+            })
+          : null;
+
+        // Nothing claimed it by name or UUID. The cheapest scales advertise neither, so the
+        // last resort is the shape of the bytes themselves — see selectAdapterByPayload.
+        if (!adapter && device.manufacturerData) {
+          const bytes = base64ToBytes(device.manufacturerData);
+          const byShape = selectAdapterByPayload(bytes);
+          if (byShape) {
+            adapter = byShape;
+            payload = { bytes, serviceUuid: '' };
+          }
+        }
+
+        if (!adapter) return;
 
         if (payload) {
           const reading = adapter.parse(payload.bytes);
@@ -384,6 +398,15 @@ export interface SightedDevice {
   vendor: string | null;
   /** Whether one of the shipped adapters claims it. */
   adapterId: string | null;
+  /**
+   * What an adapter makes of the latest payload, in kilograms.
+   *
+   * Shown so the number can be read off the phone and compared against the number on the
+   * scale's own display, in the same second. That comparison is the only thing that can confirm
+   * a parser reverse-engineered from captures — and getting it wrong yields a plausible weight
+   * rather than an error, which is the failure this whole layer is arranged to prevent.
+   */
+  decodedKg: number | null;
 }
 /**
  * List everything advertising nearby, decoded no further than hex.
@@ -508,6 +531,7 @@ export async function scanDiagnostics(
         changing: false,
         vendor: null,
         adapterId: null,
+        decodedKg: null,
       };
 
       entry.frames += 1;
@@ -540,7 +564,18 @@ export async function scanDiagnostics(
 
       entry.vendor = classifyVendor(entry);
 
-      entry.adapterId =
+      if (manufacturerDataHex) {
+        const bytes = base64ToBytes(device.manufacturerData ?? '');
+        const byShape = selectAdapterByPayload(bytes);
+        const reading = byShape?.parse(bytes);
+        // Held rather than overwritten with null: the device alternates a measurement frame
+        // with an idle one several times a second, and clearing on every idle frame would make
+        // the number flicker too fast to read.
+        if (reading) entry.decodedKg = reading.weightKg;
+        if (byShape) entry.adapterId = byShape.id;
+      }
+
+      entry.adapterId = entry.adapterId ??
         selectAdapter({
           serviceUuids: entry.serviceUuids,
           serviceDataUuids: Object.keys(entry.serviceData),
@@ -717,6 +752,115 @@ async function connectPatiently(
       refreshGatt: 'OnConnected',
     });
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/* One-button sweep                                                            */
+/* -------------------------------------------------------------------------- */
+
+export interface SweepProgress {
+  phase: 'scanning' | 'connecting' | 'listening' | 'done';
+  /** Which candidate is being worked on, 1-based, and how many there are. */
+  index: number;
+  total: number;
+  deviceName: string | null;
+}
+
+export interface SweepResult {
+  candidates: SightedDevice[];
+  explorations: ExploreResult[];
+}
+
+/**
+ * Scan, then connect to every candidate in turn and record what each one exposes.
+ *
+ * Four rounds of "run a scan, stop it, pick the right row, tap it, then walk to the scale in
+ * time" produced no usable capture, and the reason is not that the instructions were unclear —
+ * it is that the sequence demands hand-timing against a device that sleeps in seconds. So the
+ * timing moves into the code: one button, and the only human input is standing on the scale.
+ *
+ * Only devices `classifyVendor` cannot name are tried. Connecting to a neighbour's television
+ * would be rude, slow, and certain to fail; the unrecognised ones are the whole shortlist.
+ */
+export async function sweepForScale(
+  options: {
+    scanMs?: number;
+    listenMsPerDevice?: number;
+    maxCandidates?: number;
+    onProgress?: (progress: SweepProgress) => void;
+    onResult?: (result: SweepResult) => void;
+  } = {},
+): Promise<SweepResult> {
+  const {
+    scanMs = 15_000,
+    listenMsPerDevice = 20_000,
+    maxCandidates = 4,
+    onProgress,
+    onResult,
+  } = options;
+
+  onProgress?.({ phase: 'scanning', index: 0, total: 0, deviceName: null });
+  const seen = await scanDiagnostics({ timeoutMs: scanMs });
+
+  // Unrecognised first — `scanDiagnostics` already sorts that way — and capped, because each
+  // attempt costs the better part of half a minute whether it succeeds or not.
+  const candidates = seen.filter((device) => device.vendor === null).slice(0, maxCandidates);
+  const result: SweepResult = { candidates, explorations: [] };
+  onResult?.({ ...result, explorations: [...result.explorations] });
+
+  for (const [index, candidate] of candidates.entries()) {
+    onProgress?.({
+      phase: 'connecting',
+      index: index + 1,
+      total: candidates.length,
+      deviceName: candidate.name,
+    });
+
+    // A failure here is ordinary — most of these will not accept a connection at all — so the
+    // loop records it and moves on rather than abandoning the remaining candidates.
+    const exploration = await exploreDevice(candidate.id, {
+      listenMs: listenMsPerDevice,
+      onStatus: (status) => {
+        if (status === 'listening') {
+          onProgress?.({
+            phase: 'listening',
+            index: index + 1,
+            total: candidates.length,
+            deviceName: candidate.name,
+          });
+        }
+      },
+      onUpdate: (partial) => {
+        onResult?.({ ...result, explorations: [...result.explorations, partial] });
+      },
+    }).catch((error: unknown) => ({
+      deviceId: candidate.id,
+      deviceName: candidate.name,
+      characteristics: [],
+      error: error instanceof Error ? error.message : String(error),
+    }));
+
+    result.explorations.push(exploration);
+    onResult?.({ ...result, explorations: [...result.explorations] });
+  }
+
+  onProgress?.({ phase: 'done', index: candidates.length, total: candidates.length, deviceName: null });
+  return result;
+}
+
+/** A whole sweep as plain text, for pasting into a bug report. */
+export function formatSweep(result: SweepResult): string {
+  const lines = [
+    `${result.candidates.length} candidates, ${result.explorations.length} explored`,
+    '',
+    '--- advertisements ---',
+    formatDiagnostics(result.candidates),
+    '',
+    '--- connections ---',
+  ];
+
+  for (const exploration of result.explorations) lines.push(formatExploration(exploration), '');
+  return lines.join('\n');
 }
 
 /** An exploration as plain text, for pasting into a bug report. */

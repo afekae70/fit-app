@@ -21,11 +21,15 @@ import {
   exploreDevice,
   formatDiagnostics,
   formatExploration,
+  formatSweep,
   ScanError,
   scanDiagnostics,
+  sweepForScale,
   type ExploreResult,
   type ExploreStatus,
   type SightedDevice,
+  type SweepProgress,
+  type SweepResult,
 } from '../src/ble/scanner.js';
 import { Banner, Card, Hint, ScreenHeader, SectionTitle } from '../src/components/ui.js';
 import { hapticLight } from '../src/haptics.js';
@@ -56,6 +60,8 @@ export default function ScaleDebugScreen() {
   const [exploring, setExploring] = useState<string | null>(null);
   const [exploreStatus, setExploreStatus] = useState<ExploreStatus | null>(null);
   const [exploration, setExploration] = useState<ExploreResult | null>(null);
+  const [sweep, setSweep] = useState<SweepResult | null>(null);
+  const [sweepProgress, setSweepProgress] = useState<SweepProgress | null>(null);
   // A ref, not state: the scan loop polls this every 250 ms and must see the current value
   // without the closure it was created with going stale.
   const stopRequested = useRef(false);
@@ -90,6 +96,42 @@ export default function ScaleDebugScreen() {
     void hapticLight();
     stopRequested.current = true;
   }, []);
+
+  /**
+   * The whole hunt behind one button.
+   *
+   * Scan, shortlist, then connect to each candidate in turn. The manual sequence asked the user
+   * to stop a scan, pick a row and reach the scale before it slept — four attempts, no capture.
+   * Here the only thing left to a human is standing on the scale, which is the one part code
+   * cannot do.
+   */
+  const runSweep = useCallback(() => {
+    void hapticLight();
+    setSweep(null);
+    setExploration(null);
+    setError(null);
+    setSweepProgress({ phase: 'scanning', index: 0, total: 0, deviceName: null });
+
+    void (async () => {
+      try {
+        setSweep(
+          await sweepForScale({ onProgress: setSweepProgress, onResult: setSweep }),
+        );
+      } catch (caught) {
+        setError(
+          caught instanceof ScanError ? t(BLE_REASON_MESSAGE[caught.reason]) : String(caught),
+        );
+      } finally {
+        setSweepProgress(null);
+      }
+    })();
+  }, [t]);
+
+  const shareSweep = useCallback(() => {
+    if (!sweep) return;
+    void hapticLight();
+    void Share.share({ message: formatSweep(sweep) }).catch(() => undefined);
+  }, [sweep]);
 
   /**
    * Connect to one device and record everything it exposes and pushes.
@@ -158,6 +200,73 @@ export default function ScaleDebugScreen() {
       <ScreenHeader title={t('scaleDebug.title')} back settings={false} />
 
       <Card>
+        <SectionTitle>{t('scaleDebug.autoTitle')}</SectionTitle>
+        <Hint>{t('scaleDebug.autoIntro')}</Hint>
+        <Pressable
+          onPress={runSweep}
+          disabled={sweepProgress !== null || scanning || exploring !== null}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
+        >
+          <Text style={styles.buttonText}>
+            {sweepProgress
+              ? `⏳ ${t(`scaleDebug.sweep.${sweepProgress.phase}`, {
+                  index: sweepProgress.index,
+                  total: sweepProgress.total,
+                  name: sweepProgress.deviceName ?? t('scaleDebug.unnamed'),
+                })}`
+              : `⚖ ${t('scaleDebug.autoRun')}`}
+          </Text>
+        </Pressable>
+        {sweepProgress ? <Hint>{t('scaleDebug.autoStandOn')}</Hint> : null}
+        {error ? <Banner tone="warning">{error}</Banner> : null}
+
+        {sweep && sweepProgress === null ? (
+          <Pressable
+            onPress={shareSweep}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.copyButton, pressed && styles.buttonPressed]}
+          >
+            <Text style={styles.copyText}>⤴ {t('scaleDebug.share')}</Text>
+          </Pressable>
+        ) : null}
+
+        {sweep?.explorations.map((explored) => (
+          <View
+            key={explored.deviceId}
+            style={[
+              styles.device,
+              explored.characteristics.some((c) => c.notifications.length > 0) &&
+                styles.deviceChanging,
+            ]}
+          >
+            <Text style={styles.deviceName}>{explored.deviceName ?? explored.deviceId}</Text>
+            {explored.error ? (
+              <Text style={styles.deviceId}>{explored.error}</Text>
+            ) : (
+              <Text style={styles.deviceId}>
+                {t('scaleDebug.charCount', { count: explored.characteristics.length })}
+              </Text>
+            )}
+            {explored.characteristics
+              .filter((c) => c.notifications.length > 0)
+              .map((c) => (
+                <View key={`${c.serviceUuid}/${c.uuid}`}>
+                  <Text style={styles.mono}>
+                    {c.serviceUuid}/{c.uuid} [{c.properties}]
+                  </Text>
+                  {c.notifications.map((hex, index) => (
+                    <Text key={`${hex}-${index}`} style={styles.mono}>
+                      → {hex}
+                    </Text>
+                  ))}
+                </View>
+              ))}
+          </View>
+        ))}
+      </Card>
+
+      <Card>
         <Hint>{t('scaleDebug.intro')}</Hint>
         <Pressable
           onPress={scanning ? stop : scan}
@@ -223,6 +332,13 @@ export default function ScaleDebugScreen() {
                     </Text>
                   </View>
                   <Text style={styles.deviceId}>{device.id}</Text>
+
+                  {/* The number, as large as anything on this screen. It exists to be read off
+                      the phone and compared against the scale's own display in the same second —
+                      the only check that can confirm a parser built from captures. */}
+                  {device.decodedKg !== null ? (
+                    <Text style={styles.decoded}>{device.decodedKg.toFixed(2)} kg</Text>
+                  ) : null}
 
                   {device.adapterId ? (
                     <Text style={styles.recognised}>
@@ -374,6 +490,13 @@ const createStyles = (colors: ColorPalette) =>
     frames: { color: colors.textFaint, fontSize: fontSize.xs, fontVariant: ['tabular-nums'] },
     deviceId: { color: colors.textFaint, fontSize: fontSize.xs },
     recognised: { color: colors.accent, fontSize: fontSize.xs, textAlign: 'auto' },
+    decoded: {
+      color: colors.accent,
+      fontSize: 28,
+      fontWeight: '600',
+      textAlign: 'auto',
+      fontVariant: ['tabular-nums'],
+    },
 
     // Hex is data, not prose: it stays left-to-right and monospaced even in a mirrored layout,
     // because a reversed byte string is worse than useless.

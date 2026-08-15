@@ -119,6 +119,18 @@ export const en = {
     title: 'Bluetooth diagnostics',
     intro:
       'Scans everything advertising nearby and shows the raw bytes. Saves nothing — it is here only to identify which protocol your scale speaks.',
+    autoTitle: 'Find the scale automatically',
+    autoIntro:
+      'Press once. The app scans, sets aside anything it recognises as a television or a light, then connects to each remaining candidate in turn. All that is left to you is standing on the scale.',
+    autoRun: 'Find my scale',
+    autoStandOn: 'Step on the scale now and stay on it. This takes about a minute and a half — no need to touch the screen.',
+    charCount: '{{count}} channels, none pushed data',
+    sweep: {
+      scanning: 'Scanning the room…',
+      connecting: 'Connecting to {{name}} ({{index}}/{{total}})',
+      listening: 'Listening to {{name}} ({{index}}/{{total}}) — stand on the scale',
+      done: 'Done',
+    },
     scan: 'Scan everything',
     stop: 'Stop scanning',
     live: 'Scanning… {{count}} devices so far',

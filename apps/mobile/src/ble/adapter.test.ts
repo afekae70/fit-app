@@ -14,6 +14,8 @@ import { describe, expect, it } from 'vitest';
 import {
   estimateBodyFatPct,
   miScale2Adapter,
+  namelessBroadcastScaleAdapter,
+  selectAdapterByPayload,
   SCANNABLE_SERVICE_UUIDS,
   selectAdapter,
   standardWeightScaleAdapter,
@@ -236,5 +238,71 @@ describe('estimateBodyFatPct', () => {
   it('returns null for impossible inputs instead of a nonsense number', () => {
     expect(estimateBodyFatPct({ weightKg: 80, heightCm: 0, ageYears: 30, sex: 'male' })).toBeNull();
     expect(estimateBodyFatPct({ weightKg: 0, heightCm: 180, ageYears: 30, sex: 'male' })).toBeNull();
+  });
+});
+
+describe('nameless 15-byte broadcast scale', () => {
+  /**
+   * Every frame here was captured from the device itself, not constructed from a spec — there is
+   * no spec. `loaded` frames arrived while someone was standing on the scale, `idle` ones
+   * between measurements, and the sequence byte differs between them exactly as it did on the
+   * air.
+   */
+  const hex = (s: string) => new Uint8Array(s.match(/../g)!.map((h) => parseInt(h, 16)));
+
+  const LOADED = hex('c00f1cfa13880808255a0a55a343ac');
+  const IDLE = hex('c010000000000808245a0a55a343ac');
+
+  it('reads the weight as hundredths of a kilogram, big-endian', () => {
+    expect(namelessBroadcastScaleAdapter.parse(LOADED)?.weightKg).toBe(74.18);
+  });
+
+  it('does not read the weight field little-endian', () => {
+    // 0x1cfa read backwards is 0xfa1c = 64028, which the range check rejects outright. The
+    // check is what stops an endianness mistake from becoming a plausible-looking number.
+    expect(namelessBroadcastScaleAdapter.parse(LOADED)?.weightKg).not.toBe(640.28);
+  });
+
+  it('ignores an idle frame instead of recording a 0 kg weigh-in', () => {
+    // The idle frame zeroes the value bytes rather than omitting them, and arrives every few
+    // hundred milliseconds. A parser that trusted the bytes alone would fill the history with
+    // zeroes between every real measurement.
+    expect(namelessBroadcastScaleAdapter.parse(IDLE)).toBeNull();
+  });
+
+  it('decodes the other captures from the same device', () => {
+    // Three sessions on different days: 74.13, 73.86, 74.18. A person's weight moving by a few
+    // hundred grams across days is what gave this field away as the weight in the first place.
+    expect(namelessBroadcastScaleAdapter.parse(hex('c0551cf513880808255a0a55a343ac'))?.weightKg).toBe(74.13);
+    expect(namelessBroadcastScaleAdapter.parse(hex('c0021cda13880808255a0a55a343ac'))?.weightKg).toBe(73.86);
+    expect(namelessBroadcastScaleAdapter.parse(hex('c00d1cfa13880808255a0a55a343ac'))?.weightKg).toBe(74.18);
+  });
+
+  it('reports nothing but weight', () => {
+    // 0x1388 sits in every loaded frame and has never varied, so nothing distinguishes an
+    // impedance that repeats from a device constant. Publishing it as body fat would be
+    // inventing a measurement.
+    const reading = namelessBroadcastScaleAdapter.parse(LOADED);
+    expect(reading?.impedanceOhms).toBeUndefined();
+    expect(reading?.bodyFatPct).toBeUndefined();
+    expect(reading?.isStabilised).toBe(true);
+  });
+
+  it('refuses payloads that merely start with the same byte', () => {
+    expect(namelessBroadcastScaleAdapter.parse(hex('c00f1cfa1388080825'))).toBeNull();
+    expect(namelessBroadcastScaleAdapter.parse(hex('c00f1cfa13889999255a0a55a343ac'))).toBeNull();
+  });
+
+  it('is not matched by name or service uuid, only by payload shape', () => {
+    // The device advertises neither, which is why identity matching cannot see it at all.
+    expect(namelessBroadcastScaleAdapter.matches({ serviceUuids: [], name: null })).toBe(false);
+    expect(selectAdapterByPayload(LOADED)?.id).toBe('nameless_broadcast_scale');
+  });
+
+  it('does not claim another vendor’s advertisement', () => {
+    // Real captures from the same room. A shape match is weak evidence, so it has to be narrow.
+    expect(selectAdapterByPayload(hex('4c000100000000000000000000000080000000'))).toBeNull();
+    expect(selectAdapterByPayload(hex('7500420401016f64e7d85e624f66e7d85e624e'))).toBeNull();
+    expect(selectAdapterByPayload(hex('0388ec00010300'))).toBeNull();
   });
 });
