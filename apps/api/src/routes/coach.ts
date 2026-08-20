@@ -22,6 +22,27 @@ function sendEvent(reply: FastifyReply, event: string, data: unknown): void {
   reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 }
 
+/**
+ * A short, safe label for why the provider refused, for the client to log.
+ *
+ * The user-facing message stays the same deliberately vague sentence. This travels beside it so
+ * that a failure is diagnosable from the phone instead of only from the server console — every
+ * cause so far has looked identical from the app ("the coach is unavailable") while being a
+ * completely different problem: no credit, a rejected key, a model the account cannot reach.
+ *
+ * Only the HTTP status and the provider's own error *type* are included. Both are enumerations,
+ * not free text, so nothing from the request or the key can be carried out in them.
+ */
+function providerErrorCode(error: unknown): string | undefined {
+  if (typeof error !== 'object' || error === null) return undefined;
+
+  const source = error as { status?: unknown; error?: { error?: { type?: unknown } } };
+  const status = typeof source.status === 'number' ? String(source.status) : null;
+  const type = typeof source.error?.error?.type === 'string' ? source.error.error.type : null;
+
+  return [status, type].filter(Boolean).join(' ') || undefined;
+}
+
 export default async function coachRoutes(app: FastifyInstance): Promise<void> {
   // Gated on a verified Supabase session. Without this, anyone who has the deployed URL — the
   // whole reason a URL is public — can run requests against the LLM key at the account's
@@ -100,7 +121,12 @@ export default async function coachRoutes(app: FastifyInstance): Promise<void> {
         if (!clientGone) sendEvent(reply, 'refusal', { category: error.category });
       } else {
         app.log.error({ err: error }, 'coach stream failed');
-        if (!clientGone) sendEvent(reply, 'error', { message: 'The coach is unavailable.' });
+        if (!clientGone) {
+          sendEvent(reply, 'error', {
+            message: 'The coach is unavailable.',
+            code: providerErrorCode(error),
+          });
+        }
       }
     } finally {
       reply.raw.end();

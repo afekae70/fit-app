@@ -279,11 +279,12 @@ export default function CoachChatScreen() {
               markLast('refusal', t('coach.refused'));
               setStreaming(false);
             },
-            onError: (message) => {
+            onError: (message, code) => {
               // Logged as well as shown. The bubble carries whatever the server said, but the
               // screen is not somewhere a failure can be read back from later — and "the coach
-              // did not answer" has as many causes as a failed sync did.
-              console.warn('[coach] stream error:', message);
+              // did not answer" has as many causes as a failed sync did. `code` is what tells
+              // them apart without opening the server console.
+              console.warn('[coach] stream error:', message, code ?? '');
               markLast('error', message);
               setStreaming(false);
             },

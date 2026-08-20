@@ -97,7 +97,8 @@ export interface StreamHandlers {
   onDone: () => void;
   /** The model declined. Not a fault — and any text already delivered is truncated. */
   onRefusal: (category: string | null) => void;
-  onError: (message: string) => void;
+  /** `code` is a provider status and error type, when the server could name one. */
+  onError: (message: string, code?: string) => void;
 }
 
 export interface StreamOptions {
@@ -167,8 +168,13 @@ export function streamCoachChat({
           break;
         }
         case 'error': {
-          const message = (frame.data as { message?: unknown }).message;
-          finish(() => handlers.onError(typeof message === 'string' ? message : 'Unknown error'));
+          const { message, code } = frame.data as { message?: unknown; code?: unknown };
+          finish(() =>
+            handlers.onError(
+              typeof message === 'string' ? message : 'Unknown error',
+              typeof code === 'string' ? code : undefined,
+            ),
+          );
           break;
         }
         case 'done':
