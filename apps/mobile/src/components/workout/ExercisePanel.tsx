@@ -22,6 +22,7 @@ import type { UnitPreference } from '@fit/shared';
 import { useUnit } from '../../UnitsProvider.js';
 import { formatVolume, kgToDisplay, weightUnitKey } from '../../units.js';
 import { radius, type ColorPalette } from '../../theme.js';
+import type { DragHandleProps } from '../DragReorderList.js';
 import { SetRow } from './SetRow.js';
 
 export interface PreviousSet {
@@ -48,17 +49,13 @@ export interface ExercisePanelProps {
   /** Long-press the exercise name. */
   onRemoveExercise?: () => void;
   /**
-   * Move this exercise one place earlier or later in the session.
+   * Grab handle for dragging the whole card, sets included, to another place in the session.
    *
-   * Arrows rather than drag, matching how the plan's days and exercises are reordered and for
-   * the reason written there: a drag inside a vertical ScrollView has to win a gesture race
-   * against the scroll, and the loser is always the user. Doubly so here, where the panel is
-   * full of text inputs that also want the touch.
+   * The panel does not implement the drag; `DragReorderList` owns the gesture and the card just
+   * offers somewhere to take hold of it. Kept to a handle rather than the whole card because
+   * everything else here — weight fields, rep fields, the done checkbox — wants the touch too.
    */
-  onMove?: (delta: -1 | 1) => void;
-  /** Whether this panel is already at the top or bottom, which greys the matching arrow. */
-  canMoveUp?: boolean;
-  canMoveDown?: boolean;
+  dragHandle?: DragHandleProps;
 }
 
 export function ExercisePanel({
@@ -72,9 +69,7 @@ export function ExercisePanel({
   onAddSet,
   onRemoveSet,
   onRemoveExercise,
-  onMove,
-  canMoveUp = false,
-  canMoveDown = false,
+  dragHandle,
 }: ExercisePanelProps) {
   const { t } = useTranslation();
   const { colors } = useTheme();
@@ -110,28 +105,28 @@ export function ExercisePanel({
           </View>
         ) : null}
 
-        {/* Placed in the header rather than beside the sets: this moves the whole exercise, and
-            sitting it next to a set's controls would read as moving that one row. */}
-        {onMove ? (
-          <View style={s.reorder}>
-            <Pressable
-              onPress={() => onMove(-1)}
-              disabled={!canMoveUp}
-              accessibilityRole="button"
-              accessibilityLabel={t('plan.moveExerciseUp')}
-              hitSlop={6}
-            >
-              <Text style={[s.moveText, !canMoveUp && s.moveTextOff]}>↑</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => onMove(1)}
-              disabled={!canMoveDown}
-              accessibilityRole="button"
-              accessibilityLabel={t('plan.moveExerciseDown')}
-              hitSlop={6}
-            >
-              <Text style={[s.moveText, !canMoveDown && s.moveTextOff]}>↓</Text>
-            </Pressable>
+        {/* In the header rather than beside the sets: this moves the whole exercise, and sitting
+            it next to a set's controls would read as moving that one row. */}
+        {dragHandle ? (
+          <View
+            {...dragHandle.handlers}
+            style={[s.handle, dragHandle.active && s.handleActive]}
+            accessibilityRole="adjustable"
+            accessibilityLabel={t('workout.dragExercise')}
+            /* Dragging is unusable through a screen reader, so the same move is offered as two
+               named actions. Without this the feature would be sighted-only. */
+            accessibilityActions={[
+              ...(dragHandle.canMoveUp ? [{ name: 'moveUp', label: t('plan.moveExerciseUp') }] : []),
+              ...(dragHandle.canMoveDown
+                ? [{ name: 'moveDown', label: t('plan.moveExerciseDown') }]
+                : []),
+            ]}
+            onAccessibilityAction={(event) => {
+              if (event.nativeEvent.actionName === 'moveUp') dragHandle.moveUp();
+              if (event.nativeEvent.actionName === 'moveDown') dragHandle.moveDown();
+            }}
+          >
+            <Text style={[s.handleGlyph, dragHandle.active && s.handleGlyphActive]}>⠿</Text>
           </View>
         ) : null}
       </View>
@@ -215,9 +210,10 @@ const createStyles = (colors: ColorPalette) =>
     previous: TextStyle;
     targetPill: ViewStyle;
     targetText: TextStyle;
-    reorder: ViewStyle;
-    moveText: TextStyle;
-    moveTextOff: TextStyle;
+    handle: ViewStyle;
+    handleActive: ViewStyle;
+    handleGlyph: TextStyle;
+    handleGlyphActive: TextStyle;
     columns: ViewStyle;
     columnLabel: TextStyle;
     columnIndex: TextStyle;
@@ -251,10 +247,18 @@ const createStyles = (colors: ColorPalette) =>
       borderColor: colors.accentBorder,
     },
     targetText: { color: colors.accent, fontSize: 11 },
-    // Column, not row: two arrows side by side at this size are one target to a thumb.
-    reorder: { justifyContent: 'center', gap: 2 },
-    moveText: { color: colors.textSecondary, fontSize: 15 },
-    moveTextOff: { color: colors.textFaint },
+    // A full 44pt target. The grip is small, but the area that answers to a thumb is not —
+    // a handle you have to aim at is a handle that loses the drag before it starts.
+    handle: {
+      width: 44,
+      height: 44,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: radius.sm,
+    },
+    handleActive: { backgroundColor: colors.accentSoft },
+    handleGlyph: { color: colors.textFaint, fontSize: 18 },
+    handleGlyphActive: { color: colors.accent },
 
     columns: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     columnLabel: { color: colors.textFaint, fontSize: 11, textAlign: 'center' },

@@ -29,6 +29,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
 import type { ExerciseTarget, PreviousSet } from '../../src/components/ExerciseCard.js';
 import { FinishSummary } from '../../src/components/FinishSummary.js';
+import { DragReorderList } from '../../src/components/DragReorderList.js';
 import { ExercisePanel } from '../../src/components/workout/ExercisePanel.js';
 import { EXTEND_SECONDS, RestBanner } from '../../src/components/workout/RestBanner.js';
 import { WorkoutHeader } from '../../src/components/workout/WorkoutHeader.js';
@@ -403,19 +404,51 @@ export default function WorkoutsScreen() {
    * lifts because a rack is busy today should not rewrite what you intend to do every week.
    */
   const moveExercise = useCallback(
-    (sessionExerciseId: string, delta: -1 | 1) => {
-      if (!sessionId) return;
-      void hapticLight();
+    (fromIndex: number, toIndex: number) => {
+      const exercise = exercises[fromIndex];
+      if (!sessionId || !exercise) return;
+      void hapticSuccess();
       void (async () => {
         const db = await getExecutor();
-        const from = exercises.findIndex((e) => e.id === sessionExerciseId);
-        if (from < 0) return;
-        await reorderSessionExercise(db, sessionId, sessionExerciseId, from + delta);
+        await reorderSessionExercise(db, sessionId, exercise.id, toIndex);
         await reload(sessionId);
       })();
     },
     [sessionId, exercises, reload],
   );
+
+  /*
+   * Scrolling is frozen while a card is in the air, and driven from the drag instead.
+   *
+   * Both halves are needed. Leaving the ScrollView live means the list slides under a card that
+   * is already following the finger, and the two motions add up to something nobody aimed. But
+   * only a couple of exercise cards fit on screen at once, so with no scrolling at all a card
+   * could never reach a position that is currently off screen — which is most of them.
+   */
+  const [dragging, setDragging] = useState(false);
+  const scrollRef = useRef<ScrollView | null>(null);
+  const scrollY = useRef(0);
+  const viewportHeight = useRef(0);
+
+  const autoScroll = useCallback((screenY: number) => {
+    const height = viewportHeight.current;
+    if (height <= 0) return;
+
+    // A band at each edge, and a speed that grows the deeper into it the finger goes — a fixed
+    // step is either too slow to be worth it or too fast to aim with.
+    const EDGE = 110;
+    const MAX_STEP = 22;
+    const fromTop = screenY - EDGE;
+    const fromBottom = screenY - (height - EDGE);
+
+    let step = 0;
+    if (fromTop < 0) step = Math.max(-MAX_STEP, (fromTop / EDGE) * MAX_STEP);
+    else if (fromBottom > 0) step = Math.min(MAX_STEP, (fromBottom / EDGE) * MAX_STEP);
+    if (step === 0) return;
+
+    scrollY.current = Math.max(0, scrollY.current + step);
+    scrollRef.current?.scrollTo({ y: scrollY.current, animated: false });
+  }, []);
 
   const dropExercise = useCallback(
     (sessionExerciseId: string) => {
@@ -537,70 +570,83 @@ export default function WorkoutsScreen() {
       />
 
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xxl }}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
+        scrollEnabled={!dragging}
+        scrollEventThrottle={16}
+        onScroll={(event) => {
+          scrollY.current = event.nativeEvent.contentOffset.y;
+        }}
+        onLayout={(event) => {
+          viewportHeight.current = event.nativeEvent.layout.height;
+        }}
       >
         {exercises.length === 0 ? (
           <EmptyState emoji="➕" title={t('workout.noExercises')} hint={t('workout.noExercisesHint')} />
         ) : (
-          exercises.map((exercise, index) => {
-            const seed = EXERCISE_BY_KEY.get(exercise.exercise_key);
-            if (!seed) return null;
-            const prescription = targets[exercise.exercise_key] ?? null;
-            return (
-              <ExercisePanel
-                key={exercise.id}
-                name={seed.nameHe}
-                // The panel works in positions; the repository works in row ids. Mapped here
-                // rather than pushing ids into the component, so the card stays a view of a list
-                // and knows nothing about how the rows are stored.
-                sets={exercise.sets.map((set) => ({
-                  weightKg: set.weight_kg,
-                  reps: set.reps,
-                  done: set.done_at !== null,
-                }))}
-                previous={
-                  previous[exercise.exercise_key]?.map((p) => ({
-                    weightKg: p.weight_kg,
-                    reps: p.reps,
-                  })) ?? null
-                }
-                target={
-                  prescription
-                    ? {
-                        sets: prescription.target_sets,
-                        repsMin: prescription.target_reps_min,
-                        repsMax: prescription.target_reps_max,
-                      }
-                    : null
-                }
-                onChangeWeight={(i, next) => {
-                  const set = exercise.sets[i];
-                  if (set) patchSet(set.id, { weightKg: next });
-                }}
-                onChangeReps={(i, next) => {
-                  const set = exercise.sets[i];
-                  if (set) patchSet(set.id, { reps: next });
-                }}
-                onToggle={(i) => {
-                  const set = exercise.sets[i];
-                  // The panel exposes a toggle; the repository wants the state to move to. The
-                  // flip happens here so the card never has to know the current value twice.
-                  if (set) toggleDone(set.id, set.done_at === null);
-                }}
-                onAddSet={() => addSet(exercise.id)}
-                onRemoveSet={(i) => {
-                  const set = exercise.sets[i];
-                  if (set) deleteSet(set.id);
-                }}
-                onRemoveExercise={() => dropExercise(exercise.id)}
-                onMove={(delta) => moveExercise(exercise.id, delta)}
-                canMoveUp={index > 0}
-                canMoveDown={index < exercises.length - 1}
-              />
-            );
-          })
+          <DragReorderList
+            data={exercises}
+            keyExtractor={(exercise) => exercise.id}
+            onReorder={moveExercise}
+            onDragStateChange={setDragging}
+            onDragMove={autoScroll}
+            renderItem={(exercise, _index, dragHandle) => {
+              const seed = EXERCISE_BY_KEY.get(exercise.exercise_key);
+              if (!seed) return null;
+              const prescription = targets[exercise.exercise_key] ?? null;
+              return (
+                <ExercisePanel
+                  name={seed.nameHe}
+                  // The panel works in positions; the repository works in row ids. Mapped here
+                  // rather than pushing ids into the component, so the card stays a view of a
+                  // list and knows nothing about how the rows are stored.
+                  sets={exercise.sets.map((set) => ({
+                    weightKg: set.weight_kg,
+                    reps: set.reps,
+                    done: set.done_at !== null,
+                  }))}
+                  previous={
+                    previous[exercise.exercise_key]?.map((p) => ({
+                      weightKg: p.weight_kg,
+                      reps: p.reps,
+                    })) ?? null
+                  }
+                  target={
+                    prescription
+                      ? {
+                          sets: prescription.target_sets,
+                          repsMin: prescription.target_reps_min,
+                          repsMax: prescription.target_reps_max,
+                        }
+                      : null
+                  }
+                  onChangeWeight={(i, next) => {
+                    const set = exercise.sets[i];
+                    if (set) patchSet(set.id, { weightKg: next });
+                  }}
+                  onChangeReps={(i, next) => {
+                    const set = exercise.sets[i];
+                    if (set) patchSet(set.id, { reps: next });
+                  }}
+                  onToggle={(i) => {
+                    const set = exercise.sets[i];
+                    // The panel exposes a toggle; the repository wants the state to move to. The
+                    // flip happens here so the card never has to know the current value twice.
+                    if (set) toggleDone(set.id, set.done_at === null);
+                  }}
+                  onAddSet={() => addSet(exercise.id)}
+                  onRemoveSet={(i) => {
+                    const set = exercise.sets[i];
+                    if (set) deleteSet(set.id);
+                  }}
+                  onRemoveExercise={() => dropExercise(exercise.id)}
+                  dragHandle={dragHandle}
+                />
+              );
+            }}
+          />
         )}
 
         <Pressable

@@ -186,6 +186,7 @@ export const en = {
     restSkip: 'Skip',
     restAllDone: 'All done',
     longPressDelete: 'Long-press to delete',
+    dragExercise: 'Drag to reorder this exercise',
     removeExercise: 'Remove exercise',
     lastTime: 'Last time',
     noHistory: 'No history',

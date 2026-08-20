@@ -179,6 +179,7 @@ export const he = {
     restSkip: 'דלג',
     restAllDone: 'סיימת הכול',
     longPressDelete: 'לחיצה ארוכה למחיקה',
+    dragExercise: 'גרור כדי לשנות את סדר התרגיל',
     removeExercise: 'הסר תרגיל',
     lastTime: 'פעם קודמת',
     noHistory: 'אין היסטוריה',
