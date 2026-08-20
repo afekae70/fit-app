@@ -59,6 +59,17 @@ export function createSupabaseTransport(client: SupabaseClient): SyncTransport {
       // — a timeout, or a conflict between two rows in the same statement. Nothing left to report.
     },
 
+    async patch(table, rows) {
+      // One request per row: PostgREST patches by filter, and a batch of tombstones is a batch
+      // of different ids with different timestamps. Tombstones are rare — a handful per sync at
+      // most — so the row-at-a-time cost buys a precise error when one is refused.
+      for (const row of rows) {
+        const { id, ...changes } = row;
+        const { error } = await client.from(table).update(changes).eq('id', id);
+        if (error) throw new SyncTransportError(table, `patch of row ${String(id)}`, error);
+      }
+    },
+
     async changedSince(table, since, limit) {
       let query = client.from(table).select('*').order('updated_at', { ascending: true }).limit(limit);
       // A null cursor means "everything", which is the first sync on a new device.

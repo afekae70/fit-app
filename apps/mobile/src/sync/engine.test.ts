@@ -23,6 +23,22 @@ const OTHER_USER = '22222222-2222-4222-8222-222222222222';
 /* A fake Postgres                                                             */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * The NOT NULL columns of the real Supabase tables, as far as the sync engine touches them.
+ *
+ * Mirrors the local schema, where the same columns are NOT NULL — the ordering columns above
+ * all, since those are the ones `toRemote` has a reason to leave out.
+ */
+const REQUIRED_COLUMNS: Record<string, string[]> = {
+  plans: ['id', 'user_id', 'name'],
+  plan_days: ['id', 'plan_id', 'day_index'],
+  plan_day_exercises: ['id', 'plan_day_id', 'exercise_key', 'order_index'],
+  workout_sessions: ['id', 'user_id', 'started_at'],
+  session_exercises: ['id', 'session_id', 'exercise_key', 'order_index'],
+  sets: ['id', 'session_exercise_id', 'set_index'],
+  body_metrics: ['id', 'user_id', 'measured_at', 'source'],
+};
+
 interface FakeServer extends SyncTransport {
   rows(table: string): Row[];
   seed(table: string, row: Row): void;
@@ -62,12 +78,40 @@ function createFakeServer(startAt = Date.parse('2026-03-01T00:00:00.000Z')): Fak
         throw new Error('server rejected the batch');
       }
       for (const row of rows) {
-        // Merged over what is already stored, not replacing it. `ON CONFLICT DO UPDATE` only
-        // touches the columns present in the payload, so a column the client omits keeps the
-        // server's value — which is precisely the mechanism the parked-index fix relies on.
+        /*
+         * NOT NULL is checked against the payload, even when the row already exists.
+         *
+         * This fake used to merge the payload over the stored row and conclude that an omitted
+         * column simply kept the server's value. Postgres does not work that way: an upsert is
+         * `INSERT ... ON CONFLICT DO UPDATE`, and the proposed insert tuple is checked against
+         * the table's constraints before the conflict is ever detected. Omitting a NOT NULL
+         * column therefore fails outright.
+         *
+         * Modelling the merge instead of the constraint is how a real bug shipped past this
+         * file: the fake agreed with the code rather than with the database, which is the one
+         * thing a fake must never do.
+         */
+        for (const column of REQUIRED_COLUMNS[name] ?? []) {
+          if (row[column] === undefined || row[column] === null) {
+            throw new Error(
+              `null value in column "${column}" of relation "${name}" violates not-null constraint`,
+            );
+          }
+        }
         const previous = table(name).get(row.id as string) ?? {};
         // The real server stamps updated_at by trigger and ignores what the client sent. Modelling
         // that is the point of this fake: it is what makes the two-clock design testable.
+        table(name).set(row.id as string, { ...previous, ...row, updated_at: now() });
+      }
+    },
+
+
+    async patch(name, rows) {
+      for (const row of rows) {
+        // A patch touches only the columns it carries, and a row the server does not have is
+        // not an error — PostgREST matches nothing and reports success.
+        const previous = table(name).get(row.id as string);
+        if (!previous) continue;
         table(name).set(row.id as string, { ...previous, ...row, updated_at: now() });
       }
     },

@@ -42,6 +42,13 @@ export interface SyncTransport {
   /** Upsert rows into `table`, keyed on the primary key. Rejects if the server refuses any row. */
   upsert(table: string, rows: Row[]): Promise<void>;
   /**
+   * Patch rows that the server already has, by primary key. A row it does not have is not an
+   * error — the patch simply matches nothing.
+   *
+   * Separate from `upsert` because a tombstone must never be written as one. See `push`.
+   */
+  patch(table: string, rows: Row[]): Promise<void>;
+  /**
    * Rows in `table` whose server `updated_at` is strictly after `since`, oldest first, at most
    * `limit`. `since` null means everything.
    */
@@ -162,12 +169,41 @@ async function push(
   for (const table of SYNC_TABLES) {
     const rows = await db.all<Row>(buildPushQuery(table), [userId, since, since]);
     if (rows.length === 0) continue;
-    for (let i = 0; i < rows.length; i += BATCH) {
+
+    /*
+     * Tombstones travel as patches, everything else as upserts.
+     *
+     * `toRemote` omits a deleted row's ordering column, because the local sentinel `-rowid` is
+     * something the server rejects and no substitute is safe — every positive value risks
+     * colliding with a live row under the same parent. Omitting it was supposed to leave the
+     * server's own value alone.
+     *
+     * It does not. An upsert is `INSERT ... ON CONFLICT DO UPDATE`, and Postgres checks NOT NULL
+     * against the proposed insert tuple before it ever looks for the conflict — so omitting a
+     * NOT NULL column fails outright even when the row is certainly there. That is what broke
+     * syncing entirely: one deleted plan day, and every later sync died on the same row, so
+     * nothing at all reached the server.
+     *
+     * A patch has no insert tuple to check. It also cannot resurrect a row the server has
+     * already lost, which is the right behaviour — `buildPushQuery` has already excluded
+     * tombstones the server never saw.
+     */
+    const live = rows.filter((row) => row.deleted_at === null || row.deleted_at === undefined);
+    const tombstones = rows.filter((row) => row.deleted_at !== null && row.deleted_at !== undefined);
+
+    for (let i = 0; i < live.length; i += BATCH) {
       await transport.upsert(
         table.table,
-        rows.slice(i, i + BATCH).map((row) => toRemote(table, row)),
+        live.slice(i, i + BATCH).map((row) => toRemote(table, row)),
       );
     }
+    for (let i = 0; i < tombstones.length; i += BATCH) {
+      await transport.patch(
+        table.table,
+        tombstones.slice(i, i + BATCH).map((row) => toRemote(table, row)),
+      );
+    }
+
     total += rows.length;
   }
   return total;
