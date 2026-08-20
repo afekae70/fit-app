@@ -33,14 +33,33 @@ function sendEvent(reply: FastifyReply, event: string, data: unknown): void {
  * Only the HTTP status and the provider's own error *type* are included. Both are enumerations,
  * not free text, so nothing from the request or the key can be carried out in them.
  */
-function providerErrorCode(error: unknown): string | undefined {
-  if (typeof error !== 'object' || error === null) return undefined;
+function providerErrorCode(error: unknown): string {
+  if (typeof error !== 'object' || error === null) return 'unknown';
 
-  const source = error as { status?: unknown; error?: { error?: { type?: unknown } } };
+  const source = error as {
+    name?: unknown;
+    message?: unknown;
+    status?: unknown;
+    error?: { error?: { type?: unknown } };
+  };
+
+  // The class name is always available and always safe — `ApiError`, `BadRequestError` — and
+  // having something here at all is what makes a deploy observable: an empty code can only mean
+  // the old build is still answering.
+  const name = typeof source.name === 'string' ? source.name : null;
+  // Gemini's ApiError carries a numeric status; Anthropic's SDK carries both a status and a
+  // nested error type. Reading both covers either provider without branching on which is set.
   const status = typeof source.status === 'number' ? String(source.status) : null;
   const type = typeof source.error?.error?.type === 'string' ? source.error.error.type : null;
+  // Google reports its reason as a SCREAMING_CASE enum inside the message — PERMISSION_DENIED,
+  // INVALID_ARGUMENT, RESOURCE_EXHAUSTED. Matching only that shape keeps prose, and anything
+  // quoted back from the request, out of what travels.
+  const enumToken =
+    typeof source.message === 'string'
+      ? (/\b[A-Z][A-Z_]{4,}\b/.exec(source.message)?.[0] ?? null)
+      : null;
 
-  return [status, type].filter(Boolean).join(' ') || undefined;
+  return [status, name, type, enumToken].filter(Boolean).join(' ') || 'unknown';
 }
 
 export default async function coachRoutes(app: FastifyInstance): Promise<void> {
