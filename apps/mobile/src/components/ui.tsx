@@ -43,7 +43,10 @@ import {
 /** Shared tactile feedback for Button and Segmented — a small scale dip under the finger. */
 function usePressScale() {
   const scale = useRef(new Animated.Value(1)).current;
-  const onPressIn = () => Animated.spring(scale, { toValue: 0.96, useNativeDriver: true }).start();
+  // 0.98, not 0.96. The deeper squeeze is something you watch happen; this one is only felt,
+  // which is what the home screen's CTA settled on and the right amount of feedback for a
+  // control the user is already looking at when they press it.
+  const onPressIn = () => Animated.spring(scale, { toValue: 0.98, useNativeDriver: true }).start();
   const onPressOut = () =>
     Animated.spring(scale, { toValue: 1, friction: 4, useNativeDriver: true }).start();
   return { scale, onPressIn, onPressOut };
@@ -392,11 +395,14 @@ export function Button({
   onPress,
   variant = 'primary',
   sublabel,
+  disabled = false,
 }: {
   label: string;
   onPress: () => void;
   variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
   sublabel?: string;
+  /** Dims the button and stops both the press and its animation. */
+  disabled?: boolean;
 }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -405,11 +411,13 @@ export function Button({
   return (
     <Pressable
       onPress={onPress}
-      onPressIn={onPressIn}
-      onPressOut={onPressOut}
+      onPressIn={disabled ? undefined : onPressIn}
+      onPressOut={disabled ? undefined : onPressOut}
+      disabled={disabled}
       accessibilityRole="button"
+      accessibilityState={{ disabled }}
     >
-      {({ pressed }) => (
+      {() => (
         <Animated.View
           style={[
             { transform: [{ scale }] },
@@ -418,9 +426,7 @@ export function Button({
             variant === 'secondary' && styles.buttonSecondary,
             variant === 'ghost' && styles.buttonGhost,
             variant === 'danger' && styles.buttonDanger,
-            // Press feedback via opacity rather than a colour swap — it reads consistently on
-            // every variant without needing four extra pressed-state colours.
-            pressed && styles.buttonPressed,
+            disabled && styles.buttonDisabled,
           ]}
         >
           <Text
@@ -648,7 +654,7 @@ const createStyles = (colors: ColorPalette) =>
     buttonSecondary: ViewStyle;
     buttonGhost: ViewStyle;
     buttonDanger: ViewStyle;
-    buttonPressed: ViewStyle;
+    buttonDisabled: ViewStyle;
     buttonLabel: TextStyle;
     buttonLabelPrimary: TextStyle;
     buttonLabelSecondary: TextStyle;
@@ -793,18 +799,30 @@ const createStyles = (colors: ColorPalette) =>
     segmentText: { color: colors.textMuted, fontSize: fontSize.sm },
 
     button: {
-      borderRadius: radius.md,
+      // Matched to the home screen's call to action: the larger card radius, and tall enough
+      // that a primary action is unmistakably one. A button that is smaller and rounder than
+      // the one on the previous screen is the same seam a tighter card is.
+      borderRadius: radius.lg,
+      minHeight: 52,
       paddingVertical: spacing.md,
       paddingHorizontal: spacing.lg,
       alignItems: 'center',
+      justifyContent: 'center',
       borderWidth: 1,
     },
     buttonPrimary: { backgroundColor: colors.accentSoft, borderColor: colors.accentBorder },
     buttonSecondary: { backgroundColor: colors.surfaceRaised, borderColor: colors.borderStrong },
     buttonGhost: { backgroundColor: 'transparent', borderColor: colors.border },
     buttonDanger: { backgroundColor: 'transparent', borderColor: 'transparent' },
-    buttonPressed: { opacity: 0.6 },
-    buttonLabel: { fontSize: fontSize.md, fontWeight: fontWeight.bold },
+    /*
+     * No opacity flash on press; the scale above carries it alone.
+     *
+     * The two together read as two separate responses to one touch. The home screen's CTA
+     * settled this: the button shrinks a hair, and the accent never floods — which is the one
+     * thing this palette is not allowed to do.
+     */
+    buttonDisabled: { opacity: 0.45 },
+    buttonLabel: { fontSize: 17, fontWeight: fontWeight.medium },
     buttonLabelPrimary: { color: colors.accent },
     buttonLabelSecondary: { color: colors.text },
     buttonLabelGhost: { color: colors.textSecondary },

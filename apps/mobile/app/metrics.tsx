@@ -47,6 +47,7 @@ import {
 } from '../src/ble/scanner.js';
 import {
   Banner,
+  Button,
   Card,
   Hint,
   ScreenHeader,
@@ -501,16 +502,15 @@ export default function MetricsScreen() {
           <Hint>{t('common.loading')}</Hint>
         ) : (
           <>
-            <Pressable
+            <Button
+              label={
+                bleState === 'scanning'
+                  ? `⏳ ${t('metrics.bleScanning')}`
+                  : `⚖ ${t('metrics.bleScan')}`
+              }
               onPress={scanForScale}
               disabled={bleState === 'scanning'}
-              style={styles.scanButton}
-              accessibilityRole="button"
-            >
-              <Text style={styles.scanButtonText}>
-                {bleState === 'scanning' ? `⏳ ${t('metrics.bleScanning')}` : `⚖ ${t('metrics.bleScan')}`}
-              </Text>
-            </Pressable>
+            />
             <Hint>{bleState === 'scanning' ? t('metrics.bleStepOn') : t('metrics.bleScanHint')}</Hint>
             {bleError ? <Banner tone="warning">{bleError}</Banner> : null}
           </>
@@ -586,8 +586,6 @@ const createStyles = (colors: ColorPalette) =>
     saveButtonText: TextStyle;
     divider: ViewStyle;
     macroRow: ViewStyle;
-    scanButton: ViewStyle;
-    scanButtonText: TextStyle;
     bleSupported: TextStyle;
     diagnosticsLink: ViewStyle;
     diagnosticsLinkText: TextStyle;
@@ -630,16 +628,6 @@ const createStyles = (colors: ColorPalette) =>
   saveButtonText: { color: colors.accent, fontSize: fontSize.md, fontWeight: '700' },
   divider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.md },
   macroRow: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.md },
-  scanButton: {
-    paddingVertical: spacing.md,
-    borderRadius: radius.sm,
-    backgroundColor: colors.accentSoft,
-    borderWidth: 1,
-    borderColor: colors.accent,
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
-  scanButtonText: { color: colors.accent, fontSize: fontSize.md, fontWeight: '700' },
   bleSupported: {
     color: colors.textMuted,
     fontSize: fontSize.xs,
