@@ -280,12 +280,19 @@ export default function CoachChatScreen() {
               setStreaming(false);
             },
             onError: (message) => {
+              // Logged as well as shown. The bubble carries whatever the server said, but the
+              // screen is not somewhere a failure can be read back from later — and "the coach
+              // did not answer" has as many causes as a failed sync did.
+              console.warn('[coach] stream error:', message);
               markLast('error', message);
               setStreaming(false);
             },
           },
         });
-      } catch {
+      } catch (error) {
+        // The throw never reached a handler, so this is the request itself failing — no network,
+        // a bad base URL, a token that would not refresh.
+        console.warn('[coach] request failed:', error instanceof Error ? error.message : error);
         markLast('error', t('coach.unavailable'));
         setStreaming(false);
       }
