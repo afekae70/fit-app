@@ -11,6 +11,10 @@ const healthRoutes: FastifyPluginAsync = async (app) => {
     // here turns "which model is it actually using" from a question into a request.
     provider: app.coachProvider.name,
     model: app.coachProvider.model,
+    // Which commit is actually answering. Injected by Railway; absent elsewhere, which is fine
+    // — the field is for telling "the fix is live" from "the fix has not deployed yet", and
+    // that question has now cost three rounds of guessing from timestamps.
+    commit: process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) ?? null,
   }));
 
   // Confirms the caller's bearer token is valid and returns which user it belongs to —
