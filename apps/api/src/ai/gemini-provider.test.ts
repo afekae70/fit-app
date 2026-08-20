@@ -396,3 +396,64 @@ describe('GeminiProvider.generatePlan', () => {
     await expect(makeProvider().generatePlan(ctx, {}, 'p')).rejects.toThrow(/no content/);
   });
 });
+
+describe('streaming that the account cannot reach', () => {
+  /*
+   * Some keys expose `generateContent` and not `streamGenerateContent`. Calling a method a
+   * resource does not offer returns 404 — indistinguishable from a model that does not exist,
+   * which is what made this expensive to find: the name was right the whole time and the error
+   * pointed at the name.
+   */
+  function apiError(status: number) {
+    const error = new Error('models/gemini-2.5-flash is not found for API version v1beta');
+    (error as Error & { status: number }).status = status;
+    return error;
+  }
+
+  it('falls back to a single response when streaming 404s', async () => {
+    generateContentStreamMock.mockRejectedValueOnce(apiError(404));
+    generateContentMock.mockResolvedValueOnce({ text: 'Squat depth first, load second.' });
+
+    const events = await drain(makeProvider().streamChat(ctx, [{ role: 'user', content: 'hi' }]));
+
+    expect(events).toEqual([{ type: 'text', text: 'Squat depth first, load second.' }]);
+  });
+
+  it('asks the fallback for the same thing it asked the stream for', async () => {
+    generateContentStreamMock.mockRejectedValueOnce(apiError(404));
+    generateContentMock.mockResolvedValueOnce({ text: 'ok' });
+
+    await drain(makeProvider().streamChat(ctx, [{ role: 'user', content: 'hi' }]));
+
+    const streamed = generateContentStreamMock.mock.calls.at(-1)?.[0];
+    const fallback = generateContentMock.mock.calls.at(-1)?.[0];
+    // The model, the tools and the system instruction must survive the switch — a fallback that
+    // quietly drops the tools would answer in prose where a plan card was expected.
+    expect(fallback).toEqual(streamed);
+  });
+
+  it('still reports a refusal that arrives through the fallback', async () => {
+    generateContentStreamMock.mockRejectedValueOnce(apiError(404));
+    generateContentMock.mockResolvedValueOnce({
+      text: '',
+      promptFeedback: { blockReason: 'SAFETY' },
+    });
+
+    await expect(
+      drain(makeProvider().streamChat(ctx, [{ role: 'user', content: 'hi' }])),
+    ).rejects.toBeInstanceOf(CoachRefusalError);
+  });
+
+  it('does not swallow anything that is not a 404', async () => {
+    // A bad key, a rate limit or a blocked project must surface as themselves. Retrying those
+    // without streaming would waste a second request and report the wrong cause.
+    // Cleared because the mock is shared across this file and has calls from earlier tests.
+    generateContentMock.mockClear();
+    generateContentStreamMock.mockRejectedValueOnce(apiError(429));
+
+    await expect(
+      drain(makeProvider().streamChat(ctx, [{ role: 'user', content: 'hi' }])),
+    ).rejects.toThrow();
+    expect(generateContentMock).not.toHaveBeenCalled();
+  });
+});

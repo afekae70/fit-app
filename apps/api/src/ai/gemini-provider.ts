@@ -36,7 +36,12 @@ import {
   PROPOSE_NUTRITION_MENU_TOOL,
   PROPOSE_WORKOUT_PLAN_TOOL,
 } from '@fit/shared/schemas';
-import { GoogleGenAI, type Content, type Tool } from '@google/genai';
+import {
+  GoogleGenAI,
+  type Content,
+  type GenerateContentResponse,
+  type Tool,
+} from '@google/genai';
 
 import { CoachRefusalError } from './provider.js';
 import type { CoachContext, CoachMessage, CoachProvider, CoachStreamEvent } from './provider.js';
@@ -189,8 +194,26 @@ export class GeminiProvider implements CoachProvider {
     }));
   }
 
-  async *streamChat(ctx: CoachContext, messages: CoachMessage[]): AsyncIterable<CoachStreamEvent> {
-    const stream = await this.client.models.generateContentStream({
+  /**
+   * Ask for a stream, and settle for a single response if streaming is not on offer.
+   *
+   * Not every key can reach `:streamGenerateContent`. On the account this was first run
+   * against, `ListModels` advertised `generateContent` for every model and the streaming
+   * method for none of them — and calling a method a resource does not expose returns 404,
+   * exactly as a missing model does. That ambiguity cost an afternoon: the model name was
+   * correct the whole time and the error pointed at the model.
+   *
+   * Rather than decide which account gets which, both are handled. The fallback yields the
+   * whole answer as one chunk, so the coach replies in a single block instead of typing itself
+   * out — a visibly worse experience, and a far better one than an error.
+   *
+   * Only 404 falls back. A refusal, a rate limit or a bad key must surface as themselves.
+   */
+  private async requestStream(
+    ctx: CoachContext,
+    messages: CoachMessage[],
+  ): Promise<AsyncIterable<GenerateContentResponse>> {
+    const request = {
       model: this.model,
       contents: this.toContents(messages),
       config: {
@@ -198,7 +221,25 @@ export class GeminiProvider implements CoachProvider {
         maxOutputTokens: 4096,
         tools: TOOLS,
       },
-    });
+    };
+
+    try {
+      return await this.client.models.generateContentStream(request);
+    } catch (error) {
+      const status = (error as { status?: unknown }).status;
+      if (status !== 404) throw error;
+
+      const response = await this.client.models.generateContent(request);
+      // Wrapped in an async iterable of one, so the loop below stays the only place that reads
+      // chunks and neither path needs its own copy of the tool-call and refusal handling.
+      return (async function* single() {
+        yield response;
+      })();
+    }
+  }
+
+  async *streamChat(ctx: CoachContext, messages: CoachMessage[]): AsyncIterable<CoachStreamEvent> {
+    const stream = await this.requestStream(ctx, messages);
 
     // Whichever verdict the last chunk carried. Read after the loop rather than thrown from
     // inside it, matching the Claude path: a refusal can land after some prose has already gone
