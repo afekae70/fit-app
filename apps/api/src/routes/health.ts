@@ -7,6 +7,10 @@ const healthRoutes: FastifyPluginAsync = async (app) => {
   app.get('/health', async () => ({
     status: 'ok',
     timestamp: new Date().toISOString(),
+    // Neither is a secret — both are defaults committed to the repository — and having them
+    // here turns "which model is it actually using" from a question into a request.
+    provider: app.coachProvider.name,
+    model: app.coachProvider.model,
   }));
 
   // Confirms the caller's bearer token is valid and returns which user it belongs to —

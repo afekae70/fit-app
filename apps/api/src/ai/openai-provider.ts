@@ -31,7 +31,7 @@ export interface OpenAiProviderOptions {
 export class OpenAiProvider implements CoachProvider {
   readonly name = 'openai' as const;
   private readonly client: OpenAI;
-  private readonly model: string;
+  readonly model: string;
 
   constructor(options: OpenAiProviderOptions) {
     this.client = new OpenAI({ apiKey: options.apiKey });

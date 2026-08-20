@@ -163,7 +163,7 @@ export interface GeminiProviderOptions {
 export class GeminiProvider implements CoachProvider {
   readonly name = 'gemini' as const;
   private readonly client: GoogleGenAI;
-  private readonly model: string;
+  readonly model: string;
 
   constructor(options: GeminiProviderOptions) {
     this.client = new GoogleGenAI({ apiKey: options.apiKey });

@@ -51,7 +51,7 @@ const PLAN_EFFORT = 'high' as const;
 export class ClaudeProvider implements CoachProvider {
   readonly name = 'claude' as const;
   private readonly client: Anthropic;
-  private readonly model: string;
+  readonly model: string;
 
   constructor(options: ClaudeProviderOptions) {
     this.client = new Anthropic({ apiKey: options.apiKey });

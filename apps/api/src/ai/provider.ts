@@ -46,6 +46,14 @@ export interface CoachContext {
 }
 
 export interface CoachProvider {
+  /**
+   * Which model this provider was configured with.
+   *
+   * Reported by `/health` so a misconfiguration is readable from outside the server. Chasing a
+   * 404 from Google cost several rounds of asking someone to read an environment variable back
+   * to me, when the process itself knew the answer the whole time.
+   */
+  readonly model: string;
   readonly name: 'claude' | 'openai' | 'gemini';
 
   /** Stream the assistant's reply token-by-token, plus any plan/menu it proposes mid-turn. */
