@@ -46,8 +46,15 @@ export interface ExercisePanelProps {
   onToggle: (setIndex: number) => void;
   onAddSet: () => void;
   onRemoveSet?: (setIndex: number) => void;
-  /** Long-press the exercise name. */
-  onRemoveExercise?: () => void;
+  /**
+   * Open this exercise's menu — swap it for another, or take it out.
+   *
+   * Removing used to be a long press on the name, undiscoverable but harmless. It stopped being
+   * harmless once a long press also picks the card up to drag it: the same gesture would lift
+   * the card and then offer to delete what was in the air. One visible button owns both actions
+   * now, and the long press means exactly one thing.
+   */
+  onOptions?: () => void;
   /**
    * Grab handle for dragging the whole card, sets included, to another place in the session.
    *
@@ -68,7 +75,7 @@ export function ExercisePanel({
   onToggle,
   onAddSet,
   onRemoveSet,
-  onRemoveExercise,
+  onOptions,
   dragHandle,
 }: ExercisePanelProps) {
   const { t } = useTranslation();
@@ -84,11 +91,7 @@ export function ExercisePanel({
     <View style={s.card}>
       <View style={s.header}>
         <View style={s.headerText}>
-          {/* Same reasoning as the set number: the card the handoff drew has no remove control,
-              and the capability predates the card. */}
-          <Pressable onLongPress={onRemoveExercise} disabled={!onRemoveExercise}>
-            <Text style={s.name}>{name}</Text>
-          </Pressable>
+          <Text style={s.name}>{name}</Text>
           {previousLabel ? (
             <Text style={s.previous} numberOfLines={1}>
               {t('workout.lastTime')}: {previousLabel}
@@ -103,6 +106,18 @@ export function ExercisePanel({
           <View style={s.targetPill}>
             <Text style={s.targetText}>{targetLabel}</Text>
           </View>
+        ) : null}
+
+        {onOptions ? (
+          <Pressable
+            onPress={onOptions}
+            accessibilityRole="button"
+            accessibilityLabel={t('workout.exerciseOptions')}
+            hitSlop={6}
+            style={({ pressed }) => [s.options, pressed && s.pressed]}
+          >
+            <Text style={s.optionsGlyph}>⋯</Text>
+          </Pressable>
         ) : null}
 
         {/* In the header rather than beside the sets: this moves the whole exercise, and sitting
@@ -210,6 +225,8 @@ const createStyles = (colors: ColorPalette) =>
     previous: TextStyle;
     targetPill: ViewStyle;
     targetText: TextStyle;
+    options: ViewStyle;
+    optionsGlyph: TextStyle;
     handle: ViewStyle;
     handleActive: ViewStyle;
     handleGlyph: TextStyle;
@@ -247,6 +264,8 @@ const createStyles = (colors: ColorPalette) =>
       borderColor: colors.accentBorder,
     },
     targetText: { color: colors.accent, fontSize: 11 },
+    options: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+    optionsGlyph: { color: colors.textSecondary, fontSize: 20, lineHeight: 22 },
     // A full 44pt target. The grip is small, but the area that answers to a thumb is not —
     // a handle you have to aim at is a handle that loses the drag before it starts.
     handle: {

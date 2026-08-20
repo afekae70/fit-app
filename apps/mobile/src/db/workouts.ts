@@ -311,6 +311,116 @@ export async function reorderSessionExercise(
   }
 }
 
+/**
+ * Change which exercise a slot in a live session refers to.
+ *
+ * The rack is taken, the machine is broken, the shoulder does not feel right today — swapping
+ * mid-workout is ordinary, and until now the only route was to remove the exercise and add
+ * another, which loses its place in the running order.
+ *
+ * What happens to the sets is the whole of the design here, because 100 kg for 5 means one
+ * thing under a bench press and something else entirely under a lateral raise.
+ *
+ * **Nothing ticked off yet** — the slot is re-pointed in place, keeping its position. Every set
+ * is blanked, because those numbers were prefilled from the *previous* exercise's history and
+ * carrying them across would suggest a load nobody chose and, worse, one the user might load
+ * onto a bar without rereading.
+ *
+ * **Something already ticked off** — completed sets stay attached to the exercise they were
+ * actually performed on, and the new exercise is inserted directly after with the sets that
+ * had not been done. Relabelling finished work would put real training under the wrong lift in
+ * the history, in the progression charts, and in what the coach reasons about; there is no
+ * version of that which is worth the convenience. The workout ends up reading the way it
+ * actually happened: two sets of bench, then the rest on dumbbells.
+ *
+ * Returns the id of the row that now carries `newExerciseKey`, which differs from the one
+ * passed in exactly when the split path was taken.
+ */
+export async function swapSessionExercise(
+  db: SqlExecutor,
+  newId: IdFactory,
+  sessionExerciseId: string,
+  newExerciseKey: string,
+  clock: Clock = defaultClock,
+): Promise<string> {
+  const exercise = await db.get<{ id: string; session_id: string; exercise_key: string }>(
+    `SELECT id, session_id, exercise_key FROM session_exercises
+      WHERE id = ? AND deleted_at IS NULL`,
+    [sessionExerciseId],
+  );
+  if (!exercise) return sessionExerciseId;
+  if (exercise.exercise_key === newExerciseKey) return sessionExerciseId;
+
+  const sets = await db.all<{ id: string; done_at: string | null }>(
+    `SELECT id, done_at FROM sets
+      WHERE session_exercise_id = ? AND deleted_at IS NULL ORDER BY set_index`,
+    [sessionExerciseId],
+  );
+  const done = sets.filter((set) => set.done_at !== null);
+  const pending = sets.filter((set) => set.done_at === null);
+  const at = clock();
+
+  if (done.length === 0) {
+    await db.run(`UPDATE session_exercises SET exercise_key = ?, updated_at = ? WHERE id = ?`, [
+      newExerciseKey,
+      at,
+      sessionExerciseId,
+    ]);
+    // Blanked, not deleted: the number of sets is the shape of what was planned, and that is
+    // usually still what the user wants from the replacement.
+    await db.run(
+      `UPDATE sets SET weight_kg = NULL, reps = NULL, updated_at = ?
+        WHERE session_exercise_id = ? AND deleted_at IS NULL`,
+      [at, sessionExerciseId],
+    );
+    await enqueue(
+      db,
+      'session_exercise',
+      sessionExerciseId,
+      'update',
+      { exerciseKey: newExerciseKey },
+      clock,
+    );
+    return sessionExerciseId;
+  }
+
+  const order = await db.all<{ id: string }>(
+    `SELECT id FROM session_exercises WHERE session_id = ? AND deleted_at IS NULL ORDER BY order_index`,
+    [exercise.session_id],
+  );
+  const position = order.findIndex((row) => row.id === sessionExerciseId);
+
+  const replacementId = await addExerciseToSession(
+    db,
+    newId,
+    exercise.session_id,
+    newExerciseKey,
+    clock,
+  );
+  // Appended at the end by `addExerciseToSession`; the swap only makes sense directly beneath
+  // the work it continues from.
+  if (position >= 0) {
+    await reorderSessionExercise(db, exercise.session_id, replacementId, position + 1, clock);
+  }
+
+  for (const set of pending) {
+    await db.run(
+      `UPDATE sets SET deleted_at = ?, updated_at = ?, set_index = -rowid WHERE id = ?`,
+      [at, at, set.id],
+    );
+    await enqueue(db, 'set', set.id, 'delete', undefined, clock);
+  }
+  await renumberSets(db, sessionExerciseId);
+
+  // At least one, even when every set was already ticked: an exercise with no sets is never
+  // what someone swapping to it wanted, and it matches what adding an exercise does.
+  for (let i = 0; i < Math.max(1, pending.length); i++) {
+    await addSet(db, newId, replacementId, {}, clock);
+  }
+
+  return replacementId;
+}
+
 export async function removeExerciseFromSession(
   db: SqlExecutor,
   sessionExerciseId: string,

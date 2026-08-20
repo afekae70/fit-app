@@ -23,10 +23,12 @@ import {
   listRecentExerciseKeys,
   listSessionExercises,
   listSets,
+  markSetDone,
   removeExerciseFromSession,
   removeSet,
   reorderSessionExercise,
   startSession,
+  swapSessionExercise,
   updateSet,
 } from './workouts.js';
 
@@ -638,5 +640,118 @@ describe('reordering exercises inside a live session', () => {
     const rows = await listSessionExercises(db, otherSession);
     expect(rows.map((r) => r.id)).toEqual([otherFirst, rows[1]!.id]);
     expect(rows.map((r) => r.order_index)).toEqual([1, 2]);
+  });
+});
+
+describe('swapping an exercise mid-workout', () => {
+  async function seed() {
+    const sessionId = await startSession(db, USER, newId, {}, clock);
+    const press = await addExerciseToSession(db, newId, sessionId, 'Barbell Bench Press', clock);
+    const row = await addExerciseToSession(db, newId, sessionId, 'Barbell Row', clock);
+    return { sessionId, press, row };
+  }
+
+  const keys = async (sessionId: string) =>
+    (await listSessionExercises(db, sessionId)).map((e) => e.exercise_key);
+
+  it('re-points the slot in place when nothing has been ticked off', async () => {
+    const { sessionId, press } = await seed();
+    await addSet(db, newId, press, { weightKg: 100, reps: 5 }, clock);
+
+    const result = await swapSessionExercise(db, newId, press, 'Dumbbell Bench Press', clock);
+
+    expect(result).toBe(press);
+    expect(await keys(sessionId)).toEqual(['Dumbbell Bench Press', 'Barbell Row']);
+  });
+
+  it('blanks the numbers the previous exercise had left behind', async () => {
+    // The dangerous case: 100 kg prefilled from a bench press, still sitting there under a
+    // lateral raise, ready to be loaded onto a bar by someone who did not reread it.
+    const { press } = await seed();
+    await addSet(db, newId, press, { weightKg: 100, reps: 5 }, clock);
+
+    await swapSessionExercise(db, newId, press, 'Dumbbell Lateral Raise', clock);
+
+    const sets = await listSets(db, press);
+    expect(sets).toHaveLength(1);
+    expect(sets[0]?.weight_kg).toBeNull();
+    expect(sets[0]?.reps).toBeNull();
+  });
+
+  it('leaves completed work attached to the exercise it was performed on', async () => {
+    const { sessionId, press } = await seed();
+    const first = await addSet(db, newId, press, { weightKg: 100, reps: 5 }, clock);
+    await addSet(db, newId, press, { weightKg: 100, reps: 5 }, clock);
+    await markSetDone(db, first, true, clock);
+
+    const result = await swapSessionExercise(db, newId, press, 'Dumbbell Bench Press', clock);
+
+    // The original keeps its name and its finished set; the replacement lands right after it.
+    expect(result).not.toBe(press);
+    expect(await keys(sessionId)).toEqual([
+      'Barbell Bench Press',
+      'Dumbbell Bench Press',
+      'Barbell Row',
+    ]);
+
+    const kept = await listSets(db, press);
+    expect(kept).toHaveLength(1);
+    expect(kept[0]?.id).toBe(first);
+    expect(kept[0]?.weight_kg).toBe(100);
+  });
+
+  it('carries the untouched sets over as blanks, and only those', async () => {
+    const { press } = await seed();
+    const first = await addSet(db, newId, press, { weightKg: 100, reps: 5 }, clock);
+    await addSet(db, newId, press, { weightKg: 100, reps: 5 }, clock);
+    await addSet(db, newId, press, { weightKg: 100, reps: 5 }, clock);
+    await markSetDone(db, first, true, clock);
+
+    const replacement = await swapSessionExercise(db, newId, press, 'Dumbbell Bench Press', clock);
+
+    const moved = await listSets(db, replacement);
+    expect(moved).toHaveLength(2);
+    expect(moved.every((set) => set.weight_kg === null && set.reps === null)).toBe(true);
+  });
+
+  it('still gives the replacement a set when every set was already done', async () => {
+    const { press } = await seed();
+    const only = await addSet(db, newId, press, { weightKg: 100, reps: 5 }, clock);
+    await markSetDone(db, only, true, clock);
+
+    const replacement = await swapSessionExercise(db, newId, press, 'Dumbbell Bench Press', clock);
+
+    // An exercise with no sets is never what someone swapping to it wanted.
+    expect(await listSets(db, replacement)).toHaveLength(1);
+  });
+
+  it('renumbers what is left after the untouched sets are taken away', async () => {
+    // Set 1 untouched, set 2 done: removing the first would otherwise leave a lone set_index 2.
+    const { press } = await seed();
+    await addSet(db, newId, press, { weightKg: 100, reps: 5 }, clock);
+    const second = await addSet(db, newId, press, { weightKg: 100, reps: 5 }, clock);
+    await markSetDone(db, second, true, clock);
+
+    await swapSessionExercise(db, newId, press, 'Dumbbell Bench Press', clock);
+
+    expect((await listSets(db, press)).map((s) => s.set_index)).toEqual([1]);
+  });
+
+  it('leaves the session alone when the exercise is already the one asked for', async () => {
+    const { sessionId, press } = await seed();
+    await addSet(db, newId, press, { weightKg: 100, reps: 5 }, clock);
+
+    const result = await swapSessionExercise(db, newId, press, 'Barbell Bench Press', clock);
+
+    expect(result).toBe(press);
+    expect(await keys(sessionId)).toEqual(['Barbell Bench Press', 'Barbell Row']);
+    // Not blanked — nothing was swapped, so nothing should have been thrown away.
+    expect((await listSets(db, press))[0]?.weight_kg).toBe(100);
+  });
+
+  it('does nothing for an exercise that is not there', async () => {
+    const { sessionId } = await seed();
+    await swapSessionExercise(db, newId, 'not-a-real-id', 'Deadlift', clock);
+    expect(await keys(sessionId)).toEqual(['Barbell Bench Press', 'Barbell Row']);
   });
 });

@@ -180,6 +180,8 @@ export const he = {
     restAllDone: 'סיימת הכול',
     longPressDelete: 'לחיצה ארוכה למחיקה',
     dragExercise: 'גרור כדי לשנות את סדר התרגיל',
+    swapExercise: 'החלף תרגיל',
+    exerciseOptions: 'אפשרויות לתרגיל',
     removeExercise: 'הסר תרגיל',
     lastTime: 'פעם קודמת',
     noHistory: 'אין היסטוריה',

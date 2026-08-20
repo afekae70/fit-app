@@ -57,6 +57,7 @@ import {
   renameSession,
   repeatSession,
   startSession,
+  swapSessionExercise,
   updateSet,
   type SessionExerciseWithSets,
   type SessionSummaryRow,
@@ -86,7 +87,11 @@ export default function WorkoutsScreen() {
   const isHebrew = i18n.language === 'he';
   const insets = useSafeAreaInsets();
   const userId = useCurrentUserId();
-  const params = useLocalSearchParams<{ addExercise?: string; sessionId?: string }>();
+  const params = useLocalSearchParams<{
+    addExercise?: string;
+    sessionId?: string;
+    swapExerciseId?: string;
+  }>();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -221,23 +226,38 @@ export default function WorkoutsScreen() {
   }, [reload, reloadHome]);
 
 
-  // The picker navigates back with an exercise name in params. The ref guards against the
-  // effect re-firing on an unrelated re-render and adding the same exercise twice.
+  /*
+   * The picker navigates back with an exercise name in params, and possibly the id of an
+   * exercise to replace.
+   *
+   * The ref guards against the effect re-firing on an unrelated re-render and acting twice. It
+   * keys on the id as well as the name, because swapping an exercise for one already used
+   * elsewhere in the session is ordinary, and a name-only guard would silently ignore it.
+   */
   const handledParam = useRef<string | null>(null);
   useEffect(() => {
     const key = params.addExercise;
-    if (!key || !sessionId || handledParam.current === key) return;
-    handledParam.current = key;
+    const swapId = params.swapExerciseId || null;
+    if (!key || !sessionId) return;
+
+    const token = `${swapId ?? 'add'}:${key}`;
+    if (handledParam.current === token) return;
+    handledParam.current = token;
+
     void (async () => {
       const db = await getExecutor();
-      const exerciseId = await addExerciseToSession(db, newId, sessionId, key);
-      // Seed one blank set: an exercise with zero sets is never what the user wanted, and it
-      // saves a tap on the overwhelmingly common path.
-      await addSetCopyingPrevious(db, newId, exerciseId);
+      if (swapId) {
+        await swapSessionExercise(db, newId, swapId, key);
+      } else {
+        const exerciseId = await addExerciseToSession(db, newId, sessionId, key);
+        // Seed one blank set: an exercise with zero sets is never what the user wanted, and it
+        // saves a tap on the overwhelmingly common path.
+        await addSetCopyingPrevious(db, newId, exerciseId);
+      }
       await reload(sessionId);
-      router.setParams({ addExercise: '' });
+      router.setParams({ addExercise: '', swapExerciseId: '' });
     })();
-  }, [params.addExercise, sessionId, reload]);
+  }, [params.addExercise, params.swapExerciseId, sessionId, reload]);
 
   const begin = async () => {
     const db = await getExecutor();
@@ -472,6 +492,35 @@ export default function WorkoutsScreen() {
     [sessionId, reload, t],
   );
 
+  /**
+   * The exercise menu: swap it out, or take it out.
+   *
+   * Both live behind one button because they answer the same question — this exercise is not
+   * what is happening — differently. Swapping leads: it is the one that keeps the work, and the
+   * one someone mid-workout is far more likely to want.
+   */
+  const openExerciseOptions = useCallback(
+    (sessionExerciseId: string, exerciseLabel: string) => {
+      Alert.alert(exerciseLabel, undefined, [
+        {
+          text: t('workout.swapExercise'),
+          onPress: () =>
+            router.push({
+              pathname: '/exercise-picker',
+              params: { sessionId, swapExerciseId: sessionExerciseId },
+            }),
+        },
+        {
+          text: t('workout.removeExercise'),
+          style: 'destructive',
+          onPress: () => dropExercise(sessionExerciseId),
+        },
+        { text: t('common.cancel'), style: 'cancel' },
+      ]);
+    },
+    [sessionId, t, dropExercise],
+  );
+
   const totals = useMemo(() => {
     let sets = 0;
     let volume = 0;
@@ -643,7 +692,7 @@ export default function WorkoutsScreen() {
                     const set = exercise.sets[i];
                     if (set) deleteSet(set.id);
                   }}
-                  onRemoveExercise={() => dropExercise(exercise.id)}
+                  onOptions={() => openExerciseOptions(exercise.id, seed.nameHe)}
                   dragHandle={dragHandle}
                 />
               );

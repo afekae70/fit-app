@@ -48,6 +48,7 @@ export default function ExercisePickerScreen() {
     sessionId?: string;
     returnTo?: string;
     planDayId?: string;
+    swapExerciseId?: string;
   }>();
   const isHebrew = i18n.language === 'he';
   const userId = useCurrentUserId();
@@ -130,6 +131,9 @@ export default function ExercisePickerScreen() {
         sessionId: params.sessionId ?? '',
         planDayId: params.planDayId ?? '',
         addExercise: exercise.nameEn,
+        // Passed straight back through. When set, the caller replaces that exercise rather
+        // than appending — the picker itself stays a list of names and decides nothing.
+        swapExerciseId: params.swapExerciseId ?? '',
       },
     };
 
