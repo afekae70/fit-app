@@ -385,6 +385,55 @@ interface PullOutcome {
   earliestDeferred: string | null;
 }
 
+/**
+ * Does this error mean a row landed on a slot another row still holds?
+ *
+ * Matched on the message because that is all SQLite offers through expo-sqlite, which wraps the
+ * driver error in one of its own. Narrow on purpose: any other failure must keep propagating.
+ */
+function isUniqueConflict(error: unknown): boolean {
+  return /UNIQUE constraint failed/i.test(error instanceof Error ? error.message : String(error));
+}
+
+/**
+ * Move whatever is sitting in this incoming row's slot out of the way.
+ *
+ * The mirror of the problem the push solves by parking: a reorder arrives as a permutation, the
+ * rows are written one at a time, and the first to land wants a position its neighbour has not
+ * given up yet. `UNIQUE (parent, index)` refuses it, and the whole sync run dies on it — which
+ * on a real phone showed up as `UNIQUE constraint failed: plan_days.plan_id, plan_days.day_index`.
+ *
+ * `-rowid` is the same sentinel a soft delete uses: negative, so it cannot collide with any real
+ * position, and unique because rowid is.
+ *
+ * Only ever applied to a row the server is about to overwrite anyway — that is what `batchIds`
+ * checks. Parking a row that is not in this batch would strand it at a negative index with
+ * nothing coming to correct it.
+ */
+async function parkClashingRow(
+  db: SqlExecutor,
+  table: SyncTable,
+  row: Row,
+  batchIds: ReadonlySet<string>,
+): Promise<boolean> {
+  if (table.scope.kind !== 'parent') return false;
+
+  const parent = table.scope.column;
+  let parked = false;
+
+  for (const column of table.indexColumns ?? []) {
+    const clash = await db.get<{ id: string }>(
+      `SELECT id FROM ${table.table} WHERE ${parent} = ? AND ${column} = ? AND id <> ?`,
+      [row[parent], row[column], row.id],
+    );
+    if (!clash || !batchIds.has(clash.id)) continue;
+    await db.run(`UPDATE ${table.table} SET ${column} = -rowid WHERE id = ?`, [clash.id]);
+    parked = true;
+  }
+
+  return parked;
+}
+
 async function pull(
   db: SqlExecutor,
   transport: SyncTransport,
@@ -401,6 +450,10 @@ async function pull(
       const remote = await transport.changedSince(table.table, cursor, BATCH);
       if (remote.length === 0) break;
 
+      // Every id arriving together. Only these may be parked out of the way, since only these
+      // are certain to be rewritten before the batch is done.
+      const batchIds = new Set(remote.map((raw) => String(raw.id)));
+
       for (const raw of remote) {
         const row = fromRemote(table, raw);
         const stamp = typeof row.updated_at === 'string' ? row.updated_at : null;
@@ -409,7 +462,18 @@ async function pull(
           // Counted only when something was actually written. The cursor is rewound a second on
           // every run, so each run re-reads a few rows it already has; reporting those as pulled
           // would mean the UI never shows a quiet sync as quiet.
-          if (await upsertLocal(db, table, row, localStamp)) outcome.pulled += 1;
+          let written: boolean;
+          try {
+            written = await upsertLocal(db, table, row, localStamp);
+          } catch (error) {
+            // Retried once, and only after something was actually moved. Retrying a conflict
+            // nothing gave way to would just fail again, one row at a time, for ever.
+            if (!isUniqueConflict(error) || !(await parkClashingRow(db, table, row, batchIds))) {
+              throw error;
+            }
+            written = await upsertLocal(db, table, row, localStamp);
+          }
+          if (written) outcome.pulled += 1;
           outcome.maxSeen = laterOf(outcome.maxSeen, stamp);
         } else {
           // The parent could not be found even by id — deleted outright, or hidden by RLS.

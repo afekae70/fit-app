@@ -890,3 +890,74 @@ describe('reordering, which permutes a unique index', () => {
     expect(server.rows('plan_day_exercises')[0]?.order_index).toBe(1);
   });
 });
+
+describe('pulling a reorder into a unique index', () => {
+  /*
+   * The mirror of the push problem, and the error the phone reached once the push was fixed:
+   *
+   *   UNIQUE constraint failed: plan_days.plan_id, plan_days.day_index
+   *
+   * Incoming rows are written one at a time, so a permutation means the first to land wants a
+   * position its neighbour has not given up yet. SQLite refuses it and the run dies — leaving
+   * the push permanently ahead of the pull.
+   */
+  const PLAN = 'dddddddd-0000-4000-8000-00000000000a';
+  const DAY_A = 'eeeeeeee-0000-4000-8000-00000000000a';
+  const DAY_B = 'eeeeeeee-0000-4000-8000-00000000000b';
+
+  async function seedLocalPlan(at: string) {
+    await db.run(
+      `INSERT INTO plans (id, user_id, name, is_active, created_at, updated_at)
+         VALUES (?, ?, 'PPL', 1, ?, ?)`,
+      [PLAN, USER, at, at],
+    );
+    for (const [id, index, name] of [
+      [DAY_A, 1, 'Push'],
+      [DAY_B, 2, 'Pull'],
+    ] as const) {
+      await db.run(
+        `INSERT INTO plan_days (id, plan_id, day_index, name, updated_at) VALUES (?, ?, ?, ?, ?)`,
+        [id, PLAN, index, name, at],
+      );
+    }
+  }
+
+  it('accepts a swap made on another device', async () => {
+    const at = '2026-02-01T10:00:00.000Z';
+    await seedLocalPlan(at);
+    const server = createFakeServer();
+    await runSync(db, server, USER, localClock('2026-02-01T11:00:00.000Z'));
+
+    // The other phone swapped them. The server holds the finished arrangement; this device
+    // still has the old one, and both rows arrive in the same batch.
+    server.seed('plan_days', { id: DAY_A, plan_id: PLAN, day_index: 2, name: 'Push', deleted_at: null });
+    server.seed('plan_days', { id: DAY_B, plan_id: PLAN, day_index: 1, name: 'Pull', deleted_at: null });
+
+    await runSync(db, server, USER, localClock('2026-02-01T13:00:00.000Z'));
+
+    const local = await db.all<{ id: string; day_index: number }>(
+      `SELECT id, day_index FROM plan_days WHERE plan_id = ? ORDER BY day_index`,
+      [PLAN],
+    );
+    expect(local.map((row) => row.id)).toEqual([DAY_B, DAY_A]);
+    expect(local.map((row) => row.day_index)).toEqual([1, 2]);
+  });
+
+  it('leaves no row stranded at a negative index', async () => {
+    // Parking uses the same -rowid sentinel a soft delete does. A live row left sitting on one
+    // would sort ahead of everything and read as the plan having reordered itself.
+    const at = '2026-02-01T10:00:00.000Z';
+    await seedLocalPlan(at);
+    const server = createFakeServer();
+    await runSync(db, server, USER, localClock('2026-02-01T11:00:00.000Z'));
+
+    server.seed('plan_days', { id: DAY_A, plan_id: PLAN, day_index: 2, name: 'Push', deleted_at: null });
+    server.seed('plan_days', { id: DAY_B, plan_id: PLAN, day_index: 1, name: 'Pull', deleted_at: null });
+    await runSync(db, server, USER, localClock('2026-02-01T13:00:00.000Z'));
+
+    const parked = await db.all<{ id: string }>(
+      `SELECT id FROM plan_days WHERE day_index < 1 AND deleted_at IS NULL`,
+    );
+    expect(parked).toEqual([]);
+  });
+});
