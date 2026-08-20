@@ -75,6 +75,12 @@ export function SyncProvider({ userId, children }: { userId: string; children: R
     try {
       const db = await getExecutor();
       const result = await runSync(db, createSupabaseTransport(client), userId);
+      // Logged alongside the failures, because silence is ambiguous: a sync that never ran and
+      // one that ran and moved nothing look identical from outside, and telling them apart is
+      // most of diagnosing "it still is not working".
+      console.log(
+        `[sync] ok: pushed=${result.pushed} pulled=${result.pulled} deferred=${result.deferred}`,
+      );
       setStatus({ kind: 'idle', lastSyncedAt: result.syncedAt });
       return result;
     } catch (error) {
