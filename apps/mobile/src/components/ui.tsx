@@ -708,10 +708,18 @@ const createStyles = (colors: ColorPalette) =>
     },
     cardAccent: { borderColor: colors.accentBorder, backgroundColor: colors.accentSoft },
 
+    /*
+     * 24 in medium, matching the date that heads the home screen.
+     *
+     * It was 30 in bold — six points larger and two weights heavier than the title on the one
+     * screen that went through a full design pass. That difference sits at the top of every
+     * other screen, which makes it the first thing seen after each navigation and the most
+     * expensive place in the app for the two generations to disagree.
+     */
     screenTitle: {
       color: colors.text,
-      fontSize: fontSize.xxl,
-      fontWeight: fontWeight.bold,
+      fontSize: 24,
+      fontWeight: fontWeight.medium,
       letterSpacing: -0.5,
       marginBottom: spacing.lg,
       textAlign: 'auto',
