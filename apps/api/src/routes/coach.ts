@@ -59,7 +59,23 @@ function providerErrorCode(error: unknown): string {
       ? (/\b[A-Z][A-Z_]{4,}\b/.exec(source.message)?.[0] ?? null)
       : null;
 
-  return [status, name, type, enumToken].filter(Boolean).join(' ') || 'unknown';
+  /*
+   * On a 404, the provider's own sentence as well.
+   *
+   * Widened deliberately and only here. A 404 from Google is a fixed-form statement about which
+   * model and method it could not find — it quotes nothing from the request — and it is the one
+   * message that says *what* was missing. Every other status keeps to the enumerations above,
+   * where a message could carry back something the user typed.
+   *
+   * Truncated, because a log line nobody can read to the end is the problem this is solving:
+   * the server log had this all along and the console cut it off mid-sentence.
+   */
+  const detail =
+    status === '404' && typeof source.message === 'string'
+      ? source.message.replace(/\s+/g, ' ').slice(0, 160)
+      : null;
+
+  return [status, name, type, enumToken, detail].filter(Boolean).join(' ') || 'unknown';
 }
 
 export default async function coachRoutes(app: FastifyInstance): Promise<void> {
