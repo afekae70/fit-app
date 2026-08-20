@@ -81,8 +81,27 @@ export function SyncProvider({ userId, children }: { userId: string; children: R
       // A failed sync is genuinely routine — a tunnel, a dead hotspot, an expired token being
       // refreshed. It is reported and forgotten; nothing local was lost, and the cursor did not
       // move, so the next attempt picks up exactly where this one stopped.
+      const offline = looksOffline(error);
+      if (!offline) {
+        /*
+         * Logged, not just shown.
+         *
+         * `SyncTransportError` is documented as carrying enough detail to be actionable in a
+         * log, and until now nothing wrote it to one — the table, the operation, the Postgres
+         * code and the row id all existed and then went only to a single line of status text on
+         * a settings card. Diagnosing a failed sync meant asking the user to read their screen
+         * out. An offline failure stays quiet; it is routine and says nothing.
+         */
+        const detail = error as { code?: string; details?: string | null; table?: string };
+        console.warn(
+          '[sync] failed:',
+          messageOf(error),
+          detail.code ? `code=${detail.code}` : '',
+          detail.details ? `details=${detail.details}` : '',
+        );
+      }
       setStatus(
-        looksOffline(error)
+        offline
           ? { kind: 'offline', lastSyncedAt: previous }
           : { kind: 'error', message: messageOf(error), lastSyncedAt: previous },
       );
