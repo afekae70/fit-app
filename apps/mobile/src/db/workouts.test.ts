@@ -21,9 +21,11 @@ import {
   getSessionDetail,
   getWorkoutStreak,
   listRecentExerciseKeys,
+  listSessionExercises,
   listSets,
   removeExerciseFromSession,
   removeSet,
+  reorderSessionExercise,
   startSession,
   updateSet,
 } from './workouts.js';
@@ -545,5 +547,96 @@ describe('getWorkoutStreak', () => {
       currentDays: 0,
       trainedToday: false,
     });
+  });
+});
+
+describe('reordering exercises inside a live session', () => {
+  async function seed() {
+    const sessionId = await startSession(db, USER, newId, {}, clock);
+    const press = await addExerciseToSession(db, newId, sessionId, 'Barbell Bench Press', clock);
+    const row = await addExerciseToSession(db, newId, sessionId, 'Barbell Row', clock);
+    const curl = await addExerciseToSession(db, newId, sessionId, 'Machine Bicep Curl', clock);
+    return { sessionId, press, row, curl };
+  }
+
+  const order = async (sessionId: string) =>
+    (await listSessionExercises(db, sessionId)).map((e) => e.exercise_key);
+
+  it('sends the first exercise to the end', async () => {
+    // The reported case: a lift is written first and the rack is busy, so it moves to last.
+    const { sessionId, press } = await seed();
+    await reorderSessionExercise(db, sessionId, press, 2, clock);
+    expect(await order(sessionId)).toEqual([
+      'Barbell Row',
+      'Machine Bicep Curl',
+      'Barbell Bench Press',
+    ]);
+  });
+
+  it('brings the last exercise to the front', async () => {
+    const { sessionId, curl } = await seed();
+    await reorderSessionExercise(db, sessionId, curl, 0, clock);
+    expect(await order(sessionId)).toEqual([
+      'Machine Bicep Curl',
+      'Barbell Bench Press',
+      'Barbell Row',
+    ]);
+  });
+
+  it('leaves order_index contiguous and 1-based afterwards', async () => {
+    // UNIQUE (session_id, order_index) is what forces the two-pass PARK rewrite; a gap or a
+    // duplicate here means the second pass did not run to completion.
+    const { sessionId, press } = await seed();
+    await reorderSessionExercise(db, sessionId, press, 2, clock);
+
+    const rows = await listSessionExercises(db, sessionId);
+    expect(rows.map((r) => r.order_index)).toEqual([1, 2, 3]);
+  });
+
+  it('closes the gap left by a removed exercise', async () => {
+    const { sessionId, press, row, curl } = await seed();
+    await removeExerciseFromSession(db, row, clock);
+    await reorderSessionExercise(db, sessionId, curl, 0, clock);
+
+    const rows = await listSessionExercises(db, sessionId);
+    expect(rows.map((r) => r.order_index)).toEqual([1, 2]);
+    expect(rows.map((r) => r.id)).toEqual([curl, press]);
+  });
+
+  it('does nothing at either end, and nothing for an unknown id', async () => {
+    const { sessionId, press, curl } = await seed();
+    const before = await order(sessionId);
+
+    await reorderSessionExercise(db, sessionId, press, -1, clock);
+    await reorderSessionExercise(db, sessionId, curl, 99, clock);
+    await reorderSessionExercise(db, sessionId, 'not-a-real-id', 0, clock);
+
+    expect(await order(sessionId)).toEqual(before);
+  });
+
+  it('keeps each exercise’s sets attached to it', async () => {
+    // The failure that would matter most: sets following position rather than parent would
+    // silently reassign logged work to the wrong lift.
+    const { sessionId, press, curl } = await seed();
+    await addSet(db, newId, press, { weightKg: 100, reps: 5 }, clock);
+    await addSet(db, newId, curl, { weightKg: 20, reps: 12 }, clock);
+
+    await reorderSessionExercise(db, sessionId, press, 2, clock);
+
+    expect((await listSets(db, press)).map((s) => s.weight_kg)).toEqual([100]);
+    expect((await listSets(db, curl)).map((s) => s.weight_kg)).toEqual([20]);
+  });
+
+  it('does not disturb another session', async () => {
+    const { sessionId, press } = await seed();
+    const otherSession = await startSession(db, 'user-2', newId, {}, clock);
+    const otherFirst = await addExerciseToSession(db, newId, otherSession, 'Deadlift', clock);
+    await addExerciseToSession(db, newId, otherSession, 'Pull Up', clock);
+
+    await reorderSessionExercise(db, sessionId, press, 2, clock);
+
+    const rows = await listSessionExercises(db, otherSession);
+    expect(rows.map((r) => r.id)).toEqual([otherFirst, rows[1]!.id]);
+    expect(rows.map((r) => r.order_index)).toEqual([1, 2]);
   });
 });

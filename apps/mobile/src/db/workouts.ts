@@ -249,6 +249,68 @@ export async function listSessionExercises(
   );
 }
 
+/**
+ * Move one exercise to a different position within a live session.
+ *
+ * The order a workout is written down is the order it gets done, and that decision is often
+ * made standing in front of a rack that someone else is using. Reordering the plan is not the
+ * same thing: the plan is what you intend to do every week, this is what you are doing now, and
+ * editing the plan to work around a busy squat rack would corrupt next week's template.
+ *
+ * Written through a `PARK` offset in two passes, exactly as `reorderPlanDay` is, because
+ * `UNIQUE (session_id, order_index)` rejects the direct swap — the intermediate state of a
+ * one-pass rewrite always collides with a row that has not moved yet.
+ *
+ * `toIndex` is 0-based over the surviving rows, while `order_index` is 1-based and may have
+ * gaps where exercises were removed; the rewrite closes those gaps as a side effect.
+ */
+export async function reorderSessionExercise(
+  db: SqlExecutor,
+  sessionId: string,
+  sessionExerciseId: string,
+  toIndex: number,
+  clock: Clock = defaultClock,
+): Promise<void> {
+  const rows = await db.all<{ id: string }>(
+    `SELECT id FROM session_exercises
+      WHERE session_id = ? AND deleted_at IS NULL
+      ORDER BY order_index`,
+    [sessionId],
+  );
+  const from = rows.findIndex((r) => r.id === sessionExerciseId);
+  if (from < 0) return;
+
+  const target = Math.max(0, Math.min(rows.length - 1, toIndex));
+  if (target === from) return;
+
+  const ordered = [...rows];
+  const [moved] = ordered.splice(from, 1);
+  if (!moved) return;
+  ordered.splice(target, 0, moved);
+
+  const at = clock();
+  const PARK = 100000;
+  for (const [offset, row] of ordered.entries()) {
+    await db.run(`UPDATE session_exercises SET order_index = ? WHERE id = ?`, [
+      PARK + offset,
+      row.id,
+    ]);
+  }
+  for (const [offset, row] of ordered.entries()) {
+    await db.run(`UPDATE session_exercises SET order_index = ?, updated_at = ? WHERE id = ?`, [
+      offset + 1,
+      at,
+      row.id,
+    ]);
+  }
+
+  // Every row's position may have shifted, not just the moved one, so the whole new order goes
+  // out. Enqueuing only the moved exercise would leave a syncing peer to infer the rest.
+  for (const [offset, row] of ordered.entries()) {
+    await enqueue(db, 'session_exercise', row.id, 'update', { orderIndex: offset + 1 }, clock);
+  }
+}
+
 export async function removeExerciseFromSession(
   db: SqlExecutor,
   sessionExerciseId: string,

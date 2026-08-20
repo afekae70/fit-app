@@ -22,7 +22,7 @@ const M_PER_YD = 0.9144;
 type Maybe = number | null | undefined;
 
 /**
- * One decimal everywhere.
+ * One decimal for anything you lift.
  *
  * Enough for the half-kilo and half-pound increments plates actually come in, and few enough
  * digits that a weight reads at a glance mid-set. Two decimals would render a round 100 kg as
@@ -32,12 +32,35 @@ function round1(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
+/**
+ * Two decimals for bodyweight, which is a different kind of number.
+ *
+ * A barbell is loaded in half-kilo steps, so hundredths there are noise. A body is measured,
+ * and the scale this app reads reports hundredths — rounding 74.18 to 74.2 throws away
+ * precision the device actually supplied. It also matters more: a cut moves roughly 0.5 kg a
+ * week, so a tenth is a meaningful share of a week's progress in a way it never is on a bar.
+ */
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
 /* -------------------------------------------------------------------------- */
 /* Weight                                                                      */
 /* -------------------------------------------------------------------------- */
 
 export function kgToDisplay(kg: number, unit: UnitPreference): number {
   return round1(unit === 'imperial' ? kg / KG_PER_LB : kg);
+}
+
+/**
+ * A bodyweight for display, keeping the hundredths a scale reports.
+ *
+ * Separate from `kgToDisplay` rather than a flag on it, so that every call site declares which
+ * kind of weight it is showing. A shared function with a default would quietly give set rows
+ * two decimals the first time someone forgot to pass it.
+ */
+export function bodyKgToDisplay(kg: number, unit: UnitPreference): number {
+  return round2(unit === 'imperial' ? kg / KG_PER_LB : kg);
 }
 
 /**
@@ -107,10 +130,21 @@ export function distanceUnitKey(unit: UnitPreference): 'meters' | 'yards' {
 /* Formatting                                                                  */
 /* -------------------------------------------------------------------------- */
 
-/** A weight for display, without a unit label — the caller appends the translated one. */
+/** A lifted weight for display, without a unit label — the caller appends the translated one. */
 export function formatWeight(kg: Maybe, unit: UnitPreference): string | null {
   if (kg === null || kg === undefined) return null;
   return String(kgToDisplay(kg, unit));
+}
+
+/**
+ * A bodyweight for display, to hundredths.
+ *
+ * Trailing zeros are trimmed by `String`, so a scale reading of exactly 74 shows as "74" rather
+ * than "74.00" — padding it would imply a precision the number does not claim on its own.
+ */
+export function formatBodyWeight(kg: Maybe, unit: UnitPreference): string | null {
+  if (kg === null || kg === undefined) return null;
+  return String(bodyKgToDisplay(kg, unit));
 }
 
 /**
@@ -137,8 +171,10 @@ export function isEditedWeight(
   storedKg: Maybe,
   typed: number | null,
   unit: UnitPreference,
+  kind: 'lift' | 'body' = 'lift',
 ): boolean {
+  const toDisplay = kind === 'body' ? bodyKgToDisplay : kgToDisplay;
   const rendered =
-    storedKg === null || storedKg === undefined ? null : kgToDisplay(storedKg, unit);
+    storedKg === null || storedKg === undefined ? null : toDisplay(storedKg, unit);
   return typed !== rendered;
 }

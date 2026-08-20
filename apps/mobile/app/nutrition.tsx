@@ -40,12 +40,12 @@ import { useAuth } from '../src/auth/AuthProvider.js';
 import { useCurrentUserId } from '../src/auth/CurrentUserProvider.js';
 import { useUnit } from '../src/UnitsProvider.js';
 import {
+  bodyKgToDisplay,
   cmToDisplay,
   displayHeightToCm,
   displayWeightToKg,
   heightUnitKey,
   isEditedWeight,
-  kgToDisplay,
   weightUnitKey,
 } from '../src/units.js';
 import { getDailyBrief } from '../src/coach/dailyBrief.js';
@@ -189,7 +189,7 @@ export default function NutritionScreen() {
       if (profile?.goal) setGoal(profile.goal as Goal);
       if (latest?.weight_kg) {
         setWeightKg(latest.weight_kg);
-        setWeightRaw(String(kgToDisplay(latest.weight_kg, unit)));
+        setWeightRaw(String(bodyKgToDisplay(latest.weight_kg, unit)));
       }
 
       setHydrated(true);
@@ -233,7 +233,7 @@ export default function NutritionScreen() {
   useEffect(() => {
     if (shownUnit.current === unit) return;
     shownUnit.current = unit;
-    setWeightRaw(weightKg === null ? '' : String(kgToDisplay(weightKg, unit)));
+    setWeightRaw(weightKg === null ? '' : String(bodyKgToDisplay(weightKg, unit)));
     setHeightRaw(heightCm === null ? '' : String(cmToDisplay(heightCm, unit)));
   }, [unit, weightKg, heightCm]);
 
@@ -359,7 +359,9 @@ export default function NutritionScreen() {
               // Compared in display units, not kilograms. In imperial a stored value does not
               // survive a display round-trip exactly, so a kilogram comparison would call an
               // untouched field an edit and log a duplicate weigh-in on every visit.
-              if (!isEditedWeight(latest?.weight_kg ?? null, typed, unit)) return;
+              // 'body': this field is prefilled from a scale reading in hundredths, so comparing at
+              // one decimal would call an untouched field edited and write a rounded value back.
+              if (!isEditedWeight(latest?.weight_kg ?? null, typed, unit, 'body')) return;
               await recordBodyMetric(db, userId, newId, {
                 weightKg: displayWeightToKg(typed, unit),
                 source: 'manual',

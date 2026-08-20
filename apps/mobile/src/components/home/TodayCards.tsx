@@ -29,7 +29,7 @@ import type { TargetsResult } from '../../db/metrics.js';
 import { useTheme } from '../../ThemeProvider.js';
 import { radius, type ColorPalette } from '../../theme.js';
 import { useUnit } from '../../UnitsProvider.js';
-import { kgToDisplay, weightUnitKey } from '../../units.js';
+import { formatBodyWeight, kgToDisplay, weightUnitKey } from '../../units.js';
 import { WeightSparkline } from '../WeightSparkline.js';
 
 /** Hebrew day initials, Sunday first — the order `Date#getDay` returns. */
@@ -284,7 +284,7 @@ export function WeightTrendCard({
         <Text style={s.streakTitle}>{t('metrics.trendTitle')}</Text>
         {latestKg === null ? null : (
           <Text style={s.bigValue}>
-            {kgToDisplay(latestKg, unit).toFixed(1)}
+            {formatBodyWeight(latestKg, unit)}
             <Text style={s.bigUnit}> {t(`common.${weightUnitKey(unit)}`)}</Text>
           </Text>
         )}

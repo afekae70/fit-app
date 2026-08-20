@@ -10,11 +10,13 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  bodyKgToDisplay,
   cmToDisplay,
   displayDistanceToMetres,
   displayHeightToCm,
   displayWeightToKg,
   distanceUnitKey,
+  formatBodyWeight,
   formatHeight,
   formatVolume,
   formatWeight,
@@ -133,5 +135,47 @@ describe('formatting', () => {
   it('passes null through', () => {
     expect(formatWeight(null, 'metric')).toBeNull();
     expect(formatVolume(null, 'metric')).toBeNull();
+  });
+});
+
+describe('bodyweight precision', () => {
+  it('keeps the hundredths a scale reports', () => {
+    // The scale this app reads broadcasts weight in hundredths of a kilogram. Rounding 74.18 to
+    // 74.2 for display would throw away precision the device actually supplied.
+    expect(bodyKgToDisplay(74.18, 'metric')).toBe(74.18);
+    expect(formatBodyWeight(74.18, 'metric')).toBe('74.18');
+  });
+
+  it('leaves lifted weights at one decimal', () => {
+    // Two decimals on a bar would render a round 100 kg as 220.46 lb, which reads as a
+    // measurement error rather than a conversion — and plates come in half-kilo steps anyway.
+    expect(kgToDisplay(74.18, 'metric')).toBe(74.2);
+    expect(kgToDisplay(100, 'imperial')).toBe(220.5);
+  });
+
+  it('does not pad a whole number with decimals it does not claim', () => {
+    expect(formatBodyWeight(74, 'metric')).toBe('74');
+    expect(formatBodyWeight(74.4, 'metric')).toBe('74.4');
+  });
+
+  it('converts to pounds at the same precision', () => {
+    expect(bodyKgToDisplay(74.18, 'imperial')).toBeCloseTo(163.54, 2);
+  });
+
+  it('still refuses to invent a number from nothing', () => {
+    expect(formatBodyWeight(null, 'metric')).toBeNull();
+    expect(formatBodyWeight(undefined, 'metric')).toBeNull();
+  });
+
+  it('treats an untouched hundredths field as unedited', () => {
+    // The regression this guards: comparing a 74.18 kg reading against a one-decimal render
+    // makes every visit to the screen look like an edit, writing 74.2 back over the real value
+    // and drifting the stored weight a little at a time.
+    expect(isEditedWeight(74.18, 74.18, 'metric', 'body')).toBe(false);
+    expect(isEditedWeight(74.18, 74.2, 'metric', 'body')).toBe(true);
+  });
+
+  it('defaults to lift precision when no kind is given', () => {
+    expect(isEditedWeight(74.18, 74.2, 'metric')).toBe(false);
   });
 });

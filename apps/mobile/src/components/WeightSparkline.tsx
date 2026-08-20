@@ -29,7 +29,7 @@ import {
 
 import { useTheme } from '../ThemeProvider.js';
 import { useUnit } from '../UnitsProvider.js';
-import { kgToDisplay, weightUnitKey } from '../units.js';
+import { formatBodyWeight, weightUnitKey } from '../units.js';
 import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../theme.js';
 import { Segmented } from './ui.js';
 
@@ -131,7 +131,7 @@ export function WeightSparkline({
         {scrubbed ? (
           <View style={[styles.tooltip, { left: `${tooltipLeftPct}%` }]} pointerEvents="none">
             <Text style={styles.tooltipWeight}>
-              {kgToDisplay(scrubbed.weightKg, unit).toFixed(1)}{' '}
+              {formatBodyWeight(scrubbed.weightKg, unit)}{' '}
               {t(`common.${weightUnitKey(unit)}`)}
             </Text>
             <Text style={styles.tooltipDate}>
@@ -162,11 +162,11 @@ export function WeightSparkline({
 
       <View style={styles.axis}>
         <Text style={styles.axisLabel}>
-          {kgToDisplay(min, unit).toFixed(1)} {t(`common.${weightUnitKey(unit)}`)}
+          {formatBodyWeight(min, unit)} {t(`common.${weightUnitKey(unit)}`)}
         </Text>
         <Text style={styles.axisCaption}>{t('metrics.movingAverage')}</Text>
         <Text style={styles.axisLabel}>
-          {kgToDisplay(max, unit).toFixed(1)} {t(`common.${weightUnitKey(unit)}`)}
+          {formatBodyWeight(max, unit)} {t(`common.${weightUnitKey(unit)}`)}
         </Text>
       </View>
     </View>

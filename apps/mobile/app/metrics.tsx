@@ -34,7 +34,7 @@ import { useCurrentUserId } from '../src/auth/CurrentUserProvider.js';
 import { useUnit } from '../src/UnitsProvider.js';
 import {
   displayWeightToKg,
-  formatWeight,
+  formatBodyWeight,
   kgToDisplay,
   weightUnitKey,
 } from '../src/units.js';
@@ -344,7 +344,7 @@ export default function MetricsScreen() {
         {latest ? (
           <Stat
             label={t('metrics.currentWeight')}
-            value={formatWeight(latest.weight_kg, unit) ?? '—'}
+            value={formatBodyWeight(latest.weight_kg, unit) ?? '—'}
             unit={weightUnit}
             emphasis
           />
@@ -423,7 +423,7 @@ export default function MetricsScreen() {
                   the label is the only thing standing between the two. */}
               <Stat
                 label={t('metrics.leanMass')}
-                value={formatWeight(composition.leanMassKg, unit) ?? '—'}
+                value={formatBodyWeight(composition.leanMassKg, unit) ?? '—'}
                 unit={weightUnit}
                 hint={t('metrics.leanMassHint')}
               />
@@ -541,7 +541,7 @@ export default function MetricsScreen() {
                 <View style={styles.historyRow}>
                   <View style={styles.historyMain}>
                     <Text style={styles.historyWeight}>
-                      {formatWeight(metric.weight_kg, unit)} {weightUnit}
+                      {formatBodyWeight(metric.weight_kg, unit)} {weightUnit}
                     </Text>
                     <Text style={styles.historyMeta}>
                       {new Date(metric.measured_at).toLocaleDateString()} ·{' '}

@@ -52,6 +52,7 @@ import {
   markSetDone,
   removeExerciseFromSession,
   removeSet,
+  reorderSessionExercise,
   renameSession,
   repeatSession,
   startSession,
@@ -395,6 +396,27 @@ export default function WorkoutsScreen() {
     [sessionId, reload, userId, isHebrew],
   );
 
+  /**
+   * Move an exercise one place up or down the running session.
+   *
+   * Reorders this workout only. The plan it came from is left alone on purpose: swapping two
+   * lifts because a rack is busy today should not rewrite what you intend to do every week.
+   */
+  const moveExercise = useCallback(
+    (sessionExerciseId: string, delta: -1 | 1) => {
+      if (!sessionId) return;
+      void hapticLight();
+      void (async () => {
+        const db = await getExecutor();
+        const from = exercises.findIndex((e) => e.id === sessionExerciseId);
+        if (from < 0) return;
+        await reorderSessionExercise(db, sessionId, sessionExerciseId, from + delta);
+        await reload(sessionId);
+      })();
+    },
+    [sessionId, exercises, reload],
+  );
+
   const dropExercise = useCallback(
     (sessionExerciseId: string) => {
       Alert.alert('', t('workout.confirmRemoveExercise'), [
@@ -522,7 +544,7 @@ export default function WorkoutsScreen() {
         {exercises.length === 0 ? (
           <EmptyState emoji="➕" title={t('workout.noExercises')} hint={t('workout.noExercisesHint')} />
         ) : (
-          exercises.map((exercise) => {
+          exercises.map((exercise, index) => {
             const seed = EXERCISE_BY_KEY.get(exercise.exercise_key);
             if (!seed) return null;
             const prescription = targets[exercise.exercise_key] ?? null;
@@ -573,6 +595,9 @@ export default function WorkoutsScreen() {
                   if (set) deleteSet(set.id);
                 }}
                 onRemoveExercise={() => dropExercise(exercise.id)}
+                onMove={(delta) => moveExercise(exercise.id, delta)}
+                canMoveUp={index > 0}
+                canMoveDown={index < exercises.length - 1}
               />
             );
           })

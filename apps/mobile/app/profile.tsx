@@ -30,7 +30,7 @@ import { I18nManager } from 'react-native';
 import { useAuth } from '../src/auth/AuthProvider.js';
 import { useCurrentUserId } from '../src/auth/CurrentUserProvider.js';
 import { useUnit } from '../src/UnitsProvider.js';
-import { formatWeight, weightUnitKey } from '../src/units.js';
+import { formatBodyWeight, weightUnitKey } from '../src/units.js';
 import { getExecutor } from '../src/db/provider.js';
 import { getLatestWeight } from '../src/db/metrics.js';
 import { getWorkoutStreak } from '../src/db/workouts.js';
@@ -104,7 +104,7 @@ export default function ProfileScreen() {
         <Text style={styles.subtitle}>
           {t('profileScreen.trainsPerWeek', { count: WEEKLY_TARGET })}
           {weightKg !== null
-            ? ` · ${formatWeight(weightKg, unit)} ${t(`common.${weightUnitKey(unit)}`)}`
+            ? ` · ${formatBodyWeight(weightKg, unit)} ${t(`common.${weightUnitKey(unit)}`)}`
             : ''}
         </Text>
       </View>
