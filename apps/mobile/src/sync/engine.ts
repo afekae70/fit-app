@@ -159,6 +159,15 @@ export function buildPushQuery(table: SyncTable): string {
     ORDER BY t0.updated_at`;
 }
 
+/**
+ * How far the first push pass moves an ordering column out of the way.
+ *
+ * Far above any real position — a plan has days in single figures and a session has exercises
+ * in double — so a parked value cannot collide with a live row that is not in this batch. It
+ * mirrors the `PARK` the repository already uses for the same problem in SQLite.
+ */
+const PUSH_PARK = 100_000;
+
 async function push(
   db: SqlExecutor,
   transport: SyncTransport,
@@ -191,16 +200,57 @@ async function push(
     const live = rows.filter((row) => row.deleted_at === null || row.deleted_at === undefined);
     const tombstones = rows.filter((row) => row.deleted_at !== null && row.deleted_at !== undefined);
 
-    for (let i = 0; i < live.length; i += BATCH) {
-      await transport.upsert(
-        table.table,
-        live.slice(i, i + BATCH).map((row) => toRemote(table, row)),
-      );
-    }
+    /*
+     * Tombstones go first, and the order is load-bearing.
+     *
+     * A deleted row parks its index out of the way; a surviving sibling then renumbers into the
+     * slot it left. Sent the other way round, the survivor arrives while the deleted row is
+     * still sitting in that position and the server refuses it — which is the same unique
+     * violation, just reached from the opposite direction.
+     */
     for (let i = 0; i < tombstones.length; i += BATCH) {
       await transport.patch(
         table.table,
         tombstones.slice(i, i + BATCH).map((row) => toRemote(table, row)),
+      );
+    }
+
+    /*
+     * Ordered rows go up in two passes, for the same reason the local reorder does.
+     *
+     * `UNIQUE (parent, index)` is checked per row, and `onConflict: 'id'` resolves a clash on
+     * the primary key and nothing else — so two exercises trading places means one arrives at a
+     * slot the other has not left yet, and the server refuses it. Since a rejected row aborts
+     * the whole push, one reorder used to stop every table from syncing.
+     *
+     * The first pass parks the batch's indexes far above anything a real position occupies, the
+     * second writes the true ones into slots that are now certainly free. It costs one extra
+     * request per ordered table, on a path that runs a few times a day.
+     *
+     * Skipped for a single row: with nothing to permute against there is no slot to contend
+     * for, and the common sync is one row or none.
+     */
+    const orders = table.indexColumns ?? [];
+    if (orders.length > 0 && live.length > 1) {
+      for (let i = 0; i < live.length; i += BATCH) {
+        await transport.upsert(
+          table.table,
+          live.slice(i, i + BATCH).map((row) => {
+            const parked = toRemote(table, row);
+            for (const column of orders) {
+              const value = parked[column];
+              if (typeof value === 'number') parked[column] = value + PUSH_PARK;
+            }
+            return parked;
+          }),
+        );
+      }
+    }
+
+    for (let i = 0; i < live.length; i += BATCH) {
+      await transport.upsert(
+        table.table,
+        live.slice(i, i + BATCH).map((row) => toRemote(table, row)),
       );
     }
 

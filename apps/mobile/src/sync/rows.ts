@@ -51,17 +51,41 @@ export function earlierOf(a: string | null, b: string | null): string | null {
  * Only the declared columns travel: a local-only column that happens to share a table would
  * otherwise be sent and rejected as unknown by PostgREST, failing the whole batch.
  */
+/**
+ * Where a deleted row's ordering column is sent to live.
+ *
+ * A soft-deleted row parks its index at `-rowid` locally, which frees the slot in SQLite's
+ * UNIQUE index. The server needs the same slot freed and will not take a negative — `sets`
+ * checks `set_index >= 1` — so the sentinel is reflected into a high positive band instead.
+ * `rowid` is unique within its table, so no two tombstones can land on the same parked value.
+ *
+ * Far enough above `PUSH_PARK` that the two bands cannot meet.
+ */
+const TOMBSTONE_PARK = 1_000_000;
+
 export function toRemote(table: SyncTable, row: Row): Row {
   const out: Row = {};
-  // A soft-deleted row's ordering column holds `-rowid`, a local sentinel that frees its slot in
-  // SQLite's UNIQUE index. The server rejects it outright (`set_index >= 1`), and no substitute
-  // is safe either — every positive value risks colliding with a live row under the same parent.
-  // Omitting the column entirely is what works: the upsert then leaves the server's own value
-  // alone, and the index of a deleted row means nothing to anybody.
+  /*
+   * A deleted row has to vacate its slot on the server, not merely stop claiming one.
+   *
+   * Omitting the column was the previous answer, on the reasoning that an upsert would then
+   * leave the server's own value alone. It does — and that is the bug: the deleted row keeps
+   * sitting on `(parent, index)` for ever, so the moment a surviving sibling is reordered into
+   * that position the server refuses it with a unique violation, and one rejected row stops the
+   * entire push. Locally the same collision is avoided by parking; the server was never told.
+   */
   const deleted = row.deleted_at !== null && row.deleted_at !== undefined;
 
   for (const column of table.columns) {
-    if (deleted && table.indexColumns?.includes(column)) continue;
+    if (deleted && table.indexColumns?.includes(column)) {
+      const parked = row[column];
+      // Only the local sentinel is reflected. Anything else is a row deleted by some path that
+      // did not park it, and its own value is as good as any.
+      if (typeof parked === 'number' && parked < 0) {
+        out[column] = TOMBSTONE_PARK - parked;
+        continue;
+      }
+    }
     const value = row[column];
     if (value === undefined) continue;
 

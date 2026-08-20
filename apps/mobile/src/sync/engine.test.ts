@@ -39,6 +39,20 @@ const REQUIRED_COLUMNS: Record<string, string[]> = {
   body_metrics: ['id', 'user_id', 'measured_at', 'source'],
 };
 
+/**
+ * The ordered tables, and what an index is unique within.
+ *
+ * The real tables carry a UNIQUE (parent, index) constraint — `plan_day_exercises_day_order_unique`
+ * and its siblings. Soft-deleted rows are assumed to keep occupying their slot, which is the
+ * pessimistic reading and the one that catches more.
+ */
+const UNIQUE_ORDER: Record<string, { parent: string; index: string }> = {
+  plan_days: { parent: 'plan_id', index: 'day_index' },
+  plan_day_exercises: { parent: 'plan_day_id', index: 'order_index' },
+  session_exercises: { parent: 'session_id', index: 'order_index' },
+  sets: { parent: 'session_exercise_id', index: 'set_index' },
+};
+
 interface FakeServer extends SyncTransport {
   rows(table: string): Row[];
   seed(table: string, row: Row): void;
@@ -99,9 +113,33 @@ function createFakeServer(startAt = Date.parse('2026-03-01T00:00:00.000Z')): Fak
           }
         }
         const previous = table(name).get(row.id as string) ?? {};
+        const merged: Row = { ...previous, ...row, updated_at: now() };
+
+        /*
+         * UNIQUE (parent, index), checked per row within the statement.
+         *
+         * `onConflict: 'id'` resolves a clash on the primary key and nothing else, so a row
+         * moving into a slot a sibling has not vacated yet is a plain constraint violation —
+         * which is exactly what a reorder produces, and what this fake previously let through.
+         */
+        const unique = UNIQUE_ORDER[name];
+        if (unique) {
+          const clash = [...table(name).values()].find(
+            (other) =>
+              other.id !== merged.id &&
+              other[unique.parent] === merged[unique.parent] &&
+              other[unique.index] === merged[unique.index],
+          );
+          if (clash) {
+            throw new Error(
+              `duplicate key value violates unique constraint "${name}_${unique.index}_unique"`,
+            );
+          }
+        }
+
         // The real server stamps updated_at by trigger and ignores what the client sent. Modelling
         // that is the point of this fake: it is what makes the two-clock design testable.
-        table(name).set(row.id as string, { ...previous, ...row, updated_at: now() });
+        table(name).set(row.id as string, merged);
       }
     },
 
@@ -685,9 +723,52 @@ describe('parked indexes on deleted rows', () => {
 
     const remote = server.rows('sets')[0];
     expect(remote?.deleted_at).toBe('2026-02-01T12:00:00.000Z');
-    // The server checks set_index >= 1. Sending -rowid fails that check, which fails the batch,
-    // which stops sync for every table — so the column must simply not be in the payload.
-    expect(remote?.set_index).toBe(1);
+    // The server checks set_index >= 1, so the negative sentinel itself can never travel. What
+    // goes instead is its reflection into the tombstone band: high, positive, and unique per
+    // row, which frees the slot on the server exactly as -rowid frees it in SQLite.
+    expect(remote?.set_index as number).toBeGreaterThan(1_000_000);
+  });
+
+  it('frees the slot so a surviving sibling can move into it', async () => {
+    /*
+     * The failure seen on a real phone, twice:
+     *
+     *   upsert of row 2ae9db53-… on plan_day_exercises failed: duplicate key value violates
+     *   unique constraint "plan_day_exercises_day_order_unique"  (23505)
+     *
+     * A deleted row that keeps its index on the server occupies that position for ever. The
+     * sibling renumbered into it is refused, and since one rejected row aborts the push, every
+     * table stops syncing — which is how a single deleted exercise took the whole backup down.
+     */
+    const at = '2026-02-01T10:00:00.000Z';
+    const sessionId = await seedSession(at);
+    const { exerciseId } = await seedExerciseWithSet(sessionId, at);
+    const second = 'bbbbbbbb-0000-4000-8000-000000000002';
+    await db.run(
+      `INSERT INTO session_exercises (id, session_id, exercise_key, order_index, updated_at)
+         VALUES (?, ?, 'Barbell Row', 2, ?)`,
+      [second, sessionId, at],
+    );
+    const server = createFakeServer();
+    await runSync(db, server, USER, localClock('2026-02-01T11:00:00.000Z'));
+
+    // Delete the first, then renumber the second down into the slot it left — exactly what
+    // removeExerciseFromSession followed by renumberExercises does.
+    const deletedAt = '2026-02-01T12:00:00.000Z';
+    await db.run(
+      `UPDATE session_exercises SET deleted_at = ?, updated_at = ?, order_index = -rowid WHERE id = ?`,
+      [deletedAt, deletedAt, exerciseId],
+    );
+    await db.run(`UPDATE session_exercises SET order_index = 1, updated_at = ? WHERE id = ?`, [
+      deletedAt,
+      second,
+    ]);
+
+    await runSync(db, server, USER, localClock('2026-02-01T13:00:00.000Z'));
+
+    const survivor = server.rows('session_exercises').find((row) => row.id === second);
+    expect(survivor?.order_index).toBe(1);
+    expect(survivor?.deleted_at ?? null).toBeNull();
   });
 
   it('keeps sending the index while the row is alive', async () => {
@@ -718,5 +799,94 @@ describe('parked indexes on deleted rows', () => {
     // Inserting a tombstone for a row nobody has is pure noise — and it would have to be inserted
     // without an index, which the server requires on insert.
     expect(server.rows('sets')).toHaveLength(0);
+  });
+});
+
+describe('reordering, which permutes a unique index', () => {
+  /*
+   * The case that broke syncing on a real phone, after drag-to-reorder shipped:
+   *
+   *   upsert of row 2ae9db53-… on plan_day_exercises failed: duplicate key value
+   *   violates unique constraint "plan_day_exercises_day_order_unique"  (23505)
+   *
+   * `onConflict: 'id'` resolves a clash on the primary key and nothing else. Two exercises
+   * trading places means one of them arrives at a slot the other has not left yet, and the
+   * server refuses it — which aborts the whole push, for every table.
+   */
+  const PLAN = 'dddddddd-0000-4000-8000-000000000001';
+  const DAY = 'eeeeeeee-0000-4000-8000-000000000001';
+  const FIRST = 'ffffffff-0000-4000-8000-000000000001';
+  const SECOND = 'ffffffff-0000-4000-8000-000000000002';
+
+  async function seedTwoExercises(at: string) {
+    await db.run(
+      `INSERT INTO plans (id, user_id, name, is_active, created_at, updated_at)
+         VALUES (?, ?, 'PPL', 1, ?, ?)`,
+      [PLAN, USER, at, at],
+    );
+    await db.run(
+      `INSERT INTO plan_days (id, plan_id, day_index, name, updated_at) VALUES (?, ?, 1, 'Push', ?)`,
+      [DAY, PLAN, at],
+    );
+    for (const [id, index, key] of [
+      [FIRST, 1, 'Bench Press'],
+      [SECOND, 2, 'Barbell Row'],
+    ] as const) {
+      await db.run(
+        `INSERT INTO plan_day_exercises (id, plan_day_id, exercise_key, order_index, updated_at)
+           VALUES (?, ?, ?, ?, ?)`,
+        [id, DAY, key, index, at],
+      );
+    }
+  }
+
+  /** Exactly what `reorderPlanDayExercise` does locally: park, then renumber. */
+  async function swapThem(at: string) {
+    const PARK = 100000;
+    await db.run(`UPDATE plan_day_exercises SET order_index = ? WHERE id = ?`, [PARK, FIRST]);
+    await db.run(`UPDATE plan_day_exercises SET order_index = ? WHERE id = ?`, [PARK + 1, SECOND]);
+    await db.run(`UPDATE plan_day_exercises SET order_index = 1, updated_at = ? WHERE id = ?`, [at, SECOND]);
+    await db.run(`UPDATE plan_day_exercises SET order_index = 2, updated_at = ? WHERE id = ?`, [at, FIRST]);
+  }
+
+  it('syncs a swap without tripping the unique index', async () => {
+    await seedTwoExercises('2026-02-01T10:00:00.000Z');
+    const server = createFakeServer();
+    await runSync(db, server, USER, localClock('2026-02-01T11:00:00.000Z'));
+
+    await swapThem('2026-02-01T12:00:00.000Z');
+    await runSync(db, server, USER, localClock('2026-02-01T13:00:00.000Z'));
+
+    const indexOf = (id: string) =>
+      server.rows('plan_day_exercises').find((row) => row.id === id)?.order_index;
+    expect(indexOf(SECOND)).toBe(1);
+    expect(indexOf(FIRST)).toBe(2);
+  });
+
+  it('leaves nothing parked behind on the server', async () => {
+    // The two-pass push moves rows out of the way before setting their real positions. If the
+    // second pass were ever skipped, the server would keep a five-figure index that the app
+    // would then read back as the exercise order.
+    await seedTwoExercises('2026-02-01T10:00:00.000Z');
+    const server = createFakeServer();
+    await runSync(db, server, USER, localClock('2026-02-01T11:00:00.000Z'));
+    await swapThem('2026-02-01T12:00:00.000Z');
+    await runSync(db, server, USER, localClock('2026-02-01T13:00:00.000Z'));
+
+    for (const row of server.rows('plan_day_exercises')) {
+      expect(row.order_index as number).toBeLessThan(10);
+    }
+  });
+
+  it('still sends a single row without the extra pass', async () => {
+    // Nothing to permute with one row, and the common sync is one row or none.
+    await seedTwoExercises('2026-02-01T10:00:00.000Z');
+    await db.run(`DELETE FROM plan_day_exercises WHERE id = ?`, [SECOND]);
+    const server = createFakeServer();
+
+    await runSync(db, server, USER, localClock('2026-02-01T11:00:00.000Z'));
+
+    expect(server.rows('plan_day_exercises')).toHaveLength(1);
+    expect(server.rows('plan_day_exercises')[0]?.order_index).toBe(1);
   });
 });
