@@ -689,7 +689,12 @@ const createStyles = (colors: ColorPalette) =>
       borderRadius: radius.lg,
       borderWidth: 1,
       borderColor: colors.borderSubtle,
-      padding: spacing.lg,
+      // 20 across and 18 down, from the handoff, rather than a uniform spacing token. Cards
+      // elsewhere in the app already use these, and matching them is the whole point: a card
+      // that is four pixels tighter than the one on the previous screen is what makes an app
+      // read as two apps stitched together.
+      paddingHorizontal: 20,
+      paddingVertical: 18,
       // More air between cards than inside them. When the two are equal the page reads as one
       // undifferentiated column; separating the groups is what lets the eye skip to the section
       // it wants instead of reading everything.
@@ -718,12 +723,18 @@ const createStyles = (colors: ColorPalette) =>
     // and body size in bold it carried the same weight as the numbers inside the card, so every
     // card opened with two things asking to be read first. Smaller, quieter and letterspaced, it
     // does the one job a section title has: say what this is, then get out of the way.
+    /*
+     * A card heading, in sentence case.
+     *
+     * It used to be a 12px uppercase micro-label with letter spacing — the treatment the design
+     * reserves for a kicker, the small accent line that introduces a card. Using it for the
+     * heading itself left every older screen whispering its titles while the home screen spoke
+     * them, which was the loudest of the differences between the two.
+     */
     sectionTitle: {
-      color: colors.textMuted,
-      fontSize: fontSize.xs,
+      color: colors.text,
+      fontSize: 15,
       fontWeight: fontWeight.medium,
-      letterSpacing: 0.6,
-      textTransform: 'uppercase',
       marginBottom: spacing.sm,
       textAlign: 'auto',
     },
@@ -813,11 +824,21 @@ const createStyles = (colors: ColorPalette) =>
       textAlign: 'auto',
     },
     statValueRow: { flexDirection: 'row', alignItems: 'baseline', marginTop: spacing.xxs },
-    statValue: { color: colors.text, fontSize: fontSize.lg, fontWeight: fontWeight.bold },
+    // Weight 500 and tabular figures, as on the home screen. Bold reads as emphasis on a
+    // screen full of numbers where nothing is meant to shout, and proportional digits shuffle
+    // sideways as a value ticks — which is exactly the movement the eye is trying to read.
+    statValue: {
+      color: colors.text,
+      fontSize: fontSize.xl,
+      fontWeight: fontWeight.medium,
+      letterSpacing: -0.3,
+      fontVariant: ['tabular-nums'],
+    },
     statValueEmphasis: {
       fontSize: fontSize.display,
       color: colors.accent,
       letterSpacing: -1,
+      fontWeight: fontWeight.medium,
     },
     statUnit: { color: colors.textMuted, fontSize: fontSize.sm, marginStart: spacing.xs },
     statHint: {
@@ -829,7 +850,15 @@ const createStyles = (colors: ColorPalette) =>
     },
 
     tile: { flex: 1, alignItems: 'center', paddingVertical: spacing.sm },
-    tileValue: { color: colors.text, fontSize: fontSize.xl, fontWeight: fontWeight.bold },
+    // Same treatment as Stat: these sit three or four across in a summary row, and a tile whose
+    // digits shift width makes the row jitter as a workout is logged.
+    tileValue: {
+      color: colors.text,
+      fontSize: fontSize.xl,
+      fontWeight: fontWeight.medium,
+      letterSpacing: -0.3,
+      fontVariant: ['tabular-nums'],
+    },
     tileLabel: { color: colors.textMuted, fontSize: fontSize.xxs, marginTop: spacing.xxs },
 
     banner: {

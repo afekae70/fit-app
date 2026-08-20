@@ -91,7 +91,7 @@ export default function SettingsScreen() {
       {/* No gear here — it would link to the screen you are already on. */}
       <ScreenHeader title={t('settings.title')} back settings={false} />
 
-      <Card>
+      <Card index={0}>
         <SectionTitle>{t('settings.appearance')}</SectionTitle>
 
         <Segmented<ColorScheme>
@@ -128,7 +128,7 @@ export default function SettingsScreen() {
         <Text style={styles.unitsHint}>{t('settings.unitsHint')}</Text>
       </Card>
 
-      <Card>
+      <Card index={1}>
         <SectionTitle>{t('settings.remindersTitle')}</SectionTitle>
         <Hint>{t('settings.reminderWeeklyHint')}</Hint>
 
@@ -147,7 +147,7 @@ export default function SettingsScreen() {
       {session ? <SyncCard /> : null}
 
       {session ? (
-        <Card>
+        <Card index={2}>
           <SectionTitle>{t('settings.account')}</SectionTitle>
           <Text style={styles.email}>{session.user.email}</Text>
           <View style={styles.signOutSpacer} />

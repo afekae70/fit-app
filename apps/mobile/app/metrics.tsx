@@ -318,7 +318,7 @@ export default function MetricsScreen() {
     >
       <ScreenHeader title={t('metrics.title')} back />
 
-      <Card>
+      <Card index={0}>
         <SectionTitle>{t('metrics.addWeight')}</SectionTitle>
         <View style={styles.entryRow}>
           <TextInput
@@ -354,7 +354,7 @@ export default function MetricsScreen() {
       </Card>
 
       {smoothed.length >= 2 ? (
-        <Card>
+        <Card index={1}>
           <SectionTitle>{t('metrics.trendTitle')}</SectionTitle>
           <WeightSparkline points={smoothed} />
 
@@ -399,7 +399,7 @@ export default function MetricsScreen() {
       ) : null}
 
       {composition ? (
-        <Card>
+        <Card index={2}>
           <SectionTitle>{t('metrics.compositionTitle')}</SectionTitle>
 
           <Stat
@@ -439,7 +439,7 @@ export default function MetricsScreen() {
         </Card>
       ) : null}
 
-      <Card>
+      <Card index={3}>
         <SectionTitle>{t('metrics.targetsTitle')}</SectionTitle>
         {/* Branch on the discriminant, not on the extracted `targets`, so TypeScript can
             narrow the result union and reach `.missing` in the else arm. */}
@@ -489,7 +489,7 @@ export default function MetricsScreen() {
         )}
       </Card>
 
-      <Card>
+      <Card index={4}>
         <SectionTitle>{t('metrics.bleTitle')}</SectionTitle>
 
         {bleState === 'unavailable' ? (
@@ -531,7 +531,7 @@ export default function MetricsScreen() {
       </Card>
 
       {metrics.length > 0 ? (
-        <Card>
+        <Card index={5}>
           <SectionTitle>{t('metrics.history')}</SectionTitle>
           {metrics
             .filter((metric) => metric.id !== pendingDeleteId)

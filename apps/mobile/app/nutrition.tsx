@@ -308,7 +308,7 @@ export default function NutritionScreen() {
       </View>
 
       {streak && streak.currentDays > 0 ? (
-        <Card style={styles.streakCard}>
+        <Card index={0} style={styles.streakCard}>
           <View style={styles.streakRow}>
             <Text style={styles.streakEmoji}>🔥</Text>
             <View style={styles.streakTextCol}>
@@ -324,7 +324,7 @@ export default function NutritionScreen() {
       ) : null}
 
       {brief ? (
-        <Card tone="accent" style={styles.briefCard}>
+        <Card index={1} tone="accent" style={styles.briefCard}>
           <View style={styles.briefRow}>
             <Text style={styles.briefEmoji}>🧠</Text>
             <View style={styles.streakTextCol}>
@@ -335,7 +335,7 @@ export default function NutritionScreen() {
         </Card>
       ) : null}
 
-      <Card>
+      <Card index={2}>
         <SectionTitle>{t('profile.title')}</SectionTitle>
         <Hint>{t('profile.subtitle')}</Hint>
 
@@ -416,7 +416,7 @@ export default function NutritionScreen() {
 
       {results ? (
         <>
-          <Card>
+          <Card index={3}>
             <SectionTitle>{t('targets.title')}</SectionTitle>
             <Stat
               label={t('targets.calorieTarget')}
@@ -449,7 +449,7 @@ export default function NutritionScreen() {
             />
           </Card>
 
-          <Card>
+          <Card index={4}>
             <SectionTitle>{t('targets.protein')} · {t('targets.carbs')} · {t('targets.fat')}</SectionTitle>
             {(() => {
               // Shown as each macro's share of the day's calories, not "progress toward a goal"
