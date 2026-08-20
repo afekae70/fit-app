@@ -5,16 +5,25 @@
  * module, and adding one would sit inert until the next native rebuild rather than loading on
  * the build already on the phone. Same reasoning as `SwipeableRow`.
  *
- * ## Why a handle, and not the whole card
+ * ## Two ways to pick a card up
  *
  * The plan screens reorder with arrows, and the comment there gives the reason: a drag inside a
  * vertical ScrollView has to win a gesture race against the scroll, and the loser is always the
- * user. That is still true — so the race is not entered. Only the handle claims the responder,
- * which is a small target nobody scrolls from, while the rest of the card behaves exactly as it
- * did. That matters more here than anywhere else in the app, because an exercise card is full
- * of text inputs that also want the touch.
+ * user. Neither route here enters that race.
  *
- * The whole card travels, sets and all. The handle is where you grab it, not what moves.
+ * **The handle** claims the responder on touch, which is safe because it is a small target
+ * nobody scrolls or types from.
+ *
+ * **A long press anywhere on the card** waits the ambiguity out instead of guessing at it. A
+ * scroll starts moving well inside the delay and a tap ends well inside it, so by the time a
+ * press has been held long enough to count, it can be neither. Only then is the responder
+ * taken, through the capture phase — the same mechanism a ScrollView uses to take a touch back
+ * from a button the finger started on.
+ *
+ * Both earn their place on a card this full: the handle is quicker once you know it is there,
+ * and the long press is what someone reaches for first.
+ *
+ * The whole card travels either way, sets and all.
  *
  * ## Driver mode
  *
@@ -33,7 +42,19 @@ import {
   type LayoutChangeEvent,
 } from 'react-native';
 
+import { hapticLight } from '../haptics.js';
 import { resolveDropIndex, restingOffset, shiftForIndex } from './dragMath.js';
+
+/**
+ * How long a press must be held before it counts as picking the card up.
+ *
+ * Long enough that a scroll flick and a tap on a rep field are both over before it fires, short
+ * enough that the card does not feel reluctant to move.
+ */
+const LONG_PRESS_MS = 320;
+
+/** Movement before that delay is up means the finger is scrolling, not holding. */
+const LONG_PRESS_SLOP = 8;
 
 export interface DragHandleProps {
   /** Spread onto the View that should be grabbable. */
@@ -228,7 +249,11 @@ function DragRow({
   const indexRef = useRef(index);
   indexRef.current = index;
 
-  const responder = useMemo(
+  // These handlers are created once; the refs are how they see the present.
+  const isActiveRef = useRef(isActive);
+  isActiveRef.current = isActive;
+
+  const handleResponder = useMemo(
     () =>
       PanResponder.create({
         // Claimed from the first touch. These handlers reach only the handle, so nothing is
@@ -246,15 +271,73 @@ function DragRow({
     [onStart, onMove, onEnd],
   );
 
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const armed = useRef(false);
+
+  const cancelPress = useCallback(() => {
+    if (pressTimer.current) clearTimeout(pressTimer.current);
+    pressTimer.current = null;
+  }, []);
+
+  const releasePress = useCallback(() => {
+    cancelPress();
+    if (!armed.current) return;
+    armed.current = false;
+    onEnd();
+  }, [cancelPress, onEnd]);
+
+  const cardResponder = useMemo(
+    () =>
+      PanResponder.create({
+        /*
+         * Returns false on purpose. This is used only to notice that a touch began; claiming
+         * here would take every tap away from the fields underneath. The timer it starts is
+         * what decides whether the touch was a press or something else.
+         */
+        onStartShouldSetPanResponderCapture: () => {
+          armed.current = false;
+          cancelPress();
+          pressTimer.current = setTimeout(() => {
+            // Guarded because the handle may already have this card in the air, and lifting it
+            // twice would discard the offset the finger has already built up.
+            if (isActiveRef.current) return;
+            armed.current = true;
+            void hapticLight();
+            onStart(indexRef.current);
+          }, LONG_PRESS_MS);
+          return false;
+        },
+        onMoveShouldSetPanResponderCapture: (_event, gesture) => {
+          if (armed.current) return true;
+          // Moved before the press was held: a scroll, which the card must keep out of the way
+          // of. A few pixels of tremor is not movement.
+          if (Math.abs(gesture.dy) > LONG_PRESS_SLOP || Math.abs(gesture.dx) > LONG_PRESS_SLOP) {
+            cancelPress();
+          }
+          return false;
+        },
+        onPanResponderMove: (_event, gesture) => onMove(gesture.dy, gesture.moveY),
+        onPanResponderRelease: releasePress,
+        onPanResponderTerminate: releasePress,
+        onPanResponderTerminationRequest: () => false,
+      }),
+    [onStart, onMove, cancelPress, releasePress],
+  );
+
   return (
     <Animated.View
+      {...cardResponder.panHandlers}
+      /* A press can be held and released without ever moving, in which case no responder was
+         ever granted and no release handler runs. Without this the card stays in the air. */
+      onTouchEnd={releasePress}
+      onTouchCancel={releasePress}
       onLayout={(event: LayoutChangeEvent) => onMeasure(event.nativeEvent.layout.height)}
       style={[
         isActive && styles.lifted,
         { transform: [{ translateY: isActive ? dragY : shift }] },
       ]}
     >
-      {children(responder.panHandlers, isActive)}
+      {children(handleResponder.panHandlers, isActive)}
     </Animated.View>
   );
 }

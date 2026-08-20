@@ -437,7 +437,9 @@ export default function WorkoutsScreen() {
     // A band at each edge, and a speed that grows the deeper into it the finger goes — a fixed
     // step is either too slow to be worth it or too fast to aim with.
     const EDGE = 110;
-    const MAX_STEP = 22;
+    // Halved from the first attempt, which overshot: the list ran away faster than the eye
+    // could pick a landing spot, so aiming meant backing off the edge and creeping in again.
+    const MAX_STEP = 11;
     const fromTop = screenY - EDGE;
     const fromBottom = screenY - (height - EDGE);
 
