@@ -127,6 +127,17 @@ npx expo export:embed --platform android --dev false \
 cd android && ./gradlew assembleRelease
 ```
 
+**Changing the app icon.** `app.json` points at `apps/mobile/assets/`, and `expo prebuild`
+turns those files into the `mipmap-*` resources Android actually ships. Because `android/` is
+gitignored and lives only in the build tree, editing the assets alone changes nothing in a build
+that skips prebuild — the old icons are already sitting in `mipmap-*`. Either run prebuild, or
+overwrite the resources directly at each density: the adaptive canvas is 108dp
+(108/162/216/324/432 px for mdpi through xxxhdpi) and the legacy icon is 48dp. A `.png` replaces
+a `.webp` of the same name, but delete the `.webp` or both will exist.
+
+The master artwork is committed as `assets/logo-source.jpg`, since every icon is a crop of it
+and a different crop cannot be made from a 1024px export.
+
 **Check the Bluetooth permission.** `BLUETOOTH_SCAN` must carry
 `android:usesPermissionFlags="neverForLocation"`, or on Android 12+ every scan returns zero
 devices with no error at all. `app.json` deliberately does not list that permission so the
