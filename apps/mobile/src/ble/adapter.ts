@@ -299,6 +299,28 @@ export const namelessBroadcastScaleAdapter: ScaleAdapter = {
   },
 };
 
+/**
+ * The one field in the nameless scale's frame that has never been identified.
+ *
+ * Bytes 4-5, big-endian. It reads 0x1388 — 5000 — in every loaded frame captured so far and
+ * zero in every idle one, which is exactly what a device constant looks like and also exactly
+ * what an impedance reading looks like when the scale never manages to take one.
+ *
+ * Deliberately NOT part of `ScaleReading`. Body-fat estimates are derived from impedance, and
+ * publishing this as one on the strength of a guess would put a number on screen that reads as
+ * a measurement of the user's body. It is exposed only to the diagnostics screen, where it is
+ * labelled as an unknown and can be watched across captures: a value that moves between two
+ * weigh-ins is impedance, and a value that never moves is a constant.
+ *
+ * Bare feet are the test. Impedance needs skin against the electrodes, so a scale stood on in
+ * socks would report the same default every time no matter how good the parser is.
+ */
+export function namelessUnknownField(bytes: Uint8Array): number | null {
+  if (!namelessBroadcastScaleAdapter.matchesPayload?.(bytes)) return null;
+  const value = u16be(bytes, 4);
+  return value === 0 ? null : value;
+}
+
 /* -------------------------------------------------------------------------- */
 /* Registry                                                                    */
 /* -------------------------------------------------------------------------- */

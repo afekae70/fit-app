@@ -132,6 +132,7 @@ export const he = {
     found: 'נמצאו {{count}} מכשירים',
     none: 'לא נמצא אף מכשיר. ודא שהבלוטות׳ דלוק ושהמשקל פעיל.',
     unnamed: '(ללא שם)',
+    unknownField: 'שדה לא מזוהה @4-5',
     recognised: 'מזוהה על ידי {{adapter}}',
     changing: 'שידורים משתנים — כאן נמצא המשקל:',
     knownVendor: 'מותג מוכר — כנראה לא המשקל',

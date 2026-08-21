@@ -139,6 +139,7 @@ export const en = {
     found: '{{count}} devices found',
     none: 'Nothing found. Check that Bluetooth is on and the scale is awake.',
     unnamed: '(no name)',
+    unknownField: 'unidentified field @4-5',
     recognised: 'Recognised by {{adapter}}',
     changing: 'Changing broadcasts — the weight is in here:',
     knownVendor: 'Known brand — probably not the scale',

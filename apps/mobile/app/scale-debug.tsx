@@ -360,6 +360,17 @@ export default function ScaleDebugScreen() {
                     <Text style={styles.mono}>mfg: {device.manufacturerDataHex}</Text>
                   ) : null}
 
+                  {/* The one field in this scale's frame nobody has identified. Every distinct
+                      value it has taken, so the question it exists to answer — does it move? —
+                      can be read straight off the row. One value after a barefoot weigh-in
+                      means a device constant and no body fat from this scale, ever. Several
+                      means impedance, and body composition becomes possible. */}
+                  {device.unknownValues.length > 0 ? (
+                    <Text style={styles.mono}>
+                      {t('scaleDebug.unknownField')}: {device.unknownValues.join(', ')}
+                    </Text>
+                  ) : null}
+
                   {/* More than one distinct payload means the bytes changed while we watched,
                       which is what a scale being stood on looks like and what a doorbell
                       does not. This is the line that identifies the device. */}

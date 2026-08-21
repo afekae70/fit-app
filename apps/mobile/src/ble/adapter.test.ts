@@ -15,6 +15,7 @@ import {
   estimateBodyFatPct,
   miScale2Adapter,
   namelessBroadcastScaleAdapter,
+  namelessUnknownField,
   selectAdapterByPayload,
   SCANNABLE_SERVICE_UUIDS,
   selectAdapter,
@@ -286,6 +287,25 @@ describe('nameless 15-byte broadcast scale', () => {
     expect(reading?.impedanceOhms).toBeUndefined();
     expect(reading?.bodyFatPct).toBeUndefined();
     expect(reading?.isStabilised).toBe(true);
+  });
+
+  it('reports the unidentified field without pretending to know what it is', () => {
+    // Bytes 4-5. They have read 5000 in every loaded frame captured so far, which is equally
+    // what a device constant looks like and what an impedance that was never measured looks
+    // like. Surfaced to the diagnostics screen so a barefoot capture can tell the two apart,
+    // and kept out of `ScaleReading` so nothing derived from a guess reaches a screen as a
+    // measurement of somebody's body.
+    expect(namelessUnknownField(LOADED)).toBe(5000);
+  });
+
+  it('has nothing to report from an idle frame', () => {
+    // The field is zero with nobody on the plate, and zero is an absence rather than a
+    // reading — listing it would make an empty scale look like a data point.
+    expect(namelessUnknownField(IDLE)).toBeNull();
+  });
+
+  it('reports nothing for a frame from some other device', () => {
+    expect(namelessUnknownField(hex('4c000100000000000000000000000080000000'))).toBeNull();
   });
 
   it('refuses payloads that merely start with the same byte', () => {

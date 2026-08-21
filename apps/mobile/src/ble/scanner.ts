@@ -37,7 +37,12 @@
 
 import { PermissionsAndroid, Platform } from 'react-native';
 
-import { selectAdapter, selectAdapterByPayload, type ScaleReading } from './adapter.js';
+import {
+  namelessUnknownField,
+  selectAdapter,
+  selectAdapterByPayload,
+  type ScaleReading,
+} from './adapter.js';
 import {
   base64ToBytes,
   classifyVendor,
@@ -424,6 +429,16 @@ export interface SightedDevice {
    * rather than an error, which is the failure this whole layer is arranged to prevent.
    */
   decodedKg: number | null;
+  /**
+   * Every distinct value seen in the one field of the nameless scale's frame nobody has
+   * identified — bytes 4-5, which have read 5000 in each loaded frame captured so far.
+   *
+   * The list, not the latest, because the question is whether it moves at all. Impedance
+   * changes with the body it is measured through and with how long the feet have been on the
+   * plate; a device constant does not change, ever. One capture with bare feet and a long
+   * stand separates the two, and a single value on screen could not.
+   */
+  unknownValues: number[];
 }
 /**
  * List everything advertising nearby, decoded no further than hex.
@@ -549,6 +564,7 @@ export async function scanDiagnostics(
         vendor: null,
         adapterId: null,
         decodedKg: null,
+        unknownValues: [],
       };
 
       entry.frames += 1;
@@ -590,6 +606,14 @@ export async function scanDiagnostics(
         // the number flicker too fast to read.
         if (reading) entry.decodedKg = reading.weightKg;
         if (byShape) entry.adapterId = byShape.id;
+
+        const unknown = namelessUnknownField(bytes);
+        if (unknown !== null && !entry.unknownValues.includes(unknown)) {
+          // Capped for the same reason the payload list is: a field that genuinely varies would
+          // otherwise fill the row with noise, and the first handful already answer the only
+          // question being asked of it.
+          if (entry.unknownValues.length < 12) entry.unknownValues.push(unknown);
+        }
       }
 
       entry.adapterId = entry.adapterId ??
@@ -921,6 +945,9 @@ export function formatDiagnostics(devices: readonly SightedDevice[]): string {
         lines.push(`  serviceData[${uuid}]: ${hex}`);
       }
       if (device.manufacturerDataHex) lines.push(`  manufacturerData: ${device.manufacturerDataHex}`);
+      if (device.unknownValues.length > 0) {
+        lines.push(`  unknown field @4-5: ${device.unknownValues.join(', ')}`);
+      }
       if (device.payloadsHex.length > 1) {
         lines.push('  payloads:');
         for (const hex of device.payloadsHex) lines.push(`    ${hex}`);
