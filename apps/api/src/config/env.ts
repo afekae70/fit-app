@@ -34,7 +34,20 @@ const envSchema = z
     OPENAI_API_KEY: z.string().min(1).optional(),
     OPENAI_MODEL: z.string().default('gpt-4o'),
     GOOGLE_API_KEY: z.string().min(1).optional(),
-    GEMINI_MODEL: z.string().default('gemini-2.5-flash'),
+    /*
+     * Pinned, and it will need moving again one day.
+     *
+     * `gemini-2.5-flash` was the default until Google retired it for new keys: "This model is
+     * no longer available to new users. Please update your code to use models/gemini-3.6-flash."
+     * That arrives as a 404, which is also what a misspelled model name gives, so it reads as
+     * the name being wrong rather than the model being gone.
+     *
+     * A `-latest` alias would dodge the retirement and take a different risk: the coach emits
+     * structured tool calls, and a model swapped underneath it can change how it fills them
+     * with no deploy and no warning. A pinned version fails loudly on a day of its choosing;
+     * an alias fails quietly on a day of Google's.
+     */
+    GEMINI_MODEL: z.string().default('gemini-3.6-flash'),
   })
   .superRefine((env, ctx) => {
     // The selected provider's key is required; the other provider's key is not, so both

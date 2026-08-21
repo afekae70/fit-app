@@ -79,7 +79,7 @@ describe('loadEnv', () => {
     });
     expect(asGemini.AI_PROVIDER).toBe('gemini');
     // Defaulted rather than required, so setting the key alone is enough to switch providers.
-    expect(asGemini.GEMINI_MODEL).toBe('gemini-2.5-flash');
+    expect(asGemini.GEMINI_MODEL).toBe('gemini-3.6-flash');
   });
 
   it('does not require the non-selected provider key to be present', () => {
