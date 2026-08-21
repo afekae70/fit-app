@@ -5,6 +5,7 @@ export const he = {
     appName: 'פיט',
     save: 'שמור',
     cancel: 'ביטול',
+    gotIt: 'הבנתי',
     add: 'הוסף',
     remove: 'הסר',
     edit: 'ערוך',

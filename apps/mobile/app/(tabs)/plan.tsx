@@ -14,7 +14,6 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Alert,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -28,6 +27,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
+import { useActionSheet } from '../../src/components/ActionSheetProvider.js';
 import { FadeSlideIn } from '../../src/components/motion.js';
 import {
   Banner,
@@ -70,6 +70,7 @@ function daysSince(iso: string, nowMs: number): number {
 }
 
 export default function PlanScreen() {
+  const { confirm, notify } = useActionSheet();
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const userId = useCurrentUserId();
@@ -163,20 +164,16 @@ export default function PlanScreen() {
 
   const removePlan = () => {
     if (!plan) return;
-    Alert.alert('', t('plan.confirmDeletePlan'), [
-      { text: t('common.cancel'), style: 'cancel' },
-      {
-        text: t('plan.deletePlan'),
-        style: 'destructive',
-        onPress: () => {
-          void (async () => {
-            const db = await getExecutor();
-            await deletePlan(db, userId, plan.id);
-            await reload();
-          })();
-        },
-      },
-    ]);
+    void (async () => {
+      const ok = await confirm({
+        message: t('plan.confirmDeletePlan'),
+        confirmLabel: t('plan.deletePlan'),
+      });
+      if (!ok) return;
+      const db = await getExecutor();
+      await deletePlan(db, userId, plan.id);
+      await reload();
+    })();
   };
 
   const start = (planDayId: string) => {
@@ -186,7 +183,7 @@ export default function PlanScreen() {
       // Only one session can be open at a time; starting a second would strand the first.
       const active = await getActiveSession(db, userId);
       if (active) {
-        Alert.alert('', t('history.activeWarning'));
+        await notify({ message: t('history.activeWarning') });
         return;
       }
 

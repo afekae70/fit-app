@@ -12,7 +12,6 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -24,6 +23,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useActionSheet } from '../../src/components/ActionSheetProvider.js';
 import { Hint, SkeletonScreen } from '../../src/components/ui.js';
 import {
   addPlanDayExercise,
@@ -53,6 +53,7 @@ function parseTarget(raw: string): number | null {
 }
 
 export default function PlanDayScreen() {
+  const { confirm } = useActionSheet();
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
   const { id, addExercise } = useLocalSearchParams<{ id: string; addExercise?: string }>();
@@ -137,20 +138,16 @@ export default function PlanDayScreen() {
 
   const deleteDay = () => {
     if (!id) return;
-    Alert.alert('', t('plan.confirmDeleteDay'), [
-      { text: t('common.cancel'), style: 'cancel' },
-      {
-        text: t('plan.deleteDay'),
-        style: 'destructive',
-        onPress: () => {
-          void (async () => {
-            const db = await getExecutor();
-            await removePlanDay(db, id);
-            router.back();
-          })();
-        },
-      },
-    ]);
+    void (async () => {
+      const ok = await confirm({
+        message: t('plan.confirmDeleteDay'),
+        confirmLabel: t('plan.deleteDay'),
+      });
+      if (!ok) return;
+      const db = await getExecutor();
+      await removePlanDay(db, id);
+      router.back();
+    })();
   };
 
   if (loading) {

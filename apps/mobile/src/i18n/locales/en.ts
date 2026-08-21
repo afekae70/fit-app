@@ -11,6 +11,7 @@ export const en = {
     appName: 'Fit',
     save: 'Save',
     cancel: 'Cancel',
+    gotIt: 'Got it',
     add: 'Add',
     remove: 'Remove',
     edit: 'Edit',

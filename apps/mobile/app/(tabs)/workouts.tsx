@@ -16,7 +16,6 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -27,6 +26,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
+import { useActionSheet } from '../../src/components/ActionSheetProvider.js';
 import type { ExerciseTarget, PreviousSet } from '../../src/components/ExerciseCard.js';
 import { FinishSummary } from '../../src/components/FinishSummary.js';
 import { DragReorderList } from '../../src/components/DragReorderList.js';
@@ -85,6 +85,7 @@ function elapsedMinutes(startedAt: string, endMs: number): number {
 }
 
 export default function WorkoutsScreen() {
+  const { confirm, ask } = useActionSheet();
   const { t, i18n } = useTranslation();
   const isHebrew = i18n.language === 'he';
   const insets = useSafeAreaInsets();
@@ -476,22 +477,18 @@ export default function WorkoutsScreen() {
 
   const dropExercise = useCallback(
     (sessionExerciseId: string) => {
-      Alert.alert('', t('workout.confirmRemoveExercise'), [
-        { text: t('common.cancel'), style: 'cancel' },
-        {
-          text: t('common.remove'),
-          style: 'destructive',
-          onPress: () => {
-            void (async () => {
-              const db = await getExecutor();
-              await removeExerciseFromSession(db, sessionExerciseId);
-              if (sessionId) await reload(sessionId);
-            })();
-          },
-        },
-      ]);
+      void (async () => {
+        const ok = await confirm({
+          message: t('workout.confirmRemoveExercise'),
+          confirmLabel: t('common.remove'),
+        });
+        if (!ok) return;
+        const db = await getExecutor();
+        await removeExerciseFromSession(db, sessionExerciseId);
+        if (sessionId) await reload(sessionId);
+      })();
     },
-    [sessionId, reload, t],
+    [sessionId, reload, t, confirm],
   );
 
   /**
@@ -503,24 +500,25 @@ export default function WorkoutsScreen() {
    */
   const openExerciseOptions = useCallback(
     (sessionExerciseId: string, exerciseLabel: string) => {
-      Alert.alert(exerciseLabel, undefined, [
-        {
-          text: t('workout.swapExercise'),
-          onPress: () =>
-            router.push({
-              pathname: '/exercise-picker',
-              params: { sessionId, swapExerciseId: sessionExerciseId },
-            }),
-        },
-        {
-          text: t('workout.removeExercise'),
-          style: 'destructive',
-          onPress: () => dropExercise(sessionExerciseId),
-        },
-        { text: t('common.cancel'), style: 'cancel' },
-      ]);
+      void (async () => {
+        const choice = await ask({
+          title: exerciseLabel,
+          actions: [
+            { label: t('workout.swapExercise') },
+            { label: t('workout.removeExercise'), destructive: true },
+          ],
+        });
+        if (choice === 0) {
+          router.push({
+            pathname: '/exercise-picker',
+            params: { sessionId, swapExerciseId: sessionExerciseId },
+          });
+        } else if (choice === 1) {
+          dropExercise(sessionExerciseId);
+        }
+      })();
     },
-    [sessionId, t, dropExercise],
+    [sessionId, t, dropExercise, ask],
   );
 
   /**

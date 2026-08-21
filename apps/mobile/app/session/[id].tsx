@@ -16,7 +16,6 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -37,6 +36,7 @@ import {
   metresToDisplay,
   weightUnitKey,
 } from '../../src/units.js';
+import { useActionSheet } from '../../src/components/ActionSheetProvider.js';
 import { ExerciseCard, type PreviousSet } from '../../src/components/ExerciseCard.js';
 import { KeyboardSafe } from '../../src/components/KeyboardSafe.js';
 import { SkeletonScreen } from '../../src/components/ui.js';
@@ -65,6 +65,7 @@ const EXERCISE_BY_KEY = new Map<string, ExerciseSeed>(
 );
 
 export default function SessionDetailScreen() {
+  const { confirm, notify } = useActionSheet();
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
   const { id, addExercise } = useLocalSearchParams<{ id: string; addExercise?: string }>();
@@ -164,22 +165,18 @@ export default function SessionDetailScreen() {
 
   const dropExercise = useCallback(
     (sessionExerciseId: string) => {
-      Alert.alert('', t('workout.confirmRemoveExercise'), [
-        { text: t('common.cancel'), style: 'cancel' },
-        {
-          text: t('workout.removeExercise'),
-          style: 'destructive',
-          onPress: () => {
-            void (async () => {
-              const db = await getExecutor();
-              await removeExerciseFromSession(db, sessionExerciseId);
-              await load();
-            })();
-          },
-        },
-      ]);
+      void (async () => {
+        const ok = await confirm({
+          message: t('workout.confirmRemoveExercise'),
+          confirmLabel: t('workout.removeExercise'),
+        });
+        if (!ok) return;
+        const db = await getExecutor();
+        await removeExerciseFromSession(db, sessionExerciseId);
+        await load();
+      })();
     },
-    [load, t],
+    [load, t, confirm],
   );
 
   const saveName = async () => {
@@ -198,7 +195,7 @@ export default function SessionDetailScreen() {
       // silently starting a second would strand whichever was already in progress.
       const active = await getActiveSession(db, userId);
       if (active) {
-        Alert.alert('', t('history.activeWarning'));
+        await notify({ message: t('history.activeWarning') });
         return;
       }
 
@@ -209,20 +206,16 @@ export default function SessionDetailScreen() {
 
   const remove = () => {
     if (!id) return;
-    Alert.alert('', t('history.confirmDelete'), [
-      { text: t('common.cancel'), style: 'cancel' },
-      {
-        text: t('history.delete'),
-        style: 'destructive',
-        onPress: () => {
-          void (async () => {
-            const db = await getExecutor();
-            await deleteSession(db, userId, id);
-            router.back();
-          })();
-        },
-      },
-    ]);
+    void (async () => {
+      const ok = await confirm({
+        message: t('history.confirmDelete'),
+        confirmLabel: t('history.delete'),
+      });
+      if (!ok) return;
+      const db = await getExecutor();
+      await deleteSession(db, userId, id);
+      router.back();
+    })();
   };
 
   if (loading) {

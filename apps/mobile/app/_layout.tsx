@@ -23,6 +23,7 @@ import { AuthProvider } from '../src/auth/AuthProvider.js';
 import { AnimatedGradientBackground } from '../src/components/AnimatedGradientBackground.js';
 import { ErrorBoundary } from '../src/components/ErrorBoundary.js';
 import { initI18n, isRtlLanguage, loadStoredLanguage, type Language } from '../src/i18n/index.js';
+import { ActionSheetProvider } from '../src/components/ActionSheetProvider.js';
 import { ThemeProvider, useTheme } from '../src/ThemeProvider.js';
 
 initI18n();
@@ -98,7 +99,11 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <SafeAreaProvider>
-            <RootLayoutInner />
+            {/* Inside SafeAreaProvider because the sheet clears the home indicator itself, and
+                above the router so any screen can ask a question without mounting its own. */}
+            <ActionSheetProvider>
+              <RootLayoutInner />
+            </ActionSheetProvider>
           </SafeAreaProvider>
         </AuthProvider>
       </QueryClientProvider>
