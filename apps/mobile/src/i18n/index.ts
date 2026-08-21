@@ -44,7 +44,7 @@ export const isRtlLanguage = (language: Language): boolean => RTL_LANGUAGES.has(
  * misspelled English key is a compile error rather than a runtime missing-string bug.
  *
  * `WidenStrings` is what makes that check work: both bundles are declared `as const`, so their
- * values are literal types ("פיט", "Fit"). Comparing them directly would demand the English
+ * values are literal types ("שמור", "Save"). Comparing them directly would demand the English
  * text equal the Hebrew text. Widening every leaf to `string` compares keys and nesting only.
  */
 type WidenStrings<T> = {

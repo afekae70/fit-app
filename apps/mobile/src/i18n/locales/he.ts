@@ -2,7 +2,7 @@
 
 export const he = {
   common: {
-    appName: 'פיט',
+    appName: 'NovaFit',
     save: 'שמור',
     cancel: 'ביטול',
     gotIt: 'הבנתי',

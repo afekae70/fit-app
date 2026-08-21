@@ -8,7 +8,7 @@
 
 export const en = {
   common: {
-    appName: 'Fit',
+    appName: 'NovaFit',
     save: 'Save',
     cancel: 'Cancel',
     gotIt: 'Got it',
