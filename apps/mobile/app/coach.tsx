@@ -21,8 +21,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -43,6 +41,7 @@ import { Banner, BackButton, EmptyState } from '../src/components/ui.js';
 import { API_BASE_URL } from '../src/config.js';
 import { activatePlan, addPlanDay, addPlanDayExercise, createPlan } from '../src/db/plans.js';
 import { getExecutor, newId } from '../src/db/provider.js';
+import { KeyboardSafe } from '../src/components/KeyboardSafe.js';
 import { useTheme } from '../src/ThemeProvider.js';
 import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../src/theme.js';
 
@@ -301,10 +300,7 @@ export default function CoachChatScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.screen}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
+    <KeyboardSafe style={styles.screen}>
       <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
         <BackButton />
         <Text style={styles.title}>{t('coach.title')}</Text>
@@ -430,7 +426,7 @@ export default function CoachChatScreen() {
           </Pressable>
         </View>
       ) : null}
-    </KeyboardAvoidingView>
+    </KeyboardSafe>
   );
 }
 

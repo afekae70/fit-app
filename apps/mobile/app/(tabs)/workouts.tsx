@@ -20,7 +20,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  View,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
@@ -30,6 +29,7 @@ import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
 import type { ExerciseTarget, PreviousSet } from '../../src/components/ExerciseCard.js';
 import { FinishSummary } from '../../src/components/FinishSummary.js';
 import { DragReorderList } from '../../src/components/DragReorderList.js';
+import { KeyboardSafe } from '../../src/components/KeyboardSafe.js';
 import { ExercisePanel } from '../../src/components/workout/ExercisePanel.js';
 import { EXTEND_SECONDS, RestBanner } from '../../src/components/workout/RestBanner.js';
 import { WorkoutHeader } from '../../src/components/workout/WorkoutHeader.js';
@@ -574,7 +574,7 @@ export default function WorkoutsScreen() {
   }
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top + spacing.md }]}>
+    <KeyboardSafe style={[styles.screen, { paddingTop: insets.top + spacing.md }]}>
       <WorkoutHeader
         name={sessionName ?? t('workout.activeTitle')}
         doneSets={totals.done}
@@ -720,7 +720,7 @@ export default function WorkoutsScreen() {
           <Text style={styles.finishButtonText}>{t('workout.finishButton')}</Text>
         </Pressable>
       </ScrollView>
-    </View>
+    </KeyboardSafe>
   );
 }
 

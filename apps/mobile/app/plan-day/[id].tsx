@@ -36,6 +36,7 @@ import {
   type PlanDayWithExercises,
 } from '../../src/db/plans.js';
 import { getExecutor, newId } from '../../src/db/provider.js';
+import { KeyboardSafe } from '../../src/components/KeyboardSafe.js';
 import { useTheme } from '../../src/ThemeProvider.js';
 import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../../src/theme.js';
 
@@ -165,162 +166,164 @@ export default function PlanDayScreen() {
   }
 
   return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={[
-        styles.content,
-        { paddingTop: insets.top + spacing.md, paddingBottom: insets.bottom + spacing.xxl },
-      ]}
-      keyboardShouldPersistTaps="handled"
-    >
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} accessibilityRole="button" hitSlop={8}>
-          <Text style={styles.back}>{isHebrew ? '›' : '‹'}</Text>
-        </Pressable>
-        <Text style={styles.dayIndex}>
-          {t('plan.day')} {day.day_index}
-        </Text>
-      </View>
+    <KeyboardSafe>
+      <ScrollView
+        style={styles.screen}
+        contentContainerStyle={[
+          styles.content,
+          { paddingTop: insets.top + spacing.md, paddingBottom: insets.bottom + spacing.xxl },
+        ]}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.header}>
+          <Pressable onPress={() => router.back()} accessibilityRole="button" hitSlop={8}>
+            <Text style={styles.back}>{isHebrew ? '›' : '‹'}</Text>
+          </Pressable>
+          <Text style={styles.dayIndex}>
+            {t('plan.day')} {day.day_index}
+          </Text>
+        </View>
 
-      <TextInput
-        value={nameDraft}
-        onChangeText={setNameDraft}
-        onEndEditing={() => void saveName()}
-        placeholder={t('plan.dayNamePlaceholder')}
-        placeholderTextColor={colors.textMuted}
-        style={styles.nameInput}
-        returnKeyType="done"
-      />
+        <TextInput
+          value={nameDraft}
+          onChangeText={setNameDraft}
+          onEndEditing={() => void saveName()}
+          placeholder={t('plan.dayNamePlaceholder')}
+          placeholderTextColor={colors.textMuted}
+          style={styles.nameInput}
+          returnKeyType="done"
+        />
 
-      <Hint>{t('plan.dayHint')}</Hint>
+        <Hint>{t('plan.dayHint')}</Hint>
 
-      {day.exercises.length === 0 ? (
-        <Text style={styles.emptyText}>{t('plan.dayEmptyHint')}</Text>
-      ) : (
-        <>
-          <View style={styles.columnHeader}>
-            <Text style={[styles.columnLabel, styles.colName]}>{t('plan.exercise')}</Text>
-            <Text style={[styles.columnLabel, styles.colField]}>{t('plan.sets')}</Text>
-            <Text style={[styles.columnLabel, styles.colField]}>{t('plan.repsFrom')}</Text>
-            <Text style={[styles.columnLabel, styles.colField]}>{t('plan.repsTo')}</Text>
-            <View style={styles.colActions} />
-          </View>
+        {day.exercises.length === 0 ? (
+          <Text style={styles.emptyText}>{t('plan.dayEmptyHint')}</Text>
+        ) : (
+          <>
+            <View style={styles.columnHeader}>
+              <Text style={[styles.columnLabel, styles.colName]}>{t('plan.exercise')}</Text>
+              <Text style={[styles.columnLabel, styles.colField]}>{t('plan.sets')}</Text>
+              <Text style={[styles.columnLabel, styles.colField]}>{t('plan.repsFrom')}</Text>
+              <Text style={[styles.columnLabel, styles.colField]}>{t('plan.repsTo')}</Text>
+              <View style={styles.colActions} />
+            </View>
 
-          {day.exercises.map((prescription, position) => {
-            const seed = EXERCISE_BY_KEY.get(prescription.exercise_key);
-            const label = seed
-              ? isHebrew
-                ? seed.nameHe
-                : seed.nameEn
-              : prescription.exercise_key;
+            {day.exercises.map((prescription, position) => {
+              const seed = EXERCISE_BY_KEY.get(prescription.exercise_key);
+              const label = seed
+                ? isHebrew
+                  ? seed.nameHe
+                  : seed.nameEn
+                : prescription.exercise_key;
 
-            return (
-              <View key={prescription.id} style={styles.row}>
-                <Text style={[styles.exerciseName, styles.colName]} numberOfLines={2}>
-                  {label}
-                </Text>
+              return (
+                <View key={prescription.id} style={styles.row}>
+                  <Text style={[styles.exerciseName, styles.colName]} numberOfLines={2}>
+                    {label}
+                  </Text>
 
-                <TextInput
-                  defaultValue={
-                    prescription.target_sets === null ? '' : String(prescription.target_sets)
-                  }
-                  onEndEditing={(e) => patch(prescription.id, 'targetSets', e.nativeEvent.text)}
-                  keyboardType="number-pad"
-                  inputMode="numeric"
-                  style={[styles.input, styles.colField]}
-                  selectTextOnFocus
-                  placeholder="—"
-                  placeholderTextColor={colors.textFaint}
-                />
-                <TextInput
-                  defaultValue={
-                    prescription.target_reps_min === null
-                      ? ''
-                      : String(prescription.target_reps_min)
-                  }
-                  onEndEditing={(e) => patch(prescription.id, 'targetRepsMin', e.nativeEvent.text)}
-                  keyboardType="number-pad"
-                  inputMode="numeric"
-                  style={[styles.input, styles.colField]}
-                  selectTextOnFocus
-                  placeholder="—"
-                  placeholderTextColor={colors.textFaint}
-                />
-                <TextInput
-                  defaultValue={
-                    prescription.target_reps_max === null
-                      ? ''
-                      : String(prescription.target_reps_max)
-                  }
-                  onEndEditing={(e) => patch(prescription.id, 'targetRepsMax', e.nativeEvent.text)}
-                  keyboardType="number-pad"
-                  inputMode="numeric"
-                  style={[styles.input, styles.colField]}
-                  selectTextOnFocus
-                  placeholder="—"
-                  placeholderTextColor={colors.textFaint}
-                />
+                  <TextInput
+                    defaultValue={
+                      prescription.target_sets === null ? '' : String(prescription.target_sets)
+                    }
+                    onEndEditing={(e) => patch(prescription.id, 'targetSets', e.nativeEvent.text)}
+                    keyboardType="number-pad"
+                    inputMode="numeric"
+                    style={[styles.input, styles.colField]}
+                    selectTextOnFocus
+                    placeholder="—"
+                    placeholderTextColor={colors.textFaint}
+                  />
+                  <TextInput
+                    defaultValue={
+                      prescription.target_reps_min === null
+                        ? ''
+                        : String(prescription.target_reps_min)
+                    }
+                    onEndEditing={(e) => patch(prescription.id, 'targetRepsMin', e.nativeEvent.text)}
+                    keyboardType="number-pad"
+                    inputMode="numeric"
+                    style={[styles.input, styles.colField]}
+                    selectTextOnFocus
+                    placeholder="—"
+                    placeholderTextColor={colors.textFaint}
+                  />
+                  <TextInput
+                    defaultValue={
+                      prescription.target_reps_max === null
+                        ? ''
+                        : String(prescription.target_reps_max)
+                    }
+                    onEndEditing={(e) => patch(prescription.id, 'targetRepsMax', e.nativeEvent.text)}
+                    keyboardType="number-pad"
+                    inputMode="numeric"
+                    style={[styles.input, styles.colField]}
+                    selectTextOnFocus
+                    placeholder="—"
+                    placeholderTextColor={colors.textFaint}
+                  />
 
-                <View style={styles.reorder}>
-                  <Pressable
-                    onPress={() => move(prescription.id, -1)}
-                    disabled={position === 0}
-                    accessibilityRole="button"
-                    accessibilityLabel={t('plan.moveExerciseUp')}
-                    hitSlop={6}
-                  >
-                    <Text style={[styles.moveText, position === 0 && styles.moveTextOff]}>↑</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => move(prescription.id, 1)}
-                    disabled={position === day.exercises.length - 1}
-                    accessibilityRole="button"
-                    accessibilityLabel={t('plan.moveExerciseDown')}
-                    hitSlop={6}
-                  >
-                    <Text
-                      style={[
-                        styles.moveText,
-                        position === day.exercises.length - 1 && styles.moveTextOff,
-                      ]}
+                  <View style={styles.reorder}>
+                    <Pressable
+                      onPress={() => move(prescription.id, -1)}
+                      disabled={position === 0}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('plan.moveExerciseUp')}
+                      hitSlop={6}
                     >
-                      ↓
-                    </Text>
+                      <Text style={[styles.moveText, position === 0 && styles.moveTextOff]}>↑</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => move(prescription.id, 1)}
+                      disabled={position === day.exercises.length - 1}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('plan.moveExerciseDown')}
+                      hitSlop={6}
+                    >
+                      <Text
+                        style={[
+                          styles.moveText,
+                          position === day.exercises.length - 1 && styles.moveTextOff,
+                        ]}
+                      >
+                        ↓
+                      </Text>
+                    </Pressable>
+                  </View>
+
+                  <Pressable
+                    onPress={() => removeExercise(prescription.id)}
+                    style={styles.colActions}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('workout.removeExercise')}
+                    hitSlop={8}
+                  >
+                    <Text style={styles.deleteText}>✕</Text>
                   </Pressable>
                 </View>
+              );
+            })}
+          </>
+        )}
 
-                <Pressable
-                  onPress={() => removeExercise(prescription.id)}
-                  style={styles.colActions}
-                  accessibilityRole="button"
-                  accessibilityLabel={t('workout.removeExercise')}
-                  hitSlop={8}
-                >
-                  <Text style={styles.deleteText}>✕</Text>
-                </Pressable>
-              </View>
-            );
-          })}
-        </>
-      )}
+        <Pressable
+          onPress={() =>
+            router.push({
+              pathname: '/exercise-picker',
+              params: { returnTo: `/plan-day/${id}`, planDayId: id },
+            })
+          }
+          style={styles.addButton}
+          accessibilityRole="button"
+        >
+          <Text style={styles.addButtonText}>+ {t('workout.addExercise')}</Text>
+        </Pressable>
 
-      <Pressable
-        onPress={() =>
-          router.push({
-            pathname: '/exercise-picker',
-            params: { returnTo: `/plan-day/${id}`, planDayId: id },
-          })
-        }
-        style={styles.addButton}
-        accessibilityRole="button"
-      >
-        <Text style={styles.addButtonText}>+ {t('workout.addExercise')}</Text>
-      </Pressable>
-
-      <Pressable onPress={deleteDay} style={styles.deleteDayButton} accessibilityRole="button">
-        <Text style={styles.deleteDayText}>{t('plan.deleteDay')}</Text>
-      </Pressable>
-    </ScrollView>
+        <Pressable onPress={deleteDay} style={styles.deleteDayButton} accessibilityRole="button">
+          <Text style={styles.deleteDayText}>{t('plan.deleteDay')}</Text>
+        </Pressable>
+      </ScrollView>
+    </KeyboardSafe>
   );
 }
 

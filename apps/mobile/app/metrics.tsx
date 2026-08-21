@@ -55,6 +55,7 @@ import {
   SkeletonScreen,
   Stat,
 } from '../src/components/ui.js';
+import { KeyboardSafe } from '../src/components/KeyboardSafe.js';
 import { SwipeableRow } from '../src/components/SwipeableRow.js';
 import { UndoToast } from '../src/components/UndoToast.js';
 import { WeightSparkline } from '../src/components/WeightSparkline.js';
@@ -306,7 +307,7 @@ export default function MetricsScreen() {
       : null;
 
   return (
-    <View style={styles.screen}>
+    <KeyboardSafe style={styles.screen}>
     <ScrollView
       contentContainerStyle={[
         styles.content,
@@ -570,7 +571,7 @@ export default function MetricsScreen() {
       ) : null}
     </ScrollView>
     <UndoToast message={pendingDeleteId ? t('metrics.deletedToast') : null} onUndo={undoDelete} />
-    </View>
+    </KeyboardSafe>
   );
 }
 

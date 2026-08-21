@@ -38,6 +38,7 @@ import {
   weightUnitKey,
 } from '../../src/units.js';
 import { ExerciseCard, type PreviousSet } from '../../src/components/ExerciseCard.js';
+import { KeyboardSafe } from '../../src/components/KeyboardSafe.js';
 import { SkeletonScreen } from '../../src/components/ui.js';
 import { getExecutor, newId } from '../../src/db/provider.js';
 import {
@@ -253,132 +254,134 @@ export default function SessionDetailScreen() {
   );
 
   return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={[
-        styles.content,
-        { paddingTop: insets.top + spacing.md, paddingBottom: insets.bottom + spacing.xxl },
-      ]}
-      keyboardShouldPersistTaps="handled"
-    >
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} accessibilityRole="button" hitSlop={8}>
-          <Text style={styles.back}>{isHebrew ? '›' : '‹'}</Text>
-        </Pressable>
-        <Text style={styles.date}>{new Date(session.started_at).toLocaleDateString()}</Text>
-      </View>
-
-      <View style={styles.nameRow}>
-        <TextInput
-          value={nameDraft}
-          onChangeText={setNameDraft}
-          onEndEditing={() => void saveName()}
-          placeholder={t('history.namePlaceholder')}
-          placeholderTextColor={colors.textMuted}
-          style={styles.nameInput}
-          returnKeyType="done"
-        />
-      </View>
-
-      <View style={styles.statsRow}>
-        <Text style={styles.stat}>
-          {exercises.length} {t('history.exercises')}
-        </Text>
-        <Text style={styles.stat}>
-          {totalSets} {t('history.sets')}
-        </Text>
-        {volume > 0 ? (
-          <Text style={styles.stat}>
-            {formatVolume(volume, unit)} {t(`common.${weightUnitKey(unit)}`)}
-          </Text>
-        ) : null}
-      </View>
-
-      <Pressable
-        onPress={() => setEditing((current) => !current)}
-        style={[styles.editButton, editing && styles.editButtonActive]}
-        accessibilityRole="button"
+    <KeyboardSafe>
+      <ScrollView
+        style={styles.screen}
+        contentContainerStyle={[
+          styles.content,
+          { paddingTop: insets.top + spacing.md, paddingBottom: insets.bottom + spacing.xxl },
+        ]}
+        keyboardShouldPersistTaps="handled"
       >
-        <Text style={[styles.editButtonText, editing && styles.editButtonTextActive]}>
-          {editing ? `✓ ${t('history.editDone')}` : `✎ ${t('history.edit')}`}
-        </Text>
-        {!editing ? <Text style={styles.repeatHint}>{t('history.editHint')}</Text> : null}
-      </Pressable>
+        <View style={styles.header}>
+          <Pressable onPress={() => router.back()} accessibilityRole="button" hitSlop={8}>
+            <Text style={styles.back}>{isHebrew ? '›' : '‹'}</Text>
+          </Pressable>
+          <Text style={styles.date}>{new Date(session.started_at).toLocaleDateString()}</Text>
+        </View>
 
-      {!editing ? (
-        <Pressable onPress={repeat} style={styles.repeatButton} accessibilityRole="button">
-          <Text style={styles.repeatButtonText}>↻ {t('history.repeat')}</Text>
-          <Text style={styles.repeatHint}>{t('history.repeatHint')}</Text>
-        </Pressable>
-      ) : null}
+        <View style={styles.nameRow}>
+          <TextInput
+            value={nameDraft}
+            onChangeText={setNameDraft}
+            onEndEditing={() => void saveName()}
+            placeholder={t('history.namePlaceholder')}
+            placeholderTextColor={colors.textMuted}
+            style={styles.nameInput}
+            returnKeyType="done"
+          />
+        </View>
 
-      {editing
-        ? exercises.map((exercise) => {
-            const seed = EXERCISE_BY_KEY.get(exercise.exercise_key);
-            if (!seed) return null;
-            return (
-              <ExerciseCard
-                key={exercise.id}
-                exercise={seed}
-                sets={exercise.sets}
-                previousSets={previous[exercise.exercise_key] ?? null}
-                onAddSet={() => addSetTo(exercise.id)}
-                onRemoveSet={deleteSet}
-                onUpdateSet={patchSet}
-                onToggleDone={toggleDone}
-                onRemoveExercise={() => dropExercise(exercise.id)}
-              />
-            );
-          })
-        : exercises.map((exercise) => {
-            const seed = EXERCISE_BY_KEY.get(exercise.exercise_key);
-            const label = seed ? (isHebrew ? seed.nameHe : seed.nameEn) : exercise.exercise_key;
-            return (
-              <View key={exercise.id} style={styles.exerciseCard}>
-                <Text style={styles.exerciseTitle}>{label}</Text>
-                {exercise.sets.map((set) => (
-                  <View key={set.id} style={styles.setLine}>
-                    <Text style={styles.setIndex}>
-                      {set.is_warmup === 1 ? t('workout.warmupShort') : set.set_index}
-                    </Text>
-                    <Text style={styles.setValue}>
-                      {set.weight_kg !== null
-                        ? `${formatWeight(set.weight_kg, unit)} ${t(`common.${weightUnitKey(unit)}`)}`
-                        : ''}
-                      {set.weight_kg !== null && set.reps !== null ? ' × ' : ''}
-                      {set.reps !== null ? `${set.reps}` : ''}
-                      {set.duration_seconds !== null
-                        ? `${set.duration_seconds} ${t('workout.seconds')}`
-                        : ''}
-                      {set.distance_m !== null
-                        ? `${metresToDisplay(set.distance_m, unit)} ${t(`common.${distanceUnitKey(unit)}`)}`
-                        : ''}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            );
-          })}
+        <View style={styles.statsRow}>
+          <Text style={styles.stat}>
+            {exercises.length} {t('history.exercises')}
+          </Text>
+          <Text style={styles.stat}>
+            {totalSets} {t('history.sets')}
+          </Text>
+          {volume > 0 ? (
+            <Text style={styles.stat}>
+              {formatVolume(volume, unit)} {t(`common.${weightUnitKey(unit)}`)}
+            </Text>
+          ) : null}
+        </View>
 
-      {editing ? (
         <Pressable
-          onPress={() =>
-            router.push({
-              pathname: '/exercise-picker',
-              params: { returnTo: `/session/${id}`, sessionId: id },
-            })
-          }
-          style={styles.addExerciseButton}
+          onPress={() => setEditing((current) => !current)}
+          style={[styles.editButton, editing && styles.editButtonActive]}
           accessibilityRole="button"
         >
-          <Text style={styles.addExerciseText}>+ {t('workout.addExercise')}</Text>
+          <Text style={[styles.editButtonText, editing && styles.editButtonTextActive]}>
+            {editing ? `✓ ${t('history.editDone')}` : `✎ ${t('history.edit')}`}
+          </Text>
+          {!editing ? <Text style={styles.repeatHint}>{t('history.editHint')}</Text> : null}
         </Pressable>
-      ) : null}
 
-      <Pressable onPress={remove} style={styles.deleteButton} accessibilityRole="button">
-        <Text style={styles.deleteButtonText}>{t('history.delete')}</Text>
-      </Pressable>
-    </ScrollView>
+        {!editing ? (
+          <Pressable onPress={repeat} style={styles.repeatButton} accessibilityRole="button">
+            <Text style={styles.repeatButtonText}>↻ {t('history.repeat')}</Text>
+            <Text style={styles.repeatHint}>{t('history.repeatHint')}</Text>
+          </Pressable>
+        ) : null}
+
+        {editing
+          ? exercises.map((exercise) => {
+              const seed = EXERCISE_BY_KEY.get(exercise.exercise_key);
+              if (!seed) return null;
+              return (
+                <ExerciseCard
+                  key={exercise.id}
+                  exercise={seed}
+                  sets={exercise.sets}
+                  previousSets={previous[exercise.exercise_key] ?? null}
+                  onAddSet={() => addSetTo(exercise.id)}
+                  onRemoveSet={deleteSet}
+                  onUpdateSet={patchSet}
+                  onToggleDone={toggleDone}
+                  onRemoveExercise={() => dropExercise(exercise.id)}
+                />
+              );
+            })
+          : exercises.map((exercise) => {
+              const seed = EXERCISE_BY_KEY.get(exercise.exercise_key);
+              const label = seed ? (isHebrew ? seed.nameHe : seed.nameEn) : exercise.exercise_key;
+              return (
+                <View key={exercise.id} style={styles.exerciseCard}>
+                  <Text style={styles.exerciseTitle}>{label}</Text>
+                  {exercise.sets.map((set) => (
+                    <View key={set.id} style={styles.setLine}>
+                      <Text style={styles.setIndex}>
+                        {set.is_warmup === 1 ? t('workout.warmupShort') : set.set_index}
+                      </Text>
+                      <Text style={styles.setValue}>
+                        {set.weight_kg !== null
+                          ? `${formatWeight(set.weight_kg, unit)} ${t(`common.${weightUnitKey(unit)}`)}`
+                          : ''}
+                        {set.weight_kg !== null && set.reps !== null ? ' × ' : ''}
+                        {set.reps !== null ? `${set.reps}` : ''}
+                        {set.duration_seconds !== null
+                          ? `${set.duration_seconds} ${t('workout.seconds')}`
+                          : ''}
+                        {set.distance_m !== null
+                          ? `${metresToDisplay(set.distance_m, unit)} ${t(`common.${distanceUnitKey(unit)}`)}`
+                          : ''}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              );
+            })}
+
+        {editing ? (
+          <Pressable
+            onPress={() =>
+              router.push({
+                pathname: '/exercise-picker',
+                params: { returnTo: `/session/${id}`, sessionId: id },
+              })
+            }
+            style={styles.addExerciseButton}
+            accessibilityRole="button"
+          >
+            <Text style={styles.addExerciseText}>+ {t('workout.addExercise')}</Text>
+          </Pressable>
+        ) : null}
+
+        <Pressable onPress={remove} style={styles.deleteButton} accessibilityRole="button">
+          <Text style={styles.deleteButtonText}>{t('history.delete')}</Text>
+        </Pressable>
+      </ScrollView>
+    </KeyboardSafe>
   );
 }
 
