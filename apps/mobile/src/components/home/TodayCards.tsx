@@ -156,6 +156,31 @@ export function TodayWorkoutCard({
 
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Today is a rest day, and that is the plan working rather than a gap in it.
+ *
+ * Deliberately without a button. The empty state this replaces offered "start an empty workout"
+ * and "choose a plan", which on a scheduled rest day is an invitation to undo the schedule —
+ * and the whole reason the app asks which days are training days is so that the answer holds
+ * when motivation argues with it. Training is still reachable from the workout tab for anyone
+ * who genuinely means to; it just is not being suggested.
+ */
+export function RestDayCard() {
+  const { t } = useTranslation();
+  const { colors } = useTheme();
+  const s = useMemo(() => createStyles(colors), [colors]);
+
+  return (
+    <View style={s.restCard}>
+      <Text style={s.restGlyph}>🌙</Text>
+      <Text style={s.restTitle}>{t('home.restTitle')}</Text>
+      <Text style={s.restBody}>{t('home.restBody')}</Text>
+    </View>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+
 export function StreakCard({
   days,
   streakWeeks,
@@ -459,6 +484,10 @@ const createStyles = (colors: ColorPalette) =>
     ctaLabel: TextStyle;
     card: ViewStyle;
     cardPressed: ViewStyle;
+    restCard: ViewStyle;
+    restGlyph: TextStyle;
+    restTitle: TextStyle;
+    restBody: TextStyle;
     streakHeader: ViewStyle;
     streakTitle: TextStyle;
     streakCount: TextStyle;
@@ -578,6 +607,29 @@ const createStyles = (colors: ColorPalette) =>
     // The same restraint as the workout CTA: a press is confirmed by a hair of scale, never by
     // the accent flooding a card that is otherwise quiet.
     cardPressed: { transform: [{ scale: 0.99 }] },
+
+    /* rest day ------------------------------------------------------------ */
+    // Quieter than the workout card on purpose: no accent border, no gradient, nothing that
+    // reads as the live thing on screen. Today the live thing is not training.
+    restCard: {
+      borderWidth: 1,
+      borderColor: colors.borderSubtle,
+      backgroundColor: colors.surface,
+      borderRadius: radius.lg,
+      paddingVertical: 28,
+      paddingHorizontal: 20,
+      alignItems: 'center',
+      gap: 8,
+    },
+    restGlyph: { fontSize: 30 },
+    restTitle: { color: colors.text, fontSize: 20, fontWeight: '500', textAlign: 'center' },
+    restBody: {
+      color: colors.textMuted,
+      fontSize: 13,
+      lineHeight: 20,
+      textAlign: 'center',
+      maxWidth: 300,
+    },
     streakHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 },
     streakTitle: { color: colors.text, fontSize: 15, fontWeight: '500', textAlign: 'auto' },
     streakCount: { color: colors.textFaint, fontSize: 12, textAlign: 'auto' },

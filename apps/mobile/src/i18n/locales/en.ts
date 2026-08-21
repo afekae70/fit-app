@@ -273,6 +273,8 @@ export const en = {
     statWorkouts: 'Workouts',
     statVolume: 'Volume',
     statPrs: 'PRs',
+    restTitle: 'Rest day',
+    restBody: 'Rest is part of the plan, not a break from it. Muscle is built today, not in the session.',
     emptyTitle: 'No workouts yet',
     emptyBody: 'The first workout you log shows up here. Start from a ready-made plan, or just open an empty one.',
     startEmpty: 'Start an empty workout',

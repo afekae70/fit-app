@@ -22,6 +22,7 @@ import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
 import {
   GreetingRow,
   NutritionCard,
+  RestDayCard,
   StreakCard,
   TodayWorkoutCard,
   WeekSummaryRow,
@@ -32,6 +33,7 @@ import { Skeleton } from '../../src/components/ui.js';
 import {
   getHomeNutrition,
   getTodayWorkout,
+  isScheduledRestDay,
   weekStrip,
   weekSummary,
   type HomeNutrition,
@@ -55,6 +57,13 @@ interface HomeData {
   summary: WeekSummary;
   streak: WorkoutStreak;
   nutrition: HomeNutrition;
+  /**
+   * Today was deliberately marked as a rest day, as opposed to there being no plan at all.
+   *
+   * `getTodayWorkout` returns null for both, and they deserve opposite screens: one is the plan
+   * working, the other is an invitation to make one.
+   */
+  restDay: boolean;
 }
 
 export default function TodayScreen() {
@@ -72,14 +81,15 @@ export default function TodayScreen() {
   const load = useCallback(async () => {
     try {
       const db = await getExecutor();
-      const [workout, strip, summary, streak, nutrition] = await Promise.all([
+      const [workout, strip, summary, streak, nutrition, restDay] = await Promise.all([
         getTodayWorkout(db, userId),
         weekStrip(db, userId),
         weekSummary(db, userId),
         getWorkoutStreak(db, userId),
         getHomeNutrition(db, userId),
+        isScheduledRestDay(db, userId),
       ]);
-      setData({ workout, strip, summary, streak, nutrition });
+      setData({ workout, strip, summary, streak, nutrition, restDay });
       setFailed(false);
     } catch {
       setFailed(true);
@@ -152,6 +162,26 @@ export default function TodayScreen() {
                   for doing it, then the week behind it. */}
               <FadeSlideIn index={0}>
                 <TodayWorkoutCard workout={data.workout} onStart={startWorkout} />
+              </FadeSlideIn>
+              <FadeSlideIn index={1}>
+                <StreakCard
+                  days={data.strip}
+                  streakWeeks={Math.floor(data.streak.currentDays / 7)}
+                  trainedThisWeek={data.summary.workouts}
+                  targetPerWeek={WEEKLY_TARGET}
+                />
+              </FadeSlideIn>
+              <FadeSlideIn index={2}>
+                <WeekSummaryRow summary={data.summary} />
+              </FadeSlideIn>
+            </>
+          ) : data.restDay ? (
+            /* A scheduled rest day keeps the streak strip and the week's numbers — they say the
+               week is going fine, which is the reassurance a rest day wants — and drops only
+               the invitation to train. */
+            <>
+              <FadeSlideIn index={0}>
+                <RestDayCard />
               </FadeSlideIn>
               <FadeSlideIn index={1}>
                 <StreakCard
