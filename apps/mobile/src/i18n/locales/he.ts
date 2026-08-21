@@ -179,6 +179,7 @@ export const he = {
     restSkip: 'דלג',
     restAllDone: 'סיימת הכול',
     longPressDelete: 'לחיצה ארוכה למחיקה',
+    plateHint: 'מוט {{bar}} · {{plates}} לכל צד',
     dragExercise: 'גרור כדי לשנות את סדר התרגיל',
     swapExercise: 'החלף תרגיל',
     exerciseOptions: 'אפשרויות לתרגיל',

@@ -10,4 +10,5 @@ export * from './constants.js';
 export * from './anthropometry.js';
 export * from './energy.js';
 export * from './strength.js';
+export * from './plates.js';
 export * from './trends.js';

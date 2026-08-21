@@ -186,6 +186,7 @@ export const en = {
     restSkip: 'Skip',
     restAllDone: 'All done',
     longPressDelete: 'Long-press to delete',
+    plateHint: '{{bar}} bar · {{plates}} per side',
     dragExercise: 'Drag to reorder this exercise',
     swapExercise: 'Swap exercise',
     exerciseOptions: 'Exercise options',

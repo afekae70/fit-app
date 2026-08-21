@@ -18,6 +18,7 @@ import { Pressable, StyleSheet, Text, View, type TextStyle, type ViewStyle } fro
 import { exerciseVolume, type DerivedSet } from '../../workout/derived.js';
 import { useTheme } from '../../ThemeProvider.js';
 import type { UnitPreference } from '@fit/shared';
+import { formatPlates, OLYMPIC_BAR, OLYMPIC_BAR_LB, platesPerSide } from '@fit/shared/calculations';
 
 import { useUnit } from '../../UnitsProvider.js';
 import { formatVolume, kgToDisplay, weightUnitKey } from '../../units.js';
@@ -63,6 +64,14 @@ export interface ExercisePanelProps {
    * everything else here — weight fields, rep fields, the done checkbox — wants the touch too.
    */
   dragHandle?: DragHandleProps;
+  /**
+   * Whether this exercise loads a straight barbell, which turns on the plate hint.
+   *
+   * Only the straight bar. An EZ bar is anywhere from 6.5 to 10 kg, a trap bar from 20 to 32,
+   * and a Smith machine's sled is counterbalanced by an amount nobody prints — a confidently
+   * wrong bar weight there would shift every number on the screen without looking wrong.
+   */
+  onBarbell?: boolean;
 }
 
 export function ExercisePanel({
@@ -77,6 +86,7 @@ export function ExercisePanel({
   onRemoveSet,
   onOptions,
   dragHandle,
+  onBarbell = false,
 }: ExercisePanelProps) {
   const { t } = useTranslation();
   const { colors } = useTheme();
@@ -84,6 +94,29 @@ export function ExercisePanel({
   const s = useMemo(() => createStyles(colors), [colors]);
 
   const volume = exerciseVolume(sets);
+
+  /*
+   * What to put on the bar for the set you are about to do.
+   *
+   * The next unfinished set, not the heaviest and not the last — those answer a different
+   * question. On a ramp the bar changes between sets, and the only loading worth showing while
+   * standing in front of the rack is the one for the set in front of you.
+   *
+   * Shown once per exercise rather than on every row: SetRow is built for one thumb, and its
+   * own comments say so. A line per set would crowd the thing it is meant to help with.
+   */
+  const plateHint = useMemo(() => {
+    if (!onBarbell) return null;
+    const next = sets.find((set) => !set.done) ?? sets[sets.length - 1];
+    if (!next?.weightKg) return null;
+
+    const bar = unit === 'imperial' ? OLYMPIC_BAR_LB : OLYMPIC_BAR;
+    const load = platesPerSide(kgToDisplay(next.weightKg, unit), bar);
+    const plates = formatPlates(load);
+    // Nothing to hang, or a target these plates cannot make — either way a hint would mislead
+    // more than it helps, and `remainder` is what makes the difference visible.
+    return plates && load.remainder === 0 ? { bar: bar.kg, plates } : null;
+  }, [onBarbell, sets, unit]);
   const targetLabel = target ? formatTarget(target, t) : null;
   const previousLabel = previous && previous.length > 0 ? formatPrevious(previous, unit) : null;
 
@@ -145,6 +178,12 @@ export function ExercisePanel({
           </View>
         ) : null}
       </View>
+
+      {plateHint ? (
+        <Text style={s.plateHint}>
+          {t('workout.plateHint', { bar: plateHint.bar, plates: plateHint.plates })}
+        </Text>
+      ) : null}
 
       <View style={s.columns}>
         <Text style={[s.columnLabel, s.columnIndex]}>#</Text>
@@ -225,6 +264,7 @@ const createStyles = (colors: ColorPalette) =>
     previous: TextStyle;
     targetPill: ViewStyle;
     targetText: TextStyle;
+    plateHint: TextStyle;
     options: ViewStyle;
     optionsGlyph: TextStyle;
     handle: ViewStyle;
@@ -264,6 +304,13 @@ const createStyles = (colors: ColorPalette) =>
       borderColor: colors.accentBorder,
     },
     targetText: { color: colors.accent, fontSize: 11 },
+    // Quiet and monospaced-ish: it is a number to glance at between sets, not a label to read.
+    plateHint: {
+      color: colors.textMuted,
+      fontSize: 12,
+      textAlign: 'auto',
+      fontVariant: ['tabular-nums'],
+    },
     options: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
     optionsGlyph: { color: colors.textSecondary, fontSize: 20, lineHeight: 22 },
     // A full 44pt target. The grip is small, but the area that answers to a thumb is not —

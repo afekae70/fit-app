@@ -694,6 +694,7 @@ export default function WorkoutsScreen() {
                   }}
                   onOptions={() => openExerciseOptions(exercise.id, seed.nameHe)}
                   dragHandle={dragHandle}
+                  onBarbell={seed.equipmentSlug === 'barbell'}
                 />
               );
             }}
