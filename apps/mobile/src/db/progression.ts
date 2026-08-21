@@ -42,6 +42,13 @@ export async function getExerciseProgression(
   userId: string,
   exerciseKey: string,
   limit = 30,
+  /**
+   * A session to leave out — in practice the one being logged right now.
+   *
+   * Without it, sets being typed this minute join the history they are about to be compared
+   * against, and the stall verdict shifts under the user as they fill the screen in.
+   */
+  excludeSessionId?: string,
 ): Promise<ExerciseSessionBest[]> {
   const rows = await db.all<ExerciseSessionBest>(
     `SELECT
@@ -64,15 +71,44 @@ export async function getExerciseProgression(
        AND s.weight_kg IS NOT NULL
        AND s.reps IS NOT NULL
        AND s.reps BETWEEN 1 AND 12
+       AND (? IS NULL OR ws.id <> ?)
      GROUP BY ws.id
      ORDER BY ws.started_at DESC
      LIMIT ?`,
-    [userId, exerciseKey, limit],
+    [userId, exerciseKey, excludeSessionId ?? null, excludeSessionId ?? null, limit],
   );
 
   // Query newest-first so LIMIT keeps the most RECENT sessions, then flip: the trend maths
   // needs chronological order. Ordering ascending in SQL would have kept the oldest instead.
   return rows.reverse();
+}
+
+/**
+ * Is this exercise stalling, judged on history alone?
+ *
+ * Split out from `summariseExerciseProgress` because the workout screen needs one boolean per
+ * exercise while a session is open, and needs that session left out of the reckoning.
+ *
+ * Returns false rather than null when there is too little history: `assessStall` needs several
+ * sessions before a stall means anything, and "not stalling" is the right thing to tell a
+ * screen that would otherwise suggest backing off from a lift with two entries.
+ */
+export async function isExerciseStalling(
+  db: SqlExecutor,
+  userId: string,
+  exerciseKey: string,
+  excludeSessionId?: string,
+): Promise<boolean> {
+  const sessions = await getExerciseProgression(db, userId, exerciseKey, 30, excludeSessionId);
+  if (sessions.length < 4) return false;
+
+  return assessStall(
+    sessions.map((s) => ({
+      date: new Date(s.started_at),
+      bestE1rmKg: s.best_e1rm_kg,
+      totalVolumeLoad: s.total_volume_load,
+    })),
+  ).isStalling;
 }
 
 export interface ExerciseProgressSummary {

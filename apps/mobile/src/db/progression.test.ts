@@ -14,6 +14,7 @@ import type { SqlExecutor } from './executor.js';
 import {
   consistencyHeat,
   getExerciseProgression,
+  isExerciseStalling,
   listTrainedExercises,
   personalRecords,
   summariseAllProgress,
@@ -382,5 +383,67 @@ describe('progress screen aggregates', () => {
     expect((await weeklyVolume(db, USER, 4, TODAY)).every((w) => w.volumeKg === 0)).toBe(true);
     expect((await consistencyHeat(db, USER, 4, TODAY)).every((d) => d.level === 0)).toBe(true);
     expect(await personalRecords(db, USER)).toEqual([]);
+  });
+});
+
+describe('leaving the open session out', () => {
+  it('excludes the named session from the history', async () => {
+    await logSession(0, 'Barbell Curl', [{ weightKg: 30, reps: 10 }]);
+    const today = await logSession(7, 'Barbell Curl', [{ weightKg: 40, reps: 10 }]);
+
+    const all = await getExerciseProgression(db, USER, 'Barbell Curl');
+    const without = await getExerciseProgression(db, USER, 'Barbell Curl', 30, today);
+
+    expect(all).toHaveLength(2);
+    expect(without).toHaveLength(1);
+    expect(without[0]?.top_weight_kg).toBe(30);
+  });
+
+  it('leaves the history alone when nothing is excluded', async () => {
+    // The parameter is optional, and an undefined one must not filter everything out — the
+    // shape of the SQL guard makes that the natural way to get it wrong.
+    await logSession(0, 'Barbell Curl', [{ weightKg: 30, reps: 10 }]);
+    expect(await getExerciseProgression(db, USER, 'Barbell Curl')).toHaveLength(1);
+  });
+});
+
+describe('isExerciseStalling', () => {
+  it('says no while there is too little history to judge', async () => {
+    // Two sessions cannot tell progress from noise, and telling someone to deload off them
+    // would be wrong far more often than right.
+    await logSession(0, 'Bench', [{ weightKg: 100, reps: 5 }]);
+    await logSession(7, 'Bench', [{ weightKg: 100, reps: 5 }]);
+
+    expect(await isExerciseStalling(db, USER, 'Bench')).toBe(false);
+  });
+
+  it('says no while the lift is climbing', async () => {
+    for (const [i, kg] of [100, 102.5, 105, 107.5, 110, 112.5].entries()) {
+      await logSession(i * 7, 'Bench', [{ weightKg: kg, reps: 5 }]);
+    }
+
+    expect(await isExerciseStalling(db, USER, 'Bench')).toBe(false);
+  });
+
+  it('says yes once nothing has beaten the best for weeks', async () => {
+    await logSession(0, 'Bench', [{ weightKg: 120, reps: 5 }]);
+    for (const i of [1, 2, 3, 4, 5]) {
+      await logSession(i * 7, 'Bench', [{ weightKg: 110, reps: 5 }]);
+    }
+
+    expect(await isExerciseStalling(db, USER, 'Bench')).toBe(true);
+  });
+
+  it('does not let the open session hide a stall', async () => {
+    // The point of the exclusion: a big first set typed into today's session would look like a
+    // new best and clear the stall the moment it was entered.
+    await logSession(0, 'Bench', [{ weightKg: 120, reps: 5 }]);
+    for (const i of [1, 2, 3, 4, 5]) {
+      await logSession(i * 7, 'Bench', [{ weightKg: 110, reps: 5 }]);
+    }
+    const today = await logSession(42, 'Bench', [{ weightKg: 130, reps: 5 }]);
+
+    expect(await isExerciseStalling(db, USER, 'Bench')).toBe(false);
+    expect(await isExerciseStalling(db, USER, 'Bench', today)).toBe(true);
   });
 });

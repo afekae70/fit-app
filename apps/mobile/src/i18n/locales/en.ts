@@ -189,6 +189,12 @@ export const en = {
     restAllDone: 'All done',
     longPressDelete: 'Long-press to delete',
     plateHint: '{{bar}} bar · {{plates}} per side',
+    advice: {
+      addWeight: 'You filled the range at {{from}}',
+      addReps: 'Reps left in it — you got {{from}}',
+      deload: 'Stuck for weeks — back off and build',
+      apply: 'Apply {{weight}} for {{reps}} reps',
+    },
     dragExercise: 'Drag to reorder this exercise',
     swapExercise: 'Swap exercise',
     exerciseOptions: 'Exercise options',

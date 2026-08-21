@@ -12,4 +12,5 @@ export * from './energy.js';
 export * from './strength.js';
 export * from './plates.js';
 export * from './warmup.js';
+export * from './progression.js';
 export * from './trends.js';

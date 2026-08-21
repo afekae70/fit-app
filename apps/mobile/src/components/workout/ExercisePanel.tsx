@@ -22,6 +22,7 @@ import { formatPlates, OLYMPIC_BAR, OLYMPIC_BAR_LB, platesPerSide } from '@fit/s
 
 import { useUnit } from '../../UnitsProvider.js';
 import { formatVolume, kgToDisplay, weightUnitKey } from '../../units.js';
+import type { ProgressionAdvice } from '@fit/shared/calculations';
 import { radius, type ColorPalette } from '../../theme.js';
 import type { DragHandleProps } from '../DragReorderList.js';
 import { SetRow } from './SetRow.js';
@@ -56,6 +57,19 @@ export interface ExercisePanelProps {
    * now, and the long press means exactly one thing.
    */
   onOptions?: () => void;
+  /**
+   * What last session says to do today, or null when the history cannot support a suggestion.
+   *
+   * Passed as the verdict rather than a formatted string so the panel can put it in the
+   * reader's units and language, the same as it already does for `previous` and `target`.
+   */
+  advice?: ProgressionAdvice | null;
+  /**
+   * Write the suggestion into the unfinished sets. Omitted when there is nothing to write to,
+   * which turns the row from a button into a plain line of text — still worth reading, just
+   * not worth pressing.
+   */
+  onApplyAdvice?: () => void;
   /**
    * Grab handle for dragging the whole card, sets included, to another place in the session.
    *
@@ -93,6 +107,8 @@ export function ExercisePanel({
   onAddSet,
   onRemoveSet,
   onOptions,
+  advice = null,
+  onApplyAdvice,
   dragHandle,
   onBarbell = false,
   onAddWarmup,
@@ -195,6 +211,48 @@ export function ExercisePanel({
         </Text>
       ) : null}
 
+      {/* What last session says to do today. A `Pressable` only when there is somewhere to write
+          it — with every set already ticked off, the same words are still worth reading and
+          pressing them would do nothing visible, which reads as a broken button. */}
+      {advice ? (
+        <Pressable
+          onPress={onApplyAdvice}
+          disabled={!onApplyAdvice}
+          accessibilityRole={onApplyAdvice ? 'button' : 'text'}
+          accessibilityLabel={
+            onApplyAdvice
+              ? t('workout.advice.apply', {
+                  weight: kgToDisplay(advice.weightKg, unit),
+                  reps: advice.reps,
+                })
+              : undefined
+          }
+          style={({ pressed }) => [
+            s.advice,
+            advice.kind === 'deload' && s.adviceDeload,
+            pressed && s.pressed,
+          ]}
+        >
+          <Text style={[s.adviceGlyph, advice.kind === 'deload' && s.adviceGlyphDeload]}>
+            {advice.kind === 'add_weight' ? '↑' : advice.kind === 'deload' ? '↓' : '→'}
+          </Text>
+          <Text style={[s.adviceNumbers, advice.kind === 'deload' && s.adviceGlyphDeload]}>
+            {kgToDisplay(advice.weightKg, unit)} {t(unit === 'imperial' ? 'common.lb' : 'common.kg')}
+            {' × '}
+            {advice.reps}
+          </Text>
+          {/* The reason, not just the number. A suggestion whose basis is invisible is one the
+              user has to either trust blindly or ignore. */}
+          <Text style={s.adviceReason} numberOfLines={1}>
+            {advice.kind === 'add_weight'
+              ? t('workout.advice.addWeight', { from: kgToDisplay(advice.fromKg, unit) })
+              : advice.kind === 'deload'
+                ? t('workout.advice.deload')
+                : t('workout.advice.addReps', { from: advice.fromReps })}
+          </Text>
+        </Pressable>
+      ) : null}
+
       <View style={s.columns}>
         <Text style={[s.columnLabel, s.columnIndex]}>#</Text>
         <Text style={[s.columnLabel, s.columnField]}>{t('workout.weight')}</Text>
@@ -284,6 +342,12 @@ const createStyles = (colors: ColorPalette) =>
     targetPill: ViewStyle;
     targetText: TextStyle;
     plateHint: TextStyle;
+    advice: ViewStyle;
+    adviceDeload: ViewStyle;
+    adviceGlyph: TextStyle;
+    adviceGlyphDeload: TextStyle;
+    adviceNumbers: TextStyle;
+    adviceReason: TextStyle;
     options: ViewStyle;
     optionsGlyph: TextStyle;
     handle: ViewStyle;
@@ -329,6 +393,36 @@ const createStyles = (colors: ColorPalette) =>
       fontSize: 12,
       textAlign: 'auto',
       fontVariant: ['tabular-nums'],
+    },
+    advice: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      marginTop: 6,
+      paddingVertical: 6,
+      paddingHorizontal: 10,
+      borderRadius: radius.sm,
+      backgroundColor: colors.accentSoft,
+      borderWidth: 1,
+      borderColor: colors.accentBorder,
+    },
+    // A back-off is the one suggestion that is not an advance, and it should not wear the same
+    // colour as one.
+    adviceDeload: { backgroundColor: colors.dangerSoft, borderColor: colors.danger },
+    adviceGlyph: { color: colors.accent, fontSize: 13, fontWeight: '700' },
+    adviceGlyphDeload: { color: colors.danger },
+    adviceNumbers: {
+      color: colors.accent,
+      fontSize: 13,
+      fontWeight: '700',
+      fontVariant: ['tabular-nums'],
+    },
+    adviceReason: {
+      color: colors.textMuted,
+      fontSize: 11,
+      textAlign: 'auto',
+      // Takes what is left and truncates itself rather than pushing the numbers off the row.
+      flexShrink: 1,
     },
     options: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
     optionsGlyph: { color: colors.textSecondary, fontSize: 20, lineHeight: 22 },

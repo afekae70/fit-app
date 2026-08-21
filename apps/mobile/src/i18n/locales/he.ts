@@ -182,6 +182,12 @@ export const he = {
     restAllDone: 'סיימת הכול',
     longPressDelete: 'לחיצה ארוכה למחיקה',
     plateHint: 'מוט {{bar}} · {{plates}} לכל צד',
+    advice: {
+      addWeight: 'השלמת את הטווח ב-{{from}}',
+      addReps: 'נשארו חזרות — הגעת ל-{{from}}',
+      deload: 'תקוע כמה שבועות — רד ובנה מחדש',
+      apply: 'החל {{weight}} על {{reps}} חזרות',
+    },
     dragExercise: 'גרור כדי לשנות את סדר התרגיל',
     swapExercise: 'החלף תרגיל',
     exerciseOptions: 'אפשרויות לתרגיל',

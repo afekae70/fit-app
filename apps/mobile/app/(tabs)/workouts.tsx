@@ -10,7 +10,12 @@
  * chest press and 2 of face pulls fall out naturally rather than needing special handling.
  */
 
-import { OLYMPIC_BAR, warmupRamp } from '@fit/shared/calculations';
+import {
+  OLYMPIC_BAR,
+  suggestProgression,
+  warmupRamp,
+  type ProgressionAdvice,
+} from '@fit/shared/calculations';
 import { EXERCISE_SEED, type ExerciseSeed } from '@fit/shared/catalog';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -41,6 +46,7 @@ import { WorkoutHome, type TemplateEntry } from '../../src/components/WorkoutHom
 import { listPlanDayExercises } from '../../src/db/plans.js';
 import { getExecutor, newId } from '../../src/db/provider.js';
 import { checkHealthAvailability, importForSession, requestHealthPermissions } from '../../src/health/reader.js';
+import { isExerciseStalling } from '../../src/db/progression.js';
 import {
   addExerciseToSession,
   addSetCopyingPrevious,
@@ -104,6 +110,9 @@ export default function WorkoutsScreen() {
   const [watchAvailable, setWatchAvailable] = useState(false);
   const [watchDuration, setWatchDuration] = useState<number | null>(null);
   const [targets, setTargets] = useState<Record<string, ExerciseTarget>>({});
+  // Keyed by exercise key, like `previous`. Recomputed on reload rather than per render: it is
+  // several queries deep and the answer only changes when a session is finished.
+  const [stalling, setStalling] = useState<Record<string, boolean>>({});
   const [previous, setPrevious] = useState<Record<string, PreviousSet[] | null>>(
     {},
   );
@@ -144,11 +153,21 @@ export default function WorkoutsScreen() {
     // Excluding the current session matters: without it, the sets being typed right now would
     // come back as their own "last time" the instant they are saved.
     const nextPrevious: Record<string, PreviousSet[] | null> = {};
+    const nextStalling: Record<string, boolean> = {};
     for (const exercise of loaded) {
       const sets = await getPreviousSessionSets(db, userId, exercise.exercise_key, id);
       nextPrevious[exercise.exercise_key] = sets.length > 0 ? sets : null;
+      // Same exclusion, same reason: today's half-finished sets must not be weighed against
+      // themselves when deciding whether this lift has stopped moving.
+      nextStalling[exercise.exercise_key] = await isExerciseStalling(
+        db,
+        userId,
+        exercise.exercise_key,
+        id,
+      );
     }
     setPrevious(nextPrevious);
+    setStalling(nextStalling);
 
     // Targets exist only for a session started from a plan day. A freestyle session leaves this
     // empty and the cards simply show no target badge.
@@ -553,6 +572,70 @@ export default function WorkoutsScreen() {
     [sessionId, exercises, reload],
   );
 
+  /**
+   * Write a suggestion into the sets it is about.
+   *
+   * Only sets that are not ticked off. A finished set is a record of what was lifted, and
+   * overwriting it would turn a suggestion into a falsified history — the one thing this screen
+   * must never do. Warm-ups are left alone for the same reason they are excluded from volume:
+   * the ramp is not the work the suggestion is about.
+   */
+  const applyAdvice = useCallback(
+    (sessionExerciseId: string, advice: ProgressionAdvice) => {
+      const exercise = exercises.find((e) => e.id === sessionExerciseId);
+      if (!exercise) return;
+
+      const open = exercise.sets.filter((set) => set.done_at === null && set.is_warmup === 0);
+      if (open.length === 0) return;
+
+      void hapticLight();
+      void (async () => {
+        const db = await getExecutor();
+        // Written straight through rather than via `patchSet`, which reloads the session and
+        // checks for a personal record on every call. Looping that would race several reloads
+        // against each other and, worse, celebrate a PR for a weight nobody has lifted yet — a
+        // suggestion is a number in a field, and the record is earned when the set is ticked.
+        for (const set of open) {
+          await updateSet(db, set.id, { weightKg: advice.weightKg, reps: advice.reps });
+        }
+        if (sessionId) await reload(sessionId);
+      })();
+    },
+    [exercises, sessionId, reload],
+  );
+
+  /**
+   * What last session says to do today, per exercise.
+   *
+   * Computed from the same three things the card already shows — last session's sets, the plan's
+   * range, and whether the lift has stopped moving — so the suggestion can never disagree with
+   * the numbers printed beside it.
+   */
+  const advice = useMemo(() => {
+    const out: Record<string, ProgressionAdvice | null> = {};
+    for (const exercise of exercises) {
+      const seed = EXERCISE_BY_KEY.get(exercise.exercise_key);
+      const last = previous[exercise.exercise_key];
+      if (!seed || !last) {
+        out[exercise.id] = null;
+        continue;
+      }
+      const prescription = targets[exercise.exercise_key];
+      out[exercise.id] = suggestProgression({
+        // Warm-ups are not the work; ramping toward 80 says nothing about whether 80 was earned.
+        lastSets: last
+          .filter((set) => set.is_warmup === 0)
+          .map((set) => ({ weightKg: set.weight_kg, reps: set.reps })),
+        repsMin: prescription?.target_reps_min,
+        repsMax: prescription?.target_reps_max,
+        movementPattern: seed.movementPattern,
+        loadType: seed.loadType,
+        isStalling: stalling[exercise.exercise_key] ?? false,
+      });
+    }
+    return out;
+  }, [exercises, previous, targets, stalling]);
+
   const totals = useMemo(() => {
     let sets = 0;
     let volume = 0;
@@ -704,6 +787,13 @@ export default function WorkoutsScreen() {
                           repsMax: prescription.target_reps_max,
                         }
                       : null
+                  }
+                  advice={advice[exercise.id] ?? null}
+                  onApplyAdvice={
+                    advice[exercise.id] &&
+                    exercise.sets.some((set) => set.done_at === null && set.is_warmup === 0)
+                      ? () => applyAdvice(exercise.id, advice[exercise.id]!)
+                      : undefined
                   }
                   onChangeWeight={(i, next) => {
                     const set = exercise.sets[i];
