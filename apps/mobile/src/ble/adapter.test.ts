@@ -289,6 +289,22 @@ describe('nameless 15-byte broadcast scale', () => {
     expect(reading?.isStabilised).toBe(true);
   });
 
+  it('reads the same constant out of every capture ever taken', () => {
+    // The question this field existed to answer, answered. Five weigh-ins, five counter values,
+    // four different weights, one of them barefoot with a long stand — 5000 throughout. A real
+    // bio-impedance would have moved between two bodies-worth of conditions, and would not be
+    // a round 500.0 ohms five times running. It is a firmware placeholder, so this scale gives
+    // no measured body fat and `summariseComposition` is right to call its number an estimate.
+    for (const frame of [
+      'c01c1cc513880808255a0a55a343ac', // 73.65 kg, barefoot, long stand
+      'c00f1cfa13880808255a0a55a343ac', // 74.18
+      'c0551cf513880808255a0a55a343ac', // 74.13
+      'c0021cda13880808255a0a55a343ac', // 73.86
+    ]) {
+      expect(namelessUnknownField(hex(frame))).toBe(5000);
+    }
+  });
+
   it('reports the unidentified field without pretending to know what it is', () => {
     // Bytes 4-5. They have read 5000 in every loaded frame captured so far, which is equally
     // what a device constant looks like and what an impedance that was never measured looks

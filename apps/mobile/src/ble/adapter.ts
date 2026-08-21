@@ -300,20 +300,31 @@ export const namelessBroadcastScaleAdapter: ScaleAdapter = {
 };
 
 /**
- * The one field in the nameless scale's frame that has never been identified.
+ * Bytes 4-5 of the nameless scale's frame. **Settled: a constant, not impedance.**
  *
- * Bytes 4-5, big-endian. It reads 0x1388 — 5000 — in every loaded frame captured so far and
- * zero in every idle one, which is exactly what a device constant looks like and also exactly
- * what an impedance reading looks like when the scale never manages to take one.
+ * Kept, along with its diagnostics line, as the record of a closed question — the alternative
+ * is someone opening this file in a year, seeing an unexplained 0x1388 and running the hunt
+ * again.
  *
- * Deliberately NOT part of `ScaleReading`. Body-fat estimates are derived from impedance, and
- * publishing this as one on the strength of a guess would put a number on screen that reads as
- * a measurement of the user's body. It is exposed only to the diagnostics screen, where it is
- * labelled as an unknown and can be watched across captures: a value that moves between two
- * weigh-ins is impedance, and a value that never moves is a constant.
+ * Three findings, and the first alone would be enough:
  *
- * Bare feet are the test. Impedance needs skin against the electrodes, so a scale stood on in
- * socks would report the same default every time no matter how good the parser is.
+ *  1. **The frame is fully mapped.** Fifteen bytes: a constant, a counter, the weight, this
+ *     field, two more constants, a flag byte and the MAC. There is nowhere left for an
+ *     impedance reading to be.
+ *  2. **It never moved.** Five weigh-ins across several days, five counter values, four
+ *     different weights — 5000 every time, including one taken barefoot with a long stand,
+ *     which is the condition impedance needs and the only one that could have shown it.
+ *  3. **It is too round.** 0x1388 is 5000 exactly, which as tenths of an ohm is exactly
+ *     500.0 Ω. Real foot-to-foot bio-impedance lands on 487 or 521; it does not land on a
+ *     round number five times running. This is a firmware placeholder — a typical value the
+ *     scale broadcasts in place of one it does not take.
+ *
+ * The consequence, which belongs here rather than in a commit message: **this scale cannot
+ * give a measured body-fat percentage over its advertisement.** `summariseComposition` already
+ * treats body fat as an estimate and flags it as one, and that stays the honest answer rather
+ * than a gap waiting to be filled.
+ *
+ * Returns null for an idle frame, where the field is zero — an absence, not a reading of zero.
  */
 export function namelessUnknownField(bytes: Uint8Array): number | null {
   if (!namelessBroadcastScaleAdapter.matchesPayload?.(bytes)) return null;
