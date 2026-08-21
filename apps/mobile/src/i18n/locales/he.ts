@@ -174,6 +174,8 @@ export const he = {
     warmupShort: 'ח',
     toFailure: 'עד כשל',
     removeSet: 'מחק סט',
+    markAsWarmup: 'סמן כסט חימום',
+    markAsWorking: 'סמן כסט עבודה',
     markDone: 'סמן סט כבוצע',
     resting: 'מנוחה',
     restNext: 'הבא',

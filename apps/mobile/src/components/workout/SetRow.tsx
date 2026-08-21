@@ -69,6 +69,19 @@ export interface SetRowProps {
   onToggle: () => void;
   /** Long-press the index chip. Absent on a card that cannot lose sets. */
   onRemove?: () => void;
+  /**
+   * A ramp toward the work rather than the work itself — excluded from volume, personal records
+   * and the progression charts.
+   */
+  isWarmup?: boolean;
+  /**
+   * Tap the index chip to change a set's kind.
+   *
+   * On the chip because that is what the chip already names: the row's place in the exercise.
+   * Whether a set counts is the same question as which number it carries, and putting a second
+   * control elsewhere would split one idea across two places on a row built for one thumb.
+   */
+  onToggleWarmup?: () => void;
 }
 
 export function SetRow({
@@ -80,6 +93,8 @@ export function SetRow({
   onChangeReps,
   onToggle,
   onRemove,
+  isWarmup = false,
+  onToggleWarmup,
 }: SetRowProps) {
   const { t } = useTranslation();
   const { colors } = useTheme();
@@ -141,13 +156,22 @@ export function SetRow({
           capability existed before this card did, and losing it silently would be worse than
           either. Hidden, reachable, and impossible to hit while tapping the stepper beside it. */}
       <Pressable
+        onPress={onToggleWarmup}
         onLongPress={onRemove}
-        disabled={!onRemove}
-        accessibilityRole={onRemove ? 'button' : undefined}
-        accessibilityLabel={onRemove ? t('workout.removeSet') : undefined}
-        style={s.indexChip}
+        disabled={!onRemove && !onToggleWarmup}
+        accessibilityRole={onRemove || onToggleWarmup ? 'button' : undefined}
+        accessibilityLabel={
+          onToggleWarmup
+            ? t(isWarmup ? 'workout.markAsWorking' : 'workout.markAsWarmup')
+            : onRemove
+              ? t('workout.removeSet')
+              : undefined
+        }
+        style={[s.indexChip, isWarmup && s.indexChipWarmup]}
       >
-        <Text style={s.indexText}>{index}</Text>
+        <Text style={[s.indexText, isWarmup && s.indexTextWarmup]}>
+          {isWarmup ? t('workout.warmupShort') : index}
+        </Text>
       </Pressable>
 
       <Animated.View style={[s.field, fieldStyle]}>
@@ -252,7 +276,9 @@ const createStyles = (colors: ColorPalette) =>
   StyleSheet.create<{
     row: ViewStyle;
     indexChip: ViewStyle;
+    indexChipWarmup: ViewStyle;
     indexText: TextStyle;
+    indexTextWarmup: TextStyle;
     field: ViewStyle;
     value: ViewStyle;
     numeral: TextStyle;
@@ -281,7 +307,11 @@ const createStyles = (colors: ColorPalette) =>
       borderRadius: radius.sm,
       backgroundColor: colors.bg,
     },
+    // Amber rather than the accent: a warm-up is neither the work nor a problem, and the two
+    // colours the app already uses for rows both say one of those.
+    indexChipWarmup: { backgroundColor: colors.warningSoft },
     indexText: { color: colors.textFaint, fontSize: 12, fontVariant: ['tabular-nums'] },
+    indexTextWarmup: { color: colors.warning, fontWeight: '700' },
 
     field: {
       flex: 1,

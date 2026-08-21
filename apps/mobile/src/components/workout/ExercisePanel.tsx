@@ -15,7 +15,7 @@ import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
 
-import { exerciseVolume, type DerivedSet } from '../../workout/derived.js';
+import { exerciseVolume, labelSets, type DerivedSet } from '../../workout/derived.js';
 import { useTheme } from '../../ThemeProvider.js';
 import type { UnitPreference } from '@fit/shared';
 import { formatPlates, OLYMPIC_BAR, OLYMPIC_BAR_LB, platesPerSide } from '@fit/shared/calculations';
@@ -48,6 +48,8 @@ export interface ExercisePanelProps {
   onToggle: (setIndex: number) => void;
   onAddSet: () => void;
   onRemoveSet?: (setIndex: number) => void;
+  /** Flip a set between ramp and work. Omitted on a card whose sets cannot be edited. */
+  onToggleWarmup?: (setIndex: number) => void;
   /**
    * Open this exercise's menu — swap it for another, or take it out.
    *
@@ -106,6 +108,7 @@ export function ExercisePanel({
   onToggle,
   onAddSet,
   onRemoveSet,
+  onToggleWarmup,
   onOptions,
   advice = null,
   onApplyAdvice,
@@ -145,6 +148,10 @@ export function ExercisePanel({
   }, [onBarbell, sets, unit]);
   const targetLabel = target ? formatTarget(target, t) : null;
   const previousLabel = previous && previous.length > 0 ? formatPrevious(previous, unit) : null;
+
+  // Working sets numbered as if the warm-ups were not there — the same count the volume and the
+  // charts already use, so the label agrees with the arithmetic rather than the array index.
+  const labels = useMemo(() => labelSets(sets), [sets]);
 
   return (
     <View style={s.card}>
@@ -266,7 +273,9 @@ export function ExercisePanel({
             // Index as key: these rows have no stable id of their own here, and the list only ever
             // grows at the end — appending never reorders what is above it.
             key={index}
-            index={index + 1}
+            index={labels[index]?.ordinal ?? index + 1}
+            isWarmup={labels[index]?.kind === 'warmup'}
+            onToggleWarmup={onToggleWarmup ? () => onToggleWarmup(index) : undefined}
             weightKg={set.weightKg}
             reps={set.reps}
             done={set.done}

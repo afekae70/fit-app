@@ -9,10 +9,16 @@ import {
   setProgress,
   stepReps,
   stepWeight,
+  labelSets,
   type DerivedExercise,
 } from './derived.js';
 
-const set = (weightKg: number | null, reps: number | null, done = false) => ({ weightKg, reps, done });
+const set = (weightKg: number | null, reps: number | null, done = false, isWarmup = false) => ({
+  weightKg,
+  reps,
+  done,
+  isWarmup,
+});
 
 const bench: DerivedExercise = {
   name: 'לחיצת חזה במוט',
@@ -196,5 +202,40 @@ describe('steppers', () => {
       // Every existing caller passes two arguments; none of them may silently change behaviour.
       expect(stepWeight(80, 1)).toBe(82.5);
     });
+  });
+});
+
+describe('labelSets', () => {
+  const warm = { isWarmup: true };
+  const work = { isWarmup: false };
+
+  it('numbers the working sets as if the warm-ups were not there', () => {
+    // The bug this exists to fix: ramping toward a lift turned three sets of eight into sets
+    // four, five and six, while the volume and the charts went on counting three.
+    expect(labelSets([warm, warm, work, work, work])).toEqual([
+      { kind: 'warmup', ordinal: 1 },
+      { kind: 'warmup', ordinal: 2 },
+      { kind: 'working', ordinal: 1 },
+      { kind: 'working', ordinal: 2 },
+      { kind: 'working', ordinal: 3 },
+    ]);
+  });
+
+  it('numbers plain sets from one', () => {
+    expect(labelSets([work, work]).map((l) => l.ordinal)).toEqual([1, 2]);
+  });
+
+  it('keeps a warm-up in the middle where it happened', () => {
+    // Unusual, but it is what was logged, and renumbering it away would be the screen editing
+    // the record rather than showing it.
+    expect(labelSets([work, warm, work])).toEqual([
+      { kind: 'working', ordinal: 1 },
+      { kind: 'warmup', ordinal: 1 },
+      { kind: 'working', ordinal: 2 },
+    ]);
+  });
+
+  it('has nothing to say about no sets', () => {
+    expect(labelSets([])).toEqual([]);
   });
 });

@@ -772,6 +772,7 @@ export default function WorkoutsScreen() {
                     weightKg: set.weight_kg,
                     reps: set.reps,
                     done: set.done_at !== null,
+                    isWarmup: set.is_warmup === 1,
                   }))}
                   previous={
                     previous[exercise.exercise_key]?.map((p) => ({
@@ -795,6 +796,12 @@ export default function WorkoutsScreen() {
                       ? () => applyAdvice(exercise.id, advice[exercise.id]!)
                       : undefined
                   }
+                  onToggleWarmup={(i) => {
+                    const set = exercise.sets[i];
+                    // The flip happens here rather than in the card, which would need to know
+                    // the current value twice — the same reasoning as the done toggle above.
+                    if (set) patchSet(set.id, { isWarmup: set.is_warmup === 0 });
+                  }}
                   onChangeWeight={(i, next) => {
                     const set = exercise.sets[i];
                     if (set) patchSet(set.id, { weightKg: next });

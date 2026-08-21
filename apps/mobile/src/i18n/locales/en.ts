@@ -181,6 +181,8 @@ export const en = {
     warmupShort: 'W',
     toFailure: 'To failure',
     removeSet: 'Delete set',
+    markAsWarmup: 'Mark as a warm-up set',
+    markAsWorking: 'Mark as a working set',
     markDone: 'Mark set done',
     resting: 'Rest',
     restNext: 'Next',

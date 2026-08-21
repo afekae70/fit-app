@@ -19,11 +19,53 @@ export interface DerivedSet {
   weightKg: number | null;
   reps: number | null;
   done: boolean;
+  /**
+   * A ramp toward the work rather than the work itself.
+   *
+   * Stored since the warm-up button shipped, and until now invisible: the flag kept these sets
+   * out of volume, personal records and the progression charts while the rows on screen looked
+   * exactly like the ones that counted. A number that is excluded from everything and says so
+   * nowhere is worse than one that is simply included.
+   */
+  isWarmup: boolean;
 }
 
 export interface DerivedExercise {
   name: string;
   sets: readonly DerivedSet[];
+}
+
+/* -------------------------------------------------------------------------- */
+/* Set labels                                                                  */
+/* -------------------------------------------------------------------------- */
+
+export interface SetLabel {
+  kind: 'warmup' | 'working';
+  /** Position within its own kind, from 1. */
+  ordinal: number;
+}
+
+/**
+ * Number the working sets as if the warm-ups were not there.
+ *
+ * Rows were numbered by their position in the list, so ramping toward a lift turned "three sets
+ * of eight" into sets four, five and six. The count that matters to a lifter — and the one the
+ * volume and the charts already use — counts working sets alone, and the labels should agree
+ * with the arithmetic rather than with the array index.
+ *
+ * Warm-ups are counted separately rather than skipped, so a card knows which ramp step it is
+ * looking at even though the label only shows the kind.
+ *
+ * Position is respected, not sorted: a warm-up logged between two working sets is unusual, but
+ * it is what happened, and renumbering it away would be the screen editing the record.
+ */
+export function labelSets(sets: readonly { isWarmup: boolean }[]): SetLabel[] {
+  let warmups = 0;
+  let working = 0;
+  return sets.map((set) => {
+    if (set.isWarmup) return { kind: 'warmup' as const, ordinal: ++warmups };
+    return { kind: 'working' as const, ordinal: ++working };
+  });
 }
 
 /* -------------------------------------------------------------------------- */
