@@ -11,4 +11,5 @@ export * from './anthropometry.js';
 export * from './energy.js';
 export * from './strength.js';
 export * from './plates.js';
+export * from './warmup.js';
 export * from './trends.js';

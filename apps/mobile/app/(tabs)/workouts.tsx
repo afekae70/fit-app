@@ -10,6 +10,7 @@
  * chest press and 2 of face pulls fall out naturally rather than needing special handling.
  */
 
+import { OLYMPIC_BAR, warmupRamp } from '@fit/shared/calculations';
 import { EXERCISE_SEED, type ExerciseSeed } from '@fit/shared/catalog';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -43,6 +44,7 @@ import { checkHealthAvailability, importForSession, requestHealthPermissions } f
 import {
   addExerciseToSession,
   addSetCopyingPrevious,
+  addWarmupSets,
   finishSession,
   getActiveSession,
   getPreviousBest,
@@ -521,6 +523,38 @@ export default function WorkoutsScreen() {
     [sessionId, t, dropExercise],
   );
 
+  /**
+   * Build a ramp toward the first working set and put it in front.
+   *
+   * The weight comes from the first set that is not already a warm-up, which is what the
+   * session is actually building toward. A bar-loaded lift ramps against the bare bar as its
+   * floor; anything else has no bar to fall back on and ramps in plain increments.
+   */
+  const addWarmup = useCallback(
+    (sessionExerciseId: string, onBarbell: boolean) => {
+      if (!sessionId) return;
+      const exercise = exercises.find((e) => e.id === sessionExerciseId);
+      const working = exercise?.sets.find((set) => set.is_warmup === 0)?.weight_kg;
+      if (!working) return;
+
+      const ramp = warmupRamp(working, { bar: onBarbell ? OLYMPIC_BAR : null });
+      if (ramp.length === 0) return;
+
+      void hapticLight();
+      void (async () => {
+        const db = await getExecutor();
+        await addWarmupSets(
+          db,
+          newId,
+          sessionExerciseId,
+          ramp.map((set) => ({ weightKg: set.weight, reps: set.reps })),
+        );
+        await reload(sessionId);
+      })();
+    },
+    [sessionId, exercises, reload],
+  );
+
   const totals = useMemo(() => {
     let sets = 0;
     let volume = 0;
@@ -695,6 +729,12 @@ export default function WorkoutsScreen() {
                   onOptions={() => openExerciseOptions(exercise.id, seed.nameHe)}
                   dragHandle={dragHandle}
                   onBarbell={seed.equipmentSlug === 'barbell'}
+                  onAddWarmup={() => addWarmup(exercise.id, seed.equipmentSlug === 'barbell')}
+                  // Offered only with nothing warmed up yet and a working weight to ramp toward.
+                  canAddWarmup={
+                    !exercise.sets.some((set) => set.is_warmup === 1) &&
+                    (exercise.sets.find((set) => set.is_warmup === 0)?.weight_kg ?? 0) > 0
+                  }
                 />
               );
             }}

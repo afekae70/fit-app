@@ -505,6 +505,79 @@ export async function addSet(
  * entries — and warmup status is deliberately NOT copied, since the set after a warmup is
  * almost never another warmup.
  */
+/**
+ * Put a ramp in front of the work.
+ *
+ * Warm-ups go before the working sets rather than after them, which means every existing set
+ * moves down — and `UNIQUE (session_exercise_id, set_index)` refuses the direct renumber, the
+ * same way it refuses a reorder. Parked in one pass, written in the next, exactly as
+ * `renumberSets` does it.
+ *
+ * Marked `is_warmup`, which is what keeps them out of the numbers that matter: volume, personal
+ * records and the progression charts all read that flag. A warm-up counted as work would show
+ * up as a session that got heavier and easier at the same time.
+ *
+ * Does nothing when the exercise already has warm-ups. Pressing the button twice is a slip, and
+ * six ramp sets in front of three working ones is not something anyone meant.
+ */
+export async function addWarmupSets(
+  db: SqlExecutor,
+  newId: IdFactory,
+  sessionExerciseId: string,
+  warmups: readonly { weightKg: number; reps: number }[],
+  clock: Clock = defaultClock,
+): Promise<number> {
+  if (warmups.length === 0) return 0;
+
+  const existing = await db.all<{ id: string; is_warmup: number }>(
+    `SELECT id, is_warmup FROM sets
+      WHERE session_exercise_id = ? AND deleted_at IS NULL
+      ORDER BY set_index`,
+    [sessionExerciseId],
+  );
+  if (existing.some((set) => set.is_warmup === 1)) return 0;
+
+  const at = clock();
+  const PARK = 100000;
+
+  // Every existing set moves out of the way first; nothing can be renumbered into a slot its
+  // neighbour has not left yet.
+  for (const [offset, set] of existing.entries()) {
+    await db.run(`UPDATE sets SET set_index = ? WHERE id = ?`, [PARK + offset, set.id]);
+  }
+
+  for (const [offset, warmup] of warmups.entries()) {
+    const id = newId();
+    await db.run(
+      `INSERT INTO sets
+         (id, session_exercise_id, set_index, weight_kg, reps, is_warmup, to_failure,
+          completed_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 1, 0, ?, ?)`,
+      [id, sessionExerciseId, offset + 1, warmup.weightKg, warmup.reps, at, at],
+    );
+    await enqueue(
+      db,
+      'set',
+      id,
+      'insert',
+      { sessionExerciseId, setIndex: offset + 1, ...warmup, isWarmup: true },
+      clock,
+    );
+  }
+
+  for (const [offset, set] of existing.entries()) {
+    const setIndex = warmups.length + offset + 1;
+    await db.run(`UPDATE sets SET set_index = ?, updated_at = ? WHERE id = ?`, [
+      setIndex,
+      at,
+      set.id,
+    ]);
+    await enqueue(db, 'set', set.id, 'update', { setIndex }, clock);
+  }
+
+  return warmups.length;
+}
+
 export async function addSetCopyingPrevious(
   db: SqlExecutor,
   newId: IdFactory,

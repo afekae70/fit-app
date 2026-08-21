@@ -72,6 +72,14 @@ export interface ExercisePanelProps {
    * wrong bar weight there would shift every number on the screen without looking wrong.
    */
   onBarbell?: boolean;
+  /**
+   * Add a warm-up ramp before the working sets.
+   *
+   * Offered only while there is nothing warmed up yet and a working weight to ramp toward —
+   * a button that would do nothing is worse than an absent one.
+   */
+  onAddWarmup?: () => void;
+  canAddWarmup?: boolean;
 }
 
 export function ExercisePanel({
@@ -87,6 +95,8 @@ export function ExercisePanel({
   onOptions,
   dragHandle,
   onBarbell = false,
+  onAddWarmup,
+  canAddWarmup = false,
 }: ExercisePanelProps) {
   const { t } = useTranslation();
   const { colors } = useTheme();
@@ -218,6 +228,15 @@ export function ExercisePanel({
         >
           <Text style={s.addSetText}>+ {t('workout.addSet')}</Text>
         </Pressable>
+        {onAddWarmup && canAddWarmup ? (
+          <Pressable
+            onPress={onAddWarmup}
+            accessibilityRole="button"
+            style={({ pressed }) => [s.addSet, pressed && s.pressed]}
+          >
+            <Text style={s.addSetText}>+ {t('workout.addWarmup')}</Text>
+          </Pressable>
+        ) : null}
         {/* Only once something has been lifted. A live "0 kg" beside an untouched card is a score
             nobody asked for. */}
         {volume > 0 ? (

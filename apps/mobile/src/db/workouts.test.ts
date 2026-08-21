@@ -15,6 +15,7 @@ import {
   addExerciseToSession,
   addSet,
   addSetCopyingPrevious,
+  addWarmupSets,
   finishSession,
   getActiveSession,
   getPreviousBest,
@@ -753,5 +754,79 @@ describe('swapping an exercise mid-workout', () => {
     const { sessionId } = await seed();
     await swapSessionExercise(db, newId, 'not-a-real-id', 'Deadlift', clock);
     expect(await keys(sessionId)).toEqual(['Barbell Bench Press', 'Barbell Row']);
+  });
+});
+
+describe('warming up before the work', () => {
+  async function seedWorkingSets() {
+    const sessionId = await startSession(db, USER, newId, {}, clock);
+    const press = await addExerciseToSession(db, newId, sessionId, 'Barbell Bench Press', clock);
+    const first = await addSet(db, newId, press, { weightKg: 100, reps: 5 }, clock);
+    const second = await addSet(db, newId, press, { weightKg: 100, reps: 5 }, clock);
+    return { press, first, second };
+  }
+
+  const RAMP = [
+    { weightKg: 40, reps: 5 },
+    { weightKg: 60, reps: 3 },
+    { weightKg: 80, reps: 2 },
+  ];
+
+  it('puts the ramp in front of the working sets', async () => {
+    const { press } = await seedWorkingSets();
+
+    await addWarmupSets(db, newId, press, RAMP, clock);
+
+    const sets = await listSets(db, press);
+    expect(sets.map((s) => s.weight_kg)).toEqual([40, 60, 80, 100, 100]);
+    expect(sets.map((s) => s.set_index)).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it('marks them as warm-ups, which is what keeps them out of the numbers', async () => {
+    // Volume, personal records and the progression charts all read this flag. A warm-up counted
+    // as work would read as a session that got heavier and easier at once.
+    const { press } = await seedWorkingSets();
+
+    await addWarmupSets(db, newId, press, RAMP, clock);
+
+    const sets = await listSets(db, press);
+    expect(sets.map((s) => s.is_warmup)).toEqual([1, 1, 1, 0, 0]);
+  });
+
+  it('keeps the working sets themselves untouched', async () => {
+    const { press, first, second } = await seedWorkingSets();
+
+    await addWarmupSets(db, newId, press, RAMP, clock);
+
+    const sets = await listSets(db, press);
+    const working = sets.filter((s) => s.is_warmup === 0);
+    expect(working.map((s) => s.id)).toEqual([first, second]);
+    expect(working.every((s) => s.weight_kg === 100 && s.reps === 5)).toBe(true);
+  });
+
+  it('does nothing the second time the button is pressed', async () => {
+    // Six ramp sets in front of two working ones is not something anyone meant.
+    const { press } = await seedWorkingSets();
+    await addWarmupSets(db, newId, press, RAMP, clock);
+
+    const added = await addWarmupSets(db, newId, press, RAMP, clock);
+
+    expect(added).toBe(0);
+    expect(await listSets(db, press)).toHaveLength(5);
+  });
+
+  it('adds a ramp to an exercise that has no sets yet', async () => {
+    const sessionId = await startSession(db, USER, newId, {}, clock);
+    const press = await addExerciseToSession(db, newId, sessionId, 'Barbell Bench Press', clock);
+
+    await addWarmupSets(db, newId, press, RAMP, clock);
+
+    expect((await listSets(db, press)).map((s) => s.set_index)).toEqual([1, 2, 3]);
+  });
+
+  it('is a no-op for an empty ramp', async () => {
+    const { press } = await seedWorkingSets();
+    expect(await addWarmupSets(db, newId, press, [], clock)).toBe(0);
+    expect(await listSets(db, press)).toHaveLength(2);
   });
 });
