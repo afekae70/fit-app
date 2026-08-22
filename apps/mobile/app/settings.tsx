@@ -6,11 +6,12 @@
  */
 
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   View,
@@ -22,6 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { UnitPreference } from '@fit/shared';
 
 import { useAuth } from '../src/auth/AuthProvider.js';
+import { useCurrentUserId } from '../src/auth/CurrentUserProvider.js';
 import { SyncCard } from '../src/components/SyncCard.js';
 import {
   Banner,
@@ -32,6 +34,10 @@ import {
   Segmented,
   SectionTitle,
 } from '../src/components/ui.js';
+import { exportMetrics, exportSets } from '../src/db/exportData.js';
+import { getExecutor } from '../src/db/provider.js';
+import { metricsToCsv, setsToCsv } from '../src/export/csv.js';
+import { hapticLight } from '../src/haptics.js';
 import { isRtlLanguage, setAppLanguage, type Language } from '../src/i18n/index.js';
 import {
   cancelWeeklyReminder,
@@ -43,13 +49,40 @@ import { useUnits } from '../src/UnitsProvider.js';
 import { fontSize, spacing, type ColorPalette } from '../src/theme.js';
 
 export default function SettingsScreen() {
-  const router = useRouter();
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
   const { session, signOut } = useAuth();
   const { scheme, toggleScheme, colors } = useTheme();
   const { unit, setUnit } = useUnits();
   const styles = useMemo(() => createStyles(colors), [colors]);
+
+  const router = useRouter();
+  const userId = useCurrentUserId();
+  const chevron = isRtlLanguage(i18n.language as Language) ? '‹' : '›';
+
+  /**
+   * Hand the history to the share sheet, as text.
+   *
+   * Text rather than a file, because on Android `Share` only accepts a file URI through a
+   * FileProvider, which needs `expo-sharing` — a native module that is not in this build, and
+   * adding one means the JS loads and then fails at the call site on the device already
+   * installed. The CSV goes out as the message body, which every share target accepts, and
+   * lands in a note, a mail draft or Drive from where it can be saved as `.csv`.
+   */
+  const exportCsv = useCallback(
+    (kind: 'sets' | 'metrics') => {
+      void hapticLight();
+      void (async () => {
+        const db = await getExecutor();
+        const csv =
+          kind === 'sets'
+            ? setsToCsv(await exportSets(db, userId))
+            : metricsToCsv(await exportMetrics(db, userId));
+        await Share.share({ message: csv }).catch(() => undefined);
+      })();
+    },
+    [userId],
+  );
 
   const [reminderOn, setReminderOn] = useState(false);
   const [reminderDenied, setReminderDenied] = useState(false);
@@ -163,7 +196,28 @@ export default function SettingsScreen() {
           style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.7 }]}
         >
           <Text style={styles.linkText}>{t('gyms.manage')}</Text>
-          <Text style={styles.linkChevron}>{isRtlLanguage(i18n.language as Language) ? '‹' : '›'}</Text>
+          <Text style={styles.linkChevron}>{chevron}</Text>
+        </Pressable>
+      </Card>
+
+      <Card index={2}>
+        <SectionTitle>{t('settings.exportTitle')}</SectionTitle>
+        <Hint>{t('settings.exportHint')}</Hint>
+        <Pressable
+          onPress={() => exportCsv('sets')}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.7 }]}
+        >
+          <Text style={styles.linkText}>{t('settings.exportSets')}</Text>
+          <Text style={styles.linkChevron}>{chevron}</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => exportCsv('metrics')}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.7 }]}
+        >
+          <Text style={styles.linkText}>{t('settings.exportMetrics')}</Text>
+          <Text style={styles.linkChevron}>{chevron}</Text>
         </Pressable>
       </Card>
 

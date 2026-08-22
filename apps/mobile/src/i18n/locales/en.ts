@@ -608,6 +608,10 @@ export const en = {
     unitsImperial: 'Imperial',
     unitsHint:
       'Display only. Everything is stored metric, so switching here changes nothing you have already logged — only how it is shown.',
+    exportTitle: 'Export data',
+    exportHint: 'One row per set, as CSV. Sent through the share sheet — save it to Drive, notes or mail, then open it as a .csv file.',
+    exportSets: 'Export workouts',
+    exportMetrics: 'Export weigh-ins',
     remindersTitle: 'Reminders',
     reminderWeekly: 'Weekly planning reminder',
     reminderWeeklyHint: 'A notification on Saturday at 19:00 to plan the week ahead.',
