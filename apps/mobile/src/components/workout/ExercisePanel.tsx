@@ -47,9 +47,8 @@ export interface ExercisePanelProps {
   onChangeReps: (setIndex: number, next: number) => void;
   onToggle: (setIndex: number) => void;
   onAddSet: () => void;
-  onRemoveSet?: (setIndex: number) => void;
-  /** Flip a set between ramp and work. Omitted on a card whose sets cannot be edited. */
-  onToggleWarmup?: (setIndex: number) => void;
+  /** Open one set's menu — change its kind, or delete it. Omitted where sets are read-only. */
+  onSetOptions?: (setIndex: number) => void;
   /**
    * Open this exercise's menu — swap it for another, or take it out.
    *
@@ -107,8 +106,7 @@ export function ExercisePanel({
   onChangeReps,
   onToggle,
   onAddSet,
-  onRemoveSet,
-  onToggleWarmup,
+  onSetOptions,
   onOptions,
   advice = null,
   onApplyAdvice,
@@ -275,14 +273,13 @@ export function ExercisePanel({
             key={index}
             index={labels[index]?.ordinal ?? index + 1}
             isWarmup={labels[index]?.kind === 'warmup'}
-            onToggleWarmup={onToggleWarmup ? () => onToggleWarmup(index) : undefined}
+            onOptions={onSetOptions ? () => onSetOptions(index) : undefined}
             weightKg={set.weightKg}
             reps={set.reps}
             done={set.done}
             onChangeWeight={(next) => onChangeWeight(index, next)}
             onChangeReps={(next) => onChangeReps(index, next)}
             onToggle={() => onToggle(index)}
-            onRemove={onRemoveSet ? () => onRemoveSet(index) : undefined}
           />
         ))}
       </View>

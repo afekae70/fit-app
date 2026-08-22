@@ -19,9 +19,20 @@ const envSchema = z
     PORT: z.coerce.number().int().positive().default(3000),
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 
-    // Supabase
+    // Supabase.
+    //
+    // The URL only, and only to locate the JWKS this service verifies bearer tokens against.
+    //
+    // `SUPABASE_SERVICE_ROLE_KEY` was required here and never read by anything. That key
+    // bypasses Row Level Security completely — it is the one credential that can read and
+    // rewrite every user's data — so requiring it meant it sat in the deployment environment,
+    // in the process's memory and in anything that ever dumped the environment, purchasing
+    // nothing. This service reaches the database through DATABASE_URL and identifies callers
+    // from their own verified token; it has never needed to act as anyone but them.
+    //
+    // If a future feature genuinely needs to act outside a user's session, add it back for
+    // that feature, and give it its own narrow path rather than a key that opens everything.
     SUPABASE_URL: z.string().url(),
-    SUPABASE_SERVICE_ROLE_KEY: z.string().min(20),
 
     // Database — pooled connection for the running service. Migrations/seeds use the
     // direct connection separately (see src/db/seed/run.ts), not this variable.

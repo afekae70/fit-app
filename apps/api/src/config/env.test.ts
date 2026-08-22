@@ -4,7 +4,6 @@ import { EnvValidationError, loadEnv } from './env.js';
 
 const baseValidEnv = {
   SUPABASE_URL: 'https://abcxyz.supabase.co',
-  SUPABASE_SERVICE_ROLE_KEY: 'x'.repeat(40),
   DATABASE_URL: 'postgresql://user:pass@localhost:6543/postgres',
   AI_PROVIDER: 'claude',
   ANTHROPIC_API_KEY: 'sk-ant-test',

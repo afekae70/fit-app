@@ -67,21 +67,23 @@ export interface SetRowProps {
   onChangeWeight: (next: number) => void;
   onChangeReps: (next: number) => void;
   onToggle: () => void;
-  /** Long-press the index chip. Absent on a card that cannot lose sets. */
-  onRemove?: () => void;
   /**
    * A ramp toward the work rather than the work itself — excluded from volume, personal records
    * and the progression charts.
    */
   isWarmup?: boolean;
   /**
-   * Tap the index chip to change a set's kind.
+   * Open this set's menu: change its kind, or delete it.
    *
-   * On the chip because that is what the chip already names: the row's place in the exercise.
-   * Whether a set counts is the same question as which number it carries, and putting a second
-   * control elsewhere would split one idea across two places on a row built for one thumb.
+   * One tap on the index chip, and the menu names both actions. It replaces a tap that toggled
+   * the warm-up flag and a long-press that deleted — two invisible gestures on a chip 30px
+   * wide, where the only way to find either was to be told. Deleting a set added by mistake is
+   * not a power-user move, and it should not have been the more hidden of the two.
+   *
+   * On the chip because that is what the chip already names: the row's place in the exercise,
+   * whether it counts, and whether it should exist at all.
    */
-  onToggleWarmup?: () => void;
+  onOptions?: () => void;
 }
 
 export function SetRow({
@@ -92,9 +94,8 @@ export function SetRow({
   onChangeWeight,
   onChangeReps,
   onToggle,
-  onRemove,
   isWarmup = false,
-  onToggleWarmup,
+  onOptions,
 }: SetRowProps) {
   const { t } = useTranslation();
   const { colors } = useTheme();
@@ -156,18 +157,11 @@ export function SetRow({
           capability existed before this card did, and losing it silently would be worse than
           either. Hidden, reachable, and impossible to hit while tapping the stepper beside it. */}
       <Pressable
-        onPress={onToggleWarmup}
-        onLongPress={onRemove}
-        disabled={!onRemove && !onToggleWarmup}
-        accessibilityRole={onRemove || onToggleWarmup ? 'button' : undefined}
-        accessibilityLabel={
-          onToggleWarmup
-            ? t(isWarmup ? 'workout.markAsWorking' : 'workout.markAsWarmup')
-            : onRemove
-              ? t('workout.removeSet')
-              : undefined
-        }
-        style={[s.indexChip, isWarmup && s.indexChipWarmup]}
+        onPress={onOptions}
+        disabled={!onOptions}
+        accessibilityRole={onOptions ? 'button' : undefined}
+        accessibilityLabel={onOptions ? t('workout.setOptions', { index }) : undefined}
+        style={[s.indexChip, isWarmup && s.indexChipWarmup, onOptions && s.indexChipTappable]}
       >
         <Text style={[s.indexText, isWarmup && s.indexTextWarmup]}>
           {isWarmup ? t('workout.warmupShort') : index}
@@ -276,6 +270,7 @@ const createStyles = (colors: ColorPalette) =>
   StyleSheet.create<{
     row: ViewStyle;
     indexChip: ViewStyle;
+    indexChipTappable: ViewStyle;
     indexChipWarmup: ViewStyle;
     indexText: TextStyle;
     indexTextWarmup: TextStyle;
@@ -307,6 +302,10 @@ const createStyles = (colors: ColorPalette) =>
       borderRadius: radius.sm,
       backgroundColor: colors.bg,
     },
+    // A hairline, so the chip reads as something to press rather than a printed number. The
+    // menu behind it is the only route to deleting a set, and an unmarked target is one nobody
+    // finds.
+    indexChipTappable: { borderWidth: 1, borderColor: colors.border },
     // Amber rather than the accent: a warm-up is neither the work nor a problem, and the two
     // colours the app already uses for rows both say one of those.
     indexChipWarmup: { backgroundColor: colors.warningSoft },

@@ -10,6 +10,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { SqlExecutor } from './executor.js';
+import { getSessionType, hasType, sameTypeClause } from './sessionType.js';
 import { createTestExecutor } from './testUtils.js';
 import {
   addExerciseToSession,
@@ -19,6 +20,7 @@ import {
   finishSession,
   getActiveSession,
   getPreviousBest,
+  getPreviousSessionSets,
   getSessionDetail,
   getWorkoutStreak,
   listRecentExerciseKeys,
@@ -828,5 +830,76 @@ describe('warming up before the work', () => {
     const { press } = await seedWorkingSets();
     expect(await addWarmupSets(db, newId, press, [], clock)).toBe(0);
     expect(await listSets(db, press)).toHaveLength(2);
+  });
+});
+
+describe('what counts as the same workout', () => {
+  const USER_T = 'user-t';
+
+  async function session(planDayId: string | undefined, kg: number, at: string) {
+    const clock = () => at;
+    const id = await startSession(db, USER_T, newId, { planDayId }, clock);
+    const ex = await addExerciseToSession(db, newId, id, 'Leg Press', clock);
+    await addSet(db, newId, ex, { weightKg: kg, reps: 8 }, clock);
+    await finishSession(db, USER_T, id, {}, clock);
+    return id;
+  }
+
+  it('reads a session kind off the row', async () => {
+    const id = await session('plan-a', 100, '2026-06-01T10:00:00.000Z');
+    expect(await getSessionType(db, id)).toEqual({ planDayId: 'plan-a', name: null });
+  });
+
+  it('has no kind for a session that is neither planned nor named', async () => {
+    const id = await session(undefined, 100, '2026-06-01T10:00:00.000Z');
+    expect(hasType(await getSessionType(db, id))).toBe(false);
+  });
+
+  it('returns null for a session that does not exist', async () => {
+    expect(await getSessionType(db, 'nope')).toBeNull();
+  });
+
+  it('answers "last time" from the same gym, not the most recent one', async () => {
+    // The bug in one test: gym A on Monday, gym B on Wednesday, gym A again today. Without
+    // scoping, today's card would pre-fill and advise off gym B's lighter machine.
+    await session('plan-a', 100, '2026-06-01T10:00:00.000Z');
+    await session('plan-b', 60, '2026-06-03T10:00:00.000Z');
+    const today = await session('plan-a', 0, '2026-06-05T10:00:00.000Z');
+
+    const unscoped = await getPreviousSessionSets(db, USER_T, 'Leg Press', today);
+    const scoped = await getPreviousSessionSets(db, USER_T, 'Leg Press', today, {
+      planDayId: 'plan-a',
+      name: null,
+    });
+
+    expect(unscoped[0]?.weight_kg).toBe(60);
+    expect(scoped[0]?.weight_kg).toBe(100);
+  });
+
+  it('widens to every session when there is no kind to scope to', async () => {
+    await session('plan-a', 100, '2026-06-01T10:00:00.000Z');
+    await session('plan-b', 60, '2026-06-03T10:00:00.000Z');
+    const today = await session(undefined, 0, '2026-06-05T10:00:00.000Z');
+
+    const sets = await getPreviousSessionSets(db, USER_T, 'Leg Press', today, {
+      planDayId: null,
+      name: null,
+    });
+    expect(sets[0]?.weight_kg).toBe(60);
+  });
+
+  it('builds a clause that is always safe to concatenate', () => {
+    // An `AND` with nothing after it is how a query builder produces a syntax error that only
+    // shows up at runtime, on the one code path nobody exercised.
+    expect(sameTypeClause('ws', null)).toEqual({ sql: '1 = 1', params: [] });
+    expect(sameTypeClause('ws', { planDayId: 'p', name: 'x' }).params).toEqual(['p']);
+    expect(sameTypeClause('ws', { planDayId: null, name: 'Push A' }).params).toEqual(['Push A']);
+  });
+
+  it('lets a plan day outrank a name', async () => {
+    // A planned session belongs to its plan's lineage even if some ad-hoc workout shares its
+    // label, which is why the name branch also demands plan_day_id IS NULL.
+    const clause = sameTypeClause('ws', { planDayId: null, name: 'Push A' });
+    expect(clause.sql).toContain('plan_day_id IS NULL');
   });
 });

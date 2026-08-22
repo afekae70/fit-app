@@ -17,7 +17,6 @@ const testEnv: Env = {
   PORT: 0,
   LOG_LEVEL: 'fatal',
   SUPABASE_URL: 'https://test-project.supabase.co',
-  SUPABASE_SERVICE_ROLE_KEY: 'service-role-key-placeholder-value',
   // Deliberately unreachable — proves no route on the health/auth path needs a live DB.
   DATABASE_URL: 'postgresql://user:pass@127.0.0.1:1/nonexistent',
   AI_PROVIDER: 'claude',

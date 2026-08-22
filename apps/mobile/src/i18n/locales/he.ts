@@ -174,6 +174,8 @@ export const he = {
     warmupShort: 'ח',
     toFailure: 'עד כשל',
     removeSet: 'מחק סט',
+    untypedComparison: 'האימון הזה בלי שם ובלי תוכנית, אז ההשוואה ל"פעם שעברה" וההצעות נלקחות מכל האימונים — גם מחדרי כושר אחרים. תן לאימון שם כדי להשוות מול אותו סוג.',
+    setOptions: 'אפשרויות לסט {{index}}',
     markAsWarmup: 'סמן כסט חימום',
     markAsWorking: 'סמן כסט עבודה',
     markDone: 'סמן סט כבוצע',

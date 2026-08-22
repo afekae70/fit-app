@@ -18,6 +18,7 @@ import {
 } from '@fit/shared/calculations';
 
 import type { SqlExecutor } from './executor.js';
+import { sameTypeClause, type SessionType } from './sessionType.js';
 
 /** One session's best effort on one exercise. */
 export interface ExerciseSessionBest {
@@ -49,7 +50,16 @@ export async function getExerciseProgression(
    * against, and the stall verdict shifts under the user as they fill the screen in.
    */
   excludeSessionId?: string,
+  /**
+   * Restrict the history to sessions of this kind — see `sessionType.ts`.
+   *
+   * A rate of progress read across two gyms is not a rate of progress. The same lift on another
+   * gym's machine is a different number, and the sawtooth that produces is exactly the shape
+   * `assessStall` is watching for, so it reports plateaus that are only a change of address.
+   */
+  sameType?: SessionType | null,
 ): Promise<ExerciseSessionBest[]> {
+  const type = sameTypeClause('ws', sameType);
   const rows = await db.all<ExerciseSessionBest>(
     `SELECT
        ws.id                AS session_id,
@@ -72,10 +82,11 @@ export async function getExerciseProgression(
        AND s.reps IS NOT NULL
        AND s.reps BETWEEN 1 AND 12
        AND (? IS NULL OR ws.id <> ?)
+       AND ${type.sql}
      GROUP BY ws.id
      ORDER BY ws.started_at DESC
      LIMIT ?`,
-    [userId, exerciseKey, excludeSessionId ?? null, excludeSessionId ?? null, limit],
+    [userId, exerciseKey, excludeSessionId ?? null, excludeSessionId ?? null, ...type.params, limit],
   );
 
   // Query newest-first so LIMIT keeps the most RECENT sessions, then flip: the trend maths
@@ -98,8 +109,16 @@ export async function isExerciseStalling(
   userId: string,
   exerciseKey: string,
   excludeSessionId?: string,
+  sameType?: SessionType | null,
 ): Promise<boolean> {
-  const sessions = await getExerciseProgression(db, userId, exerciseKey, 30, excludeSessionId);
+  const sessions = await getExerciseProgression(
+    db,
+    userId,
+    exerciseKey,
+    30,
+    excludeSessionId,
+    sameType,
+  );
   if (sessions.length < 4) return false;
 
   return assessStall(

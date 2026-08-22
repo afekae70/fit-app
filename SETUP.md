@@ -55,7 +55,7 @@ machines over chat or email:
 
 | Variable | Where it comes from |
 | --- | --- |
-| `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Supabase dashboard → Project Settings → API |
+| `SUPABASE_URL`, `SUPABASE_ANON_KEY` | Supabase dashboard → Project Settings → API |
 | `DATABASE_URL`, `DATABASE_URL_DIRECT` | Supabase dashboard → Project Settings → Database → Connection string |
 | `ANTHROPIC_API_KEY` | console.anthropic.com → API keys |
 | `AI_PROVIDER`, `ANTHROPIC_MODEL`, `PORT`, `NODE_ENV`, `LOG_LEVEL` | not secret — see `.env.example` for the defaults |
@@ -65,9 +65,11 @@ Two things worth knowing:
 - **An existing Anthropic key cannot be viewed again** after it is created. Create a new one for
   the second machine rather than hunting for the old value; old keys keep working, and you can
   revoke any of them independently.
-- `SUPABASE_SERVICE_ROLE_KEY` **bypasses Row Level Security entirely**. It belongs only in this
-  file and in the Railway service's environment variables. It must never reach `app.json`, the
-  mobile bundle, or a commit.
+- **Do not set `SUPABASE_SERVICE_ROLE_KEY` anywhere.** It bypasses Row Level Security entirely —
+  it is the one credential that can read and rewrite every user's data. The API used to require
+  it and never read it; nothing needs it now. A secret that is set but unused is pure blast
+  radius: it buys nothing and is one leaked environment away from handing over the whole
+  database. If it is still set in Railway, delete the variable there and rotate the key.
 
 ## Building the APK locally
 

@@ -6,6 +6,7 @@
  */
 
 import type { SqlExecutor } from './executor.js';
+import { sameTypeClause, type SessionType } from './sessionType.js';
 
 export interface WorkoutSessionRow {
   id: string;
@@ -966,6 +967,13 @@ export async function getPreviousSessionSets(
   userId: string,
   exerciseKey: string,
   excludeSessionId?: string,
+  /**
+   * Restrict "last time" to sessions of this kind.
+   *
+   * Without it the last bench press at another gym answers for this one, on a different bar and
+   * a different bench. See `sessionType.ts`.
+   */
+  sameType?: SessionType | null,
 ): Promise<
   {
     set_index: number;
@@ -978,6 +986,7 @@ export async function getPreviousSessionSets(
   }[]
 > {
   const exclude = excludeSessionId ?? null;
+  const type = sameTypeClause('prev_ws', sameType);
   return db.all(
     `SELECT s.set_index, s.weight_kg, s.reps, s.duration_seconds, s.distance_m,
             s.is_warmup, ws.started_at
@@ -996,6 +1005,7 @@ export async function getPreviousSessionSets(
              AND prev_se.exercise_key = ?
              AND prev_ws.deleted_at IS NULL
              AND (? IS NULL OR prev_ws.id <> ?)
+             AND ${type.sql}
              AND EXISTS (
                SELECT 1 FROM sets prev_s
                 WHERE prev_s.session_exercise_id = prev_se.id
@@ -1007,7 +1017,7 @@ export async function getPreviousSessionSets(
            LIMIT 1
         )
       ORDER BY s.set_index`,
-    [userId, exerciseKey, userId, exerciseKey, exclude, exclude],
+    [userId, exerciseKey, userId, exerciseKey, exclude, exclude, ...type.params],
   );
 }
 

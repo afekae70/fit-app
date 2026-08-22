@@ -43,9 +43,11 @@ async function logSession(
   exerciseKey: string,
   sets: { weightKg: number; reps: number; isWarmup?: boolean }[],
   userId = USER,
+  /** Which workout this is — a plan day, so two gyms can be told apart. */
+  planDayId?: string,
 ) {
   const clock = () => new Date(Date.UTC(2026, 5, 1 + dayOffset, 10)).toISOString();
-  const sessionId = await startSession(db, userId, newId, {}, clock);
+  const sessionId = await startSession(db, userId, newId, { planDayId }, clock);
   const exerciseId = await addExerciseToSession(db, newId, sessionId, exerciseKey, clock);
   for (const set of sets) await addSet(db, newId, exerciseId, set, clock);
   await finishSession(db, userId, sessionId, {}, clock);
@@ -445,5 +447,83 @@ describe('isExerciseStalling', () => {
 
     expect(await isExerciseStalling(db, USER, 'Bench')).toBe(false);
     expect(await isExerciseStalling(db, USER, 'Bench', today)).toBe(true);
+  });
+});
+
+describe('comparing a lift against its own kind of workout', () => {
+  // Two gyms, same exercise, different machines. Gym A presses in the 100s, gym B in the 60s.
+  // Both are progressing; read together they look like a lifter falling apart every other week.
+  async function twoGyms() {
+    for (const [i, kg] of [100, 102.5, 105, 107.5].entries()) {
+      await logSession(i * 14, 'Leg Press', [{ weightKg: kg, reps: 8 }], USER, 'plan-day-A');
+    }
+    for (const [i, kg] of [60, 62.5, 65, 67.5].entries()) {
+      await logSession(i * 14 + 7, 'Leg Press', [{ weightKg: kg, reps: 8 }], USER, 'plan-day-B');
+    }
+  }
+
+  it('reads only the sessions from the same plan day', async () => {
+    await twoGyms();
+
+    const all = await getExerciseProgression(db, USER, 'Leg Press');
+    const gymA = await getExerciseProgression(db, USER, 'Leg Press', 30, undefined, {
+      planDayId: 'plan-day-A',
+      name: null,
+    });
+
+    expect(all).toHaveLength(8);
+    expect(gymA).toHaveLength(4);
+    expect(gymA.map((s) => s.top_weight_kg)).toEqual([100, 102.5, 105, 107.5]);
+  });
+
+  it('stops the other gym from looking like a plateau', async () => {
+    // The whole point, in the shape it actually happens: a block at the home gym, then a month
+    // training somewhere else. Every gym-A session beat the one before it and gym A never
+    // stalled — but read across both, the last four sessions are all lighter than the best, and
+    // that is precisely what `assessStall` is looking for.
+    for (const [i, kg] of [100, 102.5, 105, 107.5].entries()) {
+      await logSession(i * 14, 'Leg Press', [{ weightKg: kg, reps: 8 }], USER, 'plan-day-A');
+    }
+    for (const [i, kg] of [60, 62.5, 65, 67.5].entries()) {
+      await logSession(60 + i * 7, 'Leg Press', [{ weightKg: kg, reps: 8 }], USER, 'plan-day-B');
+    }
+
+    expect(await isExerciseStalling(db, USER, 'Leg Press')).toBe(true);
+    expect(
+      await isExerciseStalling(db, USER, 'Leg Press', undefined, {
+        planDayId: 'plan-day-A',
+        name: null,
+      }),
+    ).toBe(false);
+    // And the other gym is not stalling either — it is climbing, on its own machine.
+    expect(
+      await isExerciseStalling(db, USER, 'Leg Press', undefined, {
+        planDayId: 'plan-day-B',
+        name: null,
+      }),
+    ).toBe(false);
+  });
+
+  it('falls back to every session when the workout has no kind', async () => {
+    // An ad-hoc, unnamed, unplanned session genuinely has no peers. Widening is the honest
+    // answer; inventing a lineage for it would be worse.
+    await twoGyms();
+    const none = await getExerciseProgression(db, USER, 'Leg Press', 30, undefined, {
+      planDayId: null,
+      name: null,
+    });
+    expect(none).toHaveLength(8);
+  });
+
+  it('still leaves the open session out while scoped', async () => {
+    await twoGyms();
+    const today = await logSession(100, 'Leg Press', [{ weightKg: 110, reps: 8 }], USER, 'plan-day-A');
+
+    const scoped = await getExerciseProgression(db, USER, 'Leg Press', 30, today, {
+      planDayId: 'plan-day-A',
+      name: null,
+    });
+    expect(scoped).toHaveLength(4);
+    expect(scoped.every((s) => s.top_weight_kg < 110)).toBe(true);
   });
 });

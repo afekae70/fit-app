@@ -181,6 +181,8 @@ export const en = {
     warmupShort: 'W',
     toFailure: 'To failure',
     removeSet: 'Delete set',
+    untypedComparison: 'This workout has no name and no plan, so "last time" and the suggestions are read from every session — other gyms included. Name it to compare against its own kind.',
+    setOptions: 'Options for set {{index}}',
     markAsWarmup: 'Mark as a warm-up set',
     markAsWorking: 'Mark as a working set',
     markDone: 'Mark set done',

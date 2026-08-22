@@ -41,12 +41,13 @@ import { EXTEND_SECONDS, RestBanner } from '../../src/components/workout/RestBan
 import { WorkoutHeader } from '../../src/components/workout/WorkoutHeader.js';
 import { PrToast, type PrToastData } from '../../src/components/PrToast.js';
 import { DEFAULT_REST_SECONDS } from '../../src/workout/derived.js';
-import { EmptyState, SkeletonScreen } from '../../src/components/ui.js';
+import { Banner, EmptyState, SkeletonScreen } from '../../src/components/ui.js';
 import { WorkoutHome, type TemplateEntry } from '../../src/components/WorkoutHome.js';
 import { listPlanDayExercises } from '../../src/db/plans.js';
 import { getExecutor, newId } from '../../src/db/provider.js';
 import { checkHealthAvailability, importForSession, requestHealthPermissions } from '../../src/health/reader.js';
 import { isExerciseStalling } from '../../src/db/progression.js';
+import { getSessionType, hasType } from '../../src/db/sessionType.js';
 import {
   addExerciseToSession,
   addSetCopyingPrevious,
@@ -113,6 +114,10 @@ export default function WorkoutsScreen() {
   // Keyed by exercise key, like `previous`. Recomputed on reload rather than per render: it is
   // several queries deep and the answer only changes when a session is finished.
   const [stalling, setStalling] = useState<Record<string, boolean>>({});
+  // False for a session that is neither planned nor named: there is no other workout of its
+  // kind, so every comparison on screen silently widens to all of them. Worth saying out loud
+  // rather than letting the numbers quietly mean something else.
+  const [typed, setTyped] = useState(true);
   const [previous, setPrevious] = useState<Record<string, PreviousSet[] | null>>(
     {},
   );
@@ -152,10 +157,16 @@ export default function WorkoutsScreen() {
 
     // Excluding the current session matters: without it, the sets being typed right now would
     // come back as their own "last time" the instant they are saved.
+    // What kind of workout this is, resolved once. Every "last time" and every stall verdict
+    // below is scoped to sessions of the same kind, so a lift done on another gym's machine
+    // does not answer for this one.
+    const type = await getSessionType(db, id);
+    setTyped(hasType(type));
+
     const nextPrevious: Record<string, PreviousSet[] | null> = {};
     const nextStalling: Record<string, boolean> = {};
     for (const exercise of loaded) {
-      const sets = await getPreviousSessionSets(db, userId, exercise.exercise_key, id);
+      const sets = await getPreviousSessionSets(db, userId, exercise.exercise_key, id, type);
       nextPrevious[exercise.exercise_key] = sets.length > 0 ? sets : null;
       // Same exclusion, same reason: today's half-finished sets must not be weighed against
       // themselves when deciding whether this lift has stopped moving.
@@ -164,6 +175,7 @@ export default function WorkoutsScreen() {
         userId,
         exercise.exercise_key,
         id,
+        type,
       );
     }
     setPrevious(nextPrevious);
@@ -636,6 +648,34 @@ export default function WorkoutsScreen() {
     return out;
   }, [exercises, previous, targets, stalling]);
 
+  /**
+   * One set's menu: change what it counts as, or take it out.
+   *
+   * Mirrors `openExerciseOptions` one level down. Both actions used to be invisible gestures on
+   * a 30px chip — a tap that flipped the warm-up flag and a long press that deleted — and
+   * deleting a set you added by mistake should not have been the more hidden of the two.
+   */
+  const openSetOptions = useCallback(
+    (sessionExerciseId: string, setIndex: number) => {
+      const exercise = exercises.find((e) => e.id === sessionExerciseId);
+      const set = exercise?.sets[setIndex];
+      if (!set) return;
+
+      void (async () => {
+        const choice = await ask({
+          title: `${t('workout.setNumber')} ${setIndex + 1}`,
+          actions: [
+            { label: t(set.is_warmup === 1 ? 'workout.markAsWorking' : 'workout.markAsWarmup') },
+            { label: t('workout.removeSet'), destructive: true },
+          ],
+        });
+        if (choice === 0) patchSet(set.id, { isWarmup: set.is_warmup === 0 });
+        else if (choice === 1) deleteSet(set.id);
+      })();
+    },
+    [exercises, ask, t, patchSet, deleteSet],
+  );
+
   const totals = useMemo(() => {
     let sets = 0;
     let volume = 0;
@@ -697,6 +737,11 @@ export default function WorkoutsScreen() {
         startedAt={startedAt ?? new Date().toISOString()}
         progress={totals.sets === 0 ? 0 : totals.done / totals.sets}
       />
+
+      {/* An unplanned, unnamed workout has no other session of its kind, so "last time" and the
+          suggestions quietly widen to every gym. Said out loud rather than left to be inferred
+          from numbers that look slightly wrong. */}
+      {!typed ? <Banner tone="info">{t('workout.untypedComparison')}</Banner> : null}
 
       <PrToast data={prToast} onDone={() => setPrToast(null)} />
 
@@ -796,12 +841,7 @@ export default function WorkoutsScreen() {
                       ? () => applyAdvice(exercise.id, advice[exercise.id]!)
                       : undefined
                   }
-                  onToggleWarmup={(i) => {
-                    const set = exercise.sets[i];
-                    // The flip happens here rather than in the card, which would need to know
-                    // the current value twice — the same reasoning as the done toggle above.
-                    if (set) patchSet(set.id, { isWarmup: set.is_warmup === 0 });
-                  }}
+                  onSetOptions={(i) => openSetOptions(exercise.id, i)}
                   onChangeWeight={(i, next) => {
                     const set = exercise.sets[i];
                     if (set) patchSet(set.id, { weightKg: next });
@@ -817,10 +857,6 @@ export default function WorkoutsScreen() {
                     if (set) toggleDone(set.id, set.done_at === null);
                   }}
                   onAddSet={() => addSet(exercise.id)}
-                  onRemoveSet={(i) => {
-                    const set = exercise.sets[i];
-                    if (set) deleteSet(set.id);
-                  }}
                   onOptions={() => openExerciseOptions(exercise.id, seed.nameHe)}
                   dragHandle={dragHandle}
                   onBarbell={seed.equipmentSlug === 'barbell'}
