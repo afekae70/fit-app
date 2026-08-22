@@ -9,14 +9,14 @@
     "scheme": "fitapp",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.afeka.novafit",
+      "bundleIdentifier": "com.afeka.fitapp",
       "infoPlist": {
         "NSBluetoothAlwaysUsageDescription": "Connect to a smart scale to record your weight automatically.",
         "NSBluetoothPeripheralUsageDescription": "Connect to a smart scale to record your weight automatically."
       }
     },
     "android": {
-      "package": "com.afeka.novafit",
+      "package": "com.afeka.fitapp",
       "adaptiveIcon": {
         "backgroundColor": "#9A9DBC",
         "foregroundImage": "./assets/android-icon-foreground.png",

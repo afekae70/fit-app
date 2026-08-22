@@ -129,6 +129,25 @@ npx expo export:embed --platform android --dev false \
 cd android && ./gradlew assembleRelease
 ```
 
+**Never change `android.package` or `ios.bundleIdentifier` to rename the app.** The display name
+is `expo.name`; the package is where Android keeps the app's private storage. Changing it does
+not rename anything — it installs a **second** app beside the first and leaves every logged
+workout in the original. This was tried and reverted: because the new name and icon had already
+shipped to the old package, the two were indistinguishable on the home screen, and the one being
+opened every day was the one that had stopped receiving updates. The identifier is invisible to
+users and tidying it is worth nothing next to that.
+
+**`expo prebuild --clean` deletes three things that are not in git** and must be restored after
+every run, or the build fails in a way that does not name them:
+
+| File | Symptom if missing |
+|---|---|
+| `android/local.properties` | "SDK location not found" |
+| `android/app/debug.keystore` | New signing key, so `adb install -r` fails and reinstalling wipes the data |
+| `debuggableVariants` in `app/build.gradle` | Gradle runs its own bundle task and the entry path never resolves |
+
+Back all three up before running it.
+
 **Changing the app icon.** `app.json` points at `apps/mobile/assets/`, and `expo prebuild`
 turns those files into the `mipmap-*` resources Android actually ships. Because `android/` is
 gitignored and lives only in the build tree, editing the assets alone changes nothing in a build
