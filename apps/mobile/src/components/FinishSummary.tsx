@@ -23,6 +23,7 @@ import {
   Animated,
   Easing,
   Modal,
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
@@ -30,6 +31,8 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+
+import { SESSION_EFFORT_CHOICES, sessionLoad } from '@fit/shared/calculations';
 
 import { useTheme } from '../ThemeProvider.js';
 import { useUnit } from '../UnitsProvider.js';
@@ -47,7 +50,7 @@ export interface FinishSummaryProps {
   initialName: string | null;
   /** Watch import is only offered when a native health provider is actually available. */
   watchAvailable?: boolean;
-  onConfirm: (name: string | null) => void;
+  onConfirm: (name: string | null, sessionRpe: number | null) => void;
   onCancel: () => void;
   onImportFromWatch?: () => void;
 }
@@ -148,6 +151,8 @@ export function FinishSummary({
   const { colors } = useTheme();
   const unit = useUnit();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const [effort, setEffort] = useState<number | null>(null);
+  const load = useMemo(() => sessionLoad(effort, durationMinutes), [effort, durationMinutes]);
   const [name, setName] = useState(initialName ?? '');
 
   // A fresh key each time the sheet opens — it's what makes the trophy and tiles' `useEffect`s
@@ -232,6 +237,34 @@ export function FinishSummary({
             />
           </View>
 
+          {/* Asked here and nowhere else: the answer is only honest in the minute after the last
+              set, and a question about how hard something was gets rewritten by memory fast.
+              Optional — a session with no rating has an unknown cost, which the load treats as
+              unknown rather than as free. */}
+          <Text style={styles.effortPrompt}>{t('workout.effortPrompt')}</Text>
+          <View style={styles.effortRow}>
+            {SESSION_EFFORT_CHOICES.map((value) => (
+              <Pressable
+                key={value}
+                onPress={() => setEffort(effort === value ? null : value)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: effort === value }}
+                style={({ pressed }) => [
+                  styles.effortChip,
+                  effort === value && styles.effortChipOn,
+                  pressed && { opacity: 0.7 },
+                ]}
+              >
+                <Text style={[styles.effortText, effort === value && styles.effortTextOn]}>
+                  {t(`workout.effort${value}`)}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          {/* The number the rating produces, shown the moment it is given — otherwise this is
+              one more field that collects something and never explains why. */}
+          {load !== null ? <Text style={styles.loadLine}>{t('workout.load')} · {load}</Text> : null}
+
           <TextInput
             value={name}
             onChangeText={setName}
@@ -257,7 +290,7 @@ export function FinishSummary({
           <View style={styles.actions}>
             <Button
               label={t('workout.summarySave')}
-              onPress={() => onConfirm(name.trim() === '' ? null : name.trim())}
+              onPress={() => onConfirm(name.trim() === '' ? null : name.trim(), effort)}
             />
             <Button label={t('workout.summaryDiscard')} variant="ghost" onPress={onCancel} />
           </View>
@@ -279,6 +312,13 @@ const createStyles = (colors: ColorPalette) =>
     tileValue: TextStyle;
     tileLabel: TextStyle;
     nameInput: TextStyle;
+    effortPrompt: TextStyle;
+    effortRow: ViewStyle;
+    effortChip: ViewStyle;
+    effortChipOn: ViewStyle;
+    effortText: TextStyle;
+    effortTextOn: TextStyle;
+    loadLine: TextStyle;
     namePrompt: TextStyle;
     watchBlock: ViewStyle;
     actions: ViewStyle;
@@ -319,6 +359,33 @@ const createStyles = (colors: ColorPalette) =>
   tile: { flex: 1, alignItems: 'center', paddingVertical: spacing.sm },
   tileValue: { color: colors.text, fontSize: fontSize.xl, fontWeight: fontWeight.bold },
   tileLabel: { color: colors.textMuted, fontSize: fontSize.xxs, marginTop: spacing.xxs },
+  effortPrompt: {
+    color: colors.textSecondary,
+    fontSize: fontSize.sm,
+    textAlign: 'auto',
+    marginBottom: spacing.sm,
+  },
+  effortRow: { flexDirection: 'row', gap: 6, marginBottom: spacing.sm },
+  effortChip: {
+    flex: 1,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surfaceRaised,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  effortChipOn: { backgroundColor: colors.accentSoft, borderColor: colors.accentBorder },
+  effortText: { color: colors.textMuted, fontSize: fontSize.xxs, textAlign: 'center' },
+  effortTextOn: { color: colors.accent, fontWeight: fontWeight.medium },
+  loadLine: {
+    color: colors.textFaint,
+    fontSize: fontSize.xs,
+    textAlign: 'auto',
+    marginBottom: spacing.sm,
+    fontVariant: ['tabular-nums'],
+  },
   nameInput: {
     backgroundColor: colors.surfaceRaised,
     borderRadius: radius.sm,

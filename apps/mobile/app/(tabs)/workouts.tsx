@@ -367,12 +367,12 @@ export default function WorkoutsScreen() {
   }, [startedAt]);
 
   /** Confirm through the summary sheet — the name is captured in the same step. */
-  const confirmFinish = (name: string | null) => {
+  const confirmFinish = (name: string | null, sessionRpe: number | null) => {
     if (!sessionId) return;
     void (async () => {
       const db = await getExecutor();
       if (name !== null) await renameSession(db, userId, sessionId, name);
-      await finishSession(db, userId, sessionId);
+      await finishSession(db, userId, sessionId, { sessionRpe });
       setSummaryOpen(false);
       await closeOut();
     })();

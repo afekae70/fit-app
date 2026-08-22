@@ -36,6 +36,7 @@ import {
   metresToDisplay,
   weightUnitKey,
 } from '../../src/units.js';
+import { sessionLoad } from '@fit/shared/calculations';
 import { useActionSheet } from '../../src/components/ActionSheetProvider.js';
 import { ExerciseCard, type PreviousSet } from '../../src/components/ExerciseCard.js';
 import { KeyboardSafe } from '../../src/components/KeyboardSafe.js';
@@ -84,6 +85,16 @@ export default function SessionDetailScreen() {
   const [nameDraft, setNameDraft] = useState('');
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
+
+  /**
+   * Minutes from the recorded start and end rather than a stored duration — there isn't one,
+   * and deriving it keeps the number honest if either timestamp is ever corrected.
+   */
+  const sessionEffortLoad = useMemo(() => {
+    if (!session?.started_at || !session.ended_at) return null;
+    const minutes = (Date.parse(session.ended_at) - Date.parse(session.started_at)) / 60000;
+    return sessionLoad(session.session_rpe, minutes);
+  }, [session]);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -308,6 +319,15 @@ export default function SessionDetailScreen() {
           <Text style={styles.date}>{new Date(session.started_at).toLocaleDateString()}</Text>
         </View>
 
+        {/* The rating survives past the sheet that asked for it. A number collected once and
+            never shown again is the pattern this app has been unpicking all week. */}
+        {session.session_rpe !== null ? (
+          <Text style={styles.effortLine}>
+            {t('workout.effortPrompt')} {t(`workout.effort${session.session_rpe}`)}
+            {sessionEffortLoad !== null ? ` · ${t('workout.load')} ${sessionEffortLoad}` : ''}
+          </Text>
+        ) : null}
+
         <View style={styles.nameRow}>
           <TextInput
             value={nameDraft}
@@ -435,6 +455,7 @@ const createStyles = (colors: ColorPalette) =>
     date: TextStyle;
     nameRow: ViewStyle;
     nameInput: TextStyle;
+    effortLine: TextStyle;
     statsRow: ViewStyle;
     stat: TextStyle;
     repeatButton: ViewStyle;
@@ -464,6 +485,13 @@ const createStyles = (colors: ColorPalette) =>
   back: { color: colors.accent, fontSize: fontSize.xl, fontWeight: '700' },
   date: { color: colors.textMuted, fontSize: fontSize.sm },
   nameRow: { marginTop: spacing.md },
+  effortLine: {
+    color: colors.textMuted,
+    fontSize: fontSize.xs,
+    textAlign: 'auto',
+    marginBottom: spacing.sm,
+    fontVariant: ['tabular-nums'],
+  },
   nameInput: {
     color: colors.text,
     fontSize: fontSize.lg,
