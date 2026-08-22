@@ -10,6 +10,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { SqlExecutor } from './executor.js';
+import { addLocation, setSessionLocation } from './locations.js';
 import { getSessionType, hasType, sameTypeClause } from './sessionType.js';
 import { createTestExecutor } from './testUtils.js';
 import {
@@ -847,7 +848,11 @@ describe('what counts as the same workout', () => {
 
   it('reads a session kind off the row', async () => {
     const id = await session('plan-a', 100, '2026-06-01T10:00:00.000Z');
-    expect(await getSessionType(db, id)).toEqual({ planDayId: 'plan-a', name: null });
+    expect(await getSessionType(db, id)).toEqual({
+      planDayId: 'plan-a',
+      name: null,
+      locationId: null,
+    });
   });
 
   it('has no kind for a session that is neither planned nor named', async () => {
@@ -886,6 +891,51 @@ describe('what counts as the same workout', () => {
       name: null,
     });
     expect(sets[0]?.weight_kg).toBe(60);
+  });
+
+  it('narrows a kind by gym rather than replacing it', async () => {
+    // The same push day at two gyms is one kind and two sets of numbers, so both must match.
+    const clause = sameTypeClause('ws', {
+      planDayId: 'plan-a',
+      name: null,
+      locationId: 'gym-1',
+    });
+    expect(clause.sql).toContain('plan_day_id');
+    expect(clause.sql).toContain('location_id');
+    expect(clause.params).toEqual(['plan-a', 'gym-1']);
+  });
+
+  it('matches on the gym alone only when there is no kind', async () => {
+    const clause = sameTypeClause('ws', { planDayId: null, name: null, locationId: 'gym-1' });
+    expect(clause.params).toEqual(['gym-1']);
+  });
+
+  it('answers "last time" from the same gym even within one plan day', async () => {
+    // The case workout-type scoping could not reach: the same prescribed day, two gyms.
+    const gymA = await addLocation(db, newId, USER_T, 'Gym A', () => '2026-06-01T09:00:00.000Z');
+    const gymB = await addLocation(db, newId, USER_T, 'Gym B', () => '2026-06-01T09:00:00.000Z');
+
+    const one = await session('plan-a', 100, '2026-06-01T10:00:00.000Z');
+    await setSessionLocation(db, one, gymA);
+    const two = await session('plan-a', 60, '2026-06-03T10:00:00.000Z');
+    await setSessionLocation(db, two, gymB);
+    const today = await session('plan-a', 0, '2026-06-05T10:00:00.000Z');
+    await setSessionLocation(db, today, gymA);
+
+    const byKind = await getPreviousSessionSets(db, USER_T, 'Leg Press', today, {
+      planDayId: 'plan-a',
+      name: null,
+    });
+    const byKindAndGym = await getPreviousSessionSets(db, USER_T, 'Leg Press', today, {
+      planDayId: 'plan-a',
+      name: null,
+      locationId: gymA,
+    });
+
+    // Same plan day, so the kind alone still answers with the other gym's machine.
+    expect(byKind[0]?.weight_kg).toBe(60);
+    // With the gym, it answers with the bench this one was actually done on.
+    expect(byKindAndGym[0]?.weight_kg).toBe(100);
   });
 
   it('builds a clause that is always safe to concatenate', () => {

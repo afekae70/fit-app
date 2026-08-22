@@ -47,6 +47,7 @@ import { listPlanDayExercises } from '../../src/db/plans.js';
 import { getExecutor, newId } from '../../src/db/provider.js';
 import { checkHealthAvailability, importForSession, requestHealthPermissions } from '../../src/health/reader.js';
 import { isExerciseStalling } from '../../src/db/progression.js';
+import { listLocations, setSessionLocation, type LocationRow } from '../../src/db/locations.js';
 import { getSessionType, hasType } from '../../src/db/sessionType.js';
 import {
   addExerciseToSession,
@@ -125,6 +126,8 @@ export default function WorkoutsScreen() {
   // kind, so every comparison on screen silently widens to all of them. Worth saying out loud
   // rather than letting the numbers quietly mean something else.
   const [typed, setTyped] = useState(true);
+  const [gyms, setGyms] = useState<LocationRow[]>([]);
+  const [gymId, setGymId] = useState<string | null>(null);
   const [previous, setPrevious] = useState<Record<string, PreviousSet[] | null>>(
     {},
   );
@@ -169,6 +172,8 @@ export default function WorkoutsScreen() {
     // does not answer for this one.
     const type = await getSessionType(db, id);
     setTyped(hasType(type));
+    setGymId(type?.locationId ?? null);
+    setGyms(await listLocations(db, userId));
 
     const nextPrevious: Record<string, PreviousSet[] | null> = {};
     const nextStalling: Record<string, boolean> = {};
@@ -701,6 +706,39 @@ export default function WorkoutsScreen() {
     [exercises, ask, t, patchSet, deleteSet],
   );
 
+  /**
+   * Choose where this workout is happening.
+   *
+   * Offered during the session rather than demanded before it: a workout that cannot start until
+   * a question is answered is a workout someone abandons at the door. The gym narrows every
+   * comparison on the card the moment it is set, and leaving it unset simply compares on the
+   * workout's kind, as it did before gyms existed.
+   */
+  const openGymPicker = useCallback(() => {
+    if (!sessionId) return;
+    void (async () => {
+      const choice = await ask({
+        title: t('gyms.chooseTitle'),
+        actions: [
+          ...gyms.map((gym) => ({ label: gym.name })),
+          { label: t('gyms.none') },
+          { label: t('gyms.manage') },
+        ],
+      });
+      if (choice === null) return;
+
+      if (choice === gyms.length + 1) {
+        router.push('/gyms');
+        return;
+      }
+
+      const next = choice === gyms.length ? null : (gyms[choice]?.id ?? null);
+      const db = await getExecutor();
+      await setSessionLocation(db, sessionId, next);
+      await reload(sessionId);
+    })();
+  }, [sessionId, gyms, ask, t, reload]);
+
   const totals = useMemo(() => {
     let sets = 0;
     let volume = 0;
@@ -767,6 +805,19 @@ export default function WorkoutsScreen() {
           suggestions quietly widen to every gym. Said out loud rather than left to be inferred
           from numbers that look slightly wrong. */}
       {!typed ? <Banner tone="info">{t('workout.untypedComparison')}</Banner> : null}
+
+      {/* Where this is happening. Shown as a quiet chip rather than a field: it changes what the
+          numbers are compared against, which is worth surfacing, but it is not something to fill
+          in before lifting. */}
+      <Pressable
+        onPress={openGymPicker}
+        accessibilityRole="button"
+        style={({ pressed }) => [styles.gymChip, pressed && { opacity: 0.7 }]}
+      >
+        <Text style={styles.gymChipText}>
+          {t('gyms.setLabel')} · {gyms.find((g) => g.id === gymId)?.name ?? t('gyms.none')}
+        </Text>
+      </Pressable>
 
       <PrToast data={prToast} onDone={() => setPrToast(null)} />
 
@@ -926,6 +977,8 @@ export default function WorkoutsScreen() {
 const createStyles = (colors: ColorPalette) =>
   StyleSheet.create<{
     screen: ViewStyle;
+    gymChip: ViewStyle;
+    gymChipText: TextStyle;
     topBar: ViewStyle;
     topMain: ViewStyle;
     sessionName: TextStyle;
@@ -939,6 +992,17 @@ const createStyles = (colors: ColorPalette) =>
     addExerciseText: TextStyle;
   }>({
   screen: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: spacing.lg },
+  gymChip: {
+    alignSelf: 'flex-start',
+    marginTop: spacing.xs,
+    paddingVertical: 4,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceRaised,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+  },
+  gymChipText: { color: colors.textMuted, fontSize: 11, textAlign: 'auto' },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -30,6 +30,14 @@ import type { SqlExecutor } from './executor.js';
 export interface SessionType {
   planDayId: string | null;
   name: string | null;
+  /**
+   * The gym, once one has been recorded.
+   *
+   * Narrows the kind rather than replacing it. The same push day done at two gyms is one kind
+   * and two sets of numbers, so a comparison requires both to match — and a session with no gym
+   * recorded is compared on its kind alone, exactly as before gyms existed.
+   */
+  locationId?: string | null;
 }
 
 /** Look up what kind of workout a session is. Null when the session does not exist. */
@@ -37,17 +45,24 @@ export async function getSessionType(
   db: SqlExecutor,
   sessionId: string,
 ): Promise<SessionType | null> {
-  const row = await db.get<{ plan_day_id: string | null; name: string | null }>(
-    `SELECT plan_day_id, name FROM workout_sessions WHERE id = ? AND deleted_at IS NULL`,
+  const row = await db.get<{
+    plan_day_id: string | null;
+    name: string | null;
+    location_id: string | null;
+  }>(
+    `SELECT plan_day_id, name, location_id FROM workout_sessions
+      WHERE id = ? AND deleted_at IS NULL`,
     [sessionId],
   );
   if (!row) return null;
-  return { planDayId: row.plan_day_id, name: row.name };
+  return { planDayId: row.plan_day_id, name: row.name, locationId: row.location_id };
 }
 
 /** True when this session carries enough identity to be compared against its own kind. */
 export function hasType(type: SessionType | null | undefined): boolean {
-  return Boolean(type && (type.planDayId !== null || type.name !== null));
+  return Boolean(
+    type && (type.planDayId !== null || type.name !== null || type.locationId != null),
+  );
 }
 
 /**
@@ -61,13 +76,26 @@ export function sameTypeClause(
   alias: string,
   type: SessionType | null | undefined,
 ): { sql: string; params: unknown[] } {
+  const parts: string[] = [];
+  const params: unknown[] = [];
+
   if (type?.planDayId != null) {
-    return { sql: `${alias}.plan_day_id = ?`, params: [type.planDayId] };
-  }
-  if (type?.name != null) {
+    parts.push(`${alias}.plan_day_id = ?`);
+    params.push(type.planDayId);
+  } else if (type?.name != null) {
     // Only sessions that are ALSO unplanned. A plan day always wins as the identity, so a
     // planned session that happens to share a name belongs to its plan's lineage, not this one.
-    return { sql: `(${alias}.plan_day_id IS NULL AND ${alias}.name = ?)`, params: [type.name] };
+    parts.push(`(${alias}.plan_day_id IS NULL AND ${alias}.name = ?)`);
+    params.push(type.name);
   }
-  return { sql: '1 = 1', params: [] };
+
+  if (type?.locationId != null) {
+    // ANDed, never instead of the kind. Two different workouts at one gym are still two
+    // workouts, and matching on the room alone would put a leg day's numbers under a push day.
+    parts.push(`${alias}.location_id = ?`);
+    params.push(type.locationId);
+  }
+
+  if (parts.length === 0) return { sql: '1 = 1', params: [] };
+  return { sql: parts.join(' AND '), params };
 }

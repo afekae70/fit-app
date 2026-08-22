@@ -5,9 +5,18 @@
  * than convenience.
  */
 
+import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ScrollView, StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  type TextStyle,
+  type ViewStyle,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { UnitPreference } from '@fit/shared';
@@ -23,7 +32,7 @@ import {
   Segmented,
   SectionTitle,
 } from '../src/components/ui.js';
-import { setAppLanguage, type Language } from '../src/i18n/index.js';
+import { isRtlLanguage, setAppLanguage, type Language } from '../src/i18n/index.js';
 import {
   cancelWeeklyReminder,
   isWeeklyReminderScheduled,
@@ -34,6 +43,7 @@ import { useUnits } from '../src/UnitsProvider.js';
 import { fontSize, spacing, type ColorPalette } from '../src/theme.js';
 
 export default function SettingsScreen() {
+  const router = useRouter();
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
   const { session, signOut } = useAuth();
@@ -144,6 +154,19 @@ export default function SettingsScreen() {
         {reminderDenied ? <Banner tone="warning">{t('settings.reminderDenied')}</Banner> : null}
       </Card>
 
+      <Card index={2}>
+        <SectionTitle>{t('gyms.title')}</SectionTitle>
+        <Hint>{t('gyms.addHint')}</Hint>
+        <Pressable
+          onPress={() => router.push('/gyms')}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.7 }]}
+        >
+          <Text style={styles.linkText}>{t('gyms.manage')}</Text>
+          <Text style={styles.linkChevron}>{isRtlLanguage(i18n.language as Language) ? '‹' : '›'}</Text>
+        </Pressable>
+      </Card>
+
       {session ? <SyncCard /> : null}
 
       {session ? (
@@ -163,6 +186,9 @@ const createStyles = (colors: ColorPalette) =>
     screen: ViewStyle;
     content: ViewStyle;
     unitsHint: TextStyle;
+    linkRow: ViewStyle;
+    linkText: TextStyle;
+    linkChevron: TextStyle;
     email: TextStyle;
     signOutSpacer: ViewStyle;
   }>({
@@ -174,6 +200,15 @@ const createStyles = (colors: ColorPalette) =>
       marginTop: spacing.sm,
       textAlign: 'auto',
     },
+    linkRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginTop: spacing.sm,
+      paddingVertical: spacing.sm,
+    },
+    linkText: { color: colors.text, fontSize: fontSize.sm, textAlign: 'auto' },
+    linkChevron: { color: colors.textMuted, fontSize: fontSize.lg },
     email: { color: colors.textSecondary, fontSize: fontSize.sm, textAlign: 'auto' },
     signOutSpacer: { height: spacing.md },
   });

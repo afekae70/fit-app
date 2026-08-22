@@ -385,3 +385,54 @@ describe('the schema version', () => {
     expect(SCHEMA_VERSION).toBe(highest);
   });
 });
+
+describe('migration 12 — gyms', () => {
+  it('is on the app upgrade path', () => {
+    // The device in use holds a year of data and will never run CREATE_SCHEMA_SQL again, so a
+    // table that exists only there is a table that exists only for new installs.
+    expect(SCHEMA_VERSION).toBeGreaterThanOrEqual(12);
+    expect(MIGRATIONS[12]).toBeDefined();
+  });
+
+  it('creates the table on a database that already holds workouts', () => {
+    // The real sequence, not a hand-rolled loop over the migrations: CREATE_SCHEMA_SQL runs
+    // first on every launch, and skipping it here tests a path the app never takes.
+    const db = seededV6Database();
+    startUpLikeTheApp(db);
+
+    db.exec(`INSERT INTO locations (id, user_id, name) VALUES ('g1', 'u1', 'Gold Gym')`);
+    const row = db.prepare(`SELECT name FROM locations WHERE id = 'g1'`).get() as { name: string };
+    expect(row.name).toBe('Gold Gym');
+
+    // And the workouts that were already there are still there.
+    const session = db.prepare(`SELECT id FROM workout_sessions WHERE id = 's1'`).get() as {
+      id: string;
+    };
+    expect(session.id).toBe('s1');
+    db.close();
+  });
+
+  it('can be applied twice without complaining', () => {
+    // Migrations run from whatever version a device is on; one that cannot survive being seen
+    // again turns a re-entrant upgrade into a crash on launch.
+    const db = new DatabaseSync(':memory:');
+    startUpLikeTheApp(db);
+    expect(() => applyMigration(db, MIGRATIONS[12] ?? '')).not.toThrow();
+    db.close();
+  });
+
+  it('gives a session somewhere to point', () => {
+    const db = new DatabaseSync(':memory:');
+    startUpLikeTheApp(db);
+    db.exec(`INSERT INTO locations (id, user_id, name) VALUES ('g1', 'u1', 'Gym')`);
+    db.exec(
+      `INSERT INTO workout_sessions (id, user_id, location_id, started_at, created_at)
+       VALUES ('s9', 'u1', 'g1', '2026-06-01T10:00:00Z', '2026-06-01T10:00:00Z')`,
+    );
+    const row = db.prepare(`SELECT location_id FROM workout_sessions WHERE id = 's9'`).get() as {
+      location_id: string;
+    };
+    expect(row.location_id).toBe('g1');
+    db.close();
+  });
+});

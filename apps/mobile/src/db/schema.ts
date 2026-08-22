@@ -26,7 +26,7 @@
  * TEXT (lexicographically sortable, which is what the history queries rely on).
  */
 
-export const SCHEMA_VERSION = 11;
+export const SCHEMA_VERSION = 12;
 
 /**
  * Incremental migrations, keyed by the version they upgrade TO.
@@ -249,6 +249,23 @@ export const MIGRATIONS: Record<number, string> = {
     CREATE INDEX IF NOT EXISTS scheduled_days_user_date_idx
       ON scheduled_days (user_id, scheduled_on);
   `,
+
+  // Where a workout happened. The same lift on another gym's machine is a different number, so
+  // this is what lets a comparison stay inside one room — see `sessionType.ts`.
+  //
+  // `workout_sessions.location_id` has existed since the first schema and nothing has ever
+  // written it; this is the table it was always pointing at.
+  12: `
+CREATE TABLE IF NOT EXISTS locations (
+  id          TEXT PRIMARY KEY NOT NULL,
+  user_id     TEXT NOT NULL,
+  name        TEXT NOT NULL,
+  updated_at  TEXT,
+  deleted_at  TEXT
+);
+
+CREATE INDEX IF NOT EXISTS locations_user_idx ON locations (user_id);
+  `,
 };
 
 export const CREATE_SCHEMA_SQL = `
@@ -330,6 +347,16 @@ CREATE TABLE IF NOT EXISTS nutrition_targets (
 CREATE INDEX IF NOT EXISTS nutrition_targets_from_idx
   ON nutrition_targets (effective_from DESC);
 -- See the comment on body_metrics above — the user_id index lives only in migration 5.
+
+CREATE TABLE IF NOT EXISTS locations (
+  id          TEXT PRIMARY KEY NOT NULL,
+  user_id     TEXT NOT NULL,
+  name        TEXT NOT NULL,
+  updated_at  TEXT,
+  deleted_at  TEXT
+);
+
+CREATE INDEX IF NOT EXISTS locations_user_idx ON locations (user_id);
 
 CREATE TABLE IF NOT EXISTS workout_sessions (
   id             TEXT PRIMARY KEY NOT NULL,
