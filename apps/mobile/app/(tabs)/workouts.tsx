@@ -91,6 +91,13 @@ function elapsedMinutes(startedAt: string, endMs: number): number {
   return Math.max(0, Math.round((endMs - new Date(startedAt).getTime()) / 60000));
 }
 
+/**
+ * The ratings worth offering. Ten choices in a sheet is a list nobody reads; 6-10 is the span
+ * that actually distinguishes one working set from another, and anything easier than 6 is a
+ * warm-up, which this app records as a warm-up.
+ */
+const RPE_CHOICES = [6, 7, 8, 9, 10] as const;
+
 export default function WorkoutsScreen() {
   const { confirm, ask } = useActionSheet();
   const { t, i18n } = useTranslation();
@@ -637,7 +644,7 @@ export default function WorkoutsScreen() {
         // Warm-ups are not the work; ramping toward 80 says nothing about whether 80 was earned.
         lastSets: last
           .filter((set) => set.is_warmup === 0)
-          .map((set) => ({ weightKg: set.weight_kg, reps: set.reps })),
+          .map((set) => ({ weightKg: set.weight_kg, reps: set.reps, rpe: set.rpe })),
         repsMin: prescription?.target_reps_min,
         repsMax: prescription?.target_reps_max,
         movementPattern: seed.movementPattern,
@@ -666,11 +673,29 @@ export default function WorkoutsScreen() {
           title: `${t('workout.setNumber')} ${setIndex + 1}`,
           actions: [
             { label: t(set.is_warmup === 1 ? 'workout.markAsWorking' : 'workout.markAsWarmup') },
+            { label: t('workout.rateEffort') },
+            { label: t(set.to_failure === 1 ? 'workout.clearToFailure' : 'workout.markToFailure') },
             { label: t('workout.removeSet'), destructive: true },
           ],
         });
+
         if (choice === 0) patchSet(set.id, { isWarmup: set.is_warmup === 0 });
-        else if (choice === 1) deleteSet(set.id);
+        else if (choice === 1) {
+          // A second sheet rather than ten rows in the first: 6 to 10 is the range that carries
+          // meaning — below 6 a set is a warm-up, and the app already has a word for that.
+          const rated = await ask({
+            title: t('workout.rateEffort'),
+            message: t('workout.rateEffortHint'),
+            actions: [
+              ...RPE_CHOICES.map((value) => ({ label: t(`workout.rpe${value}`) })),
+              { label: t('workout.rpeClear') },
+            ],
+          });
+          if (rated === null) return;
+          const value = RPE_CHOICES[rated] ?? null;
+          patchSet(set.id, { rpe: value });
+        } else if (choice === 2) patchSet(set.id, { toFailure: set.to_failure === 0 });
+        else if (choice === 3) deleteSet(set.id);
       })();
     },
     [exercises, ask, t, patchSet, deleteSet],
@@ -818,6 +843,8 @@ export default function WorkoutsScreen() {
                     reps: set.reps,
                     done: set.done_at !== null,
                     isWarmup: set.is_warmup === 1,
+                    rpe: set.rpe,
+                    toFailure: set.to_failure === 1,
                   }))}
                   previous={
                     previous[exercise.exercise_key]?.map((p) => ({

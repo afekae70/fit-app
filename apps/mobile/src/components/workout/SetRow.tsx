@@ -72,6 +72,10 @@ export interface SetRowProps {
    * and the progression charts.
    */
   isWarmup?: boolean;
+  /** Rated effort, 6-10, or null. Shown where the weight field shows its unit. */
+  rpe?: number | null;
+  /** Taken to the point another rep was not happening. */
+  toFailure?: boolean;
   /**
    * Open this set's menu: change its kind, or delete it.
    *
@@ -95,6 +99,8 @@ export function SetRow({
   onChangeReps,
   onToggle,
   isWarmup = false,
+  rpe = null,
+  toFailure = false,
   onOptions,
 }: SetRowProps) {
   const { t } = useTranslation();
@@ -161,9 +167,20 @@ export function SetRow({
         disabled={!onOptions}
         accessibilityRole={onOptions ? 'button' : undefined}
         accessibilityLabel={onOptions ? t('workout.setOptions', { index }) : undefined}
-        style={[s.indexChip, isWarmup && s.indexChipWarmup, onOptions && s.indexChipTappable]}
+        style={[
+          s.indexChip,
+          toFailure && s.indexChipFailure,
+          isWarmup && s.indexChipWarmup,
+          onOptions && s.indexChipTappable,
+        ]}
       >
-        <Text style={[s.indexText, isWarmup && s.indexTextWarmup]}>
+        <Text
+          style={[
+            s.indexText,
+            toFailure && s.indexTextFailure,
+            isWarmup && s.indexTextWarmup,
+          ]}
+        >
           {isWarmup ? t('workout.warmupShort') : index}
         </Text>
       </Pressable>
@@ -213,6 +230,9 @@ export function SetRow({
             placeholderTextColor={colors.textFaint}
             style={[s.numeral, s.numeralInput, { color: numeralColor }]}
           />
+          {/* The slot the weight field spends on its unit, which the reps field never used.
+              `@8` is how a rating is written on paper, and it costs the row no new space. */}
+          {rpe !== null ? <Text style={s.rpe}>@{rpe}</Text> : null}
         </View>
         <Stepper label="+" onPress={() => onChangeReps(stepReps(reps, 1))} />
       </Animated.View>
@@ -271,9 +291,12 @@ const createStyles = (colors: ColorPalette) =>
     row: ViewStyle;
     indexChip: ViewStyle;
     indexChipTappable: ViewStyle;
+    indexChipFailure: ViewStyle;
     indexChipWarmup: ViewStyle;
     indexText: TextStyle;
+    indexTextFailure: TextStyle;
     indexTextWarmup: TextStyle;
+    rpe: TextStyle;
     field: ViewStyle;
     value: ViewStyle;
     numeral: TextStyle;
@@ -311,6 +334,12 @@ const createStyles = (colors: ColorPalette) =>
     indexChipWarmup: { backgroundColor: colors.warningSoft },
     indexText: { color: colors.textFaint, fontSize: 12, fontVariant: ['tabular-nums'] },
     indexTextWarmup: { color: colors.warning, fontWeight: '700' },
+    // Listed before the warm-up styles above so a ramp still reads as a ramp: nobody takes a
+    // warm-up to failure, and if both flags somehow land on one set, "warm-up" is the one that
+    // decides whether it counts.
+    indexChipFailure: { backgroundColor: colors.dangerSoft },
+    indexTextFailure: { color: colors.danger, fontWeight: '700' },
+    rpe: { color: colors.textFaint, fontSize: 10, fontVariant: ['tabular-nums'] },
 
     field: {
       flex: 1,

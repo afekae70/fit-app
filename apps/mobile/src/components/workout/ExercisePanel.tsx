@@ -273,6 +273,8 @@ export function ExercisePanel({
             key={index}
             index={labels[index]?.ordinal ?? index + 1}
             isWarmup={labels[index]?.kind === 'warmup'}
+            rpe={set.rpe}
+            toFailure={set.toFailure}
             onOptions={onSetOptions ? () => onSetOptions(index) : undefined}
             weightKg={set.weightKg}
             reps={set.reps}

@@ -28,6 +28,15 @@ export interface DerivedSet {
    * nowhere is worse than one that is simply included.
    */
   isWarmup: boolean;
+  /**
+   * Rate of perceived exertion, 6-10, or null when it was not rated.
+   *
+   * How hard the set actually was, which the weight and the reps together still do not say:
+   * eight reps left in reserve and eight reps to the edge are the same row otherwise.
+   */
+  rpe: number | null;
+  /** The set was taken to the point where another rep was not going to happen. */
+  toFailure: boolean;
 }
 
 export interface DerivedExercise {

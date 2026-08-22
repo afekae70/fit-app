@@ -50,6 +50,8 @@ export interface PreviousSet {
   duration_seconds: number | null;
   distance_m: number | null;
   is_warmup: number;
+  /** Rated effort last time, when it was rated. Sizes the jump the advice suggests. */
+  rpe?: number | null;
 }
 
 export interface ExerciseTarget {

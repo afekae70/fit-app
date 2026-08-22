@@ -160,6 +160,73 @@ describe('suggestProgression', () => {
     });
   });
 
+  describe('rated effort', () => {
+    const range = { repsMin: 6, repsMax: 8 } as const;
+
+    it('doubles the jump when the range was filled with reps in reserve', () => {
+      const advice = suggestProgression({
+        lastSets: [
+          { weightKg: 80, reps: 8, rpe: 7 },
+          { weightKg: 80, reps: 8, rpe: 6 },
+        ],
+        ...range,
+        movementPattern: 'horizontal_push',
+      });
+      expect(advice).toMatchObject({ kind: 'add_weight', weightKg: 85 });
+    });
+
+    it('takes one step when any top set was a grind', () => {
+      // The hardest set describes the load. Averaging would let one easy set argue away a set
+      // that was genuinely at the limit.
+      const advice = suggestProgression({
+        lastSets: [
+          { weightKg: 80, reps: 8, rpe: 6 },
+          { weightKg: 80, reps: 8, rpe: 9 },
+        ],
+        ...range,
+        movementPattern: 'horizontal_push',
+      });
+      expect(advice).toMatchObject({ kind: 'add_weight', weightKg: 82.5 });
+    });
+
+    it('behaves exactly as before when nothing was rated', () => {
+      // Ratings are optional and usually absent; an unrated session must not change.
+      const advice = suggestProgression({
+        lastSets: sets([80, 8], [80, 8]),
+        ...range,
+        movementPattern: 'horizontal_push',
+      });
+      expect(advice).toMatchObject({ kind: 'add_weight', weightKg: 82.5 });
+    });
+
+    it('never lets an easy session deepen a deload', () => {
+      // The bug this catches: sizing the back-off with the RPE-doubled step meant a stall that
+      // felt light dropped further than one that was a grind, which is backwards.
+      const advice = suggestProgression({
+        lastSets: [
+          { weightKg: 100, reps: 5, rpe: 6 },
+          { weightKg: 100, reps: 5, rpe: 6 },
+        ],
+        movementPattern: 'horizontal_push',
+        isStalling: true,
+      });
+      expect(advice).toMatchObject({ kind: 'deload', weightKg: 90 });
+    });
+
+    it('does not let a rating create a jump the reps did not earn', () => {
+      // Easy, but the range was not filled. A rating sizes a jump; it never decides there is one.
+      const advice = suggestProgression({
+        lastSets: [
+          { weightKg: 80, reps: 8, rpe: 6 },
+          { weightKg: 80, reps: 6, rpe: 6 },
+        ],
+        ...range,
+        movementPattern: 'horizontal_push',
+      });
+      expect(advice).toMatchObject({ kind: 'add_reps', weightKg: 80 });
+    });
+  });
+
   describe('refusing to guess', () => {
     it('says nothing for work that is not loaded in kilograms', () => {
       // The number would be written straight into a weight field, and a pull-up does not take

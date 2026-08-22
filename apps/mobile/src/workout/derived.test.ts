@@ -18,6 +18,8 @@ const set = (weightKg: number | null, reps: number | null, done = false, isWarmu
   reps,
   done,
   isWarmup,
+  rpe: null,
+  toFailure: false,
 });
 
 const bench: DerivedExercise = {

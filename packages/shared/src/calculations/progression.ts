@@ -46,9 +46,25 @@ const LOWER_BODY: ReadonlySet<MovementPattern> = new Set(['squat', 'hinge', 'lun
 /** How far a stall backs off before building again. */
 const DELOAD_FRACTION = 0.1;
 
+/**
+ * At or below this, the range was filled with reps still in reserve, and one step is timid.
+ *
+ * 7 means roughly three reps left. Someone finishing their top set with three in the tank is
+ * not being held back by the load, and 2.5 kg will have them back here next week having learnt
+ * nothing. Above it, a single step — the ordinary case, and the safe one.
+ */
+const EASY_RPE = 7;
+
 export interface CompletedSet {
   weightKg: number | null;
   reps: number | null;
+  /**
+   * Rated effort, 6-10, when the lifter rated it.
+   *
+   * Only ever used to size a jump, never to decide there should be one. A rating is a judgement
+   * made while out of breath, and the reps are the fact.
+   */
+  rpe?: number | null;
 }
 
 export interface ProgressionInput {
@@ -98,7 +114,7 @@ export function suggestProgression(input: ProgressionInput): ProgressionAdvice |
   // Only sets that actually recorded both halves can be reasoned about. A set with a weight and
   // no reps is a row someone started and left.
   const done = lastSets.filter(
-    (set): set is { weightKg: number; reps: number } =>
+    (set): set is CompletedSet & { weightKg: number; reps: number } =>
       typeof set.weightKg === 'number' &&
       set.weightKg > 0 &&
       typeof set.reps === 'number' &&
@@ -111,12 +127,26 @@ export function suggestProgression(input: ProgressionInput): ProgressionAdvice |
   const topKg = Math.max(...done.map((set) => set.weightKg));
   const atTop = done.filter((set) => set.weightKg === topKg);
 
-  const step = LOWER_BODY.has(movementPattern) ? STEP_KG * 2 : STEP_KG;
+  const baseStep = LOWER_BODY.has(movementPattern) ? STEP_KG * 2 : STEP_KG;
+
+  /**
+   * Double the jump when every rated top set came in easy.
+   *
+   * Ratings are optional and usually absent, so an unrated session behaves exactly as it did
+   * before: `rated` is empty, the condition is false, and one step it is. A single hard set is
+   * enough to fall back — the hardest set is the one that describes the load.
+   */
+  const rated = atTop.map((set) => set.rpe).filter((r): r is number => typeof r === 'number');
+  const easy = rated.length > 0 && rated.every((r) => r <= EASY_RPE);
+  const step = easy ? baseStep * 2 : baseStep;
 
   if (isStalling) {
     // Snapped down, and never a no-op: 10% of a light lift can round to nothing, and a deload
     // that changes no number is advice the user cannot act on.
-    const target = Math.min(snap(topKg * (1 - DELOAD_FRACTION), 'down'), topKg - step);
+    // `baseStep`, never the doubled one. How easy last session felt has no business deciding
+    // how far a stall backs off, and using the inflated step here would mean a session that
+    // felt light dropped the load further than one that was a grind.
+    const target = Math.min(snap(topKg * (1 - DELOAD_FRACTION), 'down'), topKg - baseStep);
     // Below one step there is nothing left to back off to.
     if (target < STEP_KG) return null;
     return {

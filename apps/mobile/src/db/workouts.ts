@@ -982,6 +982,7 @@ export async function getPreviousSessionSets(
     duration_seconds: number | null;
     distance_m: number | null;
     is_warmup: number;
+    rpe: number | null;
     started_at: string;
   }[]
 > {
@@ -989,7 +990,7 @@ export async function getPreviousSessionSets(
   const type = sameTypeClause('prev_ws', sameType);
   return db.all(
     `SELECT s.set_index, s.weight_kg, s.reps, s.duration_seconds, s.distance_m,
-            s.is_warmup, ws.started_at
+            s.is_warmup, s.rpe, ws.started_at
        FROM sets s
        JOIN session_exercises se ON se.id = s.session_exercise_id AND se.deleted_at IS NULL
        JOIN workout_sessions ws  ON ws.id = se.session_id AND ws.deleted_at IS NULL
