@@ -390,3 +390,14 @@ export const MUSCLE_GROUPS = [
   'obliques',
   'cardio',
 ] as const;
+
+/**
+ * The catalogue keyed by `nameEn`, which is what `session_exercises.exercise_key` stores.
+ *
+ * Built once here because four call sites were each building their own copy of this exact map —
+ * three screens and a card — and four copies of one lookup is four chances for them to disagree
+ * about what a key is.
+ */
+export const EXERCISE_BY_KEY: ReadonlyMap<string, ExerciseSeed> = new Map(
+  EXERCISE_SEED.map((seed) => [seed.nameEn, seed]),
+);

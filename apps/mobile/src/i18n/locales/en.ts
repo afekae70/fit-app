@@ -58,6 +58,9 @@ export const en = {
     stallingHint:
       'No new best for several sessions — consider a deload, a different rep range, or swapping the exercise',
     aiNote: 'This analysis is exactly what the AI coach will receive in the next phase',
+    byMuscle: 'Volume by muscle',
+    byMuscleHint: 'Sets in the last seven days. A helper muscle counts as half a set; the number in brackets is the direct sets.',
+    untrained: 'Not trained this week',
     weeklyVolume: 'Weekly volume',
     tonnes: 't',
     thousandLb: 'k lb',

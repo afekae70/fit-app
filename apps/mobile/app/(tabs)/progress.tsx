@@ -7,6 +7,7 @@
  */
 
 import { EXERCISE_SEED, type ExerciseSeed } from '@fit/shared/catalog';
+import { setsPerMuscle, untrainedMuscles, type MuscleWork } from '@fit/shared/calculations';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -39,12 +40,14 @@ import {
   consistencyHeat,
   personalRecords,
   summariseAllProgress,
+  setCountsSince,
   weeklyVolume,
   type ExerciseProgressSummary,
   type PersonalRecord,
   type TrainingDay,
   type WeeklyVolume,
 } from '../../src/db/progression.js';
+import { MuscleVolumeCard } from '../../src/components/MuscleVolumeCard.js';
 import { getExecutor } from '../../src/db/provider.js';
 import { useTheme } from '../../src/ThemeProvider.js';
 import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../../src/theme.js';
@@ -81,6 +84,7 @@ export default function ProgressScreen() {
   const [volume, setVolume] = useState<WeeklyVolume[]>([]);
   const [heat, setHeat] = useState<TrainingDay[]>([]);
   const [records, setRecords] = useState<PersonalRecord[]>([]);
+  const [muscles, setMuscles] = useState<MuscleWork[]>([]);
   const [loading, setLoading] = useState(true);
 
   const reload = useCallback(async () => {
@@ -88,6 +92,12 @@ export default function ProgressScreen() {
     setSummaries(await summariseAllProgress(db, userId));
     setVolume(await weeklyVolume(db, userId));
     setHeat(await consistencyHeat(db, userId));
+
+    // Seven days back from now, not "since Monday". A calendar week makes the card almost empty
+    // every Monday morning and near-complete every Sunday night, which says more about the day
+    // it is read on than about the training.
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    setMuscles(setsPerMuscle(await setCountsSince(db, userId, weekAgo)));
     setRecords(await personalRecords(db, userId));
     setLoading(false);
   }, [userId]);
@@ -131,6 +141,14 @@ export default function ProgressScreen() {
             <Hint>{t('progress.consistencyHint')}</Hint>
             <ConsistencyGrid days={heat} />
           </Card>
+
+          {muscles.length > 0 ? (
+            <Card index={2}>
+              <SectionTitle>{t('progress.byMuscle')}</SectionTitle>
+              <Hint>{t('progress.byMuscleHint')}</Hint>
+              <MuscleVolumeCard worked={muscles} untrained={untrainedMuscles(muscles)} />
+            </Card>
+          ) : null}
 
           {records.length > 0 ? (
             <Card index={2}>

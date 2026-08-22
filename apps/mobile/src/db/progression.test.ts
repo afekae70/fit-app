@@ -15,6 +15,7 @@ import {
   consistencyHeat,
   getExerciseProgression,
   isExerciseStalling,
+  setCountsSince,
   listTrainedExercises,
   personalRecords,
   summariseAllProgress,
@@ -28,6 +29,7 @@ import {
   addSet,
   deleteSession,
   finishSession,
+  markSetDone,
   startSession,
 } from './workouts.js';
 
@@ -525,5 +527,40 @@ describe('comparing a lift against its own kind of workout', () => {
     });
     expect(scoped).toHaveLength(4);
     expect(scoped.every((s) => s.top_weight_kg < 110)).toBe(true);
+  });
+});
+
+describe('setCountsSince', () => {
+  it('counts only the sets that were ticked off', async () => {
+    // A row somebody added and left is a plan, not work — counting it would let a muscle look
+    // trained by intention.
+    const clock = () => new Date(Date.UTC(2026, 5, 10, 10)).toISOString();
+    const sessionId = await startSession(db, USER, newId, {}, clock);
+    const ex = await addExerciseToSession(db, newId, sessionId, 'Barbell Bench Press', clock);
+    const a = await addSet(db, newId, ex, { weightKg: 80, reps: 8 }, clock);
+    await addSet(db, newId, ex, { weightKg: 80, reps: 8 }, clock);
+    await markSetDone(db, a, true, clock);
+
+    const counts = await setCountsSince(db, USER, new Date(Date.UTC(2026, 5, 1)).toISOString());
+    expect(counts).toEqual([{ exerciseKey: 'Barbell Bench Press', sets: 1 }]);
+  });
+
+  it('leaves out anything before the window', async () => {
+    await logSession(0, 'Barbell Curl', [{ weightKg: 30, reps: 10 }]);
+    const counts = await setCountsSince(db, USER, new Date(Date.UTC(2026, 6, 1)).toISOString());
+    expect(counts).toEqual([]);
+  });
+
+  it('leaves warm-ups out', async () => {
+    const clock = () => new Date(Date.UTC(2026, 5, 10, 10)).toISOString();
+    const sessionId = await startSession(db, USER, newId, {}, clock);
+    const ex = await addExerciseToSession(db, newId, sessionId, 'Barbell Curl', clock);
+    const warm = await addSet(db, newId, ex, { weightKg: 10, reps: 10, isWarmup: true }, clock);
+    const work = await addSet(db, newId, ex, { weightKg: 30, reps: 10 }, clock);
+    await markSetDone(db, warm, true, clock);
+    await markSetDone(db, work, true, clock);
+
+    const counts = await setCountsSince(db, USER, new Date(Date.UTC(2026, 5, 1)).toISOString());
+    expect(counts).toEqual([{ exerciseKey: 'Barbell Curl', sets: 1 }]);
   });
 });

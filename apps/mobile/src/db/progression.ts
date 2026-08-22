@@ -130,6 +130,36 @@ export async function isExerciseStalling(
   ).isStalling;
 }
 
+/**
+ * Working sets per exercise over a window, for the muscle-group breakdown.
+ *
+ * Counts sets rather than summing weight: volume per muscle is compared in sets, and tonnage
+ * across muscles is not comparable at all — a set of calf raises moves more than a set of
+ * lateral raises and means less.
+ *
+ * Only sets that were ticked off. An untouched row someone added and left is a plan, not work,
+ * and counting it would let a muscle look trained by intention.
+ */
+export async function setCountsSince(
+  db: SqlExecutor,
+  userId: string,
+  sinceIso: string,
+): Promise<{ exerciseKey: string; sets: number }[]> {
+  return db.all<{ exerciseKey: string; sets: number }>(
+    `SELECT se.exercise_key AS exerciseKey, COUNT(*) AS sets
+       FROM sets s
+       JOIN session_exercises se ON se.id = s.session_exercise_id AND se.deleted_at IS NULL
+       JOIN workout_sessions ws  ON ws.id = se.session_id AND ws.deleted_at IS NULL
+      WHERE ws.user_id = ?
+        AND ws.started_at >= ?
+        AND s.is_warmup = 0
+        AND s.done_at IS NOT NULL
+        AND s.deleted_at IS NULL
+      GROUP BY se.exercise_key`,
+    [userId, sinceIso],
+  );
+}
+
 export interface ExerciseProgressSummary {
   exerciseKey: string;
   sessionCount: number;
