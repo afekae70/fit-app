@@ -74,6 +74,15 @@ export interface ExerciseCardProps {
   target?: ExerciseTarget | null;
   onAddSet: () => void;
   onRemoveSet: (setId: string) => void;
+  /**
+   * Open one set's menu — its kind, its rating, or deleting it.
+   *
+   * Editing a finished workout is where a stray set is most likely to be noticed, and it was the
+   * screen where deleting one was hardest to find: a long press on the tick, hinted at nowhere
+   * but an accessibility label. The active-workout card grew the same menu; this is the other
+   * half of that, so the gesture means one thing in both places.
+   */
+  onSetOptions?: (setId: string) => void;
   onUpdateSet: (setId: string, patch: Record<string, number | boolean | null>) => void;
   /** The design's checkmark: ticks the set off, which is also what starts the rest timer. */
   onToggleDone: (setId: string, done: boolean) => void;
@@ -213,6 +222,7 @@ function ExerciseCardImpl({
   target,
   onAddSet,
   onRemoveSet,
+  onSetOptions,
   onUpdateSet,
   onToggleDone,
   onRemoveExercise,
@@ -230,6 +240,17 @@ function ExerciseCardImpl({
   const showsDistance = loadType === 'distance';
 
   const workingSets = sets.filter((s) => s.is_warmup === 0);
+
+  // Keyed by set id rather than position: the rows here carry real ids, and a map survives a
+  // warm-up being flipped mid-list without renumbering the wrong row.
+  const labels = useMemo(() => {
+    const out = new Map<string, number>();
+    let working = 0;
+    for (const set of sets) {
+      if (set.is_warmup === 0) out.set(set.id, ++working);
+    }
+    return out;
+  }, [sets]);
   const volume = workingSets.reduce(
     (total, s) => total + (s.weight_kg ?? 0) * (s.reps ?? 0),
     0,
@@ -318,13 +339,32 @@ function ExerciseCardImpl({
         return (
         <View key={set.id} style={styles.setRow}>
           <Pressable
-            onPress={() => onUpdateSet(set.id, { isWarmup: set.is_warmup === 0 })}
-            style={[styles.colIndex, styles.indexBadge, set.is_warmup === 1 && styles.indexBadgeWarmup]}
+            onPress={() =>
+              onSetOptions
+                ? onSetOptions(set.id)
+                : onUpdateSet(set.id, { isWarmup: set.is_warmup === 0 })
+            }
+            style={[
+              styles.colIndex,
+              styles.indexBadge,
+              set.to_failure === 1 && styles.indexBadgeFailure,
+              set.is_warmup === 1 && styles.indexBadgeWarmup,
+            ]}
             accessibilityRole="button"
-            accessibilityLabel={t('workout.warmup')}
+            accessibilityLabel={
+              onSetOptions ? t('workout.setOptions', { index: set.set_index }) : t('workout.warmup')
+            }
           >
-            <Text style={[styles.indexText, set.is_warmup === 1 && styles.indexTextWarmup]}>
-              {set.is_warmup === 1 ? t('workout.warmupShort') : set.set_index}
+            <Text
+              style={[
+                styles.indexText,
+                set.to_failure === 1 && styles.indexTextFailure,
+                set.is_warmup === 1 && styles.indexTextWarmup,
+              ]}
+            >
+              {set.is_warmup === 1
+                ? t('workout.warmupShort')
+                : (labels.get(set.id) ?? set.set_index)}
             </Text>
           </Pressable>
 
@@ -415,17 +455,17 @@ function ExerciseCardImpl({
             />
           ) : null}
 
-          {/* Tap ticks the set off (the design's checkmark); a long-press deletes. Deleting is
-              the rare action of the two mid-workout, so it earns the harder gesture — and the
-              accessibility label spells the long-press out, since nothing visual hints at it. */}
+          {/* Ticks the set off, and only that. Deleting used to be a long press here, findable
+              only by being told — it lives in the index badge's menu now, named, alongside the
+              other things one set can be. */}
           <Pressable
             onPress={() => onToggleDone(set.id, set.done_at === null)}
-            onLongPress={() => onRemoveSet(set.id)}
+            onLongPress={onSetOptions ? undefined : () => onRemoveSet(set.id)}
             delayLongPress={450}
             style={[styles.doneBtn, set.done_at !== null && styles.doneBtnActive]}
             accessibilityRole="button"
             accessibilityState={{ checked: set.done_at !== null }}
-            accessibilityLabel={`${t('workout.markDone')}. ${t('workout.longPressDelete')}`}
+            accessibilityLabel={t('workout.markDone')}
             hitSlop={4}
           >
             <DoneMark
@@ -484,8 +524,10 @@ const createStyles = (colors: ColorPalette) =>
     colActions: ViewStyle;
     setRow: ViewStyle;
     indexBadge: ViewStyle;
+    indexBadgeFailure: ViewStyle;
     indexBadgeWarmup: ViewStyle;
     indexText: TextStyle;
+    indexTextFailure: TextStyle;
     indexTextWarmup: TextStyle;
     input: TextStyle;
     stepperGroup: ViewStyle;
@@ -549,8 +591,11 @@ const createStyles = (colors: ColorPalette) =>
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Before the warm-up styles, so a ramp still reads as a ramp if both flags land on one set.
+  indexBadgeFailure: { backgroundColor: colors.dangerSoft },
   indexBadgeWarmup: { backgroundColor: colors.warningSoft },
   indexText: { color: colors.textMuted, fontSize: fontSize.sm, fontWeight: '700' },
+  indexTextFailure: { color: colors.danger, fontWeight: '700' },
   indexTextWarmup: { color: colors.warning },
   input: {
     // flex lives here rather than in a shared column style: RN's ViewStyle is not assignable

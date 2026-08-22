@@ -217,7 +217,6 @@ export const en = {
     restAdd: '+30',
     restSkip: 'Skip',
     restAllDone: 'All done',
-    longPressDelete: 'Long-press to delete',
     plateHint: '{{bar}} bar · {{plates}} per side',
     advice: {
       addWeight: 'You filled the range at {{from}}',

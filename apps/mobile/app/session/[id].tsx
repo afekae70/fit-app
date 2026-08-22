@@ -64,8 +64,11 @@ const EXERCISE_BY_KEY = new Map<string, ExerciseSeed>(
   EXERCISE_SEED.map((exercise) => [exercise.nameEn, exercise]),
 );
 
+/** Same span the active workout offers — below 6 a set is a warm-up, which has its own word. */
+const RPE_CHOICES = [6, 7, 8, 9, 10] as const;
+
 export default function SessionDetailScreen() {
-  const { confirm, notify } = useActionSheet();
+  const { confirm, notify, ask } = useActionSheet();
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
   const { id, addExercise } = useLocalSearchParams<{ id: string; addExercise?: string }>();
@@ -177,6 +180,48 @@ export default function SessionDetailScreen() {
       })();
     },
     [load, t, confirm],
+  );
+
+  /**
+   * One set's menu, the same one the active workout offers.
+   *
+   * Editing a finished session is where a stray set actually gets noticed — you are reading the
+   * workout back rather than living it — and it was the screen where deleting one was hardest to
+   * reach.
+   */
+  const openSetOptions = useCallback(
+    (setId: string) => {
+      const set = exercises.flatMap((ex) => ex.sets).find((s) => s.id === setId);
+      if (!set) return;
+
+      void (async () => {
+        const choice = await ask({
+          title: `${t('workout.setNumber')} ${set.set_index}`,
+          actions: [
+            { label: t(set.is_warmup === 1 ? 'workout.markAsWorking' : 'workout.markAsWarmup') },
+            { label: t('workout.rateEffort') },
+            { label: t(set.to_failure === 1 ? 'workout.clearToFailure' : 'workout.markToFailure') },
+            { label: t('workout.removeSet'), destructive: true },
+          ],
+        });
+
+        if (choice === 0) patchSet(set.id, { isWarmup: set.is_warmup === 0 });
+        else if (choice === 1) {
+          const rated = await ask({
+            title: t('workout.rateEffort'),
+            message: t('workout.rateEffortHint'),
+            actions: [
+              ...RPE_CHOICES.map((value) => ({ label: t(`workout.rpe${value}`) })),
+              { label: t('workout.rpeClear') },
+            ],
+          });
+          if (rated === null) return;
+          patchSet(set.id, { rpe: RPE_CHOICES[rated] ?? null });
+        } else if (choice === 2) patchSet(set.id, { toFailure: set.to_failure === 0 });
+        else if (choice === 3) deleteSet(set.id);
+      })();
+    },
+    [exercises, ask, t, patchSet, deleteSet],
   );
 
   const saveName = async () => {
@@ -319,6 +364,7 @@ export default function SessionDetailScreen() {
                   previousSets={previous[exercise.exercise_key] ?? null}
                   onAddSet={() => addSetTo(exercise.id)}
                   onRemoveSet={deleteSet}
+                  onSetOptions={openSetOptions}
                   onUpdateSet={patchSet}
                   onToggleDone={toggleDone}
                   onRemoveExercise={() => dropExercise(exercise.id)}

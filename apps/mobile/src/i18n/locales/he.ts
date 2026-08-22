@@ -210,7 +210,6 @@ export const he = {
     restAdd: '+30',
     restSkip: 'דלג',
     restAllDone: 'סיימת הכול',
-    longPressDelete: 'לחיצה ארוכה למחיקה',
     plateHint: 'מוט {{bar}} · {{plates}} לכל צד',
     advice: {
       addWeight: 'השלמת את הטווח ב-{{from}}',
