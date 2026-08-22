@@ -27,6 +27,8 @@ export interface SessionExerciseRow {
   exercise_key: string;
   order_index: number;
   notes: string | null;
+  /** 1 when this exercise runs straight into the next one with no rest between them. */
+  superset_with_next: number;
 }
 
 export interface SetRow {
@@ -422,16 +424,84 @@ export async function swapSessionExercise(
   return replacementId;
 }
 
+/**
+ * Link an exercise to the one after it, or cut the link.
+ *
+ * A superset is a run of consecutive exercises where every one but the last carries this flag,
+ * so a group is defined by position rather than by an id. Reordering therefore re-forms the
+ * groups on its own and there is never a stale id pointing at an exercise that moved away.
+ *
+ * Refuses to link the last exercise in a session: there is nothing after it, and a flag set
+ * there would silently swallow the next exercise the moment one was added.
+ */
+export async function setSupersetLink(
+  db: SqlExecutor,
+  sessionExerciseId: string,
+  linked: boolean,
+  clock: Clock = defaultClock,
+): Promise<boolean> {
+  const row = await db.get<{ session_id: string; order_index: number }>(
+    `SELECT session_id, order_index FROM session_exercises
+      WHERE id = ? AND deleted_at IS NULL`,
+    [sessionExerciseId],
+  );
+  if (!row) return false;
+
+  if (linked) {
+    const next = await db.get<{ id: string }>(
+      `SELECT id FROM session_exercises
+        WHERE session_id = ? AND deleted_at IS NULL AND order_index > ?
+        ORDER BY order_index LIMIT 1`,
+      [row.session_id, row.order_index],
+    );
+    if (!next) return false;
+  }
+
+  const at = clock();
+  await db.run(
+    `UPDATE session_exercises SET superset_with_next = ?, updated_at = ? WHERE id = ?`,
+    [linked ? 1 : 0, at, sessionExerciseId],
+  );
+  await enqueue(db, 'session_exercise', sessionExerciseId, 'update', { linked }, clock);
+  return true;
+}
+
 export async function removeExerciseFromSession(
   db: SqlExecutor,
   sessionExerciseId: string,
   clock: Clock = defaultClock,
 ): Promise<void> {
-  const row = await db.get<{ session_id: string }>(
-    `SELECT session_id FROM session_exercises WHERE id = ?`,
+  const row = await db.get<{ session_id: string; order_index: number; superset_with_next: number }>(
+    `SELECT session_id, order_index, superset_with_next FROM session_exercises WHERE id = ?`,
     [sessionExerciseId],
   );
   const at = clock();
+
+  /*
+   * Do not let a superset silently swallow a stranger.
+   *
+   * "Linked to the next one" means a run re-forms itself after a removal, which is right in the
+   * middle of a group: pulling B out of A-B-C leaves A-C, still a superset, with no bookkeeping.
+   *
+   * It is wrong at the END of one. If the group was A-B and B goes, A's link now points at
+   * whatever follows — an exercise the user never paired with anything. The removed exercise's
+   * own flag tells the two apart: it was linked onward, so the group continued past it; it was
+   * not, so the group ended here and the link before it ends too.
+   */
+  if (row && row.superset_with_next === 0) {
+    const previous = await db.get<{ id: string }>(
+      `SELECT id FROM session_exercises
+        WHERE session_id = ? AND deleted_at IS NULL AND order_index < ?
+        ORDER BY order_index DESC LIMIT 1`,
+      [row.session_id, row.order_index],
+    );
+    if (previous) {
+      await db.run(
+        `UPDATE session_exercises SET superset_with_next = 0, updated_at = ? WHERE id = ?`,
+        [at, previous.id],
+      );
+    }
+  }
   // Sets first: once the parent's order_index has moved, this exercise is no longer easy to
   // identify by position, and its sets must not stay live under a deleted parent.
   await db.run(

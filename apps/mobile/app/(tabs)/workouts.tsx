@@ -12,6 +12,8 @@
 
 import {
   OLYMPIC_BAR,
+  restAfterWarmup,
+  restSecondsFor,
   suggestProgression,
   warmupRamp,
   type ProgressionAdvice,
@@ -53,6 +55,7 @@ import {
   addExerciseToSession,
   addSetCopyingPrevious,
   addWarmupSets,
+  setSupersetLink,
   finishSession,
   getActiveSession,
   getPreviousBest,
@@ -397,14 +400,25 @@ export default function WorkoutsScreen() {
         await markSetDone(db, setId, done);
         if (sessionId) await reload(sessionId);
       })();
+      // How long depends on what was just lifted. Ninety seconds after everything was too little
+      // after squats and nearly double what a curl needs, so it was wrong nearly always, in both
+      // directions at once.
+      const owner = exercises.find((ex) => ex.sets.some((s) => s.id === setId));
+      const set = owner?.sets.find((s) => s.id === setId);
+      const seed = owner ? EXERCISE_BY_KEY.get(owner.exercise_key) : undefined;
+      // Inside a superset the next exercise is the rest — stopping to watch a timer between the
+      // two halves is the one thing a superset exists to avoid. Rest comes after the last member.
+      const insideSuperset = owner?.superset_with_next === 1;
+      const seconds = insideSuperset
+        ? 0
+        : set?.is_warmup === 1
+          ? restAfterWarmup()
+          : restSecondsFor(seed?.movementPattern);
+
       // Only ticking starts a rest; unticking a set is a correction, not the end of a set.
-      setRest(
-        done
-          ? { deadline: Date.now() + DEFAULT_REST_SECONDS * 1000, total: DEFAULT_REST_SECONDS }
-          : null,
-      );
+      setRest(done && seconds > 0 ? { deadline: Date.now() + seconds * 1000, total: seconds } : null);
     },
-    [sessionId, reload],
+    [sessionId, reload, exercises],
   );
 
   const deleteSet = useCallback(
@@ -543,11 +557,20 @@ export default function WorkoutsScreen() {
    */
   const openExerciseOptions = useCallback(
     (sessionExerciseId: string, exerciseLabel: string) => {
+      const index = exercises.findIndex((ex) => ex.id === sessionExerciseId);
+      const linked = exercises[index]?.superset_with_next === 1;
+      // The last exercise has nothing to link to, so the action is not offered rather than
+      // offered and refused.
+      const canLink = index >= 0 && index < exercises.length - 1;
+
       void (async () => {
         const choice = await ask({
           title: exerciseLabel,
           actions: [
             { label: t('workout.swapExercise') },
+            ...(canLink
+              ? [{ label: t(linked ? 'workout.unlinkSuperset' : 'workout.linkSuperset') }]
+              : []),
             { label: t('workout.removeExercise'), destructive: true },
           ],
         });
@@ -556,12 +579,16 @@ export default function WorkoutsScreen() {
             pathname: '/exercise-picker',
             params: { sessionId, swapExerciseId: sessionExerciseId },
           });
-        } else if (choice === 1) {
+        } else if (canLink && choice === 1) {
+          const db = await getExecutor();
+          await setSupersetLink(db, sessionExerciseId, !linked);
+          if (sessionId) await reload(sessionId);
+        } else if (choice === (canLink ? 2 : 1)) {
           dropExercise(sessionExerciseId);
         }
       })();
     },
-    [sessionId, t, dropExercise, ask],
+    [sessionId, t, dropExercise, ask, exercises, reload],
   );
 
   /**
@@ -920,6 +947,7 @@ export default function WorkoutsScreen() {
                       : undefined
                   }
                   onSetOptions={(i) => openSetOptions(exercise.id, i)}
+                  supersetWithNext={exercise.superset_with_next === 1}
                   onChangeWeight={(i, next) => {
                     const set = exercise.sets[i];
                     if (set) patchSet(set.id, { weightKg: next });

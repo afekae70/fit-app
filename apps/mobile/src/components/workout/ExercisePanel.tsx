@@ -50,6 +50,13 @@ export interface ExercisePanelProps {
   /** Open one set's menu — change its kind, or delete it. Omitted where sets are read-only. */
   onSetOptions?: (setIndex: number) => void;
   /**
+   * This exercise runs straight into the next one, with no rest between them.
+   *
+   * Drawn as a tail below the card rather than as a badge on it: a superset is a relationship
+   * between two cards, and a mark that lives inside one of them says nothing about which.
+   */
+  supersetWithNext?: boolean;
+  /**
    * Open this exercise's menu — swap it for another, or take it out.
    *
    * Removing used to be a long press on the name, undiscoverable but harmless. It stopped being
@@ -107,6 +114,7 @@ export function ExercisePanel({
   onToggle,
   onAddSet,
   onSetOptions,
+  supersetWithNext = false,
   onOptions,
   advice = null,
   onApplyAdvice,
@@ -311,6 +319,16 @@ export function ExercisePanel({
           </Text>
         ) : null}
       </View>
+
+      {/* The link, drawn leaving the bottom of the card toward the next one. Says which two
+          exercises are joined, which a badge inside one card could not. */}
+      {supersetWithNext ? (
+        <View style={s.supersetTail}>
+          <View style={s.supersetLine} />
+          <Text style={s.supersetLabel}>{t('workout.superset')}</Text>
+          <View style={s.supersetLine} />
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -350,6 +368,9 @@ const createStyles = (colors: ColorPalette) =>
     targetPill: ViewStyle;
     targetText: TextStyle;
     plateHint: TextStyle;
+    supersetTail: ViewStyle;
+    supersetLine: ViewStyle;
+    supersetLabel: TextStyle;
     advice: ViewStyle;
     adviceDeload: ViewStyle;
     adviceGlyph: TextStyle;
@@ -401,6 +422,20 @@ const createStyles = (colors: ColorPalette) =>
       fontSize: 12,
       textAlign: 'auto',
       fontVariant: ['tabular-nums'],
+    },
+    supersetTail: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      marginTop: 10,
+      marginBottom: -6,
+    },
+    supersetLine: { flex: 1, height: 1, backgroundColor: colors.accentBorder },
+    supersetLabel: {
+      color: colors.accent,
+      fontSize: 10,
+      fontWeight: '700',
+      letterSpacing: 0.4,
     },
     advice: {
       flexDirection: 'row',

@@ -26,7 +26,7 @@
  * TEXT (lexicographically sortable, which is what the history queries rely on).
  */
 
-export const SCHEMA_VERSION = 12;
+export const SCHEMA_VERSION = 13;
 
 /**
  * Incremental migrations, keyed by the version they upgrade TO.
@@ -266,6 +266,13 @@ CREATE TABLE IF NOT EXISTS locations (
 
 CREATE INDEX IF NOT EXISTS locations_user_idx ON locations (user_id);
   `,
+
+  // Supersets. See the column comment in CREATE_SCHEMA_SQL for why this is a link rather than a
+  // group id. SQLite cannot add a NOT NULL column without a default, and 0 is the right one:
+  // every exercise ever logged so far stood on its own.
+  13: `
+    ALTER TABLE session_exercises ADD COLUMN superset_with_next INTEGER NOT NULL DEFAULT 0;
+  `,
 };
 
 export const CREATE_SCHEMA_SQL = `
@@ -389,6 +396,11 @@ CREATE TABLE IF NOT EXISTS session_exercises (
   session_id    TEXT NOT NULL REFERENCES workout_sessions(id) ON DELETE CASCADE,
   exercise_key  TEXT NOT NULL,
   order_index   INTEGER NOT NULL,
+  -- Linked to the exercise after it: a superset is a run of consecutive exercises where every
+  -- one but the last carries this. Deliberately not a group id — reordering would leave ids
+  -- pointing at exercises no longer adjacent, and something would have to go and tidy up.
+  -- Position is the truth, and this only says "and the next one too".
+  superset_with_next INTEGER NOT NULL DEFAULT 0,
   notes         TEXT,
   updated_at    TEXT,
   deleted_at    TEXT,

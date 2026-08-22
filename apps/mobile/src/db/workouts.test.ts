@@ -31,6 +31,7 @@ import {
   removeExerciseFromSession,
   removeSet,
   reorderSessionExercise,
+  setSupersetLink,
   startSession,
   swapSessionExercise,
   updateSet,
@@ -951,5 +952,85 @@ describe('what counts as the same workout', () => {
     // label, which is why the name branch also demands plan_day_id IS NULL.
     const clause = sameTypeClause('ws', { planDayId: null, name: 'Push A' });
     expect(clause.sql).toContain('plan_day_id IS NULL');
+  });
+});
+
+describe('supersets', () => {
+  const USER_S = 'user-s';
+
+  async function threeExercises() {
+    const clock = () => '2026-06-01T10:00:00.000Z';
+    const sessionId = await startSession(db, USER_S, newId, {}, clock);
+    const a = await addExerciseToSession(db, newId, sessionId, 'Barbell Bench Press', clock);
+    const bx = await addExerciseToSession(db, newId, sessionId, 'Barbell Row', clock);
+    const c = await addExerciseToSession(db, newId, sessionId, 'Barbell Curl', clock);
+    return { sessionId, a, b: bx, c };
+  }
+
+  const linkOf = async (id: string) =>
+    (
+      await db.get<{ superset_with_next: number }>(
+        `SELECT superset_with_next FROM session_exercises WHERE id = ?`,
+        [id],
+      )
+    )?.superset_with_next;
+
+  it('links an exercise to the one after it', async () => {
+    const { a } = await threeExercises();
+    expect(await setSupersetLink(db, a, true)).toBe(true);
+    expect(await linkOf(a)).toBe(1);
+  });
+
+  it('cuts the link again', async () => {
+    const { a } = await threeExercises();
+    await setSupersetLink(db, a, true);
+    await setSupersetLink(db, a, false);
+    expect(await linkOf(a)).toBe(0);
+  });
+
+  it('refuses to link the last exercise', async () => {
+    // There is nothing after it, and a flag left there would swallow the next exercise added.
+    const { c } = await threeExercises();
+    expect(await setSupersetLink(db, c, true)).toBe(false);
+    expect(await linkOf(c)).toBe(0);
+  });
+
+  it('every exercise starts unlinked', async () => {
+    const { a, b, c } = await threeExercises();
+    for (const id of [a, b, c]) expect(await linkOf(id)).toBe(0);
+  });
+
+  it('keeps a three-exercise run together when the middle one goes', async () => {
+    // A-B-C as one superset. Removing B leaves A-C, still a superset, with no bookkeeping —
+    // which is the whole reason the link is positional rather than a group id.
+    const { a, b, c } = await threeExercises();
+    await setSupersetLink(db, a, true);
+    await setSupersetLink(db, b, true);
+
+    await removeExerciseFromSession(db, b);
+
+    expect(await linkOf(a)).toBe(1);
+    expect(await linkOf(c)).toBe(0);
+  });
+
+  it('does not let a superset swallow a stranger when its last member goes', async () => {
+    // The case that makes the positional model dangerous if left alone: the group was A-B, and
+    // with B gone A's link would point at C, which was never paired with anything.
+    const { a, b, c } = await threeExercises();
+    await setSupersetLink(db, a, true);
+
+    await removeExerciseFromSession(db, b);
+
+    expect(await linkOf(a)).toBe(0);
+    expect(await linkOf(c)).toBe(0);
+  });
+
+  it('clears a dangling link when the final exercise is removed', async () => {
+    const { b, c } = await threeExercises();
+    await setSupersetLink(db, b, true);
+
+    await removeExerciseFromSession(db, c);
+
+    expect(await linkOf(b)).toBe(0);
   });
 });

@@ -13,6 +13,7 @@ export * from './strength.js';
 export * from './plates.js';
 export * from './warmup.js';
 export * from './progression.js';
+export * from './rest.js';
 export * from './muscleVolume.js';
 export * from './sessionLoad.js';
 export * from './trends.js';
