@@ -34,7 +34,9 @@ import {
   Segmented,
   SectionTitle,
 } from '../src/components/ui.js';
+import { createBackup } from '../src/db/backup.js';
 import { exportMetrics, exportSets } from '../src/db/exportData.js';
+import { SCHEMA_VERSION } from '../src/db/schema.js';
 import { getExecutor } from '../src/db/provider.js';
 import { metricsToCsv, setsToCsv } from '../src/export/csv.js';
 import { hapticLight } from '../src/haptics.js';
@@ -69,6 +71,22 @@ export default function SettingsScreen() {
    * installed. The CSV goes out as the message body, which every share target accepts, and
    * lands in a note, a mail draft or Drive from where it can be saved as `.csv`.
    */
+  /**
+   * The whole database as one file, through the share sheet.
+   *
+   * Unlike the CSV, this one can be loaded back — see `restore.tsx`. The sync is a live mirror
+   * and protects against losing the phone; it does not protect against a mistake, because a
+   * deletion syncs as faithfully as anything else.
+   */
+  const backupNow = useCallback(() => {
+    void hapticLight();
+    void (async () => {
+      const db = await getExecutor();
+      const file = await createBackup(db, userId, SCHEMA_VERSION);
+      await Share.share({ message: JSON.stringify(file) }).catch(() => undefined);
+    })();
+  }, [userId]);
+
   const exportCsv = useCallback(
     (kind: 'sets' | 'metrics') => {
       void hapticLight();
@@ -217,6 +235,27 @@ export default function SettingsScreen() {
           style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.7 }]}
         >
           <Text style={styles.linkText}>{t('settings.exportMetrics')}</Text>
+          <Text style={styles.linkChevron}>{chevron}</Text>
+        </Pressable>
+      </Card>
+
+      <Card index={2}>
+        <SectionTitle>{t('settings.backupTitle')}</SectionTitle>
+        <Hint>{t('settings.backupHint')}</Hint>
+        <Pressable
+          onPress={backupNow}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.7 }]}
+        >
+          <Text style={styles.linkText}>{t('settings.backupCreate')}</Text>
+          <Text style={styles.linkChevron}>{chevron}</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => router.push('/restore')}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.7 }]}
+        >
+          <Text style={styles.linkText}>{t('settings.backupRestore')}</Text>
           <Text style={styles.linkChevron}>{chevron}</Text>
         </Pressable>
       </Card>
