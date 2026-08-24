@@ -23,6 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { UnitPreference } from '@fit/shared';
 
 import { useAuth } from '../src/auth/AuthProvider.js';
+import { useActionSheet } from '../src/components/ActionSheetProvider.js';
 import { useCurrentUserId } from '../src/auth/CurrentUserProvider.js';
 import { SyncCard } from '../src/components/SyncCard.js';
 import {
@@ -34,6 +35,8 @@ import {
   Segmented,
   SectionTitle,
 } from '../src/components/ui.js';
+import { requestBackup } from '../src/backup/AutoBackup.js';
+import { chooseBackupFolder, getBackupFolder } from '../src/backup/store.js';
 import { createBackup } from '../src/db/backup.js';
 import { exportMetrics, exportSets } from '../src/db/exportData.js';
 import { SCHEMA_VERSION } from '../src/db/schema.js';
@@ -59,6 +62,7 @@ export default function SettingsScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const router = useRouter();
+  const { notify } = useActionSheet();
   const userId = useCurrentUserId();
   const chevron = isRtlLanguage(i18n.language as Language) ? '‹' : '›';
 
@@ -78,6 +82,31 @@ export default function SettingsScreen() {
    * and protects against losing the phone; it does not protect against a mistake, because a
    * deletion syncs as faithfully as anything else.
    */
+  const [folder, setFolder] = useState<string | null>(null);
+  useEffect(() => {
+    void getBackupFolder().then(setFolder);
+  }, []);
+
+  /**
+   * Ask Android for a folder, once.
+   *
+   * The picker grants persistable permission, so every automatic backup afterwards writes there
+   * without asking again. A folder inside Drive means the backups leave the phone, which is the
+   * only version of this that survives losing it.
+   */
+  const pickFolder = useCallback(() => {
+    void hapticLight();
+    void (async () => {
+      const chosen = await chooseBackupFolder();
+      if (!chosen) return;
+      setFolder(chosen);
+      // Written immediately rather than waiting for tomorrow: turning it on and seeing nothing
+      // happen is indistinguishable from it not working.
+      await requestBackup(userId);
+      await notify({ message: t('settings.backupFolderDone') });
+    })();
+  }, [userId, notify, t]);
+
   const backupNow = useCallback(() => {
     void hapticLight();
     void (async () => {
@@ -242,6 +271,24 @@ export default function SettingsScreen() {
       <Card index={2}>
         <SectionTitle>{t('settings.backupTitle')}</SectionTitle>
         <Hint>{t('settings.backupHint')}</Hint>
+        {/* The automatic half. Everything below it still works without a folder; this is the
+            part that means nobody has to remember. */}
+        <Pressable
+          onPress={pickFolder}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.7 }]}
+        >
+          <Text style={styles.linkText}>
+            {folder ? t('settings.backupFolderSet') : t('settings.backupChooseFolder')}
+          </Text>
+          <Text style={styles.linkChevron}>{chevron}</Text>
+        </Pressable>
+        {folder ? (
+          <Banner tone="success">{t('settings.backupAutoOn')}</Banner>
+        ) : (
+          <Banner tone="warning">{t('settings.backupAutoOff')}</Banner>
+        )}
+
         <Pressable
           onPress={backupNow}
           accessibilityRole="button"

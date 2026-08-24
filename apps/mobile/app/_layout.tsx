@@ -23,6 +23,7 @@ import { AuthProvider } from '../src/auth/AuthProvider.js';
 import { AnimatedGradientBackground } from '../src/components/AnimatedGradientBackground.js';
 import { ErrorBoundary } from '../src/components/ErrorBoundary.js';
 import { initI18n, isRtlLanguage, loadStoredLanguage, type Language } from '../src/i18n/index.js';
+import { AutoBackup } from '../src/backup/AutoBackup.js';
 import { ActionSheetProvider } from '../src/components/ActionSheetProvider.js';
 import { ThemeProvider, useTheme } from '../src/ThemeProvider.js';
 
@@ -70,6 +71,9 @@ function RootLayoutInner() {
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       <AnimatedGradientBackground />
       <AppGate>
+        {/* Inside AppGate: it needs a signed-in user to know whose data to write, and there is
+            nothing worth backing up before then. */}
+        <AutoBackup>
         <ErrorBoundary>
           <Stack
             screenOptions={{
@@ -88,6 +92,7 @@ function RootLayoutInner() {
             <Stack.Screen name="exercise-picker" options={{ presentation: 'modal' }} />
           </Stack>
         </ErrorBoundary>
+        </AutoBackup>
       </AppGate>
     </View>
   );

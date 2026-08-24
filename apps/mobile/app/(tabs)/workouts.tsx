@@ -36,6 +36,7 @@ import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
 import { useActionSheet } from '../../src/components/ActionSheetProvider.js';
 import type { ExerciseTarget, PreviousSet } from '../../src/components/ExerciseCard.js';
 import { FinishSummary } from '../../src/components/FinishSummary.js';
+import { requestBackup } from '../../src/backup/AutoBackup.js';
 import { DragReorderList } from '../../src/components/DragReorderList.js';
 import { KeyboardSafe } from '../../src/components/KeyboardSafe.js';
 import { ExercisePanel } from '../../src/components/workout/ExercisePanel.js';
@@ -379,6 +380,9 @@ export default function WorkoutsScreen() {
       await finishSession(db, userId, sessionId, { sessionRpe });
       setSummaryOpen(false);
       await closeOut();
+      // The moment worth protecting: new data exists that did not a minute ago. Awaited after
+      // the save and the navigation, so a slow write never delays either.
+      void requestBackup(userId, { afterWorkout: true });
     })();
   };
 

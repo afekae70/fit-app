@@ -27,6 +27,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { readBackupFile } from '../src/backup/store.js';
 import { useCurrentUserId } from '../src/auth/CurrentUserProvider.js';
 import { useActionSheet } from '../src/components/ActionSheetProvider.js';
 import { KeyboardSafe } from '../src/components/KeyboardSafe.js';
@@ -50,6 +51,22 @@ export default function RestoreScreen() {
   const [text, setText] = useState('');
   const [check, setCheck] = useState<BackupCheck | null>(null);
   const [busy, setBusy] = useState(false);
+
+  /**
+   * Read a backup straight off the phone, which is where the automatic ones are.
+   *
+   * The file is loaded and inspected in one step — there is no reason to make somebody press
+   * "check" after choosing a file, when choosing it is already the decision.
+   */
+  const pickFile = useCallback(() => {
+    void hapticLight();
+    void (async () => {
+      const contents = await readBackupFile();
+      if (contents === null) return;
+      setText(contents);
+      setCheck(inspectBackup(contents, userId, SCHEMA_VERSION));
+    })();
+  }, [userId]);
 
   const inspect = useCallback(() => {
     void hapticLight();
@@ -101,6 +118,20 @@ export default function RestoreScreen() {
 
         <Banner tone="warning">{t('restore.warning')}</Banner>
 
+        <Card>
+          <SectionTitle>{t('restore.fileTitle')}</SectionTitle>
+          <Hint>{t('restore.fileHint')}</Hint>
+          <Pressable
+            onPress={pickFile}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.button, pressed && styles.pressed]}
+          >
+            <Text style={styles.buttonText}>{t('restore.pickFile')}</Text>
+          </Pressable>
+        </Card>
+
+        {/* Kept as the way in for a backup that arrived as text — in a note, or a message to
+            yourself — rather than as a file on this phone. */}
         <Card>
           <SectionTitle>{t('restore.pasteTitle')}</SectionTitle>
           <Hint>{t('restore.pasteHint')}</Hint>
