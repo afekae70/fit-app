@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   getHomeNutrition,
   getTodayWorkout,
+  getTrainedToday,
   isScheduledRestDay,
   macroShares,
   weekStrip,
@@ -11,6 +12,7 @@ import {
 import { saveProfile } from './metrics.js';
 import { setScheduledDay } from './schedule.js';
 import type { SqlExecutor } from './executor.js';
+import { localDate } from './schedule.js';
 import { createTestExecutor } from './testUtils.js';
 
 const USER = 'u1';
@@ -530,5 +532,77 @@ describe('getHomeNutrition', () => {
     const home = await getHomeNutrition(db, USER);
     expect(home.latestKg).toBe(82);
     expect(home.weightPoints.every((p) => p.weightKg > 70)).toBe(true);
+  });
+});
+
+describe('getTrainedToday', () => {
+  const at = (hhmm: string) => `${localDate(new Date())}T${hhmm}:00.000`;
+
+  it('reports nothing on a day with no training', async () => {
+    expect(await getTrainedToday(db, USER)).toBeNull();
+  });
+
+  it('does not count a session that was only opened', async () => {
+    // Pressing Start lays the sets out and ticks none of them. Reporting that as "trained today"
+    // is the exact failure the TRAINED predicate exists to prevent.
+    await openSession(at('08:00'));
+    expect(await getTrainedToday(db, USER)).toBeNull();
+  });
+
+  it('counts a session with a ticked set, before it is finished', async () => {
+    await logWorkout(at('08:00'), [{ exercise: 'Barbell Bench Press', weight: 80, reps: 8 }]);
+
+    const trained = await getTrainedToday(db, USER);
+    expect(trained?.setCount).toBe(1);
+    expect(trained?.volumeKg).toBe(640);
+    // Still running: there is a start and no end, so there is no duration to report.
+    expect(trained?.finished).toBe(false);
+    expect(trained?.minutes).toBeNull();
+  });
+
+  it('reports the duration once the session is finished', async () => {
+    const sessionId = await logWorkout(at('08:00'), [
+      { exercise: 'Barbell Bench Press', weight: 80, reps: 8 },
+    ]);
+    await db.run(`UPDATE workout_sessions SET ended_at = ? WHERE id = ?`, [at('09:00'), sessionId]);
+
+    const trained = await getTrainedToday(db, USER);
+    expect(trained?.finished).toBe(true);
+    expect(trained?.minutes).toBe(60);
+  });
+
+  it('ignores yesterday', async () => {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    await logWorkout(`${localDate(yesterday)}T08:00:00.000`, [
+      { exercise: 'Barbell Bench Press', weight: 80, reps: 8 },
+    ]);
+
+    expect(await getTrainedToday(db, USER)).toBeNull();
+  });
+
+  it('keeps one user out of a different account', async () => {
+    await logWorkout(at('08:00'), [{ exercise: 'Barbell Bench Press', weight: 80, reps: 8 }], {
+      user: 'someone-else',
+    });
+    expect(await getTrainedToday(db, USER)).toBeNull();
+  });
+
+  it('leaves warm-ups out of the count', async () => {
+    const sessionId = await logWorkout(at('08:00'), [
+      { exercise: 'Barbell Bench Press', weight: 80, reps: 8 },
+    ]);
+    const se = await db.get<{ id: string }>(
+      `SELECT id FROM session_exercises WHERE session_id = ?`,
+      [sessionId],
+    );
+    await db.run(
+      `INSERT INTO sets (id, session_exercise_id, set_index, weight_kg, reps, is_warmup,
+                         completed_at, done_at, updated_at)
+         VALUES ('warm', ?, 2, 40, 5, 1, ?, ?, ?)`,
+      [se!.id, at('08:00'), at('08:00'), at('08:00')],
+    );
+
+    expect((await getTrainedToday(db, USER))?.setCount).toBe(1);
   });
 });

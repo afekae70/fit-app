@@ -24,7 +24,13 @@ import {
   type ViewStyle,
 } from 'react-native';
 
-import { macroShares, type StripDay, type TodayWorkout, type WeekSummary } from '../../db/home.js';
+import {
+  macroShares,
+  type StripDay,
+  type TodayWorkout,
+  type TrainedToday,
+  type WeekSummary,
+} from '../../db/home.js';
 import type { TargetsResult } from '../../db/metrics.js';
 import { useTheme } from '../../ThemeProvider.js';
 import { radius, type ColorPalette } from '../../theme.js';
@@ -484,6 +490,16 @@ const createStyles = (colors: ColorPalette) =>
     ctaLabel: TextStyle;
     card: ViewStyle;
     cardPressed: ViewStyle;
+    doneCard: ViewStyle;
+    doneHeader: ViewStyle;
+    doneMark: TextStyle;
+    doneTitle: TextStyle;
+    doneName: TextStyle;
+    doneStats: TextStyle;
+    doneLink: ViewStyle;
+    doneLinkText: TextStyle;
+    doneSecondary: ViewStyle;
+    doneSecondaryText: TextStyle;
     restCard: ViewStyle;
     restGlyph: TextStyle;
     restTitle: TextStyle;
@@ -611,6 +627,42 @@ const createStyles = (colors: ColorPalette) =>
     /* rest day ------------------------------------------------------------ */
     // Quieter than the workout card on purpose: no accent border, no gradient, nothing that
     // reads as the live thing on screen. Today the live thing is not training.
+    doneCard: {
+      borderWidth: 1,
+      borderColor: colors.accentBorder,
+      backgroundColor: colors.surface,
+      borderRadius: radius.lg,
+      padding: 20,
+    },
+    doneHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    doneMark: { color: colors.accent, fontSize: 18, fontWeight: '800' },
+    doneTitle: { color: colors.accent, fontSize: 13, fontWeight: '700', textAlign: 'auto' },
+    doneName: {
+      color: colors.text,
+      fontSize: 20,
+      fontWeight: '700',
+      marginTop: 6,
+      textAlign: 'auto',
+    },
+    doneStats: {
+      color: colors.textMuted,
+      fontSize: 13,
+      marginTop: 4,
+      textAlign: 'auto',
+      fontVariant: ['tabular-nums'],
+    },
+    doneLink: {
+      marginTop: 14,
+      paddingVertical: 12,
+      borderRadius: radius.sm,
+      backgroundColor: colors.accentSoft,
+      borderWidth: 1,
+      borderColor: colors.accentBorder,
+      alignItems: 'center',
+    },
+    doneLinkText: { color: colors.accent, fontSize: 15, fontWeight: '700' },
+    doneSecondary: { marginTop: 8, paddingVertical: 8, alignItems: 'center' },
+    doneSecondaryText: { color: colors.textFaint, fontSize: 13 },
     restCard: {
       borderWidth: 1,
       borderColor: colors.borderSubtle,
@@ -702,3 +754,72 @@ const createStyles = (colors: ColorPalette) =>
     },
     macroFill: { height: '100%', borderRadius: 3 },
   });
+
+/**
+ * Today's training, already done.
+ *
+ * The card this replaces went on offering to start a workout that had just been finished — the
+ * home screen computed which workout today calls for and never asked whether it had happened.
+ * The rotation had the same blind spot from the other side: training today leaves the position
+ * on today's slot, which is correct, and the screen read it as "still to do".
+ *
+ * It reports rather than congratulates. The numbers are the point; a session still running says
+ * so instead of claiming a finish that has not happened.
+ */
+export function TrainedTodayCard({
+  trained,
+  onOpen,
+  onStartAnother,
+}: {
+  trained: TrainedToday;
+  onOpen: () => void;
+  onStartAnother: () => void;
+}) {
+  const { t } = useTranslation();
+  const { colors } = useTheme();
+  const s = useMemo(() => createStyles(colors), [colors]);
+  const unit = useUnit();
+
+  return (
+    <View style={s.doneCard}>
+      <View style={s.doneHeader}>
+        <Text style={s.doneMark}>✓</Text>
+        <Text style={s.doneTitle}>
+          {trained.finished ? t('home.trainedToday') : t('home.trainingNow')}
+        </Text>
+      </View>
+
+      <Text style={s.doneName}>{trained.name ?? t('history.unnamed')}</Text>
+
+      <Text style={s.doneStats}>
+        {trained.setCount} {t('common.sets')}
+        {trained.volumeKg > 0
+          ? ` · ${kgToDisplay(trained.volumeKg, unit)} ${t(`common.${weightUnitKey(unit)}`)}`
+          : ''}
+        {trained.minutes !== null ? ` · ${trained.minutes} ${t('home.minutes')}` : ''}
+      </Text>
+
+      <Pressable
+        onPress={onOpen}
+        accessibilityRole="button"
+        style={({ pressed }) => [s.doneLink, pressed && { opacity: 0.7 }]}
+      >
+        <Text style={s.doneLinkText}>
+          {trained.finished ? t('home.viewWorkout') : t('home.resumeWorkout')}
+        </Text>
+      </Pressable>
+
+      {/* Training twice in a day is a real thing and refusing it would be the app overruling the
+          user — but it is the quiet option, not the one the card leads with. */}
+      {trained.finished ? (
+        <Pressable
+          onPress={onStartAnother}
+          accessibilityRole="button"
+          style={({ pressed }) => [s.doneSecondary, pressed && { opacity: 0.7 }]}
+        >
+          <Text style={s.doneSecondaryText}>{t('home.startAnother')}</Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}

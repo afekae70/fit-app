@@ -51,6 +51,79 @@ const MINUTES_PER_SET = 2.2;
 /** Sets assumed for a plan exercise that does not specify a target. */
 const DEFAULT_SETS = 3;
 
+export interface TrainedToday {
+  sessionId: string;
+  name: string | null;
+  /** Working sets ticked off. Warm-ups are a ramp, not the work the card is reporting. */
+  setCount: number;
+  volumeKg: number;
+  /** Null while the session is still open — it has a start but no end to measure against. */
+  minutes: number | null;
+  /** False while it is still running, which the card says rather than calling it finished. */
+  finished: boolean;
+}
+
+/**
+ * Today's training, if any happened.
+ *
+ * The gap this fills: `getTodayWorkout` computes which workout today calls for and never asks
+ * whether it was already done, so the card went on offering to start a session that had just
+ * been finished. The rotation had the same blind spot from the other side — training today
+ * leaves `elapsed` at zero, which correctly keeps the position on today's slot, and the screen
+ * then read that as "still to do".
+ *
+ * Uses the same `TRAINED` predicate as the streak strip and the week count, so the three cannot
+ * disagree about whether today counts.
+ */
+export async function getTrainedToday(
+  db: SqlExecutor,
+  userId: string,
+  now = new Date(),
+): Promise<TrainedToday | null> {
+  const today = localDate(now);
+
+  const row = await db.get<{
+    id: string;
+    name: string | null;
+    started_at: string;
+    ended_at: string | null;
+  }>(
+    `SELECT ws.id, ws.name, ws.started_at, ws.ended_at
+       FROM workout_sessions ws
+      WHERE ws.user_id = ?
+        AND ws.deleted_at IS NULL
+        AND date(ws.started_at, 'localtime') = ?
+        AND ${TRAINED}
+      ORDER BY ws.started_at DESC
+      LIMIT 1`,
+    [userId, today],
+  );
+  if (!row) return null;
+
+  const totals = await db.get<{ sets: number; volume: number | null }>(
+    `SELECT COUNT(*) AS sets,
+            SUM(COALESCE(s.weight_kg, 0) * COALESCE(s.reps, 0)) AS volume
+       FROM sets s
+       JOIN session_exercises se ON se.id = s.session_exercise_id AND se.deleted_at IS NULL
+      WHERE se.session_id = ?
+        AND s.deleted_at IS NULL
+        AND s.is_warmup = 0
+        AND s.done_at IS NOT NULL`,
+    [row.id],
+  );
+
+  return {
+    sessionId: row.id,
+    name: row.name,
+    setCount: totals?.sets ?? 0,
+    volumeKg: Math.round(totals?.volume ?? 0),
+    minutes: row.ended_at
+      ? Math.max(1, Math.round((Date.parse(row.ended_at) - Date.parse(row.started_at)) / 60000))
+      : null,
+    finished: row.ended_at !== null,
+  };
+}
+
 export interface TodayWorkout {
   planDayId: string;
   planName: string;

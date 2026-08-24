@@ -27,12 +27,14 @@ import {
   TodayWorkoutCard,
   WeekSummaryRow,
   WeightTrendCard,
+  TrainedTodayCard,
 } from '../../src/components/home/TodayCards.js';
 import { FadeSlideIn } from '../../src/components/motion.js';
 import { Skeleton } from '../../src/components/ui.js';
 import {
   getHomeNutrition,
   getTodayWorkout,
+  getTrainedToday,
   isScheduledRestDay,
   weekStrip,
   weekSummary,
@@ -40,6 +42,7 @@ import {
   type StripDay,
   type TodayWorkout,
   type WeekSummary,
+  type TrainedToday,
 } from '../../src/db/home.js';
 import { startSessionFromPlanDay } from '../../src/db/plans.js';
 import { getExecutor, newId } from '../../src/db/provider.js';
@@ -64,6 +67,7 @@ interface HomeData {
    * working, the other is an invitation to make one.
    */
   restDay: boolean;
+  trained: TrainedToday | null;
 }
 
 export default function TodayScreen() {
@@ -81,15 +85,16 @@ export default function TodayScreen() {
   const load = useCallback(async () => {
     try {
       const db = await getExecutor();
-      const [workout, strip, summary, streak, nutrition, restDay] = await Promise.all([
+      const [workout, strip, summary, streak, nutrition, restDay, trained] = await Promise.all([
         getTodayWorkout(db, userId),
         weekStrip(db, userId),
         weekSummary(db, userId),
         getWorkoutStreak(db, userId),
         getHomeNutrition(db, userId),
         isScheduledRestDay(db, userId),
+        getTrainedToday(db, userId),
       ]);
-      setData({ workout, strip, summary, streak, nutrition, restDay });
+      setData({ workout, strip, summary, streak, nutrition, restDay, trained });
       setFailed(false);
     } catch {
       setFailed(true);
@@ -156,7 +161,36 @@ export default function TodayScreen() {
         <LoadingPanel />
       ) : (
         <>
-          {data.workout ? (
+          {data.trained ? (
+            /* Training today outranks the invitation to train. The card used to go on offering
+               to start a workout that had just been finished, because the screen worked out
+               which workout today calls for and never asked whether it had happened. */
+            <>
+              <FadeSlideIn index={0}>
+                <TrainedTodayCard
+                  trained={data.trained}
+                  onOpen={() =>
+                    router.push({
+                      pathname: '/session/[id]',
+                      params: { id: data.trained!.sessionId },
+                    })
+                  }
+                  onStartAnother={startWorkout}
+                />
+              </FadeSlideIn>
+              <FadeSlideIn index={1}>
+                <StreakCard
+                  days={data.strip}
+                  streakWeeks={Math.floor(data.streak.currentDays / 7)}
+                  trainedThisWeek={data.summary.workouts}
+                  targetPerWeek={WEEKLY_TARGET}
+                />
+              </FadeSlideIn>
+              <FadeSlideIn index={2}>
+                <WeekSummaryRow summary={data.summary} />
+              </FadeSlideIn>
+            </>
+          ) : data.workout ? (
             <>
               {/* Staggered in the order they are read: what to train, then the streak that argues
                   for doing it, then the week behind it. */}
