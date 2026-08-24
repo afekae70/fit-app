@@ -205,7 +205,7 @@ export const he = {
     startTitle: 'מוכן להתאמן?',
     startSubtitle: 'הכול נשמר על המכשיר — עובד גם בלי רשת',
     startButton: 'התחל אימון',
-    activeTitle: 'אימון פעיל',
+    activeTitle: 'אימון',
     finishButton: 'סיים אימון',
     addExercise: 'הוסף תרגיל',
     addSet: 'הוסף סט',

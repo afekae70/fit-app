@@ -4,9 +4,10 @@
  * On its own screen rather than behind a button in settings, because restoring replaces
  * everything and a destructive action deserves somewhere to stop and read before it happens.
  *
- * The backup arrives as pasted text. Reading a file would need a document picker, which is a
- * native module this build does not carry — and adding one means the JS loads and then fails at
- * the call site on the phone already installed. Paste needs nothing but the keyboard.
+ * A backup arrives either as a file or as pasted text. `expo-file-system` carries its own
+ * picker — `pickFileAsync` — so choosing the file directly is the ordinary route, and the
+ * automatic backups are sitting in the folder it opens on. Paste stays for a backup that
+ * arrived as text, in a note or a message to yourself, rather than as a file on this phone.
  *
  * Nothing is touched until the text has been inspected and the user has confirmed what it
  * contains: how old it is, and how much is in it. A restore that begins before the user knows

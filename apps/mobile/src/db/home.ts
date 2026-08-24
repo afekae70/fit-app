@@ -299,12 +299,12 @@ function displayName(exerciseKey: string): string {
 /* The seven-day strip                                                         */
 /* -------------------------------------------------------------------------- */
 
-export type DayState = 'trained' | 'today' | 'rest';
-
 export interface StripDay {
   /** `YYYY-MM-DD`, local calendar. */
   date: string;
-  state: DayState;
+  /** Whether this day counts as trained, by the same rule the streak and week count use. */
+  trained: boolean;
+  isToday: boolean;
 }
 
 /**
@@ -314,8 +314,11 @@ export interface StripDay {
  * chronological and RTL layout reverses it visually on its own. Reversing it here as well would
  * cancel out, and would put the ordering in two places at once.
  *
- * `today` wins over `trained` when both apply, so a day trained today shows as today — the strip
- * marks where you are, and the streak count beside it already says whether you have trained.
+ * Each day reports both facts rather than one merged state. They used to be a single value where
+ * "today" outranked "trained", on the reasoning that the strip marks where you are and the streak
+ * beside it already says whether you trained. In practice that meant training today showed as a
+ * plain dot and the tick only appeared the next morning — so the strip looked like a missed day
+ * while the streak next to it counted the workout.
  */
 export async function weekStrip(db: SqlExecutor, userId: string, now = new Date()): Promise<StripDay[]> {
   const today = localDay(now);
@@ -337,7 +340,10 @@ export async function weekStrip(db: SqlExecutor, userId: string, now = new Date(
     const d = new Date(now);
     d.setDate(d.getDate() - offset);
     const date = localDay(d);
-    days.push({ date, state: date === today ? 'today' : trained.has(date) ? 'trained' : 'rest' });
+    // Two facts, kept apart. They were one merged `state` where "today" outranked "trained",
+    // so training today showed as a dot and the tick only appeared the next morning — the strip
+    // disagreed with the streak count sitting next to it.
+    days.push({ date, trained: trained.has(date), isToday: date === today });
   }
   return days;
 }

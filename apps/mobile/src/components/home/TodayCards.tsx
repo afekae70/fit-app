@@ -219,14 +219,16 @@ export function StreakCard({
               <View
                 style={[
                   s.dayCell,
-                  day.state === 'trained' && s.dayCellTrained,
-                  day.state === 'today' && s.dayCellToday,
+                  day.trained && s.dayCellTrained,
+                  // Both can apply, and both should show: the ring says which day you are on,
+                  // the tick says it is done.
+                  day.isToday && s.dayCellToday,
                 ]}
               >
                 {/* A missed day is empty, never marked in red. The strip is there to be worth
                     continuing, and a row of failures is not something anyone opens twice. */}
                 <Text style={s.dayMark}>
-                  {day.state === 'trained' ? '✓' : day.state === 'today' ? '•' : ''}
+                  {day.trained ? '✓' : day.isToday ? '•' : ''}
                 </Text>
               </View>
               <Text style={s.dayLabel}>{weekday}</Text>

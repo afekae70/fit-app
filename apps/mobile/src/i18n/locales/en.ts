@@ -212,7 +212,7 @@ export const en = {
     startTitle: 'Ready to train?',
     startSubtitle: 'Everything saves on-device — works with no signal',
     startButton: 'Start workout',
-    activeTitle: 'Active workout',
+    activeTitle: 'Workout',
     finishButton: 'Finish workout',
     addExercise: 'Add exercise',
     addSet: 'Add set',

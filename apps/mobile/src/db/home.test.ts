@@ -126,7 +126,7 @@ describe('opening a workout is not training it', () => {
   it('does not light the streak strip for an opened session', async () => {
     await openSession('2026-08-03T09:00:00');
     const strip = await weekStrip(db, USER, NOW);
-    expect(strip.find((d) => d.date === '2026-08-03')?.state).toBe('rest');
+    expect(strip.find((d) => d.date === '2026-08-03')?.trained).toBe(false);
   });
 
   it('does not advance the rotation for an opened session', async () => {
@@ -333,20 +333,37 @@ describe('weekStrip', () => {
   it('marks trained days and leaves the rest empty', async () => {
     await logWorkout('2026-08-03T18:00:00', [{ exercise: 'Barbell Row', weight: 60, reps: 8 }]);
     const strip = await weekStrip(db, USER, NOW);
-    expect(strip.find((d) => d.date === '2026-08-03')?.state).toBe('trained');
-    expect(strip.find((d) => d.date === '2026-08-02')?.state).toBe('rest');
+    expect(strip.find((d) => d.date === '2026-08-03')?.trained).toBe(true);
+    expect(strip.find((d) => d.date === '2026-08-02')?.trained).toBe(false);
   });
 
-  it('shows today as today even when it has been trained', async () => {
+  it('marks today as trained the moment it is, not the next morning', async () => {
+    // This used to assert the opposite: "today" outranked "trained" in a single merged state, so
+    // a workout finished this morning left the strip looking like a missed day while the streak
+    // counter beside it had already counted it.
     await logWorkout('2026-08-05T07:00:00', [{ exercise: 'Barbell Row', weight: 60, reps: 8 }]);
-    expect((await weekStrip(db, USER, NOW))[6]?.state).toBe('today');
+
+    const today = (await weekStrip(db, USER, NOW))[6];
+    expect(today?.trained).toBe(true);
+    expect(today?.isToday).toBe(true);
+  });
+
+  it('marks today as today when nothing has been trained', async () => {
+    const today = (await weekStrip(db, USER, NOW))[6];
+    expect(today?.isToday).toBe(true);
+    expect(today?.trained).toBe(false);
+  });
+
+  it('marks exactly one day as today', async () => {
+    const strip = await weekStrip(db, USER, NOW);
+    expect(strip.filter((d) => d.isToday)).toHaveLength(1);
   });
 
   it('ignores another user\'s training', async () => {
     await logWorkout('2026-08-03T18:00:00', [{ exercise: 'Barbell Row', weight: 60, reps: 8 }], {
       user: OTHER,
     });
-    expect((await weekStrip(db, USER, NOW)).every((d) => d.state !== 'trained')).toBe(true);
+    expect((await weekStrip(db, USER, NOW)).every((d) => !d.trained)).toBe(true);
   });
 
   it('ignores a deleted workout, so a deleted day stops being marked', async () => {
@@ -357,7 +374,9 @@ describe('weekStrip', () => {
       '2026-08-04T00:00:00.000Z',
       sessionId,
     ]);
-    expect((await weekStrip(db, USER, NOW)).find((d) => d.date === '2026-08-03')?.state).toBe('rest');
+    expect((await weekStrip(db, USER, NOW)).find((d) => d.date === '2026-08-03')?.trained).toBe(
+      false,
+    );
   });
 });
 
