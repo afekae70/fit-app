@@ -17,6 +17,7 @@ import {
   addExerciseToSession,
   addSet,
   addSetCopyingPrevious,
+  addDropSet,
   addWarmupSets,
   finishSession,
   getActiveSession,
@@ -1032,5 +1033,71 @@ describe('supersets', () => {
     await removeExerciseFromSession(db, c);
 
     expect(await linkOf(b)).toBe(0);
+  });
+});
+
+describe('drop sets', () => {
+  const USER_D = 'user-d';
+
+  async function threeSets() {
+    const clock = () => '2026-06-01T10:00:00.000Z';
+    const sessionId = await startSession(db, USER_D, newId, {}, clock);
+    const ex = await addExerciseToSession(db, newId, sessionId, 'Barbell Curl', clock);
+    const a = await addSet(db, newId, ex, { weightKg: 40, reps: 10 }, clock);
+    const bx = await addSet(db, newId, ex, { weightKg: 40, reps: 10 }, clock);
+    const c = await addSet(db, newId, ex, { weightKg: 40, reps: 10 }, clock);
+    return { ex, a, b: bx, c };
+  }
+
+  it('lands immediately after its parent, not at the end', async () => {
+    // A drop set that is not adjacent to the set it drops from is not a drop set.
+    const { ex, a } = await threeSets();
+
+    await addDropSet(db, newId, a, { weightKg: 30, reps: 8 });
+
+    const sets = await listSets(db, ex);
+    expect(sets.map((s) => s.weight_kg)).toEqual([40, 30, 40, 40]);
+    expect(sets.map((s) => s.set_index)).toEqual([1, 2, 3, 4]);
+  });
+
+  it('marks only the new set as a drop', async () => {
+    const { ex, a } = await threeSets();
+    await addDropSet(db, newId, a, { weightKg: 30, reps: 8 });
+
+    expect((await listSets(db, ex)).map((s) => s.is_drop)).toEqual([0, 1, 0, 0]);
+  });
+
+  it('can chain, each dropping from the one before', async () => {
+    const { ex, a } = await threeSets();
+    const first = await addDropSet(db, newId, a, { weightKg: 30, reps: 8 });
+    await addDropSet(db, newId, first!, { weightKg: 20, reps: 8 });
+
+    const sets = await listSets(db, ex);
+    expect(sets.map((s) => s.weight_kg)).toEqual([40, 30, 20, 40, 40]);
+    expect(sets.map((s) => s.is_drop)).toEqual([0, 1, 1, 0, 0]);
+  });
+
+  it('appends after the last set without disturbing anything', async () => {
+    const { ex, c } = await threeSets();
+    await addDropSet(db, newId, c, { weightKg: 30, reps: 8 });
+
+    const sets = await listSets(db, ex);
+    expect(sets.map((s) => s.set_index)).toEqual([1, 2, 3, 4]);
+    expect(sets[3]?.is_drop).toBe(1);
+  });
+
+  it('returns null for a set that does not exist', async () => {
+    expect(await addDropSet(db, newId, 'nope', { weightKg: 30, reps: 8 })).toBeNull();
+  });
+
+  it('leaves the numbering contiguous, which the unique index demands', async () => {
+    // Inserting in the middle shifts everything below, and set_index is unique per exercise —
+    // a direct renumber walks straight into that constraint.
+    const { ex, a, b: second } = await threeSets();
+    await addDropSet(db, newId, a, { weightKg: 30, reps: 8 });
+    await addDropSet(db, newId, second, { weightKg: 25, reps: 8 });
+
+    const indexes = (await listSets(db, ex)).map((s) => s.set_index);
+    expect(indexes).toEqual([1, 2, 3, 4, 5]);
   });
 });

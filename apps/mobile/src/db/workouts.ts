@@ -35,6 +35,8 @@ export interface SetRow {
   id: string;
   session_exercise_id: string;
   set_index: number;
+  /** 1 when this set continues the one above it, lighter and with no rest between them. */
+  is_drop?: number;
   weight_kg: number | null;
   reps: number | null;
   duration_seconds: number | null;
@@ -56,6 +58,7 @@ export interface SetInput {
   rpe?: number | null;
   isWarmup?: boolean;
   toFailure?: boolean;
+  isDrop?: boolean;
 }
 
 export type IdFactory = () => string;
@@ -677,6 +680,63 @@ export async function addSetCopyingPrevious(
   );
 }
 
+/**
+ * Add a drop set straight after the one given: same reps target, lighter.
+ *
+ * The weight is the caller's business — how far to drop is a training decision, and a fraction
+ * chosen here would be this file having an opinion about someone's session.
+ *
+ * Inserted immediately after its parent rather than at the end, because a drop set that is not
+ * adjacent to the set it drops from is not a drop set. That means everything below shifts down,
+ * and `UNIQUE (session_exercise_id, set_index)` refuses the direct renumber — the same
+ * park-then-write pass as `addWarmupSets` and `reorderSessionExercise`.
+ */
+export async function addDropSet(
+  db: SqlExecutor,
+  newId: IdFactory,
+  afterSetId: string,
+  input: { weightKg: number | null; reps: number | null },
+  clock: Clock = defaultClock,
+): Promise<string | null> {
+  const parent = await db.get<{ session_exercise_id: string; set_index: number }>(
+    `SELECT session_exercise_id, set_index FROM sets WHERE id = ? AND deleted_at IS NULL`,
+    [afterSetId],
+  );
+  if (!parent) return null;
+
+  const at = clock();
+  const PARK = 100000;
+
+  const below = await db.all<{ id: string; set_index: number }>(
+    `SELECT id, set_index FROM sets
+      WHERE session_exercise_id = ? AND deleted_at IS NULL AND set_index > ?
+      ORDER BY set_index`,
+    [parent.session_exercise_id, parent.set_index],
+  );
+
+  for (const [offset, row] of below.entries()) {
+    await db.run(`UPDATE sets SET set_index = ? WHERE id = ?`, [PARK + offset, row.id]);
+  }
+
+  const id = newId();
+  await db.run(
+    `INSERT INTO sets
+       (id, session_exercise_id, set_index, weight_kg, reps, is_warmup, to_failure, is_drop,
+        completed_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, 0, 0, 1, ?, ?)`,
+    [id, parent.session_exercise_id, parent.set_index + 1, input.weightKg, input.reps, at, at],
+  );
+  await enqueue(db, 'set', id, 'insert', { ...input, isDrop: true }, clock);
+
+  for (const [offset, row] of below.entries()) {
+    const setIndex = parent.set_index + 2 + offset;
+    await db.run(`UPDATE sets SET set_index = ?, updated_at = ? WHERE id = ?`, [setIndex, at, row.id]);
+    await enqueue(db, 'set', row.id, 'update', { setIndex }, clock);
+  }
+
+  return id;
+}
+
 export async function updateSet(
   db: SqlExecutor,
   setId: string,
@@ -715,6 +775,10 @@ export async function updateSet(
   if (input.toFailure !== undefined) {
     assignments.push('to_failure = ?');
     params.push(input.toFailure ? 1 : 0);
+  }
+  if (input.isDrop !== undefined) {
+    assignments.push('is_drop = ?');
+    params.push(input.isDrop ? 1 : 0);
   }
   if (assignments.length === 0) return;
 

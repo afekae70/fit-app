@@ -20,6 +20,7 @@ const set = (weightKg: number | null, reps: number | null, done = false, isWarmu
   isWarmup,
   rpe: null,
   toFailure: false,
+  isDrop: false,
 });
 
 const bench: DerivedExercise = {
@@ -239,5 +240,32 @@ describe('labelSets', () => {
 
   it('has nothing to say about no sets', () => {
     expect(labelSets([])).toEqual([]);
+  });
+});
+
+describe('labelSets and drop sets', () => {
+  const warm = { isWarmup: true };
+  const work = { isWarmup: false };
+  const drop = { isWarmup: false, isDrop: true };
+
+  it('does not number a drop set as a new working set', () => {
+    // Three sets of curls with two drops is still three sets. Numbering the drops would make it
+    // read as five and disagree with the volume, which counts them as work but not as sets.
+    expect(labelSets([work, drop, drop, work, work]).map((l) => l.kind)).toEqual([
+      'working',
+      'drop',
+      'drop',
+      'working',
+      'working',
+    ]);
+    expect(labelSets([work, drop, drop, work, work]).map((l) => l.ordinal)).toEqual([1, 1, 1, 2, 3]);
+  });
+
+  it('carries the parent ordinal so a drop says which set it came from', () => {
+    expect(labelSets([work, work, drop])[2]).toEqual({ kind: 'drop', ordinal: 2 });
+  });
+
+  it('still numbers warm-ups separately alongside drops', () => {
+    expect(labelSets([warm, work, drop]).map((l) => l.kind)).toEqual(['warmup', 'working', 'drop']);
   });
 });

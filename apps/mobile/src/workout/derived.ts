@@ -37,6 +37,8 @@ export interface DerivedSet {
   rpe: number | null;
   /** The set was taken to the point where another rep was not going to happen. */
   toFailure: boolean;
+  /** Continues the set above it, lighter and with no rest between them. */
+  isDrop: boolean;
 }
 
 export interface DerivedExercise {
@@ -49,7 +51,7 @@ export interface DerivedExercise {
 /* -------------------------------------------------------------------------- */
 
 export interface SetLabel {
-  kind: 'warmup' | 'working';
+  kind: 'warmup' | 'working' | 'drop';
   /** Position within its own kind, from 1. */
   ordinal: number;
 }
@@ -68,11 +70,17 @@ export interface SetLabel {
  * Position is respected, not sorted: a warm-up logged between two working sets is unusual, but
  * it is what happened, and renumbering it away would be the screen editing the record.
  */
-export function labelSets(sets: readonly { isWarmup: boolean }[]): SetLabel[] {
+export function labelSets(
+  sets: readonly { isWarmup: boolean; isDrop?: boolean }[],
+): SetLabel[] {
   let warmups = 0;
   let working = 0;
   return sets.map((set) => {
     if (set.isWarmup) return { kind: 'warmup' as const, ordinal: ++warmups };
+    // A drop set continues the set above it rather than being a new one. Numbering it would
+    // turn "three sets of curls" into five and disagree with the volume, which counts the drops
+    // as work but not as separate sets.
+    if (set.isDrop) return { kind: 'drop' as const, ordinal: working };
     return { kind: 'working' as const, ordinal: ++working };
   });
 }

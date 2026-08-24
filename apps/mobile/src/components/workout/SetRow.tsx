@@ -76,6 +76,8 @@ export interface SetRowProps {
   rpe?: number | null;
   /** Taken to the point another rep was not happening. */
   toFailure?: boolean;
+  /** Continues the set above it, lighter, with no rest. Shown as an arrow, not a number. */
+  isDrop?: boolean;
   /**
    * Open this set's menu: change its kind, or delete it.
    *
@@ -101,6 +103,7 @@ export function SetRow({
   isWarmup = false,
   rpe = null,
   toFailure = false,
+  isDrop = false,
   onOptions,
 }: SetRowProps) {
   const { t } = useTranslation();
@@ -169,6 +172,7 @@ export function SetRow({
         accessibilityLabel={onOptions ? t('workout.setOptions', { index }) : undefined}
         style={[
           s.indexChip,
+          isDrop && s.indexChipDrop,
           toFailure && s.indexChipFailure,
           isWarmup && s.indexChipWarmup,
           onOptions && s.indexChipTappable,
@@ -177,11 +181,12 @@ export function SetRow({
         <Text
           style={[
             s.indexText,
+            isDrop && s.indexTextDrop,
             toFailure && s.indexTextFailure,
             isWarmup && s.indexTextWarmup,
           ]}
         >
-          {isWarmup ? t('workout.warmupShort') : index}
+          {isWarmup ? t('workout.warmupShort') : isDrop ? '↓' : index}
         </Text>
       </Pressable>
 
@@ -291,9 +296,11 @@ const createStyles = (colors: ColorPalette) =>
     row: ViewStyle;
     indexChip: ViewStyle;
     indexChipTappable: ViewStyle;
+    indexChipDrop: ViewStyle;
     indexChipFailure: ViewStyle;
     indexChipWarmup: ViewStyle;
     indexText: TextStyle;
+    indexTextDrop: TextStyle;
     indexTextFailure: TextStyle;
     indexTextWarmup: TextStyle;
     rpe: TextStyle;
@@ -337,6 +344,10 @@ const createStyles = (colors: ColorPalette) =>
     // Listed before the warm-up styles above so a ramp still reads as a ramp: nobody takes a
     // warm-up to failure, and if both flags somehow land on one set, "warm-up" is the one that
     // decides whether it counts.
+    // An arrow rather than a number, because a drop set is not a new set — it continues the one
+    // above it, and the volume and the labels both count it that way.
+    indexChipDrop: { backgroundColor: colors.accentSoft },
+    indexTextDrop: { color: colors.accent, fontWeight: '700' },
     indexChipFailure: { backgroundColor: colors.dangerSoft },
     indexTextFailure: { color: colors.danger, fontWeight: '700' },
     rpe: { color: colors.textFaint, fontSize: 10, fontVariant: ['tabular-nums'] },

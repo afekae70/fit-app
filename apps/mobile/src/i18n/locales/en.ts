@@ -199,6 +199,7 @@ export const en = {
     warmup: 'Warm-up',
     warmupShort: 'W',
     toFailure: 'To failure',
+    addDropSet: 'Add a drop set',
     removeSet: 'Delete set',
     rateEffort: 'Rate the effort',
     rateEffortHint: 'How much was left in the tank at the end of the set',

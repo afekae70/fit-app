@@ -436,3 +436,30 @@ describe('migration 12 — gyms', () => {
     db.close();
   });
 });
+
+describe('migration 14 — drop sets', () => {
+  it('is on the app upgrade path', () => {
+    expect(SCHEMA_VERSION).toBeGreaterThanOrEqual(14);
+    expect(MIGRATIONS[14]).toBeDefined();
+  });
+
+  it('adds the column to a database that already holds sets', () => {
+    const db = seededV6Database();
+    startUpLikeTheApp(db);
+
+    db.exec(`UPDATE sets SET is_drop = 1 WHERE id = 't1'`);
+    const row = db.prepare(`SELECT is_drop FROM sets WHERE id = 't1'`).get() as { is_drop: number };
+    expect(row.is_drop).toBe(1);
+    db.close();
+  });
+
+  it('defaults every existing set to standing on its own', () => {
+    // The column is NOT NULL, so the default is what every row logged before today gets. A
+    // default of 1 would retroactively turn a year of sets into one enormous drop set.
+    const db = seededV6Database();
+    startUpLikeTheApp(db);
+    const row = db.prepare(`SELECT is_drop FROM sets WHERE id = 't1'`).get() as { is_drop: number };
+    expect(row.is_drop).toBe(0);
+    db.close();
+  });
+});

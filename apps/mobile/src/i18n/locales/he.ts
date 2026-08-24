@@ -192,6 +192,7 @@ export const he = {
     warmup: 'חימום',
     warmupShort: 'ח',
     toFailure: 'עד כשל',
+    addDropSet: 'הוסף דרופ סט',
     removeSet: 'מחק סט',
     rateEffort: 'דרג מאמץ',
     rateEffortHint: 'כמה נשאר לך במיכל בסוף הסט',

@@ -26,7 +26,7 @@
  * TEXT (lexicographically sortable, which is what the history queries rely on).
  */
 
-export const SCHEMA_VERSION = 13;
+export const SCHEMA_VERSION = 14;
 
 /**
  * Incremental migrations, keyed by the version they upgrade TO.
@@ -273,6 +273,12 @@ CREATE INDEX IF NOT EXISTS locations_user_idx ON locations (user_id);
   13: `
     ALTER TABLE session_exercises ADD COLUMN superset_with_next INTEGER NOT NULL DEFAULT 0;
   `,
+
+  // Drop sets. Same reasoning as 13: a flag rather than a group id, and 0 is the right default
+  // because every set logged until now stood on its own.
+  14: `
+    ALTER TABLE sets ADD COLUMN is_drop INTEGER NOT NULL DEFAULT 0;
+  `,
 };
 
 export const CREATE_SCHEMA_SQL = `
@@ -424,6 +430,12 @@ CREATE TABLE IF NOT EXISTS sets (
   rpe                  REAL,
   is_warmup            INTEGER NOT NULL DEFAULT 0,
   to_failure           INTEGER NOT NULL DEFAULT 0,
+  -- A drop set: this set was taken straight from the one before it, lighter, with no rest. The
+  -- same positional idea as superset_with_next on session_exercises, one level down — the flag
+  -- says "I continue the set above me", so renumbering after an insert or delete re-forms the
+  -- chains on its own instead of leaving group ids pointing at rows that moved.
+  -- (No backticks in this comment: the whole schema is one template literal.)
+  is_drop              INTEGER NOT NULL DEFAULT 0,
   completed_at         TEXT NOT NULL,
   -- When the user ticked the set off, as opposed to when the row appeared. See migration 8.
   done_at              TEXT,

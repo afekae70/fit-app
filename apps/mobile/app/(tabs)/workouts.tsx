@@ -54,6 +54,7 @@ import { getSessionType, hasType } from '../../src/db/sessionType.js';
 import {
   addExerciseToSession,
   addSetCopyingPrevious,
+  addDropSet,
   addWarmupSets,
   setSupersetLink,
   finishSession,
@@ -409,7 +410,11 @@ export default function WorkoutsScreen() {
       // Inside a superset the next exercise is the rest — stopping to watch a timer between the
       // two halves is the one thing a superset exists to avoid. Rest comes after the last member.
       const insideSuperset = owner?.superset_with_next === 1;
-      const seconds = insideSuperset
+      // A drop set follows immediately, lighter — waiting between the two is the one thing a
+      // drop set exists to avoid, exactly as with a superset one level up.
+      const position = owner?.sets.findIndex((s) => s.id === setId) ?? -1;
+      const nextIsDrop = position >= 0 && owner?.sets[position + 1]?.is_drop === 1;
+      const seconds = insideSuperset || nextIsDrop
         ? 0
         : set?.is_warmup === 1
           ? restAfterWarmup()
@@ -707,6 +712,7 @@ export default function WorkoutsScreen() {
             { label: t(set.is_warmup === 1 ? 'workout.markAsWorking' : 'workout.markAsWarmup') },
             { label: t('workout.rateEffort') },
             { label: t(set.to_failure === 1 ? 'workout.clearToFailure' : 'workout.markToFailure') },
+            { label: t('workout.addDropSet') },
             { label: t('workout.removeSet'), destructive: true },
           ],
         });
@@ -727,10 +733,16 @@ export default function WorkoutsScreen() {
           const value = RPE_CHOICES[rated] ?? null;
           patchSet(set.id, { rpe: value });
         } else if (choice === 2) patchSet(set.id, { toFailure: set.to_failure === 0 });
-        else if (choice === 3) deleteSet(set.id);
+        else if (choice === 3) {
+          // Starts at the parent's numbers rather than guessing a percentage: how far to drop is
+          // a training decision, and the fields are right there to change.
+          const db = await getExecutor();
+          await addDropSet(db, newId, set.id, { weightKg: set.weight_kg, reps: set.reps });
+          if (sessionId) await reload(sessionId);
+        } else if (choice === 4) deleteSet(set.id);
       })();
     },
-    [exercises, ask, t, patchSet, deleteSet],
+    [exercises, ask, t, patchSet, deleteSet, sessionId, reload],
   );
 
   /**
@@ -923,6 +935,7 @@ export default function WorkoutsScreen() {
                     isWarmup: set.is_warmup === 1,
                     rpe: set.rpe,
                     toFailure: set.to_failure === 1,
+                    isDrop: set.is_drop === 1,
                   }))}
                   previous={
                     previous[exercise.exercise_key]?.map((p) => ({
