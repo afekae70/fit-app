@@ -83,7 +83,7 @@ export function WorkoutHome({
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
       }
     >
-      <ScreenHeader title={t('tabs.workouts')} back />
+      <ScreenHeader title={t('tabs.workout')} back />
 
       <Pressable onPress={onStartEmpty} style={styles.primaryButton} accessibilityRole="button">
         <Text style={styles.primaryButtonText}>{t('workout.startButton')}</Text>

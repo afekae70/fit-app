@@ -217,6 +217,7 @@ export const he = {
     duration: 'זמן',
     distance: 'מרחק',
     warmup: 'חימום',
+    addWarmup: 'חימום',
     warmupShort: 'ח',
     toFailure: 'עד כשל',
     addDropSet: 'הוסף דרופ סט',
@@ -525,6 +526,7 @@ export const he = {
     suspension_trainer: 'רצועות TRX',
     trap_bar: 'מוט טרפז',
     treadmill: 'הליכון',
+    trx: 'TRX',
     weight_plate: 'צלחת משקל',
   },
   muscle: {

@@ -224,6 +224,7 @@ export const en = {
     duration: 'Time',
     distance: 'Distance',
     warmup: 'Warm-up',
+    addWarmup: 'Warm-up',
     warmupShort: 'W',
     toFailure: 'To failure',
     addDropSet: 'Add a drop set',
