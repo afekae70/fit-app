@@ -36,7 +36,17 @@
 
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Modal, Pressable, StyleSheet, Text, View, type ViewStyle, type TextStyle } from 'react-native';
+import {
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+  type TextStyle,
+  type ViewStyle,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { hapticLight } from '../haptics.js';
@@ -106,6 +116,7 @@ export function ActionSheetProvider({ children }: { children: ReactNode }) {
    */
   const direction = isRtlLanguage(i18n.language as Language) ? 'rtl' : 'ltr';
   const insets = useSafeAreaInsets();
+  const windowHeight = useWindowDimensions().height;
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -184,27 +195,37 @@ export function ActionSheetProvider({ children }: { children: ReactNode }) {
             {request?.title ? <Text style={styles.title}>{request.title}</Text> : null}
             {request?.message ? <Text style={styles.message}>{request.message}</Text> : null}
 
-            {request?.actions.map((action, index) => (
-              <Pressable
-                key={action.label}
-                onPress={() => {
-                  void hapticLight();
-                  settle(index);
-                }}
-                accessibilityRole="button"
-                style={({ pressed }) => [
-                  styles.action,
-                  action.destructive && styles.actionDestructive,
-                  pressed && styles.actionPressed,
-                ]}
-              >
-                <Text
-                  style={[styles.actionLabel, action.destructive && styles.actionLabelDestructive]}
+            {/* Scrolls once the choices outgrow the screen. A calendar day offers every workout
+                type in the plan plus rest and clear, and a plan with enough days used to push the
+                cancel row below the bottom edge, where nothing could reach it. Title and cancel
+                stay outside the scroll so both are always on screen. */}
+            <ScrollView
+              style={{ maxHeight: windowHeight * 0.55 }}
+              contentContainerStyle={styles.actionList}
+              bounces={false}
+            >
+              {request?.actions.map((action, index) => (
+                <Pressable
+                  key={action.label}
+                  onPress={() => {
+                    void hapticLight();
+                    settle(index);
+                  }}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [
+                    styles.action,
+                    action.destructive && styles.actionDestructive,
+                    pressed && styles.actionPressed,
+                  ]}
                 >
-                  {action.label}
-                </Text>
-              </Pressable>
-            ))}
+                  <Text
+                    style={[styles.actionLabel, action.destructive && styles.actionLabelDestructive]}
+                  >
+                    {action.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
 
             {/* Always last and always present. Every sheet can be backed out of, and the way out
                 should sit in the same place each time rather than wherever a call site put it. */}
@@ -226,6 +247,7 @@ export function ActionSheetProvider({ children }: { children: ReactNode }) {
 
 interface Styles {
   backdrop: ViewStyle;
+  actionList: ViewStyle;
   sheet: ViewStyle;
   grabber: ViewStyle;
   title: TextStyle;
@@ -242,6 +264,7 @@ interface Styles {
 const createStyles = (colors: ColorPalette) =>
   StyleSheet.create<Styles>({
     backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+    actionList: { gap: spacing.sm },
     sheet: {
       backgroundColor: colors.surface,
       borderTopStartRadius: radius.xl,

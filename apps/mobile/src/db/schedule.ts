@@ -243,3 +243,144 @@ export async function seedWeekFromPrevious(
   }
   return copied;
 }
+
+/* -------------------------------------------------------------------------- */
+/* Months                                                                      */
+/* -------------------------------------------------------------------------- */
+
+/** How far back to look for a week worth repeating. Two months covers a planned previous month. */
+const LOOKBACK_WEEKS = 8;
+
+/** `YYYY-MM` for the month a local date falls in. */
+export function monthKey(date: string): string {
+  return date.slice(0, 7);
+}
+
+/**
+ * Move a `YYYY-MM` by whole months.
+ *
+ * Done in integer months rather than through `Date.setMonth`, which overflows: one month after
+ * January 31st lands on March 3rd, and a calendar that skips February when opened on the 31st is
+ * a bug nobody reproduces on the day they go looking for it.
+ */
+export function addMonths(month: string, delta: number): string {
+  const [year, mon] = month.split('-').map(Number);
+  const total = (year ?? 1970) * 12 + ((mon ?? 1) - 1) + delta;
+  const nextYear = Math.floor(total / 12);
+  const nextMonth = total - nextYear * 12 + 1;
+  return `${nextYear}-${String(nextMonth).padStart(2, '0')}`;
+}
+
+export interface MonthCell {
+  /** `YYYY-MM-DD`, local. */
+  date: string;
+  /** False for days borrowed from the neighbouring months to complete the first and last rows. */
+  inMonth: boolean;
+}
+
+/**
+ * A month laid out as a calendar: whole weeks, Sunday first, seven cells a row.
+ *
+ * The first and last rows borrow days from the months either side, so a month is four to six
+ * rows — February 2026 starts on a Sunday and is exactly four, August 2026 starts on a Saturday
+ * and needs six. Fixing the grid at six rows would be simpler and would leave an empty row under
+ * most months, which on a phone is a sixth of the screen spent on nothing.
+ *
+ * Built from `weekStart` and `addDays`, the same local-date arithmetic the week editor uses, so
+ * the two views cannot disagree about which Sunday a date belongs to.
+ */
+export function monthGrid(month: string): MonthCell[][] {
+  const end = `${addMonths(month, 1)}-01`;
+  const rows: MonthCell[][] = [];
+  // `YYYY-MM-DD` strings compare correctly as plain text, which is what makes this loop safe.
+  for (let cursor = weekStart(`${month}-01`); cursor < end; cursor = addDays(cursor, 7)) {
+    rows.push(weekDates(cursor).map((date) => ({ date, inMonth: monthKey(date) === month })));
+  }
+  return rows;
+}
+
+/**
+ * Every decision between two local dates, inclusive.
+ *
+ * A date with a workout maps to its plan day, a chosen rest day maps to null, and an undecided
+ * date is absent — so `has` answers "was this decided" and `get` answers "decided as what". A
+ * plain array of nullable ids would fold rest and undecided into one value, and that is the
+ * distinction the rotation depends on.
+ */
+export async function getRange(
+  db: SqlExecutor,
+  userId: string,
+  from: string,
+  to: string,
+): Promise<Map<string, string | null>> {
+  const rows = await db.all<ScheduledDayRow>(
+    `SELECT * FROM scheduled_days
+      WHERE user_id = ? AND scheduled_on >= ? AND scheduled_on <= ? AND deleted_at IS NULL`,
+    [userId, from, to],
+  );
+  return new Map(rows.map((row) => [row.scheduled_on, row.plan_day_id]));
+}
+
+/**
+ * Plan a month in one go, from a week that is already planned.
+ *
+ * Every undecided date from `today` to the end of the month takes what was chosen on the same
+ * weekday in the source week — the workout, or the rest. Weekdays the source week left undecided
+ * stay undecided, so the rotation keeps owning them exactly as before.
+ *
+ * It only ever fills. A date already decided keeps its decision, and nothing before `today` is
+ * touched: rewriting the past of a calendar is not planning, and a fill that quietly changed
+ * last week would make every other view of the calendar untrustworthy.
+ *
+ * The source is the fullest recently planned week — most days decided, the latest one if two
+ * tie — not simply the week of the latest decision. Planning one special Sunday three weeks out
+ * would otherwise make that single date the entire pattern, and a fully planned first week would
+ * be ignored in favour of it.
+ *
+ * Returns how many dates it wrote, so the screen can say what happened.
+ */
+export async function repeatWeekAcrossMonth(
+  db: SqlExecutor,
+  userId: string,
+  newId: IdFactory,
+  month: string,
+  today: string,
+  clock: Clock = defaultClock,
+): Promise<number> {
+  const monthStart = `${month}-01`;
+  const monthEnd = addDays(`${addMonths(month, 1)}-01`, -1);
+  const lookbackStart = addDays(weekStart(monthStart), -7 * LOOKBACK_WEEKS);
+
+  const recent = await getRange(db, userId, lookbackStart, monthEnd);
+
+  const byWeek = new Map<string, Map<number, string | null>>();
+  for (const [date, planDayId] of recent) {
+    const start = weekStart(date);
+    const week = byWeek.get(start) ?? new Map<number, string | null>();
+    week.set(parseLocalDate(date).getDay(), planDayId);
+    byWeek.set(start, week);
+  }
+
+  let pattern: Map<number, string | null> | undefined;
+  let patternStart = '';
+  for (const [start, week] of byWeek) {
+    const fuller = !pattern || week.size > pattern.size;
+    const laterTie = pattern !== undefined && week.size === pattern.size && start > patternStart;
+    if (fuller || laterTie) {
+      pattern = week;
+      patternStart = start;
+    }
+  }
+  if (!pattern) return 0;
+
+  let written = 0;
+  const first = today > monthStart ? today : monthStart;
+  for (let date = first; date <= monthEnd; date = addDays(date, 1)) {
+    if (recent.has(date)) continue;
+    const weekday = parseLocalDate(date).getDay();
+    if (!pattern.has(weekday)) continue;
+    await setScheduledDay(db, userId, newId, date, pattern.get(weekday) ?? null, clock);
+    written += 1;
+  }
+  return written;
+}

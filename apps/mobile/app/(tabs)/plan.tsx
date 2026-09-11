@@ -304,6 +304,16 @@ export default function PlanScreen() {
             })
           )}
 
+          {/* The month first: it is the wider view and the one that plans ahead. The week
+              editor stays beside it for the Saturday ritual, and both write the same calendar. */}
+          <Pressable
+            onPress={() => router.push('/plan-month')}
+            style={styles.addDayButton}
+            accessibilityRole="button"
+          >
+            <Text style={styles.addDayText}>📅 {t('month.open')}</Text>
+          </Pressable>
+
           <Pressable
             onPress={() => router.push('/plan-week')}
             style={styles.addDayButton}

@@ -13,11 +13,16 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { SqlExecutor } from './executor.js';
 import {
   addDays,
+  addMonths,
   clearScheduledDay,
+  getRange,
   getWeek,
   isWeekUnplanned,
   localDate,
+  monthGrid,
+  monthKey,
   nextWeekStart,
+  repeatWeekAcrossMonth,
   scheduledFor,
   seedWeekFromPrevious,
   setScheduledDay,
@@ -186,5 +191,171 @@ describe('seeding from the previous week', () => {
     await setScheduledDay(db, 'user-2', newId, '2026-08-09', 'their-day', clock);
 
     expect(await seedWeekFromPrevious(db, USER, newId, '2026-08-16', clock)).toBe(false);
+  });
+});
+
+describe('months', () => {
+  it('moves across a year boundary in both directions', () => {
+    expect(addMonths('2026-12', 1)).toBe('2027-01');
+    expect(addMonths('2026-01', -1)).toBe('2025-12');
+    expect(addMonths('2026-09', 0)).toBe('2026-09');
+  });
+
+  it('never skips a month the way Date.setMonth does on the 31st', () => {
+    expect(addMonths(monthKey('2026-01-31'), 1)).toBe('2026-02');
+  });
+
+  it('lays out a month that starts on Sunday as exactly four rows', () => {
+    const grid = monthGrid('2026-02');
+    expect(grid).toHaveLength(4);
+    expect(grid[0]?.[0]).toEqual({ date: '2026-02-01', inMonth: true });
+  });
+
+  it('borrows days from the neighbouring months to complete the rows', () => {
+    // August 2026 begins on a Saturday: the first row is six July days and then August 1st.
+    const grid = monthGrid('2026-08');
+    expect(grid).toHaveLength(6);
+    expect(grid[0]?.[0]).toEqual({ date: '2026-07-26', inMonth: false });
+    expect(grid[0]?.[6]).toEqual({ date: '2026-08-01', inMonth: true });
+  });
+
+  it('puts every date of the month in the grid exactly once, in order', () => {
+    const cells = monthGrid('2026-09').flat();
+    const september = cells.filter((cell) => cell.inMonth).map((cell) => cell.date);
+    expect(september).toHaveLength(30);
+    expect(new Set(september).size).toBe(30);
+    for (let i = 1; i < cells.length; i += 1) {
+      expect(cells[i]?.date).toBe(addDays(cells[i - 1]?.date ?? '', 1));
+    }
+  });
+
+  it('keeps every row at seven days', () => {
+    for (const month of ['2026-02', '2026-08', '2026-09', '2026-12']) {
+      expect(monthGrid(month).every((row) => row.length === 7)).toBe(true);
+    }
+  });
+});
+
+describe('reading a range', () => {
+  it('keeps rest and undecided apart', async () => {
+    await setScheduledDay(db, USER, newId, '2026-09-06', 'push', clock);
+    await setScheduledDay(db, USER, newId, '2026-09-07', null, clock);
+
+    const range = await getRange(db, USER, '2026-09-01', '2026-09-30');
+    expect(range.get('2026-09-06')).toBe('push');
+    expect(range.has('2026-09-07')).toBe(true);
+    expect(range.get('2026-09-07')).toBeNull();
+    expect(range.has('2026-09-08')).toBe(false);
+  });
+
+  it('includes both ends and nothing outside them', async () => {
+    for (const date of ['2026-08-31', '2026-09-01', '2026-09-30', '2026-10-01']) {
+      await setScheduledDay(db, USER, newId, date, 'push', clock);
+    }
+    const range = await getRange(db, USER, '2026-09-01', '2026-09-30');
+    expect([...range.keys()].sort()).toEqual(['2026-09-01', '2026-09-30']);
+  });
+
+  it('leaves out a cleared date', async () => {
+    await setScheduledDay(db, USER, newId, '2026-09-06', 'push', clock);
+    await clearScheduledDay(db, USER, '2026-09-06', clock);
+    expect((await getRange(db, USER, '2026-09-01', '2026-09-30')).has('2026-09-06')).toBe(false);
+  });
+});
+
+describe('repeating a week across the month', () => {
+  // September 6th 2026 is a Sunday. Push on Sundays, rest on Tuesdays, Mondays left open.
+  async function planFirstWeek() {
+    await setScheduledDay(db, USER, newId, '2026-09-06', 'push', clock);
+    await setScheduledDay(db, USER, newId, '2026-09-08', null, clock);
+  }
+
+  it('copies each weekday forward, workout and rest alike', async () => {
+    await planFirstWeek();
+
+    const written = await repeatWeekAcrossMonth(db, USER, newId, '2026-09', '2026-09-06', clock);
+
+    const range = await getRange(db, USER, '2026-09-01', '2026-09-30');
+    for (const sunday of ['2026-09-13', '2026-09-20', '2026-09-27']) {
+      expect(range.get(sunday)).toBe('push');
+    }
+    for (const tuesday of ['2026-09-15', '2026-09-22', '2026-09-29']) {
+      expect(range.has(tuesday)).toBe(true);
+      expect(range.get(tuesday)).toBeNull();
+    }
+    expect(written).toBe(6);
+  });
+
+  it('leaves the weekdays the source week never decided to the rotation', async () => {
+    await planFirstWeek();
+    await repeatWeekAcrossMonth(db, USER, newId, '2026-09', '2026-09-06', clock);
+
+    const range = await getRange(db, USER, '2026-09-01', '2026-09-30');
+    for (const monday of ['2026-09-14', '2026-09-21', '2026-09-28']) {
+      expect(range.has(monday)).toBe(false);
+    }
+  });
+
+  it('never overwrites a date that was already decided', async () => {
+    await planFirstWeek();
+    await setScheduledDay(db, USER, newId, '2026-09-20', 'legs', clock);
+
+    await repeatWeekAcrossMonth(db, USER, newId, '2026-09', '2026-09-06', clock);
+
+    expect((await getRange(db, USER, '2026-09-20', '2026-09-20')).get('2026-09-20')).toBe('legs');
+  });
+
+  it('copies the fullest planned week, not a one-off date further ahead', async () => {
+    // Taking the week of the latest decision would make the lone Sunday on the 20th the whole
+    // pattern, and every Tuesday rest from the fully planned first week would be lost.
+    await planFirstWeek();
+    await setScheduledDay(db, USER, newId, '2026-09-20', 'legs', clock);
+
+    await repeatWeekAcrossMonth(db, USER, newId, '2026-09', '2026-09-06', clock);
+
+    const range = await getRange(db, USER, '2026-09-01', '2026-09-30');
+    expect(range.get('2026-09-13')).toBe('push');
+    expect(range.has('2026-09-15')).toBe(true);
+    expect(range.get('2026-09-15')).toBeNull();
+  });
+
+  it('does not rewrite anything before today', async () => {
+    // Rewriting the past of a calendar is not planning.
+    await planFirstWeek();
+
+    await repeatWeekAcrossMonth(db, USER, newId, '2026-09', '2026-09-14', clock);
+
+    const range = await getRange(db, USER, '2026-09-01', '2026-09-30');
+    expect(range.has('2026-09-13')).toBe(false);
+    expect(range.get('2026-09-20')).toBe('push');
+  });
+
+  it('fills a future month from the week planned before it', async () => {
+    // Planning a month ahead: the source is last month, and all of the target is still to come.
+    await planFirstWeek();
+
+    const written = await repeatWeekAcrossMonth(db, USER, newId, '2026-10', '2026-09-06', clock);
+
+    const october = await getRange(db, USER, '2026-10-01', '2026-10-31');
+    expect(october.get('2026-10-04')).toBe('push');
+    expect(october.has('2026-10-06')).toBe(true);
+    expect(october.get('2026-10-06')).toBeNull();
+    expect(written).toBeGreaterThan(0);
+  });
+
+  it('does nothing and reports zero when there is no week to copy', async () => {
+    expect(await repeatWeekAcrossMonth(db, USER, newId, '2026-09', '2026-09-06', clock)).toBe(0);
+  });
+
+  it('can be pressed twice without changing the result', async () => {
+    await planFirstWeek();
+    await repeatWeekAcrossMonth(db, USER, newId, '2026-09', '2026-09-06', clock);
+    expect(await repeatWeekAcrossMonth(db, USER, newId, '2026-09', '2026-09-06', clock)).toBe(0);
+  });
+
+  it('keeps two users calendars apart', async () => {
+    await planFirstWeek();
+    await repeatWeekAcrossMonth(db, 'someone-else', newId, '2026-09', '2026-09-06', clock);
+    expect((await getRange(db, 'someone-else', '2026-09-01', '2026-09-30')).size).toBe(0);
   });
 });
