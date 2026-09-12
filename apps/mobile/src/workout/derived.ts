@@ -326,3 +326,29 @@ export function firstUnfinishedStation(
   }
   return null;
 }
+
+/**
+ * Where a horizontal drag across the focused exercise lands.
+ *
+ * Left to right, always: dragging the card leftwards brings the next exercise in from the right,
+ * the way a filmstrip runs forward. Deliberately not mirrored for Hebrew — see the swipe handler
+ * in the workout screen for why a workout reads as a sequence in time rather than as a sentence.
+ *
+ * Returns null for a drag that should snap back: too short to mean anything, or reaching past
+ * either end of the workout. Null rather than the current station so the caller can tell "stay
+ * here because nothing happened" from "move to where you already are", which animate differently.
+ *
+ * The threshold scales with the screen but stops at 80px, so a large phone does not demand a
+ * longer swipe than a thumb comfortably makes.
+ */
+export function swipeTarget(
+  dx: number,
+  station: number,
+  count: number,
+  width: number,
+): number | null {
+  const threshold = Math.min(80, width * 0.22);
+  if (Math.abs(dx) < threshold) return null;
+  const target = dx < 0 ? station + 1 : station - 1;
+  return target >= 0 && target < count ? target : null;
+}

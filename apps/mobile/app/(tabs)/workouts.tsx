@@ -23,10 +23,13 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
+  Animated,
+  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
   type TextStyle,
   type ViewStyle,
@@ -40,10 +43,10 @@ import { FinishSummary } from '../../src/components/FinishSummary.js';
 import { requestBackup } from '../../src/backup/AutoBackup.js';
 import * as SecureStore from 'expo-secure-store';
 
-import { isRtlLanguage, type Language } from '../../src/i18n/index.js';
 
 import { DragReorderList, type DragHandleProps } from '../../src/components/DragReorderList.js';
 import { KeyboardSafe } from '../../src/components/KeyboardSafe.js';
+import { ExerciseVisual } from '../../src/components/ExerciseVisual.js';
 import { ExercisePanel } from '../../src/components/workout/ExercisePanel.js';
 import { EXTEND_SECONDS, RestBanner } from '../../src/components/workout/RestBanner.js';
 import { WorkoutHeader } from '../../src/components/workout/WorkoutHeader.js';
@@ -53,6 +56,7 @@ import {
   firstUnfinishedStation,
   isExerciseDone,
   stations,
+  swipeTarget,
 } from '../../src/workout/derived.js';
 import { Banner, EmptyState, SkeletonScreen } from '../../src/components/ui.js';
 import { WorkoutHome, type TemplateEntry } from '../../src/components/WorkoutHome.js';
@@ -852,6 +856,100 @@ export default function WorkoutsScreen() {
     [groups, exerciseDone],
   );
 
+  /* ------------------------------------------------------------------ swiping */
+
+  /**
+   * The stations laid out as a filmstrip that runs left to right, dragged with a finger.
+   *
+   * Left to right in every language, deliberately, and the layout is pinned with `direction:
+   * 'ltr'` so it does not mirror into Hebrew. A workout is a sequence in time, not a sentence:
+   * the exercise after this one is the one to the right, the same way a video scrubs forward to
+   * the right no matter what language its subtitles are in. Mirroring it meant "next" pointed
+   * one way in the arrows and the other way under the thumb.
+   *
+   * The card follows the finger, so the direction never has to be learned — whichever way it is
+   * dragged, the next exercise comes into view from the side it is being pulled from.
+   */
+  const { width: windowWidth } = useWindowDimensions();
+  const slideX = useRef(new Animated.Value(0)).current;
+
+  /*
+   * The gesture is built once, so everything it reads has to come through a ref: handlers
+   * created on mount would otherwise answer with the station that was current on mount.
+   */
+  const swipeState = useRef({ station: 0, count: 0, width: 0, go: (_index: number) => {} });
+  swipeState.current.station = activeStation;
+  swipeState.current.count = groups.length;
+  swipeState.current.width = windowWidth;
+  swipeState.current.go = goToStation;
+
+  const swipeStation = useRef(
+    PanResponder.create({
+      /*
+       * Claimed in the capture phase, and only for a decidedly horizontal drag.
+       *
+       * The card is full of things that want the touch first — weight and rep fields, the done
+       * checkbox — and in the bubble phase they would each have taken it before this ever ran.
+       * The thresholds are what keep taps and the vertical scroll out: 18px of travel, and more
+       * than twice as much sideways as up.
+       */
+      onMoveShouldSetPanResponderCapture: (_evt, gesture) =>
+        Math.abs(gesture.dx) > 18 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 2,
+      onPanResponderMove: (_evt, gesture) => {
+        const { station, count } = swipeState.current;
+        // At either end the card still moves, but grudgingly. A card that refuses to budge reads
+        // as a screen that has frozen; one that gives a little says there is nothing over there.
+        const atEnd =
+          (gesture.dx < 0 && station >= count - 1) || (gesture.dx > 0 && station <= 0);
+        slideX.setValue(atEnd ? gesture.dx * 0.25 : gesture.dx);
+      },
+      onPanResponderRelease: (_evt, gesture) => {
+        const { station, count, width, go } = swipeState.current;
+        const target = swipeTarget(gesture.dx, station, count, width);
+
+        // Nothing to move to: too short a drag, or the end of the workout.
+        if (target === null) {
+          Animated.spring(slideX, { toValue: 0, useNativeDriver: true, friction: 9 }).start();
+          return;
+        }
+
+        // Out the way it was pushed; the effect below brings the new one in from the far side.
+        Animated.timing(slideX, {
+          toValue: target > station ? -width : width,
+          duration: 140,
+          useNativeDriver: true,
+        }).start(({ finished }) => {
+          if (finished) go(target);
+        });
+      },
+      onPanResponderTerminate: () => {
+        Animated.spring(slideX, { toValue: 0, useNativeDriver: true, friction: 9 }).start();
+      },
+    }),
+  ).current;
+
+  /**
+   * Slide the new station in whenever it changes — dragged to, tapped to, or arrived at by
+   * finishing the last set.
+   *
+   * Here rather than in the gesture so that finishing an exercise looks the same as swiping to
+   * the next one. Forward always enters from the right, which is the direction the strip runs,
+   * so the animation says which way the workout just moved.
+   */
+  const shownStation = useRef<number | null>(null);
+  useEffect(() => {
+    if (!focus) {
+      shownStation.current = null;
+      return;
+    }
+    const previous = shownStation.current;
+    shownStation.current = activeStation;
+    if (previous === null || previous === activeStation) return;
+
+    slideX.setValue(activeStation > previous ? windowWidth : -windowWidth);
+    Animated.spring(slideX, { toValue: 0, useNativeDriver: true, friction: 9 }).start();
+  }, [activeStation, focus, slideX, windowWidth]);
+
   const setFocusMode = useCallback((next: boolean) => {
     void hapticLight();
     setFocus(next);
@@ -868,8 +966,6 @@ export default function WorkoutsScreen() {
       })
       .catch(() => undefined);
   }, []);
-
-  const rtl = isRtlLanguage(i18n.language as Language);
 
   /** The first exercise of the next station, for the line that says what is coming. */
   const upNextIndex = groups[activeStation + 1]?.[0];
@@ -997,6 +1093,11 @@ export default function WorkoutsScreen() {
                 onAddSet={() => addSet(exercise.id)}
                 onOptions={() => openExerciseOptions(exercise.id, seed.nameHe)}
                 dragHandle={dragHandle}
+                // Big in focus mode, where it is the fastest way to confirm the machine in
+                // front of you is the one on the screen; a thumbnail in the list, where the
+                // question is only which card is which.
+                visual={<ExerciseVisual exercise={seed} height={focus ? 150 : 52} />}
+                visualLayout={focus ? 'banner' : 'thumb'}
                 onBarbell={seed.equipmentSlug === 'barbell'}
                 onAddWarmup={() => addWarmup(exercise.id, seed.equipmentSlug === 'barbell')}
                 // Offered only with nothing warmed up yet and a working weight to ramp toward.
@@ -1127,12 +1228,17 @@ export default function WorkoutsScreen() {
             {/* The whole station, which for a superset is both exercises: they are performed
                 together with no rest between them, and showing one of them alone would be the
                 screen arguing with the training. */}
-            {(groups[activeStation] ?? []).map((index) => {
-              const exercise = exercises[index];
-              return exercise ? (
-                <Fragment key={exercise.id}>{renderExercise(exercise)}</Fragment>
-              ) : null;
-            })}
+            <Animated.View
+              style={{ transform: [{ translateX: slideX }], gap: spacing.md }}
+              {...swipeStation.panHandlers}
+            >
+              {(groups[activeStation] ?? []).map((index) => {
+                const exercise = exercises[index];
+                return exercise ? (
+                  <Fragment key={exercise.id}>{renderExercise(exercise)}</Fragment>
+                ) : null;
+              })}
+            </Animated.View>
 
             <View style={styles.stationNav}>
               <Pressable
@@ -1146,7 +1252,7 @@ export default function WorkoutsScreen() {
                   pressed && styles.pressed,
                 ]}
               >
-                <Text style={styles.stationGlyph}>{rtl ? '›' : '‹'}</Text>
+                <Text style={styles.stationGlyph}>‹</Text>
               </Pressable>
 
               <View style={styles.stationMiddle}>
@@ -1174,7 +1280,7 @@ export default function WorkoutsScreen() {
                   pressed && styles.pressed,
                 ]}
               >
-                <Text style={styles.stationGlyph}>{rtl ? '‹' : '›'}</Text>
+                <Text style={styles.stationGlyph}>›</Text>
               </Pressable>
             </View>
           </>
@@ -1268,6 +1374,9 @@ const createStyles = (colors: ColorPalette) =>
   modeText: { color: colors.textMuted, fontSize: 11 },
   modeTextOn: { color: colors.accent, fontWeight: '700' },
   stationNav: {
+    // Pinned against the app's RTL layout on purpose — see the swipe handler for why the strip
+    // runs left to right in every language.
+    direction: 'ltr',
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,

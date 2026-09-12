@@ -11,7 +11,7 @@
  * for why nothing here is stored.
  */
 
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
 
@@ -102,6 +102,22 @@ export interface ExercisePanelProps {
    */
   onAddWarmup?: () => void;
   canAddWarmup?: boolean;
+  /**
+   * A picture of the movement, passed in rather than looked up here.
+   *
+   * The panel works in plain values — a name, sets, numbers — and knowing how to turn an
+   * exercise key into a photo would make it the second place that has to be right about the
+   * catalogue. The caller already holds the seed, so it builds the visual and this lays it out.
+   */
+  visual?: ReactNode;
+  /**
+   * How much room the picture gets.
+   *
+   * A thumbnail beside the name is enough in the full list, where the question is which card is
+   * which. In focus mode there is one exercise on the screen and the picture is the fastest
+   * answer to "is this the machine in front of me" — worth the width there, wasted in a list.
+   */
+  visualLayout?: 'thumb' | 'banner';
 }
 
 export function ExercisePanel({
@@ -122,6 +138,8 @@ export function ExercisePanel({
   onBarbell = false,
   onAddWarmup,
   canAddWarmup = false,
+  visual,
+  visualLayout = 'thumb',
 }: ExercisePanelProps) {
   const { t } = useTranslation();
   const { colors } = useTheme();
@@ -161,7 +179,10 @@ export function ExercisePanel({
 
   return (
     <View style={s.card}>
+      {visual && visualLayout === 'banner' ? <View style={s.visualBanner}>{visual}</View> : null}
+
       <View style={s.header}>
+        {visual && visualLayout === 'thumb' ? <View style={s.visualThumb}>{visual}</View> : null}
         <View style={s.headerText}>
           <Text style={s.name}>{name}</Text>
           {previousLabel ? (
@@ -362,6 +383,8 @@ function formatPrevious(previous: readonly PreviousSet[], unit: UnitPreference):
 const createStyles = (colors: ColorPalette) =>
   StyleSheet.create<{
     card: ViewStyle;
+    visualBanner: ViewStyle;
+    visualThumb: ViewStyle;
     header: ViewStyle;
     headerText: ViewStyle;
     name: TextStyle;
@@ -396,6 +419,8 @@ const createStyles = (colors: ColorPalette) =>
     pressed: ViewStyle;
     volume: TextStyle;
   }>({
+    visualBanner: { alignSelf: 'stretch' },
+    visualThumb: { width: 56 },
     card: {
       borderWidth: 1,
       borderColor: colors.borderSubtle,

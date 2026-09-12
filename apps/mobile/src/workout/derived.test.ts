@@ -13,6 +13,7 @@ import {
   isExerciseDone,
   labelSets,
   stations,
+  swipeTarget,
   type DerivedExercise,
 } from './derived.js';
 
@@ -349,5 +350,40 @@ describe('firstUnfinishedStation', () => {
 
   it('is null when there are no stations at all', () => {
     expect(firstUnfinishedStation([], [])).toBeNull();
+  });
+});
+
+describe('swiping between exercises', () => {
+  const WIDTH = 400;
+
+  it('goes forward on a drag to the left and back on a drag to the right', () => {
+    expect(swipeTarget(-100, 1, 5, WIDTH)).toBe(2);
+    expect(swipeTarget(100, 1, 5, WIDTH)).toBe(0);
+  });
+
+  it('ignores a drag too short to have been meant', () => {
+    expect(swipeTarget(-20, 1, 5, WIDTH)).toBeNull();
+    expect(swipeTarget(20, 1, 5, WIDTH)).toBeNull();
+    expect(swipeTarget(0, 1, 5, WIDTH)).toBeNull();
+  });
+
+  it('stops at both ends instead of wrapping around', () => {
+    expect(swipeTarget(100, 0, 5, WIDTH)).toBeNull();
+    expect(swipeTarget(-100, 4, 5, WIDTH)).toBeNull();
+  });
+
+  it('never asks a wide screen for a longer swipe than a thumb makes', () => {
+    // 22% of a tablet would be far past what a thumb reaches without shifting grip.
+    expect(swipeTarget(-85, 1, 5, 1200)).toBe(2);
+    expect(swipeTarget(-79, 1, 5, 1200)).toBeNull();
+  });
+
+  it('scales down on a narrow screen rather than holding at 80px', () => {
+    expect(swipeTarget(-50, 1, 5, 200)).toBe(2);
+  });
+
+  it('has nowhere to go in a workout of one exercise', () => {
+    expect(swipeTarget(-100, 0, 1, WIDTH)).toBeNull();
+    expect(swipeTarget(100, 0, 1, WIDTH)).toBeNull();
   });
 });
