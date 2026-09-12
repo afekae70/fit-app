@@ -8,11 +8,10 @@
  * Once auth lands, these inputs come from the user's stored profile instead of local state.
  */
 
-import { router, useFocusEffect } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -49,6 +48,7 @@ import {
   weightUnitKey,
 } from '../src/units.js';
 import { getDailyBrief } from '../src/coach/dailyBrief.js';
+import { MenuButton } from '../src/components/AppMenu.js';
 import {
   BackButton,
   Banner,
@@ -296,15 +296,7 @@ export default function NutritionScreen() {
       <View style={styles.header}>
         <BackButton />
         <Text style={styles.appName}>{t('common.appName')}</Text>
-        <Pressable
-          onPress={() => router.push('/settings')}
-          style={styles.langButton}
-          accessibilityRole="button"
-          accessibilityLabel={t('settings.title')}
-          hitSlop={8}
-        >
-          <Text style={styles.langButtonText}>⚙️</Text>
-        </Pressable>
+        <MenuButton pushToEnd />
       </View>
 
       {streak && streak.currentDays > 0 ? (

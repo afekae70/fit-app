@@ -29,6 +29,7 @@ import {
 } from 'react-native';
 
 import { FadeSlideIn } from './motion.js';
+import { MenuButton } from './AppMenu.js';
 import { useTheme } from '../ThemeProvider.js';
 import {
   duration,
@@ -169,7 +170,7 @@ export function BackButton() {
 }
 
 /**
- * The one header every screen uses: an optional back control, the title, and the settings gear.
+ * The one header every screen uses: an optional back control, the title, and the menu.
  *
  * Consolidated because six screens had grown their own copy of the same back Pressable and
  * chevron. That mattered beyond tidiness — the chevron points the other way in Hebrew, so a
@@ -177,17 +178,13 @@ export function BackButton() {
  *
  * `back` renders only when there is somewhere to go. A tab root usually has nothing to pop, and
  * a control that silently does nothing is worse than an absent one.
+ *
+ * The menu replaced a settings gear, and is not optional the way the gear was. Four screens used
+ * to hide the gear because they were already somewhere in that area — but the menu is not a link
+ * to settings, it is how every screen outside the tab bar is reached, and a page that hides it is
+ * a dead end.
  */
-export function ScreenHeader({
-  title,
-  back = false,
-  settings = true,
-}: {
-  title: string;
-  back?: boolean;
-  settings?: boolean;
-}) {
-  const { t } = useTranslation();
+export function ScreenHeader({ title, back = false }: { title: string; back?: boolean }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -202,16 +199,7 @@ export function ScreenHeader({
         <ScreenTitle>{title}</ScreenTitle>
       </View>
 
-      {settings ? (
-        <Pressable
-          onPress={() => router.push('/settings')}
-          accessibilityRole="button"
-          accessibilityLabel={t('settings.title')}
-          hitSlop={8}
-        >
-          <Text style={styles.screenHeaderGear}>⚙️</Text>
-        </Pressable>
-      ) : null}
+      <MenuButton />
     </View>
   );
 }

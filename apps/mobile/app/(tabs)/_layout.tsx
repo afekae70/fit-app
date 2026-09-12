@@ -2,14 +2,21 @@ import { Tabs } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Animated } from 'react-native';
-import { Barbell, BookOpen, CalendarBlank, ChartBar, House, type Icon } from 'phosphor-react-native';
+import { Barbell, CalendarBlank, ChartBar, House, type Icon } from 'phosphor-react-native';
 
 import { useTheme } from '../../src/ThemeProvider.js';
 
 /**
- * Five tabs, in the handoff's order: היום · אימון · תרגילים · תוכנית · התקדמות. Profile is
- * reached from the home avatar rather than from here, which keeps the bar to the five things
- * done during training and not the one done occasionally.
+ * Four tabs: היום · אימון · תוכנית · התקדמות — the things done while training.
+ *
+ * The exercise library was the fifth. It was the reading version of the catalogue, and the
+ * catalogue is already in front of you at the moment it is wanted: the picker that opens when an
+ * exercise is added to a workout. A permanent tab for browsing it was a tab spent on the rarest
+ * thing in the bar.
+ *
+ * Everything else — profile, coach, nutrition, measurements, gyms, backup, settings — is in the
+ * menu that every screen's header carries, rather than hidden behind the home screen's avatar
+ * the way it used to be.
  *
  * Icons are Phosphor line icons at 20px / 1.5px stroke, as specified. They replaced emoji, which
  * were a first-run shortcut from before any of these screens existed — they rendered at whatever
@@ -81,10 +88,6 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="workouts"
         options={{ title: t('tabs.workout'), tabBarIcon: icon(Barbell) }}
-      />
-      <Tabs.Screen
-        name="library"
-        options={{ title: t('tabs.library'), tabBarIcon: icon(BookOpen) }}
       />
       <Tabs.Screen
         name="plan"

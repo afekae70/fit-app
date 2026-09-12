@@ -37,6 +37,7 @@ import { useCurrentUserId } from '../src/auth/CurrentUserProvider.js';
 import { buildCoachPayload } from '../src/coach/payload.js';
 import { streamCoachChat, type CancelStream } from '../src/coach/stream.js';
 import { NutritionMenuCard, WorkoutPlanCard } from '../src/components/CoachProposalCard.js';
+import { MenuButton } from '../src/components/AppMenu.js';
 import { Banner, BackButton, EmptyState } from '../src/components/ui.js';
 import { API_BASE_URL } from '../src/config.js';
 import { activatePlan, addPlanDay, addPlanDayExercise, createPlan } from '../src/db/plans.js';
@@ -307,14 +308,7 @@ export default function CoachChatScreen() {
         <Pressable onPress={() => router.push('/(tabs)/progress')} accessibilityRole="button" hitSlop={8}>
           <Text style={styles.viewProgress}>📈 {t('coach.viewProgress')}</Text>
         </Pressable>
-        <Pressable
-          onPress={() => router.push('/settings')}
-          accessibilityRole="button"
-          accessibilityLabel={t('settings.title')}
-          hitSlop={8}
-        >
-          <Text style={styles.signOut}>⚙️</Text>
-        </Pressable>
+        <MenuButton />
       </View>
 
       <ScrollView

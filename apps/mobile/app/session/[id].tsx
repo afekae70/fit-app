@@ -13,6 +13,8 @@
 
 import { EXERCISE_SEED, type ExerciseSeed } from '@fit/shared/catalog';
 import { router, useLocalSearchParams } from 'expo-router';
+
+import { MenuButton } from '../../src/components/AppMenu.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -317,6 +319,7 @@ export default function SessionDetailScreen() {
             <Text style={styles.back}>{isHebrew ? '›' : '‹'}</Text>
           </Pressable>
           <Text style={styles.date}>{new Date(session.started_at).toLocaleDateString()}</Text>
+          <MenuButton pushToEnd />
         </View>
 
         {/* The rating survives past the sheet that asked for it. A number collected once and

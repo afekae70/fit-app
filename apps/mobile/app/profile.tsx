@@ -11,6 +11,8 @@
  */
 
 import { router } from 'expo-router';
+
+import { MenuButton } from '../src/components/AppMenu.js';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CaretLeft, CaretRight } from 'phosphor-react-native';
@@ -87,14 +89,17 @@ export default function ProfileScreen() {
         { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 28 },
       ]}
     >
-      <Pressable onPress={() => router.back()} accessibilityRole="button" hitSlop={8} style={styles.back}>
-        {/* Directional, so it mirrors. Non-directional glyphs elsewhere deliberately do not. */}
-        {I18nManager.isRTL ? (
-          <CaretRight size={20} color={colors.text} />
-        ) : (
-          <CaretLeft size={20} color={colors.text} />
-        )}
-      </Pressable>
+      <View style={styles.topRow}>
+        <Pressable onPress={() => router.back()} accessibilityRole="button" hitSlop={8} style={styles.back}>
+          {/* Directional, so it mirrors. Non-directional glyphs elsewhere deliberately do not. */}
+          {I18nManager.isRTL ? (
+            <CaretRight size={20} color={colors.text} />
+          ) : (
+            <CaretLeft size={20} color={colors.text} />
+          )}
+        </Pressable>
+        <MenuButton pushToEnd />
+      </View>
 
       <View style={styles.identity}>
         <View style={styles.avatar}>
@@ -167,6 +172,7 @@ const createStyles = (colors: ColorPalette) =>
   StyleSheet.create<{
     screen: ViewStyle;
     content: ViewStyle;
+    topRow: ViewStyle;
     back: ViewStyle;
     identity: ViewStyle;
     avatar: ViewStyle;
@@ -185,6 +191,7 @@ const createStyles = (colors: ColorPalette) =>
   }>({
     screen: { flex: 1 },
     content: { paddingHorizontal: 20, gap: 18 },
+    topRow: { flexDirection: 'row', alignItems: 'center' },
     back: { alignSelf: 'flex-start' },
 
     identity: { alignItems: 'center', gap: 8 },

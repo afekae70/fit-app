@@ -115,7 +115,7 @@ export default function RestoreScreen() {
         ]}
         keyboardShouldPersistTaps="handled"
       >
-        <ScreenHeader title={t('restore.title')} back settings={false} />
+        <ScreenHeader title={t('restore.title')} back />
 
         <Banner tone="warning">{t('restore.warning')}</Banner>
 

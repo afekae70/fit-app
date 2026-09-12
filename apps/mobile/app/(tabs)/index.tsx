@@ -17,7 +17,6 @@ import { useTranslation } from 'react-i18next';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useAuth } from '../../src/auth/AuthProvider.js';
 import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
 import {
   GreetingRow,
@@ -74,7 +73,6 @@ export default function TodayScreen() {
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
   const userId = useCurrentUserId();
-  const { session } = useAuth();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -151,8 +149,6 @@ export default function TodayScreen() {
       <GreetingRow
         greeting={t(greetingKey(new Date()))}
         date={formatDate(new Date(), i18n.language)}
-        initials={initialsFor(session?.user.email)}
-        onPressAvatar={() => router.push('/profile')}
       />
 
       {failed ? (
@@ -362,13 +358,6 @@ function greetingKey(now: Date): string {
 
 function formatDate(now: Date, language: string): string {
   return now.toLocaleDateString(language, { weekday: 'long', day: 'numeric', month: 'long' });
-}
-
-/** Initials for the avatar. The design uses initials on a tinted circle — there are no images. */
-function initialsFor(email: string | undefined): string {
-  const name = email?.split('@')[0] ?? '';
-  const letters = name.replace(/[^\p{L}]/gu, '');
-  return letters.slice(0, 2).toUpperCase() || '·';
 }
 
 const createStyles = (colors: ColorPalette) =>
