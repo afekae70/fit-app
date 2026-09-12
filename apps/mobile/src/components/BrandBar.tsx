@@ -1,5 +1,5 @@
 /**
- * The masthead: the app's mark and name in the middle, the menu at the start of the row.
+ * The masthead: the app's name in the middle, the menu at the start of the row.
  *
  * Mounted once in the root layout, above the router — so it is genuinely fixed. Rendering it
  * inside each screen put it inside that screen's ScrollView, which meant it scrolled away the
@@ -10,28 +10,23 @@
  * Because it sits above the router it owns the top safe-area inset for the whole app: the
  * screens underneath it no longer reach the notch, so they no longer pad for it.
  *
- * The mark and name are centred on the page, not merely placed after the menu — the menu is
- * taken out of the flow and pinned to the start, so the centre is the centre of the screen and
- * does not shift when the button's size or the language's direction changes. `start` is logical:
- * the right-hand side in Hebrew, the left in English, from one rule.
+ * The name is centred on the page, not merely placed after the menu — the menu is taken out of
+ * the flow and pinned to the start, so the centre is the centre of the screen and does not
+ * shift when the button's size or the language's direction changes. `start` is logical: the
+ * right-hand side in Hebrew, the left in English, from one rule.
+ *
+ * The app icon used to sit beside the name. It is drawn to be read at launcher size against a
+ * home screen, and shrunk into a row above the app's own content it read as a sticker rather
+ * than a mark. The name alone carries the same thing without competing with the screen.
  */
 
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Image,
-  StyleSheet,
-  Text,
-  View,
-  type ImageStyle,
-  type TextStyle,
-  type ViewStyle,
-} from 'react-native';
+import { StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import LOGO from '../../assets/icon.png';
 import { useTheme } from '../ThemeProvider.js';
-import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../theme.js';
+import { fontSize, fontWeight, spacing, type ColorPalette } from '../theme.js';
 import { MenuButton } from './AppMenu.js';
 
 export function BrandBar() {
@@ -46,22 +41,13 @@ export function BrandBar() {
         <MenuButton />
       </View>
 
-      <View style={s.brand}>
-        <Image source={LOGO} style={s.logo} accessibilityIgnoresInvertColors />
-        <Text style={s.name}>{t('common.appName')}</Text>
-      </View>
+      <Text style={s.name}>{t('common.appName')}</Text>
     </View>
   );
 }
 
 const createStyles = (colors: ColorPalette) =>
-  StyleSheet.create<{
-    bar: ViewStyle;
-    menu: ViewStyle;
-    brand: ViewStyle;
-    logo: ImageStyle;
-    name: TextStyle;
-  }>({
+  StyleSheet.create<{ bar: ViewStyle; menu: ViewStyle; name: TextStyle }>({
     bar: {
       paddingHorizontal: spacing.lg,
       paddingBottom: spacing.sm,
@@ -80,13 +66,10 @@ const createStyles = (colors: ColorPalette) =>
       bottom: spacing.sm,
       justifyContent: 'center',
     },
-    brand: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
-    logo: {
-      width: 44,
-      height: 44,
-      borderRadius: radius.md,
-      borderWidth: 1,
-      borderColor: colors.borderSubtle,
+    name: {
+      color: colors.text,
+      fontSize: fontSize.xl,
+      fontWeight: fontWeight.bold,
+      textAlign: 'center',
     },
-    name: { color: colors.text, fontSize: fontSize.xl, fontWeight: fontWeight.bold },
   });
