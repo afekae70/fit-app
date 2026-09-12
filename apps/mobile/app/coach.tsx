@@ -37,7 +37,7 @@ import { useCurrentUserId } from '../src/auth/CurrentUserProvider.js';
 import { buildCoachPayload } from '../src/coach/payload.js';
 import { streamCoachChat, type CancelStream } from '../src/coach/stream.js';
 import { NutritionMenuCard, WorkoutPlanCard } from '../src/components/CoachProposalCard.js';
-import { MenuButton } from '../src/components/AppMenu.js';
+import { BrandBar } from '../src/components/BrandBar.js';
 import { Banner, BackButton, EmptyState } from '../src/components/ui.js';
 import { API_BASE_URL } from '../src/config.js';
 import { activatePlan, addPlanDay, addPlanDayExercise, createPlan } from '../src/db/plans.js';
@@ -302,13 +302,16 @@ export default function CoachChatScreen() {
 
   return (
     <KeyboardSafe style={styles.screen}>
-      <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
+      <View style={[styles.brandBar, { paddingTop: insets.top + spacing.md }]}>
+        <BrandBar />
+      </View>
+
+      <View style={styles.header}>
         <BackButton />
         <Text style={styles.title}>{t('coach.title')}</Text>
         <Pressable onPress={() => router.push('/(tabs)/progress')} accessibilityRole="button" hitSlop={8}>
           <Text style={styles.viewProgress}>📈 {t('coach.viewProgress')}</Text>
         </Pressable>
-        <MenuButton />
       </View>
 
       <ScrollView
@@ -427,6 +430,7 @@ export default function CoachChatScreen() {
 const createStyles = (colors: ColorPalette) =>
   StyleSheet.create<{
     screen: ViewStyle;
+    brandBar: ViewStyle;
     header: ViewStyle;
     title: TextStyle;
     viewProgress: TextStyle;
@@ -449,6 +453,7 @@ const createStyles = (colors: ColorPalette) =>
     sendButtonText: TextStyle;
   }>({
   screen: { flex: 1, backgroundColor: colors.bg },
+  brandBar: { paddingHorizontal: spacing.lg },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

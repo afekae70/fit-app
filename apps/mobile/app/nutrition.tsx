@@ -48,7 +48,7 @@ import {
   weightUnitKey,
 } from '../src/units.js';
 import { getDailyBrief } from '../src/coach/dailyBrief.js';
-import { MenuButton } from '../src/components/AppMenu.js';
+import { BrandBar } from '../src/components/BrandBar.js';
 import {
   BackButton,
   Banner,
@@ -293,10 +293,11 @@ export default function NutritionScreen() {
       ]}
       keyboardShouldPersistTaps="handled"
     >
+      <BrandBar />
+
       <View style={styles.header}>
         <BackButton />
         <Text style={styles.appName}>{t('common.appName')}</Text>
-        <MenuButton pushToEnd />
       </View>
 
       {streak && streak.currentDays > 0 ? (

@@ -14,7 +14,7 @@
 import { EXERCISE_SEED, type ExerciseSeed } from '@fit/shared/catalog';
 import { router, useLocalSearchParams } from 'expo-router';
 
-import { MenuButton } from '../../src/components/AppMenu.js';
+import { BrandBar } from '../../src/components/BrandBar.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -314,12 +314,13 @@ export default function SessionDetailScreen() {
         ]}
         keyboardShouldPersistTaps="handled"
       >
+        <BrandBar />
+
         <View style={styles.header}>
           <Pressable onPress={() => router.back()} accessibilityRole="button" hitSlop={8}>
             <Text style={styles.back}>{isHebrew ? '›' : '‹'}</Text>
           </Pressable>
           <Text style={styles.date}>{new Date(session.started_at).toLocaleDateString()}</Text>
-          <MenuButton pushToEnd />
         </View>
 
         {/* The rating survives past the sheet that asked for it. A number collected once and

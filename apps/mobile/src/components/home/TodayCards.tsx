@@ -14,17 +14,13 @@
 
 import { LinearGradient } from 'expo-linear-gradient';
 
-/* The app's own mark, bundled — the same square the launcher shows. */
-import LOGO from '../../../assets/icon.png';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Image,
   Pressable,
   StyleSheet,
   Text,
   View,
-  type ImageStyle,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
@@ -37,7 +33,6 @@ import {
   type WeekSummary,
 } from '../../db/home.js';
 import type { TargetsResult } from '../../db/metrics.js';
-import { MenuButton } from '../AppMenu.js';
 import { useTheme } from '../../ThemeProvider.js';
 import { radius, type ColorPalette } from '../../theme.js';
 import { useUnit } from '../../UnitsProvider.js';
@@ -50,13 +45,12 @@ const DAY_INITIALS = ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'] as const;
 /* -------------------------------------------------------------------------- */
 
 /**
- * The top of the home screen: the greeting and the date, with the app's mark and the menu in
- * the opposite corner.
+ * The top of the home screen: the greeting, and the date in the size that makes it the heading.
  *
- * The mark replaced a bubble showing the reader's own initials. That bubble was the only door to
- * the profile, and through it the only door to the coach and the nutrition screen — so it could
- * not simply be dropped; the menu had to exist first. Now that it does, the corner can say which
- * app this is instead of repeating the name of the person already holding the phone.
+ * It used to carry a bubble of the reader's own initials, which was the only door to the profile
+ * — and through it the only door to the coach and the nutrition screen. That is now in the menu,
+ * and the mark and name that briefly stood in the bubble's place are in the masthead above,
+ * where every other screen has them too.
  */
 export function GreetingRow({ greeting, date }: { greeting: string; date: string }) {
   const { colors } = useTheme();
@@ -68,9 +62,7 @@ export function GreetingRow({ greeting, date }: { greeting: string; date: string
         <Text style={s.greeting}>{greeting}</Text>
         <Text style={s.date}>{date}</Text>
       </View>
-      <MenuButton />
-      {/* Bundled rather than remote, and never a placeholder: this one is the app itself. */}
-      <Image source={LOGO} style={s.logo} accessibilityIgnoresInvertColors />
+
     </View>
   );
 }
@@ -473,7 +465,7 @@ const createStyles = (colors: ColorPalette) =>
     greetingText: ViewStyle;
     greeting: TextStyle;
     date: TextStyle;
-    logo: ImageStyle;
+
     todayCard: ViewStyle;
     todayHeader: ViewStyle;
     todayHeaderText: ViewStyle;
@@ -540,13 +532,7 @@ const createStyles = (colors: ColorPalette) =>
     greetingText: { flex: 1, gap: 2 },
     greeting: { color: colors.textMuted, fontSize: 13, lineHeight: 16, textAlign: 'auto' },
     date: { color: colors.text, fontSize: 24, fontWeight: '500', letterSpacing: -0.5, textAlign: 'auto' },
-    logo: {
-      width: 40,
-      height: 40,
-      borderRadius: radius.md,
-      borderWidth: 1,
-      borderColor: colors.borderSubtle,
-    },
+
 
     /* today's workout ----------------------------------------------------- */
     todayCard: {

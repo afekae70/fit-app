@@ -29,7 +29,7 @@ import {
 } from 'react-native';
 
 import { FadeSlideIn } from './motion.js';
-import { MenuButton } from './AppMenu.js';
+import { BrandBar } from './BrandBar.js';
 import { useTheme } from '../ThemeProvider.js';
 import {
   duration,
@@ -179,10 +179,10 @@ export function BackButton() {
  * `back` renders only when there is somewhere to go. A tab root usually has nothing to pop, and
  * a control that silently does nothing is worse than an absent one.
  *
- * The menu replaced a settings gear, and is not optional the way the gear was. Four screens used
- * to hide the gear because they were already somewhere in that area — but the menu is not a link
- * to settings, it is how every screen outside the tab bar is reached, and a page that hides it is
- * a dead end.
+ * Above all of it sits the masthead — the menu, the app's mark and its name — which is on every
+ * screen in the app whether or not the screen uses this header. The menu replaced a settings
+ * gear, and is not optional the way the gear was: it is not a link to settings, it is how every
+ * screen outside the tab bar is reached, and a page that hides it is a dead end.
  */
 export function ScreenHeader({ title, back = false }: { title: string; back?: boolean }) {
   const { colors } = useTheme();
@@ -193,14 +193,15 @@ export function ScreenHeader({ title, back = false }: { title: string; back?: bo
   // while the native flag only updates on relaunch, and a chevron disagreeing with the layout
   // around it is exactly the kind of half-flip that reads as a bug.
   return (
-    <View style={styles.screenHeaderRow}>
-      <View style={styles.screenHeaderStart}>
-        {back ? <BackButton /> : null}
-        <ScreenTitle>{title}</ScreenTitle>
+    <>
+      <BrandBar />
+      <View style={styles.screenHeaderRow}>
+        <View style={styles.screenHeaderStart}>
+          {back ? <BackButton /> : null}
+          <ScreenTitle>{title}</ScreenTitle>
+        </View>
       </View>
-
-      <MenuButton />
-    </View>
+    </>
   );
 }
 
@@ -624,7 +625,6 @@ const createStyles = (colors: ColorPalette) =>
     screenHeaderRow: ViewStyle;
     screenHeaderStart: ViewStyle;
     screenHeaderBack: TextStyle;
-    screenHeaderGear: TextStyle;
     sectionTitle: TextStyle;
     hint: TextStyle;
     divider: ViewStyle;
@@ -720,7 +720,6 @@ const createStyles = (colors: ColorPalette) =>
     },
     screenHeaderStart: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, flex: 1 },
     screenHeaderBack: { color: colors.accent, fontSize: fontSize.xl, fontWeight: '700' },
-    screenHeaderGear: { fontSize: fontSize.lg, marginBottom: spacing.lg },
     // A label for the group below it, not a heading that competes with it. At full text colour
     // and body size in bold it carried the same weight as the numbers inside the card, so every
     // card opened with two things asking to be read first. Smaller, quieter and letterspaced, it

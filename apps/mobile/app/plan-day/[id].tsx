@@ -10,7 +10,7 @@
 import { EXERCISE_SEED, type ExerciseSeed } from '@fit/shared/catalog';
 import { router, useLocalSearchParams } from 'expo-router';
 
-import { MenuButton } from '../../src/components/AppMenu.js';
+import { BrandBar } from '../../src/components/BrandBar.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -174,6 +174,8 @@ export default function PlanDayScreen() {
         ]}
         keyboardShouldPersistTaps="handled"
       >
+        <BrandBar />
+
         <View style={styles.header}>
           <Pressable onPress={() => router.back()} accessibilityRole="button" hitSlop={8}>
             <Text style={styles.back}>{isHebrew ? '›' : '‹'}</Text>
@@ -181,7 +183,6 @@ export default function PlanDayScreen() {
           <Text style={styles.dayIndex}>
             {t('plan.day')} {day.day_index}
           </Text>
-          <MenuButton pushToEnd />
         </View>
 
         <TextInput
