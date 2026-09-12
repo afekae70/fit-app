@@ -9,7 +9,10 @@ import {
   setProgress,
   stepReps,
   stepWeight,
+  firstUnfinishedStation,
+  isExerciseDone,
   labelSets,
+  stations,
   type DerivedExercise,
 } from './derived.js';
 
@@ -267,5 +270,84 @@ describe('labelSets and drop sets', () => {
 
   it('still numbers warm-ups separately alongside drops', () => {
     expect(labelSets([warm, work, drop]).map((l) => l.kind)).toEqual(['warmup', 'working', 'drop']);
+  });
+});
+
+describe('stations', () => {
+  it('makes a station of every exercise when nothing is linked', () => {
+    expect(stations([false, false, false])).toEqual([[0], [1], [2]]);
+  });
+
+  it('keeps a superset together', () => {
+    // The pair is performed with no rest between them, so a screen showing one of them alone
+    // would be arguing with the training.
+    expect(stations([true, false, false])).toEqual([[0, 1], [2]]);
+  });
+
+  it('keeps a chain of three together', () => {
+    expect(stations([true, true, false])).toEqual([[0, 1, 2]]);
+  });
+
+  it('treats a link on the last exercise as the end of the run', () => {
+    // The flag can outlive the exercise that used to follow it, and a group reaching past the
+    // end would index nothing.
+    expect(stations([false, true])).toEqual([[0], [1]]);
+  });
+
+  it('has no stations for no exercises', () => {
+    expect(stations([])).toEqual([]);
+  });
+});
+
+describe('isExerciseDone', () => {
+  const working = (done: boolean) => ({ done, isWarmup: false });
+  const warmup = (done: boolean) => ({ done, isWarmup: true });
+
+  it('is done when every working set is ticked', () => {
+    expect(isExerciseDone([working(true), working(true)])).toBe(true);
+  });
+
+  it('is not done while one working set is left', () => {
+    expect(isExerciseDone([working(true), working(false)])).toBe(false);
+  });
+
+  it('ignores warm-ups in both directions', () => {
+    // A ramp is not the work: an unticked warm-up must not hold the exercise open, and a ticked
+    // one must not stand in for work that has not happened.
+    expect(isExerciseDone([warmup(false), working(true)])).toBe(true);
+    expect(isExerciseDone([warmup(true), working(false)])).toBe(false);
+  });
+
+  it('is not done when there is nothing to do yet', () => {
+    // An empty card is something still to come. Calling it finished would march straight past
+    // the exercise somebody has only just added.
+    expect(isExerciseDone([])).toBe(false);
+    expect(isExerciseDone([warmup(true)])).toBe(false);
+  });
+});
+
+describe('firstUnfinishedStation', () => {
+  const groups = [[0], [1, 2], [3]];
+
+  it('finds the first station with work left', () => {
+    expect(firstUnfinishedStation(groups, [true, false, false, false])).toBe(1);
+  });
+
+  it('skips stations that are finished', () => {
+    expect(firstUnfinishedStation(groups, [true, true, true, false])).toBe(2);
+  });
+
+  it('holds a superset open until every member is done', () => {
+    // Half a superset is not a finished station — the second exercise is the rest.
+    expect(firstUnfinishedStation(groups, [true, true, false, false])).toBe(1);
+  });
+
+  it('is null once everything is finished', () => {
+    // A real answer, not a fallback: it is what the screen uses to offer finishing instead.
+    expect(firstUnfinishedStation(groups, [true, true, true, true])).toBeNull();
+  });
+
+  it('is null when there are no stations at all', () => {
+    expect(firstUnfinishedStation([], [])).toBeNull();
   });
 });

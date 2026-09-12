@@ -20,13 +20,14 @@ import {
 } from '@fit/shared/calculations';
 import { EXERCISE_SEED, type ExerciseSeed } from '@fit/shared/catalog';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  View,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
@@ -37,13 +38,22 @@ import { useActionSheet } from '../../src/components/ActionSheetProvider.js';
 import type { ExerciseTarget, PreviousSet } from '../../src/components/ExerciseCard.js';
 import { FinishSummary } from '../../src/components/FinishSummary.js';
 import { requestBackup } from '../../src/backup/AutoBackup.js';
-import { DragReorderList } from '../../src/components/DragReorderList.js';
+import * as SecureStore from 'expo-secure-store';
+
+import { isRtlLanguage, type Language } from '../../src/i18n/index.js';
+
+import { DragReorderList, type DragHandleProps } from '../../src/components/DragReorderList.js';
 import { KeyboardSafe } from '../../src/components/KeyboardSafe.js';
 import { ExercisePanel } from '../../src/components/workout/ExercisePanel.js';
 import { EXTEND_SECONDS, RestBanner } from '../../src/components/workout/RestBanner.js';
 import { WorkoutHeader } from '../../src/components/workout/WorkoutHeader.js';
 import { PrToast, type PrToastData } from '../../src/components/PrToast.js';
-import { DEFAULT_REST_SECONDS } from '../../src/workout/derived.js';
+import {
+  DEFAULT_REST_SECONDS,
+  firstUnfinishedStation,
+  isExerciseDone,
+  stations,
+} from '../../src/workout/derived.js';
 import { Banner, EmptyState, SkeletonScreen } from '../../src/components/ui.js';
 import { WorkoutHome, type TemplateEntry } from '../../src/components/WorkoutHome.js';
 import { listPlanDayExercises } from '../../src/db/plans.js';
@@ -102,6 +112,9 @@ function elapsedMinutes(startedAt: string, endMs: number): number {
  * that actually distinguishes one working set from another, and anything easier than 6 is a
  * warm-up, which this app records as a warm-up.
  */
+/** Where the focus/list preference is remembered, alongside the app's other settings. */
+const FOCUS_KEY = 'workout-focus-mode';
+
 const RPE_CHOICES = [6, 7, 8, 9, 10] as const;
 
 export default function WorkoutsScreen() {
@@ -144,6 +157,16 @@ export default function WorkoutsScreen() {
   const [prToast, setPrToast] = useState<PrToastData | null>(null);
   // Held as an absolute deadline, not a countdown — see RestBanner for why a tick counter drifts
   // and stalls when the phone sleeps mid-set.
+  /**
+   * One station at a time, or the whole list.
+   *
+   * Remembered between sessions: a display preference that resets every workout is one the user
+   * has to set again every workout.
+   */
+  const [focus, setFocus] = useState(true);
+  const [stationIndex, setStationIndex] = useState<number | null>(null);
+  const wasStationDone = useRef(false);
+
   const [rest, setRest] = useState<{ deadline: number; total: number } | null>(null);
   // A set that already triggered a celebration stays quiet on further edits this session —
   // otherwise nudging the same field twice (even to the same value) would re-fire the toast.
@@ -782,6 +805,79 @@ export default function WorkoutsScreen() {
     })();
   }, [sessionId, gyms, ask, t, reload]);
 
+  const groups = useMemo(
+    () => stations(exercises.map((exercise) => exercise.superset_with_next === 1)),
+    [exercises],
+  );
+  const exerciseDone = useMemo(
+    () =>
+      exercises.map((exercise) =>
+        isExerciseDone(
+          exercise.sets.map((set) => ({ done: set.done_at !== null, isWarmup: set.is_warmup === 1 })),
+        ),
+      ),
+    [exercises],
+  );
+
+  const autoStation = firstUnfinishedStation(groups, exerciseDone);
+  // Clamped: removing an exercise can leave a manual index pointing past the end.
+  const activeStation = Math.max(
+    0,
+    Math.min(stationIndex ?? autoStation ?? groups.length - 1, groups.length - 1),
+  );
+
+  /**
+   * Move on when the station in front of you becomes finished — not merely because it is.
+   *
+   * The difference matters: stepping back to a finished exercise to add a set or fix a number
+   * would otherwise bounce straight forward again, which makes going back impossible.
+   */
+  useEffect(() => {
+    if (!focus || groups.length === 0) return;
+    const done = groups[activeStation]?.every((index) => exerciseDone[index]) ?? false;
+    if (done && !wasStationDone.current) {
+      const next = firstUnfinishedStation(groups, exerciseDone);
+      if (next !== null && next !== activeStation) setStationIndex(next);
+    }
+    wasStationDone.current = done;
+  }, [focus, groups, exerciseDone, activeStation]);
+
+  /** Navigating by hand records the target as already seen, so it is not skipped past. */
+  const goToStation = useCallback(
+    (index: number) => {
+      void hapticLight();
+      wasStationDone.current = groups[index]?.every((i) => exerciseDone[i]) ?? false;
+      setStationIndex(index);
+    },
+    [groups, exerciseDone],
+  );
+
+  const setFocusMode = useCallback((next: boolean) => {
+    void hapticLight();
+    setFocus(next);
+    // Cleared so switching back to focus lands on whatever is unfinished now, rather than on
+    // wherever the user happened to be standing before they opened the list.
+    setStationIndex(null);
+    void SecureStore.setItemAsync(FOCUS_KEY, next ? 'on' : 'off').catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    void SecureStore.getItemAsync(FOCUS_KEY)
+      .then((stored) => {
+        if (stored === 'off') setFocus(false);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  const rtl = isRtlLanguage(i18n.language as Language);
+
+  /** The first exercise of the next station, for the line that says what is coming. */
+  const upNextIndex = groups[activeStation + 1]?.[0];
+  const upNextName =
+    upNextIndex === undefined
+      ? null
+      : (EXERCISE_BY_KEY.get(exercises[upNextIndex]?.exercise_key ?? '')?.nameHe ?? null);
+
   const totals = useMemo(() => {
     let sets = 0;
     let volume = 0;
@@ -834,6 +930,83 @@ export default function WorkoutsScreen() {
     );
   }
 
+  /**
+   * One exercise card.
+   *
+   * Lifted out of the list so focus mode and the full list draw the identical card — two copies
+   * of eighty lines of props is two cards that drift apart, and the one nobody is looking at is
+   * the one that rots.
+   */
+  const renderExercise = (exercise: SessionExerciseWithSets, dragHandle?: DragHandleProps) => {
+            const seed = EXERCISE_BY_KEY.get(exercise.exercise_key);
+            if (!seed) return null;
+            const prescription = targets[exercise.exercise_key] ?? null;
+            return (
+              <ExercisePanel
+                name={seed.nameHe}
+                // The panel works in positions; the repository works in row ids. Mapped here
+                // rather than pushing ids into the component, so the card stays a view of a
+                // list and knows nothing about how the rows are stored.
+                sets={exercise.sets.map((set) => ({
+                  weightKg: set.weight_kg,
+                  reps: set.reps,
+                  done: set.done_at !== null,
+                  isWarmup: set.is_warmup === 1,
+                  rpe: set.rpe,
+                  toFailure: set.to_failure === 1,
+                  isDrop: set.is_drop === 1,
+                }))}
+                previous={
+                  previous[exercise.exercise_key]?.map((p) => ({
+                    weightKg: p.weight_kg,
+                    reps: p.reps,
+                  })) ?? null
+                }
+                target={
+                  prescription
+                    ? {
+                        sets: prescription.target_sets,
+                        repsMin: prescription.target_reps_min,
+                        repsMax: prescription.target_reps_max,
+                      }
+                    : null
+                }
+                advice={advice[exercise.id] ?? null}
+                onApplyAdvice={
+                  advice[exercise.id] &&
+                  exercise.sets.some((set) => set.done_at === null && set.is_warmup === 0)
+                    ? () => applyAdvice(exercise.id, advice[exercise.id]!)
+                    : undefined
+                }
+                onSetOptions={(i) => openSetOptions(exercise.id, i)}
+                supersetWithNext={exercise.superset_with_next === 1}
+                onChangeWeight={(i, next) => {
+                  const set = exercise.sets[i];
+                  if (set) patchSet(set.id, { weightKg: next });
+                }}
+                onChangeReps={(i, next) => {
+                  const set = exercise.sets[i];
+                  if (set) patchSet(set.id, { reps: next });
+                }}
+                onToggle={(i) => {
+                  const set = exercise.sets[i];
+                  // The panel exposes a toggle; the repository wants the state to move to. The
+                  // flip happens here so the card never has to know the current value twice.
+                  if (set) toggleDone(set.id, set.done_at === null);
+                }}
+                onAddSet={() => addSet(exercise.id)}
+                onOptions={() => openExerciseOptions(exercise.id, seed.nameHe)}
+                dragHandle={dragHandle}
+                onBarbell={seed.equipmentSlug === 'barbell'}
+                onAddWarmup={() => addWarmup(exercise.id, seed.equipmentSlug === 'barbell')}
+                // Offered only with nothing warmed up yet and a working weight to ramp toward.
+                canAddWarmup={
+                  !exercise.sets.some((set) => set.is_warmup === 1) &&
+                  (exercise.sets.find((set) => set.is_warmup === 0)?.weight_kg ?? 0) > 0
+                }
+              />
+            );  };
+
   return (
     <KeyboardSafe style={[styles.screen, { paddingTop: insets.top + spacing.md }]}>
       <WorkoutHeader
@@ -861,6 +1034,40 @@ export default function WorkoutsScreen() {
           {t('gyms.setLabel')} · {gyms.find((g) => g.id === gymId)?.name ?? t('gyms.none')}
         </Text>
       </Pressable>
+
+      {/* One station at a time, or the whole list. Focus is the default: during a workout the
+          question is what to do now, and eight cards of which seven are not it is an answer the
+          reader has to search for. The list stays one tap away for planning and reordering. */}
+      <View style={styles.modeRow}>
+        <Pressable
+          onPress={() => setFocusMode(true)}
+          accessibilityRole="button"
+          accessibilityState={{ selected: focus }}
+          style={({ pressed }) => [
+            styles.modeChip,
+            focus && styles.modeChipOn,
+            pressed && styles.pressed,
+          ]}
+        >
+          <Text style={[styles.modeText, focus && styles.modeTextOn]}>
+            {t('workout.focusMode')}
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={() => setFocusMode(false)}
+          accessibilityRole="button"
+          accessibilityState={{ selected: !focus }}
+          style={({ pressed }) => [
+            styles.modeChip,
+            !focus && styles.modeChipOn,
+            pressed && styles.pressed,
+          ]}
+        >
+          <Text style={[styles.modeText, !focus && styles.modeTextOn]}>
+            {t('workout.listMode')}
+          </Text>
+        </Pressable>
+      </View>
 
       <PrToast data={prToast} onDone={() => setPrToast(null)} />
 
@@ -915,6 +1122,62 @@ export default function WorkoutsScreen() {
       >
         {exercises.length === 0 ? (
           <EmptyState emoji="➕" title={t('workout.noExercises')} hint={t('workout.noExercisesHint')} />
+        ) : focus ? (
+          <>
+            {/* The whole station, which for a superset is both exercises: they are performed
+                together with no rest between them, and showing one of them alone would be the
+                screen arguing with the training. */}
+            {(groups[activeStation] ?? []).map((index) => {
+              const exercise = exercises[index];
+              return exercise ? (
+                <Fragment key={exercise.id}>{renderExercise(exercise)}</Fragment>
+              ) : null;
+            })}
+
+            <View style={styles.stationNav}>
+              <Pressable
+                onPress={() => goToStation(activeStation - 1)}
+                disabled={activeStation === 0}
+                accessibilityRole="button"
+                accessibilityLabel={t('workout.prevExercise')}
+                style={({ pressed }) => [
+                  styles.stationButton,
+                  activeStation === 0 && styles.stationButtonOff,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={styles.stationGlyph}>{rtl ? '›' : '‹'}</Text>
+              </Pressable>
+
+              <View style={styles.stationMiddle}>
+                <Text style={styles.stationCount}>
+                  {t('workout.stationOf', { current: activeStation + 1, total: groups.length })}
+                </Text>
+                {/* What is coming, so moving on is a decision rather than a surprise. */}
+                {upNextName ? (
+                  <Text style={styles.stationNext} numberOfLines={1}>
+                    {t('workout.upNext')}: {upNextName}
+                  </Text>
+                ) : autoStation === null ? (
+                  <Text style={styles.stationNext}>{t('workout.everythingDone')}</Text>
+                ) : null}
+              </View>
+
+              <Pressable
+                onPress={() => goToStation(activeStation + 1)}
+                disabled={activeStation >= groups.length - 1}
+                accessibilityRole="button"
+                accessibilityLabel={t('workout.nextExercise')}
+                style={({ pressed }) => [
+                  styles.stationButton,
+                  activeStation >= groups.length - 1 && styles.stationButtonOff,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={styles.stationGlyph}>{rtl ? '‹' : '›'}</Text>
+              </Pressable>
+            </View>
+          </>
         ) : (
           <DragReorderList
             data={exercises}
@@ -922,76 +1185,7 @@ export default function WorkoutsScreen() {
             onReorder={moveExercise}
             onDragStateChange={setDragging}
             onDragMove={autoScroll}
-            renderItem={(exercise, _index, dragHandle) => {
-              const seed = EXERCISE_BY_KEY.get(exercise.exercise_key);
-              if (!seed) return null;
-              const prescription = targets[exercise.exercise_key] ?? null;
-              return (
-                <ExercisePanel
-                  name={seed.nameHe}
-                  // The panel works in positions; the repository works in row ids. Mapped here
-                  // rather than pushing ids into the component, so the card stays a view of a
-                  // list and knows nothing about how the rows are stored.
-                  sets={exercise.sets.map((set) => ({
-                    weightKg: set.weight_kg,
-                    reps: set.reps,
-                    done: set.done_at !== null,
-                    isWarmup: set.is_warmup === 1,
-                    rpe: set.rpe,
-                    toFailure: set.to_failure === 1,
-                    isDrop: set.is_drop === 1,
-                  }))}
-                  previous={
-                    previous[exercise.exercise_key]?.map((p) => ({
-                      weightKg: p.weight_kg,
-                      reps: p.reps,
-                    })) ?? null
-                  }
-                  target={
-                    prescription
-                      ? {
-                          sets: prescription.target_sets,
-                          repsMin: prescription.target_reps_min,
-                          repsMax: prescription.target_reps_max,
-                        }
-                      : null
-                  }
-                  advice={advice[exercise.id] ?? null}
-                  onApplyAdvice={
-                    advice[exercise.id] &&
-                    exercise.sets.some((set) => set.done_at === null && set.is_warmup === 0)
-                      ? () => applyAdvice(exercise.id, advice[exercise.id]!)
-                      : undefined
-                  }
-                  onSetOptions={(i) => openSetOptions(exercise.id, i)}
-                  supersetWithNext={exercise.superset_with_next === 1}
-                  onChangeWeight={(i, next) => {
-                    const set = exercise.sets[i];
-                    if (set) patchSet(set.id, { weightKg: next });
-                  }}
-                  onChangeReps={(i, next) => {
-                    const set = exercise.sets[i];
-                    if (set) patchSet(set.id, { reps: next });
-                  }}
-                  onToggle={(i) => {
-                    const set = exercise.sets[i];
-                    // The panel exposes a toggle; the repository wants the state to move to. The
-                    // flip happens here so the card never has to know the current value twice.
-                    if (set) toggleDone(set.id, set.done_at === null);
-                  }}
-                  onAddSet={() => addSet(exercise.id)}
-                  onOptions={() => openExerciseOptions(exercise.id, seed.nameHe)}
-                  dragHandle={dragHandle}
-                  onBarbell={seed.equipmentSlug === 'barbell'}
-                  onAddWarmup={() => addWarmup(exercise.id, seed.equipmentSlug === 'barbell')}
-                  // Offered only with nothing warmed up yet and a working weight to ramp toward.
-                  canAddWarmup={
-                    !exercise.sets.some((set) => set.is_warmup === 1) &&
-                    (exercise.sets.find((set) => set.is_warmup === 0)?.weight_kg ?? 0) > 0
-                  }
-                />
-              );
-            }}
+            renderItem={(exercise, _index, dragHandle) => renderExercise(exercise, dragHandle)}
           />
         )}
 
@@ -1024,6 +1218,19 @@ const createStyles = (colors: ColorPalette) =>
     screen: ViewStyle;
     gymChip: ViewStyle;
     gymChipText: TextStyle;
+    modeRow: ViewStyle;
+    modeChip: ViewStyle;
+    modeChipOn: ViewStyle;
+    modeText: TextStyle;
+    modeTextOn: TextStyle;
+    stationNav: ViewStyle;
+    stationButton: ViewStyle;
+    stationButtonOff: ViewStyle;
+    stationGlyph: TextStyle;
+    stationMiddle: ViewStyle;
+    stationCount: TextStyle;
+    stationNext: TextStyle;
+    pressed: ViewStyle;
     topBar: ViewStyle;
     topMain: ViewStyle;
     sessionName: TextStyle;
@@ -1048,6 +1255,42 @@ const createStyles = (colors: ColorPalette) =>
     borderColor: colors.borderSubtle,
   },
   gymChipText: { color: colors.textMuted, fontSize: 11, textAlign: 'auto' },
+  modeRow: { flexDirection: 'row', gap: 6, marginTop: spacing.xs },
+  modeChip: {
+    paddingVertical: 4,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceRaised,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+  },
+  modeChipOn: { backgroundColor: colors.accentSoft, borderColor: colors.accentBorder },
+  modeText: { color: colors.textMuted, fontSize: 11 },
+  modeTextOn: { color: colors.accent, fontWeight: '700' },
+  stationNav: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  stationButton: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceRaised,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stationButtonOff: { opacity: 0.35 },
+  stationGlyph: { color: colors.text, fontSize: 22, lineHeight: 24 },
+  stationMiddle: { flex: 1, alignItems: 'center' },
+  stationCount: {
+    color: colors.textSecondary,
+    fontSize: fontSize.xs,
+    fontVariant: ['tabular-nums'],
+  },
+  stationNext: { color: colors.textFaint, fontSize: 11, marginTop: 2, textAlign: 'center' },
+  pressed: { opacity: 0.7 },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',

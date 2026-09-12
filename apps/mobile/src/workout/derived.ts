@@ -261,3 +261,68 @@ export function stepReps(current: number | null, direction: 1 | -1): number {
   if (current === null) return direction === 1 ? 1 : 0;
   return Math.max(0, current + direction * REPS_STEP);
 }
+
+/* -------------------------------------------------------------------------- */
+/* Stations                                                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The exercises grouped into what you stand at, rather than what is listed.
+ *
+ * A superset is two or three exercises performed together with no rest between them, so showing
+ * one of them alone would be the screen fighting the training. A station is a run of consecutive
+ * exercises linked by `supersetWithNext`, and everything else is a station of one.
+ *
+ * Takes the links as plain booleans rather than the rows they came from: the grouping is about
+ * adjacency and nothing else, and a helper that knew about session rows could not be tested
+ * without building them.
+ */
+export function stations(links: readonly boolean[]): number[][] {
+  const groups: number[][] = [];
+  let current: number[] = [];
+
+  for (let index = 0; index < links.length; index += 1) {
+    current.push(index);
+    // A link on the final exercise points at nothing. Treated as the end of the run rather than
+    // as an error: the flag can outlive the exercise that followed it.
+    const linked = links[index] === true && index < links.length - 1;
+    if (!linked) {
+      groups.push(current);
+      current = [];
+    }
+  }
+
+  return groups;
+}
+
+/**
+ * Whether an exercise is finished.
+ *
+ * Warm-ups do not count either way — a ramp is not the work, and leaving one unticked should not
+ * hold the whole exercise open. An exercise with no working sets at all is unfinished rather than
+ * complete: an empty card is something still to do, and calling it done would march straight past
+ * the exercise somebody just added.
+ */
+export function isExerciseDone(
+  sets: readonly { done: boolean; isWarmup: boolean }[],
+): boolean {
+  const working = sets.filter((set) => !set.isWarmup);
+  return working.length > 0 && working.every((set) => set.done);
+}
+
+/**
+ * The station to be standing at, or null once every one of them is finished.
+ *
+ * Scanned from the top rather than tracked as a cursor, for the same reason `nextSet` is: people
+ * work out of order, skip something and come back to it, and a cursor would be wrong the moment
+ * they did. Null is a real answer — it is what the screen uses to offer finishing instead.
+ */
+export function firstUnfinishedStation(
+  groups: readonly (readonly number[])[],
+  done: readonly boolean[],
+): number | null {
+  for (const [index, group] of groups.entries()) {
+    if (group.some((exercise) => !done[exercise])) return index;
+  }
+  return null;
+}
