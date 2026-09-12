@@ -634,7 +634,6 @@ export const en = {
   },
   month: {
     title: 'Monthly calendar',
-    open: 'Monthly calendar',
     prev: 'Previous month',
     next: 'Next month',
     hint: 'Tap a day to choose its workout. A day left undecided stays with the rotation.',
@@ -643,10 +642,6 @@ export const en = {
     repeated_one: '1 day scheduled',
     repeated_other: '{{count}} days scheduled',
     nothingToRepeat: 'No planned week to copy from, or every day is already decided.',
-    types: 'Workout types',
-    typesHint: 'Each type is a day in your plan. Add one here, then fill in its exercises on the plan screen.',
-    typePlaceholder: 'Workout name, e.g. Upper body',
-    addType: 'Add',
   },
   week: {
     title: 'Plan the week',
