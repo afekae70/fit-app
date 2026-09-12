@@ -149,7 +149,7 @@ export default function ExercisePickerScreen() {
   };
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top + spacing.md }]}>
+    <View style={[styles.screen, { paddingTop: spacing.md }]}>
       <View style={styles.header}>
         <Text style={styles.title}>{t('picker.title')}</Text>
         <Pressable onPress={() => router.back()} style={styles.closeButton} accessibilityRole="button">

@@ -29,7 +29,6 @@ import {
 } from 'react-native';
 
 import { FadeSlideIn } from './motion.js';
-import { BrandBar } from './BrandBar.js';
 import { useTheme } from '../ThemeProvider.js';
 import {
   duration,
@@ -179,10 +178,9 @@ export function BackButton() {
  * `back` renders only when there is somewhere to go. A tab root usually has nothing to pop, and
  * a control that silently does nothing is worse than an absent one.
  *
- * Above all of it sits the masthead — the menu, the app's mark and its name — which is on every
- * screen in the app whether or not the screen uses this header. The menu replaced a settings
- * gear, and is not optional the way the gear was: it is not a link to settings, it is how every
- * screen outside the tab bar is reached, and a page that hides it is a dead end.
+ * The settings gear that used to sit at the end of this row is gone. It became the menu, and
+ * the menu moved into the masthead that the root layout mounts above every screen — one fixed
+ * bar rather than a control each header had to remember to draw.
  */
 export function ScreenHeader({ title, back = false }: { title: string; back?: boolean }) {
   const { colors } = useTheme();
@@ -193,15 +191,12 @@ export function ScreenHeader({ title, back = false }: { title: string; back?: bo
   // while the native flag only updates on relaunch, and a chevron disagreeing with the layout
   // around it is exactly the kind of half-flip that reads as a bug.
   return (
-    <>
-      <BrandBar />
-      <View style={styles.screenHeaderRow}>
-        <View style={styles.screenHeaderStart}>
-          {back ? <BackButton /> : null}
-          <ScreenTitle>{title}</ScreenTitle>
-        </View>
+    <View style={styles.screenHeaderRow}>
+      <View style={styles.screenHeaderStart}>
+        {back ? <BackButton /> : null}
+        <ScreenTitle>{title}</ScreenTitle>
       </View>
-    </>
+    </View>
   );
 }
 

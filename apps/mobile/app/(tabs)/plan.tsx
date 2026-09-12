@@ -339,7 +339,7 @@ export default function PlanScreen() {
   };
 
   if (loading) {
-    return <SkeletonScreen paddingTop={insets.top + spacing.xxl} />;
+    return <SkeletonScreen paddingTop={spacing.xxl} />;
   }
 
   const nowMs = Date.now();
@@ -359,7 +359,7 @@ export default function PlanScreen() {
       style={styles.screen}
       contentContainerStyle={[
         styles.content,
-        { paddingTop: insets.top + spacing.lg, paddingBottom: insets.bottom + spacing.xxl },
+        { paddingTop: spacing.lg, paddingBottom: insets.bottom + spacing.xxl },
       ]}
       keyboardShouldPersistTaps="handled"
       refreshControl={

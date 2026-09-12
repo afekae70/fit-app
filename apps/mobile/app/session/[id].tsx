@@ -14,7 +14,6 @@
 import { EXERCISE_SEED, type ExerciseSeed } from '@fit/shared/catalog';
 import { router, useLocalSearchParams } from 'expo-router';
 
-import { BrandBar } from '../../src/components/BrandBar.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -277,12 +276,12 @@ export default function SessionDetailScreen() {
   };
 
   if (loading) {
-    return <SkeletonScreen paddingTop={insets.top + spacing.lg} />;
+    return <SkeletonScreen paddingTop={spacing.lg} />;
   }
 
   if (!session) {
     return (
-      <View style={[styles.centered, { paddingTop: insets.top + spacing.xxl }]}>
+      <View style={[styles.centered, { paddingTop: spacing.xxl }]}>
         <Text style={styles.muted}>{t('common.error')}</Text>
         <Pressable onPress={() => router.back()} style={styles.secondaryButton}>
           <Text style={styles.secondaryButtonText}>{t('common.cancel')}</Text>
@@ -310,12 +309,10 @@ export default function SessionDetailScreen() {
         style={styles.screen}
         contentContainerStyle={[
           styles.content,
-          { paddingTop: insets.top + spacing.md, paddingBottom: insets.bottom + spacing.xxl },
+          { paddingTop: spacing.md, paddingBottom: insets.bottom + spacing.xxl },
         ]}
         keyboardShouldPersistTaps="handled"
       >
-        <BrandBar />
-
         <View style={styles.header}>
           <Pressable onPress={() => router.back()} accessibilityRole="button" hitSlop={8}>
             <Text style={styles.back}>{isHebrew ? '›' : '‹'}</Text>

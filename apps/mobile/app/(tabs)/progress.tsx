@@ -113,7 +113,7 @@ export default function ProgressScreen() {
   }, [reload]);
 
   if (loading) {
-    return <SkeletonScreen paddingTop={insets.top + spacing.xxl} />;
+    return <SkeletonScreen paddingTop={spacing.xxl} />;
   }
 
   return (
@@ -121,7 +121,7 @@ export default function ProgressScreen() {
       style={styles.screen}
       contentContainerStyle={[
         styles.content,
-        { paddingTop: insets.top + spacing.lg, paddingBottom: insets.bottom + spacing.xxl },
+        { paddingTop: spacing.lg, paddingBottom: insets.bottom + spacing.xxl },
       ]}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.accent} />

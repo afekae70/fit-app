@@ -279,7 +279,7 @@ export default function MetricsScreen() {
   }, []);
 
   if (loading) {
-    return <SkeletonScreen paddingTop={insets.top + spacing.lg} />;
+    return <SkeletonScreen paddingTop={spacing.lg} />;
   }
 
   // listBodyMetrics returns newest-first; the trend maths expects oldest-first.
@@ -311,7 +311,7 @@ export default function MetricsScreen() {
     <ScrollView
       contentContainerStyle={[
         styles.content,
-        { paddingTop: insets.top + spacing.lg, paddingBottom: insets.bottom + spacing.xxl },
+        { paddingTop: spacing.lg, paddingBottom: insets.bottom + spacing.xxl },
       ]}
       keyboardShouldPersistTaps="handled"
       refreshControl={

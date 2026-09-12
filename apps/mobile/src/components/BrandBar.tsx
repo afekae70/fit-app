@@ -1,23 +1,33 @@
 /**
- * The masthead: the menu on one side, the app's mark and name on the other, on every screen.
+ * The masthead: the app's mark and name in the middle, the menu at the start of the row.
  *
- * One row, in the same place, everywhere — so the way out of a screen is never something to look
- * for. The menu sits at the start of the row, which in Hebrew is the right-hand side; it is a
- * logical property, so it moves to the left in English without a second rule.
+ * Mounted once in the root layout, above the router — so it is genuinely fixed. Rendering it
+ * inside each screen put it inside that screen's ScrollView, which meant it scrolled away the
+ * moment the page moved; the only way for it to stay put is to sit outside every scrolling
+ * surface there is. One instance also means it cannot drift between screens, and a screen added
+ * later gets it without being asked to.
  *
- * Deliberately quiet. A masthead that repeats on every page is furniture, not content: the name
- * is small and muted, the mark is 26px, and the row is short enough that it costs a screen a
- * line rather than a header. The screen's own title, which is the thing actually worth reading,
- * sits underneath it at full size.
+ * Because it sits above the router it owns the top safe-area inset for the whole app: the
+ * screens underneath it no longer reach the notch, so they no longer pad for it.
  *
- * No safe-area inset of its own. Every screen already pads its top for the notch, and this
- * renders as the first thing inside that padding — taking the inset here as well would push
- * every page down by the height of a status bar twice over.
+ * The mark and name are centred on the page, not merely placed after the menu — the menu is
+ * taken out of the flow and pinned to the start, so the centre is the centre of the screen and
+ * does not shift when the button's size or the language's direction changes. `start` is logical:
+ * the right-hand side in Hebrew, the left in English, from one rule.
  */
 
-import { useTranslation } from 'react-i18next';
-import { Image, StyleSheet, Text, View, type ImageStyle, type TextStyle, type ViewStyle } from 'react-native';
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
+import {
+  Image,
+  StyleSheet,
+  Text,
+  View,
+  type ImageStyle,
+  type TextStyle,
+  type ViewStyle,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import LOGO from '../../assets/icon.png';
 import { useTheme } from '../ThemeProvider.js';
@@ -27,13 +37,15 @@ import { MenuButton } from './AppMenu.js';
 export function BrandBar() {
   const { t } = useTranslation();
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const s = useMemo(() => createStyles(colors), [colors]);
 
   return (
-    <View style={s.bar}>
-      <MenuButton />
-      {/* Sent to the far end rather than centred: a centre-aligned mark would shift whenever the
-          menu button's hit area changed, and the eye reads a corner as a fixed point. */}
+    <View style={[s.bar, { paddingTop: insets.top + spacing.sm }]}>
+      <View style={s.menu}>
+        <MenuButton />
+      </View>
+
       <View style={s.brand}>
         <Image source={LOGO} style={s.logo} accessibilityIgnoresInvertColors />
         <Text style={s.name}>{t('common.appName')}</Text>
@@ -43,15 +55,38 @@ export function BrandBar() {
 }
 
 const createStyles = (colors: ColorPalette) =>
-  StyleSheet.create<{ bar: ViewStyle; brand: ViewStyle; logo: ImageStyle; name: TextStyle }>({
-    bar: { flexDirection: 'row', alignItems: 'center', minHeight: 36 },
-    brand: { marginStart: 'auto', flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  StyleSheet.create<{
+    bar: ViewStyle;
+    menu: ViewStyle;
+    brand: ViewStyle;
+    logo: ImageStyle;
+    name: TextStyle;
+  }>({
+    bar: {
+      paddingHorizontal: spacing.lg,
+      paddingBottom: spacing.sm,
+      justifyContent: 'center',
+      // A hairline, because the page now scrolls underneath rather than carrying this along with
+      // it: without a line, text arriving from below reaches the name and the two read as one.
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.borderSubtle,
+    },
+    /* Out of the flow, so the brand below is centred on the screen and not on what is left of
+       it. Pinned vertically to the row's own bottom half, which is where the content sits once
+       the safe-area inset has been added on top. */
+    menu: {
+      position: 'absolute',
+      start: spacing.lg,
+      bottom: spacing.sm,
+      justifyContent: 'center',
+    },
+    brand: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
     logo: {
-      width: 26,
-      height: 26,
-      borderRadius: radius.sm,
+      width: 44,
+      height: 44,
+      borderRadius: radius.md,
       borderWidth: 1,
       borderColor: colors.borderSubtle,
     },
-    name: { color: colors.textMuted, fontSize: fontSize.sm, fontWeight: fontWeight.bold },
+    name: { color: colors.text, fontSize: fontSize.xl, fontWeight: fontWeight.bold },
   });

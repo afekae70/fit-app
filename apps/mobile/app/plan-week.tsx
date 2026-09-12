@@ -150,14 +150,14 @@ export default function PlanWeekScreen() {
     return `${fmt(days[0] ?? start, false)}–${fmt(days[6] ?? start, true)}`;
   };
 
-  if (loading) return <SkeletonScreen paddingTop={insets.top + spacing.xxl} />;
+  if (loading) return <SkeletonScreen paddingTop={spacing.xxl} />;
 
   return (
     <ScrollView
       style={styles.screen}
       contentContainerStyle={[
         styles.content,
-        { paddingTop: insets.top + spacing.lg, paddingBottom: insets.bottom + spacing.xxl },
+        { paddingTop: spacing.lg, paddingBottom: insets.bottom + spacing.xxl },
       ]}
     >
       <ScreenHeader title={t('week.title')} back />

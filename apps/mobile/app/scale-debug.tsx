@@ -194,7 +194,7 @@ export default function ScaleDebugScreen() {
       style={styles.screen}
       contentContainerStyle={[
         styles.content,
-        { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 28 },
+        { paddingTop: 8, paddingBottom: insets.bottom + 28 },
       ]}
     >
       <ScreenHeader title={t('scaleDebug.title')} back />

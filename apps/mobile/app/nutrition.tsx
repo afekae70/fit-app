@@ -19,7 +19,6 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   ACTIVITY_LEVELS,
@@ -48,7 +47,6 @@ import {
   weightUnitKey,
 } from '../src/units.js';
 import { getDailyBrief } from '../src/coach/dailyBrief.js';
-import { BrandBar } from '../src/components/BrandBar.js';
 import {
   BackButton,
   Banner,
@@ -101,7 +99,6 @@ function parseNumber(raw: string): number | null {
 export default function NutritionScreen() {
   const { t, i18n } = useTranslation();
   const isHebrew = i18n.language === 'he';
-  const insets = useSafeAreaInsets();
   const userId = useCurrentUserId();
   const { session } = useAuth();
   const { colors } = useTheme();
@@ -289,12 +286,10 @@ export default function NutritionScreen() {
       style={styles.screen}
       contentContainerStyle={[
         styles.content,
-        { paddingTop: insets.top + spacing.lg, paddingBottom: spacing.xxl },
+        { paddingTop: spacing.lg, paddingBottom: spacing.xxl },
       ]}
       keyboardShouldPersistTaps="handled"
     >
-      <BrandBar />
-
       <View style={styles.header}>
         <BackButton />
         <Text style={styles.appName}>{t('common.appName')}</Text>

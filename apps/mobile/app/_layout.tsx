@@ -21,6 +21,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppGate } from '../src/auth/AppGate.js';
 import { AuthProvider } from '../src/auth/AuthProvider.js';
 import { AnimatedGradientBackground } from '../src/components/AnimatedGradientBackground.js';
+import { BrandBar } from '../src/components/BrandBar.js';
 import { ErrorBoundary } from '../src/components/ErrorBoundary.js';
 import { initI18n, isRtlLanguage, loadStoredLanguage, type Language } from '../src/i18n/index.js';
 import { AutoBackup } from '../src/backup/AutoBackup.js';
@@ -75,22 +76,28 @@ function RootLayoutInner() {
             nothing worth backing up before then. */}
         <AutoBackup>
         <ErrorBoundary>
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              // Transparent, not a solid fill — AnimatedGradientBackground sits behind the
-              // whole stack, and every screen's own content already paints its own surfaces.
-              contentStyle: { backgroundColor: 'transparent' },
-              // A deliberate fade+rise on every push/pop, the same direction on both platforms —
-              // the native iOS slide and Android fade read as two different apps side by side.
-              animation: 'fade_from_bottom',
-            }}
-          >
-            <Stack.Screen name="(tabs)" />
-            {/* Presented as a sheet so the workout stays visible behind it — picking an
-                exercise is a detour within the session, not a departure from it. */}
-            <Stack.Screen name="exercise-picker" options={{ presentation: 'modal' }} />
-          </Stack>
+          {/* Above the router, so it is fixed: inside a screen it lived in that screen's
+              ScrollView and scrolled away with the page. It owns the top safe-area inset for
+              everything below it, which is why no screen pads for the notch any more. */}
+          <BrandBar />
+          <View style={{ flex: 1 }}>
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                // Transparent, not a solid fill — AnimatedGradientBackground sits behind the
+                // whole stack, and every screen's own content already paints its own surfaces.
+                contentStyle: { backgroundColor: 'transparent' },
+                // A deliberate fade+rise on every push/pop, the same direction on both platforms —
+                // the native iOS slide and Android fade read as two different apps side by side.
+                animation: 'fade_from_bottom',
+              }}
+            >
+              <Stack.Screen name="(tabs)" />
+              {/* Presented as a sheet so the workout stays visible behind it — picking an
+                  exercise is a detour within the session, not a departure from it. */}
+              <Stack.Screen name="exercise-picker" options={{ presentation: 'modal' }} />
+            </Stack>
+          </View>
         </ErrorBoundary>
         </AutoBackup>
       </AppGate>

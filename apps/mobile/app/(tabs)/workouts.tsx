@@ -46,7 +46,6 @@ import * as SecureStore from 'expo-secure-store';
 
 import { DragReorderList, type DragHandleProps } from '../../src/components/DragReorderList.js';
 import { KeyboardSafe } from '../../src/components/KeyboardSafe.js';
-import { BrandBar } from '../../src/components/BrandBar.js';
 import { ExerciseVisual } from '../../src/components/ExerciseVisual.js';
 import { ExercisePanel } from '../../src/components/workout/ExercisePanel.js';
 import { EXTEND_SECONDS, RestBanner } from '../../src/components/workout/RestBanner.js';
@@ -1006,7 +1005,7 @@ export default function WorkoutsScreen() {
   }, [exercises, isHebrew, t]);
 
   if (loading) {
-    return <SkeletonScreen paddingTop={insets.top + spacing.md} />;
+    return <SkeletonScreen paddingTop={spacing.md} />;
   }
 
   if (!sessionId) {
@@ -1018,7 +1017,7 @@ export default function WorkoutsScreen() {
         onUseTemplate={useTemplate}
         onOpenSession={(id) => router.push({ pathname: '/session/[id]', params: { id } })}
         contentPadding={{
-          paddingTop: insets.top + spacing.lg,
+          paddingTop: spacing.lg,
           paddingBottom: insets.bottom + spacing.xxl,
         }}
         refreshing={homeRefreshing}
@@ -1110,9 +1109,7 @@ export default function WorkoutsScreen() {
             );  };
 
   return (
-    <KeyboardSafe style={[styles.screen, { paddingTop: insets.top + spacing.md }]}>
-      <BrandBar />
-
+    <KeyboardSafe style={[styles.screen, { paddingTop: spacing.md }]}>
       <WorkoutHeader
         name={sessionName ?? t('workout.activeTitle')}
         doneSets={totals.done}

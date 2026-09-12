@@ -12,7 +12,6 @@
 
 import { router } from 'expo-router';
 
-import { BrandBar } from '../src/components/BrandBar.js';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CaretLeft, CaretRight } from 'phosphor-react-native';
@@ -86,11 +85,9 @@ export default function ProfileScreen() {
       style={styles.screen}
       contentContainerStyle={[
         styles.content,
-        { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 28 },
+        { paddingTop: 8, paddingBottom: insets.bottom + 28 },
       ]}
     >
-      <BrandBar />
-
       <View style={styles.topRow}>
         <Pressable onPress={() => router.back()} accessibilityRole="button" hitSlop={8} style={styles.back}>
           {/* Directional, so it mirrors. Non-directional glyphs elsewhere deliberately do not. */}

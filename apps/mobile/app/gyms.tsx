@@ -116,7 +116,7 @@ export default function GymsScreen() {
         style={styles.screen}
         contentContainerStyle={[
           styles.content,
-          { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 28 },
+          { paddingTop: 8, paddingBottom: insets.bottom + 28 },
         ]}
         keyboardShouldPersistTaps="handled"
       >

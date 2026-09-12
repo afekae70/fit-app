@@ -10,7 +10,6 @@
 import { EXERCISE_SEED, type ExerciseSeed } from '@fit/shared/catalog';
 import { router, useLocalSearchParams } from 'expo-router';
 
-import { BrandBar } from '../../src/components/BrandBar.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -153,12 +152,12 @@ export default function PlanDayScreen() {
   };
 
   if (loading) {
-    return <SkeletonScreen paddingTop={insets.top + spacing.xxl} />;
+    return <SkeletonScreen paddingTop={spacing.xxl} />;
   }
 
   if (!day) {
     return (
-      <View style={[styles.centered, { paddingTop: insets.top + spacing.xxl }]}>
+      <View style={[styles.centered, { paddingTop: spacing.xxl }]}>
         <Text style={styles.muted}>{t('common.error')}</Text>
       </View>
     );
@@ -170,12 +169,10 @@ export default function PlanDayScreen() {
         style={styles.screen}
         contentContainerStyle={[
           styles.content,
-          { paddingTop: insets.top + spacing.md, paddingBottom: insets.bottom + spacing.xxl },
+          { paddingTop: spacing.md, paddingBottom: insets.bottom + spacing.xxl },
         ]}
         keyboardShouldPersistTaps="handled"
       >
-        <BrandBar />
-
         <View style={styles.header}>
           <Pressable onPress={() => router.back()} accessibilityRole="button" hitSlop={8}>
             <Text style={styles.back}>{isHebrew ? '›' : '‹'}</Text>

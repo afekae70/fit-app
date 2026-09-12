@@ -28,7 +28,6 @@ import {
   WeightTrendCard,
   TrainedTodayCard,
 } from '../../src/components/home/TodayCards.js';
-import { BrandBar } from '../../src/components/BrandBar.js';
 import { FadeSlideIn } from '../../src/components/motion.js';
 import { Skeleton } from '../../src/components/ui.js';
 import {
@@ -141,14 +140,12 @@ export default function TodayScreen() {
       style={styles.screen}
       contentContainerStyle={[
         styles.content,
-        { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 28 },
+        { paddingTop: 8, paddingBottom: insets.bottom + 28 },
       ]}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
       }
     >
-      <BrandBar />
-
       <GreetingRow
         greeting={t(greetingKey(new Date()))}
         date={formatDate(new Date(), i18n.language)}
