@@ -37,11 +37,15 @@ export function BrandBar() {
 
   return (
     <View style={[s.bar, { paddingTop: insets.top + spacing.sm }]}>
+      <Text style={s.name}>{t('common.appName')}</Text>
+
+      {/* Last, so it is drawn on top. The name above stretches the full width of the row, and
+          a view rendered later covers one rendered earlier — with the menu first, every tap
+          on it landed on the name instead, and the button never opened. Touch goes to the
+          topmost view and bubbles to its parents, never sideways to a sibling underneath. */}
       <View style={s.menu}>
         <MenuButton />
       </View>
-
-      <Text style={s.name}>{t('common.appName')}</Text>
     </View>
   );
 }
