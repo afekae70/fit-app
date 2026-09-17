@@ -561,14 +561,26 @@ export async function listPlanDayStatus(
     day_index: number;
     name: string | null;
     exercise_count: number;
+    /** The day's exercises in order, joined by the unit separator — see the query. */
+    exercise_keys: string | null;
+    work_seconds: number | null;
+    rest_seconds: number | null;
     last_trained_at: string | null;
     session_count: number;
   }[]
 > {
   return db.all(
-    `SELECT pd.id, pd.day_index, pd.name,
+    `SELECT pd.id, pd.day_index, pd.name, pd.work_seconds, pd.rest_seconds,
             (SELECT COUNT(*) FROM plan_day_exercises pde
               WHERE pde.plan_day_id = pd.id AND pde.deleted_at IS NULL) AS exercise_count,
+            -- The exercises themselves, so the plan can show what a day is rather than only how
+            -- many things are in it. Joined on the unit separator rather than a comma, which
+            -- appears in exercise names.
+            (SELECT GROUP_CONCAT(ordered.exercise_key, char(31)) FROM (
+               SELECT exercise_key FROM plan_day_exercises
+                WHERE plan_day_id = pd.id AND deleted_at IS NULL
+                ORDER BY order_index
+             ) AS ordered) AS exercise_keys,
             (SELECT MAX(ws.started_at) FROM workout_sessions ws
               WHERE ws.plan_day_id = pd.id AND ws.user_id = ? AND ws.deleted_at IS NULL)
               AS last_trained_at,

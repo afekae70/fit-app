@@ -690,3 +690,44 @@ describe('timed workouts', () => {
     ]);
   });
 });
+
+describe('what the plan screen shows for each day', () => {
+  it('lists the exercises in order, and the timing when the day is timed', async () => {
+    const plan = await createPlan(db, USER, newId, 'Split', clock);
+    const push = await addPlanDay(db, newId, plan, 'Push');
+    await addPlanDayExercise(db, newId, push, 'Barbell Bench Press', { targetSets: 4 });
+    await addPlanDayExercise(db, newId, push, 'Overhead Press', { targetSets: 3 });
+    const abs = await addPlanDay(db, newId, plan, 'Abs');
+    await addPlanDayExercise(db, newId, abs, 'Plank');
+    await setPlanDayTiming(db, abs, { workSeconds: 50, restSeconds: 10 }, clock);
+
+    const [pushStatusRow, absStatusRow] = await listPlanDayStatus(db, USER, plan);
+
+    expect(pushStatusRow?.exercise_keys?.split('')).toEqual([
+      'Barbell Bench Press',
+      'Overhead Press',
+    ]);
+    expect([pushStatusRow?.work_seconds, pushStatusRow?.rest_seconds]).toEqual([null, null]);
+    expect(absStatusRow?.exercise_keys).toBe('Plank');
+    expect([absStatusRow?.work_seconds, absStatusRow?.rest_seconds]).toEqual([50, 10]);
+  });
+
+  it('leaves the exercises empty for a day with none', async () => {
+    const plan = await createPlan(db, USER, newId, 'Split', clock);
+    await addPlanDay(db, newId, plan, 'Empty');
+    const [row] = await listPlanDayStatus(db, USER, plan);
+    expect(row?.exercise_keys).toBeNull();
+    expect(row?.exercise_count).toBe(0);
+  });
+
+  it('drops an exercise that was removed from the day', async () => {
+    const plan = await createPlan(db, USER, newId, 'Split', clock);
+    const day = await addPlanDay(db, newId, plan, 'Push');
+    const first = await addPlanDayExercise(db, newId, day, 'Barbell Bench Press');
+    await addPlanDayExercise(db, newId, day, 'Overhead Press');
+    await removePlanDayExercise(db, first);
+
+    const [row] = await listPlanDayStatus(db, USER, plan);
+    expect(row?.exercise_keys).toBe('Overhead Press');
+  });
+});

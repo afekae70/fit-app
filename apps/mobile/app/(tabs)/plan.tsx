@@ -19,8 +19,9 @@
  * does.
  */
 
+import { EXERCISE_SEED } from '@fit/shared/catalog';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Pressable,
@@ -36,6 +37,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
+import { DragReorderList } from '../../src/components/DragReorderList.js';
 import { useActionSheet } from '../../src/components/ActionSheetProvider.js';
 import { FadeSlideIn } from '../../src/components/motion.js';
 import {
@@ -87,9 +89,18 @@ type DayStatus = {
   day_index: number;
   name: string | null;
   exercise_count: number;
+  exercise_keys: string | null;
+  work_seconds: number | null;
+  rest_seconds: number | null;
   last_trained_at: string | null;
   session_count: number;
 };
+
+/** Exercise names by catalogue key, for the line that says what a day actually contains. */
+const EXERCISE_BY_KEY = new Map(EXERCISE_SEED.map((exercise) => [exercise.nameEn, exercise]));
+
+/** The unit separator the plan-day query joins its exercise keys with. */
+const KEY_SEPARATOR = '\u001f';
 
 /**
  * The colours a workout can wear on the calendar, cycled in plan order.
@@ -126,6 +137,7 @@ export default function PlanScreen() {
 
   const grid = useMemo(() => monthGrid(month), [month]);
   const rtl = isRtlLanguage(i18n.language as Language);
+  const isHebrew = i18n.language === 'he';
 
   const reload = useCallback(
     async (forMonth: string) => {
@@ -212,7 +224,8 @@ export default function PlanScreen() {
         const steps: { label: string; step: Step }[] = [];
 
         if (onDayTypes.length === 0) {
-          for (const day of days) steps.push({ label: labelFor(day), step: { kind: 'set', id: day.id } });
+          for (const day of days)
+            steps.push({ label: labelFor(day), step: { kind: 'set', id: day.id } });
         } else {
           for (const day of onDayTypes) {
             steps.push({
@@ -246,7 +259,8 @@ export default function PlanScreen() {
 
         const db = await getExecutor();
         if (picked.kind === 'set') await setScheduledDay(db, userId, newId, date, picked.id);
-        else if (picked.kind === 'add') await addScheduledWorkout(db, userId, newId, date, picked.id);
+        else if (picked.kind === 'add')
+          await addScheduledWorkout(db, userId, newId, date, picked.id);
         else if (picked.kind === 'remove')
           await removeScheduledWorkout(db, userId, newId, date, picked.id);
         else if (picked.kind === 'rest') await setScheduledDay(db, userId, newId, date, null);
@@ -277,23 +291,48 @@ export default function PlanScreen() {
   /* ---------------------------------------------------------------- workouts */
 
   /**
-   * Reorder with buttons rather than a drag. A drag inside a vertical ScrollView has to win a
-   * gesture race against the scroll to start, and the loser is always the user — either the list
-   * will not scroll or the day will not pick up. Two arrows do the same job with no ambiguity.
+   * Reorder by dragging, as the exercises inside a day are reordered.
+   *
+   * These were two arrows per card, on the reasoning that a drag inside a vertical ScrollView
+   * loses a gesture race against the scroll. `DragReorderList` does not enter that race — the
+   * handle takes the touch outright, and a long press waits the ambiguity out — and a card with
+   * fewer controls on it is the point of this screen.
    */
   const move = useCallback(
-    (dayId: string, delta: number) => {
-      if (!plan) return;
-      const from = days.findIndex((d) => d.id === dayId);
-      if (from < 0) return;
+    (fromIndex: number, toIndex: number) => {
+      const day = days[fromIndex];
+      if (!plan || !day) return;
       void (async () => {
         const db = await getExecutor();
-        await reorderPlanDay(db, plan.id, dayId, from + delta);
+        await reorderPlanDay(db, plan.id, day.id, toIndex);
         await reload(month);
       })();
     },
     [plan, days, reload, month],
   );
+
+  /* While a card is in the air the page must not scroll under it, and dragging toward an edge
+     should carry the list along. Measured in the window, since the masthead sits above this
+     screen and the finger arrives in screen coordinates. */
+  const [dragging, setDragging] = useState(false);
+  const scrollRef = useRef<ScrollView | null>(null);
+  const scrollY = useRef(0);
+  const viewport = useRef({ top: 0, height: 0 });
+
+  const autoScroll = useCallback((screenY: number) => {
+    const { top, height } = viewport.current;
+    if (height <= 0) return;
+    const EDGE = 110;
+    const MAX_STEP = 11;
+    const fromTop = screenY - top - EDGE;
+    const fromBottom = screenY - (top + height - EDGE);
+    let step = 0;
+    if (fromTop < 0) step = Math.max(-MAX_STEP, (fromTop / EDGE) * MAX_STEP);
+    else if (fromBottom > 0) step = Math.min(MAX_STEP, (fromBottom / EDGE) * MAX_STEP);
+    if (step === 0) return;
+    scrollY.current = Math.max(0, scrollY.current + step);
+    scrollRef.current?.scrollTo({ y: scrollY.current, animated: false });
+  }, []);
 
   const duplicate = useCallback(() => {
     if (!plan) return;
@@ -389,7 +428,9 @@ export default function PlanScreen() {
   }
 
   const nowMs = Date.now();
-  const hueById = new Map(days.map((day, index) => [day.id, HUES[index % HUES.length] ?? 'accent']));
+  const hueById = new Map(
+    days.map((day, index) => [day.id, HUES[index % HUES.length] ?? 'accent']),
+  );
   const labelById = new Map(days.map((day) => [day.id, labelFor(day)]));
 
   const monthTitle = new Date(`${month}-01T00:00:00`).toLocaleDateString(i18n.language, {
@@ -402,6 +443,19 @@ export default function PlanScreen() {
 
   return (
     <ScrollView
+      ref={scrollRef}
+      scrollEnabled={!dragging}
+      scrollEventThrottle={16}
+      onScroll={(event) => {
+        scrollY.current = event.nativeEvent.contentOffset.y;
+      }}
+      onLayout={() => {
+        scrollRef.current
+          ?.getNativeScrollRef()
+          ?.measureInWindow((_x: number, top: number, _width: number, height: number) => {
+            viewport.current = { top, height };
+          });
+      }}
       style={styles.screen}
       contentContainerStyle={[
         styles.content,
@@ -409,7 +463,11 @@ export default function PlanScreen() {
       ]}
       keyboardShouldPersistTaps="handled"
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.accent} />
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={handleRefresh}
+          tintColor={colors.accent}
+        />
       }
     >
       <ScreenHeader title={t('plan.title')} back />
@@ -578,89 +636,147 @@ export default function PlanScreen() {
           {days.length === 0 ? (
             <EmptyState emoji="➕" title={t('plan.noDays')} hint={t('plan.noDaysHint')} />
           ) : (
-            days.map((day, index) => {
-              const isNext = day.id === nextDayId;
-              const label = labelFor(day);
-              return (
-                <FadeSlideIn key={day.id} index={index}>
-                  <Pressable
-                    onPress={() => router.push({ pathname: '/plan-day/[id]', params: { id: day.id } })}
-                    style={[styles.dayCard, isNext && styles.dayCardNext]}
-                    accessibilityRole="button"
-                  >
-                    <View style={styles.dayHeader}>
-                      {/* The same colour this workout wears on the calendar, so the grid needs
-                          no separate key. */}
-                      <View
-                        style={[
-                          styles.dayDot,
-                          { backgroundColor: colors[hueById.get(day.id) ?? 'accent'] },
-                        ]}
-                      />
-                      <View style={styles.dayHeaderMain}>
-                        <Text style={styles.dayName}>{label}</Text>
-                        <Text style={styles.dayMeta}>
-                          {t('plan.exercises', { count: day.exercise_count })}
-                          {day.last_trained_at
-                            ? ` · ${t('plan.trained')} ${daysSince(day.last_trained_at, nowMs)} ${t('plan.daysAgo')}`
-                            : ` · ${t('plan.neverTrained')}`}
+            <DragReorderList
+              data={days}
+              keyExtractor={(day) => day.id}
+              onReorder={move}
+              onDragStateChange={setDragging}
+              onDragMove={autoScroll}
+              renderItem={(day, index, dragHandle) => {
+                const isNext = day.id === nextDayId;
+                const hue = colors[hueById.get(day.id) ?? 'accent'];
+                const names = (day.exercise_keys ?? '')
+                  .split(KEY_SEPARATOR)
+                  .filter(Boolean)
+                  .map(
+                    (key) =>
+                      (isHebrew
+                        ? EXERCISE_BY_KEY.get(key)?.nameHe
+                        : EXERCISE_BY_KEY.get(key)?.nameEn) ?? key,
+                  );
+                const shown = names.slice(0, 3);
+                const hidden = names.length - shown.length;
+
+                return (
+                  <FadeSlideIn index={index}>
+                    <Pressable
+                      onPress={() =>
+                        router.push({ pathname: '/plan-day/[id]', params: { id: day.id } })
+                      }
+                      // The colour this workout wears on the calendar, as the card's own edge: the
+                      // grid above needs no separate key, and the list reads as the same thing.
+                      style={[
+                        styles.dayCard,
+                        { borderStartColor: hue },
+                        isNext && styles.dayCardNext,
+                        dragHandle.active && styles.dayCardDragging,
+                      ]}
+                      accessibilityRole="button"
+                    >
+                      <View style={styles.dayHeader}>
+                        <Text style={styles.dayName} numberOfLines={1}>
+                          {labelFor(day)}
                         </Text>
+                        {isNext ? (
+                          <View style={styles.nextBadge}>
+                            <Text style={styles.nextBadgeText}>{t('plan.next')}</Text>
+                          </View>
+                        ) : null}
+                        <View
+                          {...dragHandle.handlers}
+                          style={styles.handle}
+                          accessibilityRole="adjustable"
+                          accessibilityLabel={t('plan.dragDay')}
+                          accessibilityActions={[
+                            ...(dragHandle.canMoveUp
+                              ? [{ name: 'moveUp', label: t('plan.moveUp') }]
+                              : []),
+                            ...(dragHandle.canMoveDown
+                              ? [{ name: 'moveDown', label: t('plan.moveDown') }]
+                              : []),
+                          ]}
+                          onAccessibilityAction={(event) => {
+                            if (event.nativeEvent.actionName === 'moveUp') dragHandle.moveUp();
+                            if (event.nativeEvent.actionName === 'moveDown') dragHandle.moveDown();
+                          }}
+                        >
+                          <Text
+                            style={[styles.handleGlyph, dragHandle.active && styles.handleActive]}
+                          >
+                            ⠿
+                          </Text>
+                        </View>
                       </View>
 
-                      {isNext ? (
-                        <View style={styles.nextBadge}>
-                          <Text style={styles.nextBadgeText}>{t('plan.next')}</Text>
-                        </View>
-                      ) : null}
+                      {/* What the day is made of, in the order it is trained. Three names and a
+                        count: a plan is recognised by its first exercises, not by a number. */}
+                      {shown.length > 0 ? (
+                        <Text style={styles.preview} numberOfLines={1}>
+                          {shown.join(' · ')}
+                          {hidden > 0 ? ` · +${hidden}` : ''}
+                        </Text>
+                      ) : (
+                        <Text style={styles.emptyDayHint}>{t('plan.dayEmptyHint')}</Text>
+                      )}
 
-                      <View style={styles.reorder}>
-                        <Pressable
-                          onPress={() => move(day.id, -1)}
-                          disabled={index === 0}
-                          style={[styles.moveBtn, index === 0 && styles.moveBtnOff]}
-                          accessibilityRole="button"
-                          accessibilityLabel={t('plan.moveUp')}
-                          hitSlop={6}
-                        >
-                          <Text style={styles.moveText}>↑</Text>
-                        </Pressable>
-                        <Pressable
-                          onPress={() => move(day.id, 1)}
-                          disabled={index === days.length - 1}
-                          style={[styles.moveBtn, index === days.length - 1 && styles.moveBtnOff]}
-                          accessibilityRole="button"
-                          accessibilityLabel={t('plan.moveDown')}
-                          hitSlop={6}
-                        >
-                          <Text style={styles.moveText}>↓</Text>
-                        </Pressable>
+                      <View style={styles.chips}>
+                        <View style={styles.chip}>
+                          <Text style={styles.chipText}>
+                            {t('plan.exercises', { count: day.exercise_count })}
+                          </Text>
+                        </View>
+                        {day.work_seconds ? (
+                          <View style={[styles.chip, styles.chipAccent]}>
+                            <Text style={[styles.chipText, styles.chipTextAccent]}>
+                              ⏱ {day.work_seconds}/{day.rest_seconds ?? 0}
+                            </Text>
+                          </View>
+                        ) : null}
+                        <View style={styles.chip}>
+                          <Text style={styles.chipText}>
+                            {day.last_trained_at
+                              ? `${t('plan.trained')} ${daysSince(day.last_trained_at, nowMs)} ${t('plan.daysAgo')}`
+                              : t('plan.neverTrained')}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {day.exercise_count > 0 ? (
+                        <View style={styles.dayActions}>
+                          <Pressable
+                            onPress={() => start(day.id)}
+                            style={({ pressed }) => [styles.startButton, pressed && styles.pressed]}
+                            accessibilityRole="button"
+                          >
+                            <Text style={styles.startButtonText}>▶ {t('plan.startDay')}</Text>
+                          </Pressable>
+                          <Pressable
+                            onPress={() => openDayOptions(day)}
+                            style={({ pressed }) => [
+                              styles.optionsButton,
+                              pressed && styles.pressed,
+                            ]}
+                            accessibilityRole="button"
+                            accessibilityLabel={t('workout.exerciseOptions')}
+                          >
+                            <Text style={styles.optionsGlyph}>⋯</Text>
+                          </Pressable>
+                        </View>
+                      ) : (
                         <Pressable
                           onPress={() => openDayOptions(day)}
-                          style={styles.moveBtn}
+                          style={({ pressed }) => [styles.optionsWide, pressed && styles.pressed]}
                           accessibilityRole="button"
                           accessibilityLabel={t('workout.exerciseOptions')}
-                          hitSlop={6}
                         >
-                          <Text style={styles.moveText}>⋯</Text>
+                          <Text style={styles.optionsGlyph}>⋯</Text>
                         </Pressable>
-                      </View>
-                    </View>
-
-                    {day.exercise_count > 0 ? (
-                      <Pressable
-                        onPress={() => start(day.id)}
-                        style={styles.startButton}
-                        accessibilityRole="button"
-                      >
-                        <Text style={styles.startButtonText}>▶ {t('plan.startDay')}</Text>
-                      </Pressable>
-                    ) : (
-                      <Text style={styles.emptyDayHint}>{t('plan.dayEmptyHint')}</Text>
-                    )}
-                  </Pressable>
-                </FadeSlideIn>
-              );
-            })
+                      )}
+                    </Pressable>
+                  </FadeSlideIn>
+                );
+              }}
+            />
           )}
 
           <Pressable onPress={addDay} style={styles.addDayButton} accessibilityRole="button">
@@ -685,7 +801,11 @@ export default function PlanScreen() {
 
           <Banner tone="info">{t('plan.prescriptionNote')}</Banner>
 
-          <Pressable onPress={removeThisPlan} style={styles.deleteButton} accessibilityRole="button">
+          <Pressable
+            onPress={removeThisPlan}
+            style={styles.deleteButton}
+            accessibilityRole="button"
+          >
             <Text style={styles.deleteButtonText}>{t('plan.deletePlan')}</Text>
           </Pressable>
         </>
@@ -723,6 +843,20 @@ const createStyles = (colors: ColorPalette) =>
     planName: TextStyle;
     dayCard: ViewStyle;
     dayCardNext: ViewStyle;
+    dayCardDragging: ViewStyle;
+    handle: ViewStyle;
+    handleGlyph: TextStyle;
+    handleActive: TextStyle;
+    preview: TextStyle;
+    chips: ViewStyle;
+    chip: ViewStyle;
+    chipAccent: ViewStyle;
+    chipText: TextStyle;
+    chipTextAccent: TextStyle;
+    dayActions: ViewStyle;
+    optionsButton: ViewStyle;
+    optionsWide: ViewStyle;
+    optionsGlyph: TextStyle;
     dayHeader: ViewStyle;
     dayDot: ViewStyle;
     dayHeaderMain: ViewStyle;
@@ -839,9 +973,48 @@ const createStyles = (colors: ColorPalette) =>
       borderRadius: radius.lg,
       borderWidth: 1,
       borderColor: colors.borderSubtle,
+      // The workout's colour as the card's leading edge — the same colour it wears on the
+      // calendar above, so the list is the grid's key rather than a second thing to learn.
+      borderStartWidth: 4,
       padding: spacing.md,
+      gap: spacing.sm,
+      marginBottom: spacing.sm,
     },
-    dayCardNext: { borderColor: colors.accentBorder, backgroundColor: colors.accentSoft },
+    dayCardNext: { backgroundColor: colors.accentSoft },
+    dayCardDragging: { borderColor: colors.accentBorder },
+    handle: { width: 32, alignItems: 'center', justifyContent: 'center' },
+    handleGlyph: { color: colors.textFaint, fontSize: fontSize.lg, lineHeight: 24 },
+    handleActive: { color: colors.accent },
+    preview: { color: colors.textSecondary, fontSize: fontSize.sm, textAlign: 'auto' },
+    chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+    chip: {
+      paddingVertical: 3,
+      paddingHorizontal: spacing.sm,
+      borderRadius: radius.pill,
+      backgroundColor: colors.surfaceRaised,
+      borderWidth: 1,
+      borderColor: colors.borderSubtle,
+    },
+    chipAccent: { backgroundColor: colors.accentSoft, borderColor: colors.accentBorder },
+    chipText: { color: colors.textMuted, fontSize: fontSize.xxs },
+    chipTextAccent: { color: colors.accent, fontVariant: ['tabular-nums'] },
+    dayActions: { flexDirection: 'row', gap: spacing.sm, alignItems: 'stretch' },
+    optionsButton: {
+      width: 48,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    optionsWide: {
+      paddingVertical: spacing.sm,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+    },
+    optionsGlyph: { color: colors.textMuted, fontSize: fontSize.md },
     dayHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
     dayDot: { width: 10, height: 10, borderRadius: radius.pill, marginTop: 5 },
     dayHeaderMain: { flex: 1 },
@@ -873,7 +1046,7 @@ const createStyles = (colors: ColorPalette) =>
     },
     nextBadgeText: { color: colors.accent, fontSize: fontSize.xxs, fontWeight: fontWeight.bold },
     startButton: {
-      marginTop: spacing.md,
+      flex: 1,
       paddingVertical: spacing.sm,
       borderRadius: radius.sm,
       backgroundColor: colors.accent,
