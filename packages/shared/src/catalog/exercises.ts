@@ -225,6 +225,7 @@ export const EXERCISE_SEED: readonly ExerciseSeed[] = [
   { nameEn: 'Plank', nameHe: 'פלאנק', primaryMuscle: 'core', movementPattern: 'core', equipmentSlug: 'none', loadType: 'time' },
   { nameEn: 'Side Plank', nameHe: 'פלאנק צידי', primaryMuscle: 'obliques', movementPattern: 'core', equipmentSlug: 'none', loadType: 'time', isUnilateral: true },
   { nameEn: 'Hanging Leg Raise', nameHe: 'הרמת רגליים בתלייה', primaryMuscle: 'core', movementPattern: 'core', equipmentSlug: 'pullup_bar', loadType: 'bodyweight_plus' },
+  { nameEn: 'Lying Leg Raise', nameHe: 'אלים (הרמת רגליים)', primaryMuscle: 'core', movementPattern: 'core', equipmentSlug: 'none', loadType: 'bodyweight' },
   { nameEn: 'Hanging Knee Raise', nameHe: 'הרמת ברכיים בתלייה', primaryMuscle: 'core', movementPattern: 'core', equipmentSlug: 'pullup_bar', loadType: 'bodyweight_plus' },
   { nameEn: 'Ab Wheel Rollout', nameHe: 'גלגל בטן', primaryMuscle: 'core', movementPattern: 'core', equipmentSlug: 'ab_wheel', loadType: 'bodyweight_plus' },
   { nameEn: 'Cable Crunch', nameHe: 'כפיפת בטן בכבל', primaryMuscle: 'core', movementPattern: 'core', equipmentSlug: 'cable_machine' },

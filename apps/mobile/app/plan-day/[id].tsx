@@ -8,7 +8,7 @@
  */
 
 import { EXERCISE_SEED, type ExerciseSeed } from '@fit/shared/catalog';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -66,16 +66,29 @@ export default function PlanDayScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
+  const navigation = useNavigation();
   const [day, setDay] = useState<PlanDayWithExercises | null>(null);
   const [nameDraft, setNameDraft] = useState('');
   const [loading, setLoading] = useState(true);
+
+  /*
+   * The name field is filled from the database once, when the day is opened — never again.
+   *
+   * `load` runs after every change on this screen: a set count, a reorder, an exercise added,
+   * the timer switch. It used to reset the field each time, so a name typed and then followed by
+   * any other tap was quietly put back to the old one before it had been saved.
+   */
+  const nameLoadedFor = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
     const db = await getExecutor();
     const detail = await getPlanDay(db, id);
     setDay(detail);
-    setNameDraft(detail?.name ?? '');
+    if (nameLoadedFor.current !== id) {
+      nameLoadedFor.current = id;
+      setNameDraft(detail?.name ?? '');
+    }
     setLoading(false);
   }, [id]);
 
@@ -96,12 +109,43 @@ export default function PlanDayScreen() {
     })();
   }, [addExercise, id, load]);
 
-  const saveName = async () => {
-    if (!id) return;
-    const db = await getExecutor();
-    await renamePlanDay(db, id, nameDraft);
-    await load();
+  /*
+   * The name is saved as it is typed, a moment after the last keystroke, and flushed at once
+   * when the field loses focus or the screen is left.
+   *
+   * It used to be saved only when the field reported the end of editing. On Android that event
+   * does not reliably arrive when the screen is closed with the keyboard still up — tap back
+   * straight after typing and the new name was simply never written.
+   *
+   * The flush on leaving runs from `beforeRemove`, before the plan screen underneath regains
+   * focus and reloads, so the list it shows already has the new name rather than the old one.
+   */
+  const pendingName = useRef<string | null>(null);
+  const nameTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const flushName = useCallback(() => {
+    if (nameTimer.current) {
+      clearTimeout(nameTimer.current);
+      nameTimer.current = null;
+    }
+    const name = pendingName.current;
+    if (name === null || !id) return;
+    pendingName.current = null;
+    void (async () => {
+      const db = await getExecutor();
+      await renamePlanDay(db, id, name);
+    })();
+  }, [id]);
+
+  const changeName = (text: string) => {
+    setNameDraft(text);
+    pendingName.current = text;
+    if (nameTimer.current) clearTimeout(nameTimer.current);
+    nameTimer.current = setTimeout(flushName, 400);
   };
+
+  useEffect(() => navigation.addListener('beforeRemove', flushName), [navigation, flushName]);
+  useEffect(() => () => flushName(), [flushName]);
 
   const patch = (
     prescriptionId: string,
@@ -199,8 +243,8 @@ export default function PlanDayScreen() {
 
         <TextInput
           value={nameDraft}
-          onChangeText={setNameDraft}
-          onEndEditing={() => void saveName()}
+          onChangeText={changeName}
+          onEndEditing={flushName}
           placeholder={t('plan.dayNamePlaceholder')}
           placeholderTextColor={colors.textMuted}
           style={styles.nameInput}
