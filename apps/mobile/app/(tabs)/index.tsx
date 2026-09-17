@@ -174,6 +174,14 @@ export default function TodayScreen() {
                   onStartAnother={startWorkout}
                 />
               </FadeSlideIn>
+              {/* A second workout planned for today stays on offer after the first is done.
+                  Without this, finishing the morning session hid the evening one until
+                  tomorrow, which is exactly the day it was not planned for. */}
+              {data.workout ? (
+                <FadeSlideIn index={1}>
+                  <TodayWorkoutCard workout={data.workout} onStart={startWorkout} />
+                </FadeSlideIn>
+              ) : null}
               <FadeSlideIn index={1}>
                 <StreakCard
                   days={data.strip}
@@ -241,7 +249,7 @@ export default function TodayScreen() {
             nor a profile to compute from — the empty state above is deliberately two ways in and
             not a dashboard, and two blank cards under it would undo that.
           */}
-          {data.workout || hasBodyData(data.nutrition) ? (
+          {data.workout || data.trained || hasBodyData(data.nutrition) ? (
             <>
               <FadeSlideIn index={data.workout ? 3 : 0}>
                 <WeightTrendCard

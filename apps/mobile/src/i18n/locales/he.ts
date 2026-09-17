@@ -349,6 +349,7 @@ export const he = {
     settings: 'הגדרות',
   },
   home: {
+    workoutSlot: 'אימון {{slot}} מתוך {{slots}} היום',
     missedYesterday: 'אתמול ({{day}}) לא בוצע',
     greetingMorning: 'בוקר טוב',
     greetingAfternoon: 'צהריים טובים',
@@ -658,6 +659,9 @@ export const he = {
     more: 'יותר',
   },
   month: {
+    addWorkout: '+ הוסף {{name}}',
+    removeWorkout: '✕ הסר את {{name}}',
+    onThisDay: 'ביום הזה: {{names}}',
     title: 'לוח חודשי',
     prev: 'החודש הקודם',
     next: 'החודש הבא',

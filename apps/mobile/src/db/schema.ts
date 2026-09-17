@@ -26,7 +26,7 @@
  * TEXT (lexicographically sortable, which is what the history queries rely on).
  */
 
-export const SCHEMA_VERSION = 15;
+export const SCHEMA_VERSION = 16;
 
 /**
  * Incremental migrations, keyed by the version they upgrade TO.
@@ -287,6 +287,38 @@ CREATE INDEX IF NOT EXISTS locations_user_idx ON locations (user_id);
     ALTER TABLE plan_days ADD COLUMN work_seconds INTEGER;
     ALTER TABLE plan_days ADD COLUMN rest_seconds INTEGER;
   `,
+
+  // Several workouts on one date. The calendar held one decision per date, enforced by
+  // UNIQUE (user_id, scheduled_on) - and SQLite cannot drop a constraint, so the table is rebuilt
+  // without it and with a position to order the workouts within a day.
+  //
+  // This is the first migration that replaces a table holding data, so it is written to survive
+  // being interrupted. The runner executes statement by statement with no transaction of its
+  // own, and an app closed between the DROP and the RENAME would otherwise leave the calendar
+  // in a table nothing reads. Hence the explicit transaction, and every statement safe to repeat:
+  // IF NOT EXISTS on the create and INSERT OR IGNORE on the copy, so a retry after a crash that
+  // happened before COMMIT, or after COMMIT but before the version was recorded, lands in the
+  // same place. Only plain columns are selected, so the copy reads the old shape and the new one
+  // alike. (No semicolons in this comment: the runner splits on them.)
+  16: `
+    BEGIN;
+    CREATE TABLE IF NOT EXISTS scheduled_days_v16 (
+      id            TEXT PRIMARY KEY NOT NULL,
+      user_id       TEXT NOT NULL,
+      scheduled_on  TEXT NOT NULL,
+      plan_day_id   TEXT,
+      position      INTEGER NOT NULL DEFAULT 0,
+      updated_at    TEXT,
+      deleted_at    TEXT
+    );
+    INSERT OR IGNORE INTO scheduled_days_v16 (id, user_id, scheduled_on, plan_day_id, updated_at, deleted_at)
+      SELECT id, user_id, scheduled_on, plan_day_id, updated_at, deleted_at FROM scheduled_days;
+    DROP TABLE scheduled_days;
+    ALTER TABLE scheduled_days_v16 RENAME TO scheduled_days;
+    CREATE INDEX IF NOT EXISTS scheduled_days_user_date_idx
+      ON scheduled_days (user_id, scheduled_on);
+    COMMIT;
+  `,
 };
 
 export const CREATE_SCHEMA_SQL = `
@@ -538,14 +570,18 @@ CREATE INDEX IF NOT EXISTS plan_day_exercises_day_idx
 -- as having no row (nothing decided). No foreign key, matching workout_sessions.plan_day_id —
 -- plan days are soft-deleted, so a constraint would either block the delete or take the history
 -- with it.
+--
+-- A date may carry several rows: one per workout, in position order - a morning session and an
+-- evening one. A rest day is a single row with a NULL plan_day_id and never shares its date
+-- with a workout. No unique key on the date for that reason (see migration 16).
 CREATE TABLE IF NOT EXISTS scheduled_days (
   id            TEXT PRIMARY KEY NOT NULL,
   user_id       TEXT NOT NULL,
   scheduled_on  TEXT NOT NULL,
   plan_day_id   TEXT,
+  position      INTEGER NOT NULL DEFAULT 0,
   updated_at    TEXT,
-  deleted_at    TEXT,
-  UNIQUE (user_id, scheduled_on)
+  deleted_at    TEXT
 );
 
 CREATE INDEX IF NOT EXISTS scheduled_days_user_date_idx

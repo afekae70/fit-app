@@ -102,6 +102,12 @@ export function TodayWorkoutCard({
             {t('home.todayKicker', { plan: workout.planName })}
           </Text>
           <Text style={s.workoutTitle}>{workout.dayName}</Text>
+          {/* Only said when there is more than one — "workout 1 of 1" is noise. */}
+          {workout.slots > 1 ? (
+            <Text style={s.workoutMeta}>
+              {t('home.workoutSlot', { slot: workout.slot, slots: workout.slots })}
+            </Text>
+          ) : null}
           <Text style={s.workoutMeta}>
             {t('home.workoutMeta', {
               exercises: workout.exerciseCount,

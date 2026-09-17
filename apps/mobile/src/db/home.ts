@@ -134,6 +134,12 @@ export interface TodayWorkout {
   /** Every exercise name in order — the screen shows the first two and counts the rest. */
   exerciseNames: string[];
   /**
+   * Which of today's workouts this is, and how many there are. 1 of 1 on an ordinary day; the
+   * card only mentions it when there is more than one, so a second workout is not a surprise.
+   */
+  slot: number;
+  slots: number;
+  /**
    * The day that was scheduled yesterday and not trained, if there was one.
    *
    * Reported rather than rescheduled. The plan has already moved on; this only says what was
@@ -143,7 +149,14 @@ export interface TodayWorkout {
 }
 
 /**
- * The workout scheduled for today, or null when there is no active plan.
+ * The next workout still to do today, or null when there is none — no active plan, a rest day,
+ * or everything scheduled for today already trained.
+ *
+ * With several workouts on one date this walks them in order and skips the ones trained today,
+ * so finishing the morning session turns the card into the evening one. A day counts as done
+ * once there have been as many trained sessions as scheduled workouts, whichever workouts those
+ * sessions were: a single planned workout replaced by a freestyle session is still a trained
+ * day, exactly as it was before a date could hold more than one.
  *
  * **The rotation follows the calendar, not completion.** Each day advances one position through
  * the plan whether or not the previous one was trained. Miss Monday and Tuesday is still
@@ -180,27 +193,41 @@ export async function getTodayWorkout(
    * Which is why `scheduledFor` distinguishes null from undefined: folding them together would
    * either refill a rest day or ignore the calendar entirely.
    */
-  const committed = await scheduledFor(db, userId, localDate(now));
+  const today = localDate(now);
+  const committed = await scheduledFor(db, userId, today);
   if (committed === null) return null;
 
-  let day = null as (typeof days)[number] | null;
+  let candidates: (typeof days)[number][] = [];
   let missedPosition: number | null = null;
 
-  if (committed === undefined) {
+  if (committed !== undefined) {
+    // Committed days that have since been deleted from the plan drop out here.
+    candidates = committed
+      .map((id) => days.find((d) => d.id === id))
+      .filter((d): d is (typeof days)[number] => d !== undefined);
+  }
+  if (candidates.length === 0) {
+    // Nothing decided, or every committed day was deleted from the plan. Fall back to the
+    // rotation rather than showing nothing, which would read as "no plan".
     const rotated = await rotate(db, userId, plan.id, days.length, now);
-    day = days[rotated.position] ?? null;
+    const rotatedDay = days[rotated.position];
+    candidates = rotatedDay ? [rotatedDay] : [];
     missedPosition = rotated.missedPosition;
-  } else {
-    // A committed day that has since been deleted from the plan leaves the date stranded. Fall
-    // back to the rotation rather than showing nothing, which would read as "no plan".
-    day = days.find((d) => d.id === committed) ?? null;
-    if (!day) {
-      const rotated = await rotate(db, userId, plan.id, days.length, now);
-      day = days[rotated.position] ?? null;
-      missedPosition = rotated.missedPosition;
-    }
   }
 
+  const trainedToday = await db.all<{ plan_day_id: string | null }>(
+    `SELECT ws.plan_day_id FROM workout_sessions ws
+      WHERE ws.user_id = ?
+        AND ws.deleted_at IS NULL
+        AND date(ws.started_at, 'localtime') = ?
+        AND ${TRAINED}`,
+    [userId, today],
+  );
+  if (trainedToday.length >= candidates.length) return null;
+
+  const doneIds = new Set(trainedToday.map((row) => row.plan_day_id));
+  const slotIndex = candidates.findIndex((d) => !doneIds.has(d.id));
+  const day = candidates[slotIndex] ?? null;
   if (!day) return null;
 
   const exercises = await listPlanDayExercises(db, day.id);
@@ -217,6 +244,8 @@ export async function getTodayWorkout(
     setCount,
     estimatedMinutes: Math.round(setCount * MINUTES_PER_SET),
     exerciseNames: exercises.map((e) => displayName(e.exercise_key)),
+    slot: slotIndex + 1,
+    slots: candidates.length,
     missedYesterday: missed ? dayLabel(missed) : null,
   };
 }

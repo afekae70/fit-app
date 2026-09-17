@@ -64,11 +64,13 @@ import {
 import { getExecutor, newId } from '../../src/db/provider.js';
 import {
   addMonths,
+  addScheduledWorkout,
   clearScheduledDay,
   getRange,
   localDate,
   monthGrid,
   monthKey,
+  removeScheduledWorkout,
   repeatWeekAcrossMonth,
   setScheduledDay,
   weekDates,
@@ -120,7 +122,7 @@ export default function PlanScreen() {
 
   const today = localDate(new Date());
   const [month, setMonth] = useState(() => monthKey(today));
-  const [decisions, setDecisions] = useState<Map<string, string | null>>(new Map());
+  const [decisions, setDecisions] = useState<Map<string, string[] | null>>(new Map());
 
   const grid = useMemo(() => monthGrid(month), [month]);
   const rtl = isRtlLanguage(i18n.language as Language);
@@ -184,26 +186,69 @@ export default function PlanScreen() {
 
   /* ---------------------------------------------------------------- calendar */
 
+  /**
+   * Decide what a date holds.
+   *
+   * On an empty or resting day a workout is simply chosen, as before. Once a day has a workout,
+   * the same sheet offers to add another beside it or take one off — so a second session is one
+   * more tap on the day already planned, not a separate mode to find.
+   */
   const chooseFor = useCallback(
     (date: string) => {
       void (async () => {
+        const decision = decisions.get(date);
         const decided = decisions.has(date);
+        const onDay = Array.isArray(decision) ? decision : [];
+        const onDayTypes = onDay
+          .map((id) => days.find((day) => day.id === id))
+          .filter((day): day is DayStatus => day !== undefined);
+
+        type Step =
+          | { kind: 'set'; id: string }
+          | { kind: 'add'; id: string }
+          | { kind: 'remove'; id: string }
+          | { kind: 'rest' }
+          | { kind: 'clear' };
+        const steps: { label: string; step: Step }[] = [];
+
+        if (onDayTypes.length === 0) {
+          for (const day of days) steps.push({ label: labelFor(day), step: { kind: 'set', id: day.id } });
+        } else {
+          for (const day of onDayTypes) {
+            steps.push({
+              label: t('month.removeWorkout', { name: labelFor(day) }),
+              step: { kind: 'remove', id: day.id },
+            });
+          }
+          for (const day of days.filter((d) => !onDay.includes(d.id))) {
+            steps.push({
+              label: t('month.addWorkout', { name: labelFor(day) }),
+              step: { kind: 'add', id: day.id },
+            });
+          }
+        }
+        if (decision !== null) steps.push({ label: t('week.rest'), step: { kind: 'rest' } });
+        // Offered only when there is something to clear. On an undecided day it would be a
+        // button that changes nothing, which reads as broken.
+        if (decided) steps.push({ label: t('week.clear'), step: { kind: 'clear' } });
+
         const choice = await ask({
           title: longDate(date),
-          actions: [
-            ...days.map((day) => ({ label: labelFor(day) })),
-            { label: t('week.rest') },
-            // Offered only when there is something to clear. On an undecided day it would be a
-            // button that changes nothing, which reads as broken.
-            ...(decided ? [{ label: t('week.clear') }] : []),
-          ],
+          message:
+            onDayTypes.length > 0
+              ? t('month.onThisDay', { names: onDayTypes.map((day) => labelFor(day)).join(' · ') })
+              : undefined,
+          actions: steps.map((entry) => ({ label: entry.label })),
         });
-        if (choice === null) return;
+        const picked = choice === null ? undefined : steps[choice]?.step;
+        if (!picked) return;
 
         const db = await getExecutor();
-        const day = days[choice];
-        if (day) await setScheduledDay(db, userId, newId, date, day.id);
-        else if (choice === days.length) await setScheduledDay(db, userId, newId, date, null);
+        if (picked.kind === 'set') await setScheduledDay(db, userId, newId, date, picked.id);
+        else if (picked.kind === 'add') await addScheduledWorkout(db, userId, newId, date, picked.id);
+        else if (picked.kind === 'remove')
+          await removeScheduledWorkout(db, userId, newId, date, picked.id);
+        else if (picked.kind === 'rest') await setScheduledDay(db, userId, newId, date, null);
         else await clearScheduledDay(db, userId, date);
 
         void hapticLight();
@@ -439,10 +484,16 @@ export default function PlanScreen() {
                 <View key={week[0]?.date} style={styles.row}>
                   {week.map((cell) => {
                     const decided = decisions.has(cell.date);
-                    const planDayId = decisions.get(cell.date) ?? null;
-                    const hue = planDayId ? hueById.get(planDayId) : undefined;
-                    const label = planDayId ? labelById.get(planDayId) : undefined;
+                    const decision = decisions.get(cell.date);
+                    const workouts = (Array.isArray(decision) ? decision : []).filter((id) =>
+                      labelById.has(id),
+                    );
+                    const labels = workouts.map((id) => labelById.get(id) ?? '');
                     const isToday = cell.date === today;
+                    // Two tags fit a cell. A third day of training on one date is rare enough to
+                    // be a count rather than a squeeze.
+                    const shown = workouts.length > 2 ? workouts.slice(0, 1) : workouts;
+                    const hidden = workouts.length - shown.length;
 
                     return (
                       <Pressable
@@ -453,7 +504,11 @@ export default function PlanScreen() {
                         disabled={!cell.inMonth}
                         accessibilityRole="button"
                         accessibilityLabel={`${longDate(cell.date)}: ${
-                          label ?? (decided ? t('week.rest') : t('week.undecided'))
+                          labels.length > 0
+                            ? labels.join(', ')
+                            : decided
+                              ? t('week.rest')
+                              : t('week.undecided')
                         }`}
                         style={({ pressed }) => [
                           styles.cell,
@@ -467,13 +522,28 @@ export default function PlanScreen() {
                           {Number(cell.date.slice(8))}
                         </Text>
 
-                        {cell.inMonth && hue && label ? (
-                          <View style={[styles.tag, { backgroundColor: colors[hue] }]}>
-                            <Text style={styles.tagText} numberOfLines={1}>
-                              {label}
-                            </Text>
-                          </View>
-                        ) : cell.inMonth && decided && planDayId === null ? (
+                        {cell.inMonth && workouts.length > 0 ? (
+                          <>
+                            {shown.map((id) => (
+                              <View
+                                key={id}
+                                style={[
+                                  styles.tag,
+                                  { backgroundColor: colors[hueById.get(id) ?? 'accent'] },
+                                ]}
+                              >
+                                <Text style={styles.tagText} numberOfLines={1}>
+                                  {labelById.get(id)}
+                                </Text>
+                              </View>
+                            ))}
+                            {hidden > 0 ? (
+                              <Text style={styles.rest} numberOfLines={1}>
+                                +{hidden}
+                              </Text>
+                            ) : null}
+                          </>
+                        ) : cell.inMonth && decided && decision === null ? (
                           <Text style={styles.rest} numberOfLines={1}>
                             {t('week.rest')}
                           </Text>
@@ -717,7 +787,7 @@ const createStyles = (colors: ColorPalette) =>
     },
     cell: {
       flex: 1,
-      minHeight: 58,
+      minHeight: 66,
       borderRadius: radius.sm,
       backgroundColor: colors.surfaceRaised,
       paddingVertical: 4,

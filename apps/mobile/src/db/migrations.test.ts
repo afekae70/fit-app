@@ -497,3 +497,98 @@ describe('migration 15 — timed workouts', () => {
     db.close();
   });
 });
+
+describe('migration 16 — several workouts per day', () => {
+  /** The calendar as every device before this build has it: one row per date, enforced. */
+  const OLD_SCHEDULE = `
+    CREATE TABLE scheduled_days (
+      id TEXT PRIMARY KEY NOT NULL, user_id TEXT NOT NULL, scheduled_on TEXT NOT NULL,
+      plan_day_id TEXT, updated_at TEXT, deleted_at TEXT,
+      UNIQUE (user_id, scheduled_on)
+    );
+    INSERT INTO scheduled_days (id, user_id, scheduled_on, plan_day_id, updated_at)
+      VALUES ('r1', 'u1', '2026-09-20', 'push', '2026-09-01T00:00:00Z'),
+             ('r2', 'u1', '2026-09-21', NULL, '2026-09-01T00:00:00Z');
+  `;
+
+  function oldCalendar() {
+    const db = new DatabaseSync(':memory:');
+    db.exec(OLD_SCHEDULE);
+    return db;
+  }
+
+  type Row = { id: string; scheduled_on: string; plan_day_id: string | null; position: number };
+  const rows = (db: ReturnType<typeof oldCalendar>): Row[] =>
+    db
+      .prepare(`SELECT id, scheduled_on, plan_day_id, position FROM scheduled_days ORDER BY id`)
+      .all() as Row[];
+
+  it('is on the app upgrade path', () => {
+    expect(SCHEMA_VERSION).toBeGreaterThanOrEqual(16);
+    expect(MIGRATIONS[16]).toBeDefined();
+  });
+
+  it('keeps every planned day, workout and rest alike', () => {
+    const db = oldCalendar();
+    applyMigration(db, MIGRATIONS[16] ?? '');
+    expect(rows(db)).toEqual([
+      { id: 'r1', scheduled_on: '2026-09-20', plan_day_id: 'push', position: 0 },
+      { id: 'r2', scheduled_on: '2026-09-21', plan_day_id: null, position: 0 },
+    ]);
+    db.close();
+  });
+
+  it('lets a second workout share a date afterwards', () => {
+    const db = oldCalendar();
+    applyMigration(db, MIGRATIONS[16] ?? '');
+    expect(() =>
+      db.exec(`INSERT INTO scheduled_days (id, user_id, scheduled_on, plan_day_id, position)
+               VALUES ('r3', 'u1', '2026-09-20', 'abs', 1)`),
+    ).not.toThrow();
+    db.close();
+  });
+
+  it('is safe to run twice', () => {
+    const db = oldCalendar();
+    applyMigration(db, MIGRATIONS[16] ?? '');
+    applyMigration(db, MIGRATIONS[16] ?? '');
+    expect(rows(db).map((row) => row.id)).toEqual(['r1', 'r2']);
+    db.close();
+  });
+
+  it('loses nothing when the app died after the copy was committed but before the version was saved', () => {
+    // On the next launch CREATE_SCHEMA_SQL runs first and then the migration again, from the top.
+    const db = oldCalendar();
+    applyMigration(db, MIGRATIONS[16] ?? '');
+    db.exec(CREATE_SCHEMA_SQL.replace(/PRAGMA journal_mode = WAL;/, ''));
+    applyMigration(db, MIGRATIONS[16] ?? '');
+    expect(rows(db).map((row) => row.plan_day_id)).toEqual(['push', null]);
+    db.close();
+  });
+
+  it('leaves the old calendar whole when it fails part way through', () => {
+    // A statement that fails after the old table is dropped but before the new one takes its
+    // name. Inside the transaction that must all come undone, rather than leaving the calendar
+    // in a table nothing reads.
+    const db = oldCalendar();
+    const broken = (MIGRATIONS[16] ?? '').replace(
+      'DROP TABLE scheduled_days;',
+      'DROP TABLE scheduled_days; SELECT * FROM a_table_that_does_not_exist;',
+    );
+    expect(() => applyMigration(db, broken)).toThrow();
+    // What the app does on its next launch: a fresh connection, where the unfinished
+    // transaction is gone. Rolled back here explicitly, as the same connection is reused.
+    db.exec('ROLLBACK;');
+    const survivors = db.prepare(`SELECT id FROM scheduled_days ORDER BY id`).all() as { id: string }[];
+    expect(survivors.map((row) => row.id)).toEqual(['r1', 'r2']);
+    db.close();
+  });
+
+  it('upgrades a whole device, calendar included, in the order the app runs things', () => {
+    const db = seededV6Database();
+    db.exec(OLD_SCHEDULE);
+    startUpLikeTheApp(db);
+    expect(rows(db).map((row) => row.id)).toEqual(['r1', 'r2']);
+    db.close();
+  });
+});

@@ -1,5 +1,9 @@
 /**
- * The weekly calendar — which workout is committed to on a given date.
+ * The weekly calendar — which workouts are committed to on a given date.
+ *
+ * A date holds nothing (undecided), a rest day, or one or more workouts in order. Several
+ * workouts is a real pattern, not an edge case — weights in the morning and abs in the evening —
+ * and a calendar that could only say one thing per day forced the second one out of the plan.
  *
  * This sits alongside the rotation in `home.ts`, not instead of it. The rotation answers "what
  * comes next if you simply train"; the calendar answers "what did you sit down on Saturday and
@@ -25,7 +29,43 @@ export interface ScheduledDayRow {
   user_id: string;
   scheduled_on: string;
   plan_day_id: string | null;
+  position: number;
 }
+
+/**
+ * What a date holds.
+ *
+ *   undefined  nothing decided — the rotation owns it
+ *   null       a rest day the user chose
+ *   string[]   one or more workouts, in the order they are done — never empty
+ *
+ * Three states, not two. Collapsing undecided into rest would stop the rotation filling days
+ * nobody planned; collapsing rest into undecided would refill a day deliberately kept free.
+ */
+export type DayDecision = string[] | null | undefined;
+
+/** The decision a set of rows for one date adds up to. Rows must already be in position order. */
+function decisionOf(rows: readonly { plan_day_id: string | null }[]): DayDecision {
+  if (rows.length === 0) return undefined;
+  const workouts = rows.map((row) => row.plan_day_id).filter((id): id is string => id !== null);
+  // A workout outranks a stray rest row for the same date. The writes below never produce both,
+  // but a date that somehow held both is a date with training on it.
+  return workouts.length > 0 ? workouts : null;
+}
+
+/** Rows for a span of dates, grouped by date, each group in position order. */
+function groupByDate(rows: readonly ScheduledDayRow[]): Map<string, ScheduledDayRow[]> {
+  const byDate = new Map<string, ScheduledDayRow[]>();
+  for (const row of rows) {
+    const group = byDate.get(row.scheduled_on) ?? [];
+    group.push(row);
+    byDate.set(row.scheduled_on, group);
+  }
+  return byDate;
+}
+
+/* Position first; the rest only settles order for rows written before positions existed. */
+const DAY_ORDER = 'ORDER BY scheduled_on, position, updated_at, id';
 
 /** One day of a week as the editor shows it. */
 export interface ScheduledDay {
@@ -34,12 +74,14 @@ export interface ScheduledDay {
   /** 0 = Sunday … 6 = Saturday. */
   weekday: number;
   /**
-   * The committed workout, or null for a rest day.
+   * The first committed workout, or null for a rest day.
    *
    * `null` and "no entry" are different facts and both reach here as null — use `planned` to
    * tell them apart. A rest day the user chose should not be quietly refilled by the rotation.
    */
   planDayId: string | null;
+  /** Every committed workout, in order. Empty for a rest day and for an undecided one. */
+  planDayIds: string[];
   /** True when the user has decided this day, either a workout or a rest. */
   planned: boolean;
 }
@@ -96,22 +138,23 @@ export function weekDates(start: string): string[] {
 /* -------------------------------------------------------------------------- */
 
 /**
- * What is committed for one date.
+ * What is committed for one date — see `DayDecision`.
  *
- * Returns `undefined` when nothing has been decided, distinct from `null` for a chosen rest day.
- * Callers that collapse the two put a workout on a day the user deliberately cleared.
+ * Callers that collapse `undefined` and `null` put a workout on a day the user deliberately
+ * cleared, or refuse one on a day nobody decided.
  */
 export async function scheduledFor(
   db: SqlExecutor,
   userId: string,
   date: string,
-): Promise<string | null | undefined> {
-  const row = await db.get<{ plan_day_id: string | null }>(
+): Promise<DayDecision> {
+  const rows = await db.all<{ plan_day_id: string | null }>(
     `SELECT plan_day_id FROM scheduled_days
-      WHERE user_id = ? AND scheduled_on = ? AND deleted_at IS NULL`,
+      WHERE user_id = ? AND scheduled_on = ? AND deleted_at IS NULL
+      ORDER BY position, updated_at, id`,
     [userId, date],
   );
-  return row === null ? undefined : row.plan_day_id;
+  return decisionOf(rows);
 }
 
 /** A whole week, always seven entries, unplanned days included. */
@@ -123,18 +166,20 @@ export async function getWeek(
   const dates = weekDates(start);
   const rows = await db.all<ScheduledDayRow>(
     `SELECT * FROM scheduled_days
-      WHERE user_id = ? AND scheduled_on >= ? AND scheduled_on <= ? AND deleted_at IS NULL`,
+      WHERE user_id = ? AND scheduled_on >= ? AND scheduled_on <= ? AND deleted_at IS NULL
+      ${DAY_ORDER}`,
     [userId, dates[0], dates[6]],
   );
-  const byDate = new Map(rows.map((row) => [row.scheduled_on, row]));
+  const byDate = groupByDate(rows);
 
   return dates.map((date) => {
-    const row = byDate.get(date);
+    const decision = decisionOf(byDate.get(date) ?? []);
     return {
       date,
       weekday: parseLocalDate(date).getDay(),
-      planDayId: row?.plan_day_id ?? null,
-      planned: row !== undefined,
+      planDayId: decision?.[0] ?? null,
+      planDayIds: decision ?? [],
+      planned: decision !== undefined,
     };
   });
 }
@@ -154,11 +199,42 @@ export async function isWeekUnplanned(
 /* -------------------------------------------------------------------------- */
 
 /**
- * Commit one date.
+ * Replace everything decided for one date.
  *
- * `planDayId` null records a rest day; `clear` removes the decision entirely and hands the date
- * back to the rotation. Upsert by `(user_id, scheduled_on)`, which the UNIQUE constraint makes
- * the natural key — editing Sunday twice must not leave two Sundays.
+ * `null` records a rest day, a list records those workouts in that order, and duplicates in the
+ * list are dropped — the same workout twice on one date is a typo, not a plan.
+ *
+ * Rows are deleted rather than tombstoned. The calendar is local only (it is not in the sync
+ * tables), so there is nobody to tell about a deletion, and with several rows per date a
+ * tombstone would have to be matched to the row it shadows — which is exactly the kind of
+ * bookkeeping that ends with a cleared workout reappearing.
+ */
+export async function setScheduledWorkouts(
+  db: SqlExecutor,
+  userId: string,
+  newId: IdFactory,
+  date: string,
+  planDayIds: readonly string[] | null,
+  clock: Clock = defaultClock,
+): Promise<void> {
+  const now = clock();
+  await db.run(`DELETE FROM scheduled_days WHERE user_id = ? AND scheduled_on = ?`, [userId, date]);
+
+  const entries: (string | null)[] = planDayIds === null ? [null] : [...new Set(planDayIds)];
+  for (const [position, planDayId] of entries.entries()) {
+    await db.run(
+      `INSERT INTO scheduled_days (id, user_id, scheduled_on, plan_day_id, position, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [newId(), userId, date, planDayId, position, now],
+    );
+  }
+}
+
+/**
+ * Commit one date to a single workout, or to rest when `planDayId` is null.
+ *
+ * Replaces whatever the date held — including a second workout. Use `addScheduledWorkout` to put
+ * another workout on a day that already has one.
  */
 export async function setScheduledDay(
   db: SqlExecutor,
@@ -168,41 +244,56 @@ export async function setScheduledDay(
   planDayId: string | null,
   clock: Clock = defaultClock,
 ): Promise<void> {
-  const now = clock();
-  const existing = await db.get<{ id: string }>(
-    `SELECT id FROM scheduled_days WHERE user_id = ? AND scheduled_on = ?`,
-    [userId, date],
-  );
-
-  if (existing) {
-    // `deleted_at = NULL` matters: re-planning a date that was cleared has to revive the row,
-    // not leave a tombstone shadowing the new decision.
-    await db.run(
-      `UPDATE scheduled_days SET plan_day_id = ?, updated_at = ?, deleted_at = NULL WHERE id = ?`,
-      [planDayId, now, existing.id],
-    );
-    return;
-  }
-
-  await db.run(
-    `INSERT INTO scheduled_days (id, user_id, scheduled_on, plan_day_id, updated_at)
-     VALUES (?, ?, ?, ?, ?)`,
-    [newId(), userId, date, planDayId, now],
-  );
+  await setScheduledWorkouts(db, userId, newId, date, planDayId === null ? null : [planDayId], clock);
 }
 
-/** Undo a decision, returning the date to the rotation. */
-export async function clearScheduledDay(
+/**
+ * Add a workout after the ones already on a date.
+ *
+ * On a rest day it replaces the rest — deciding to train is the newer decision. A workout
+ * already on the date is left where it is rather than added twice.
+ */
+export async function addScheduledWorkout(
   db: SqlExecutor,
   userId: string,
+  newId: IdFactory,
   date: string,
+  planDayId: string,
   clock: Clock = defaultClock,
 ): Promise<void> {
-  const at = clock();
-  await db.run(
-    `UPDATE scheduled_days SET deleted_at = ?, updated_at = ? WHERE user_id = ? AND scheduled_on = ?`,
-    [at, at, userId, date],
-  );
+  const current = await scheduledFor(db, userId, date);
+  const workouts = Array.isArray(current) ? current : [];
+  if (workouts.includes(planDayId)) return;
+  await setScheduledWorkouts(db, userId, newId, date, [...workouts, planDayId], clock);
+}
+
+/**
+ * Take one workout off a date, keeping the others in order.
+ *
+ * Removing the last one leaves the date undecided rather than turning it into a rest day: taking
+ * a workout out of the plan is not the same statement as choosing to rest.
+ */
+export async function removeScheduledWorkout(
+  db: SqlExecutor,
+  userId: string,
+  newId: IdFactory,
+  date: string,
+  planDayId: string,
+  clock: Clock = defaultClock,
+): Promise<void> {
+  const current = await scheduledFor(db, userId, date);
+  if (!Array.isArray(current) || !current.includes(planDayId)) return;
+  const remaining = current.filter((id) => id !== planDayId);
+  if (remaining.length === 0) {
+    await clearScheduledDay(db, userId, date);
+    return;
+  }
+  await setScheduledWorkouts(db, userId, newId, date, remaining, clock);
+}
+
+/** Undo every decision for a date, returning it to the rotation. */
+export async function clearScheduledDay(db: SqlExecutor, userId: string, date: string): Promise<void> {
+  await db.run(`DELETE FROM scheduled_days WHERE user_id = ? AND scheduled_on = ?`, [userId, date]);
 }
 
 /**
@@ -238,7 +329,14 @@ export async function seedWeekFromPrevious(
     if (!day.planned) continue;
     const destination = target[index];
     if (!destination || destination.planned) continue;
-    await setScheduledDay(db, userId, newId, destination.date, day.planDayId, clock);
+    await setScheduledWorkouts(
+      db,
+      userId,
+      newId,
+      destination.date,
+      day.planDayIds.length > 0 ? day.planDayIds : null,
+      clock,
+    );
     copied = true;
   }
   return copied;
@@ -302,23 +400,29 @@ export function monthGrid(month: string): MonthCell[][] {
 /**
  * Every decision between two local dates, inclusive.
  *
- * A date with a workout maps to its plan day, a chosen rest day maps to null, and an undecided
- * date is absent — so `has` answers "was this decided" and `get` answers "decided as what". A
- * plain array of nullable ids would fold rest and undecided into one value, and that is the
- * distinction the rotation depends on.
+ * A date with workouts maps to their plan days in order, a chosen rest day maps to null, and an
+ * undecided date is absent — so `has` answers "was this decided" and `get` answers "decided as
+ * what". Folding rest and undecided into one value would lose the distinction the rotation
+ * depends on.
  */
 export async function getRange(
   db: SqlExecutor,
   userId: string,
   from: string,
   to: string,
-): Promise<Map<string, string | null>> {
+): Promise<Map<string, string[] | null>> {
   const rows = await db.all<ScheduledDayRow>(
     `SELECT * FROM scheduled_days
-      WHERE user_id = ? AND scheduled_on >= ? AND scheduled_on <= ? AND deleted_at IS NULL`,
+      WHERE user_id = ? AND scheduled_on >= ? AND scheduled_on <= ? AND deleted_at IS NULL
+      ${DAY_ORDER}`,
     [userId, from, to],
   );
-  return new Map(rows.map((row) => [row.scheduled_on, row.plan_day_id]));
+  const range = new Map<string, string[] | null>();
+  for (const [date, group] of groupByDate(rows)) {
+    const decision = decisionOf(group);
+    if (decision !== undefined) range.set(date, decision);
+  }
+  return range;
 }
 
 /**
@@ -353,15 +457,15 @@ export async function repeatWeekAcrossMonth(
 
   const recent = await getRange(db, userId, lookbackStart, monthEnd);
 
-  const byWeek = new Map<string, Map<number, string | null>>();
-  for (const [date, planDayId] of recent) {
+  const byWeek = new Map<string, Map<number, string[] | null>>();
+  for (const [date, decision] of recent) {
     const start = weekStart(date);
-    const week = byWeek.get(start) ?? new Map<number, string | null>();
-    week.set(parseLocalDate(date).getDay(), planDayId);
+    const week = byWeek.get(start) ?? new Map<number, string[] | null>();
+    week.set(parseLocalDate(date).getDay(), decision);
     byWeek.set(start, week);
   }
 
-  let pattern: Map<number, string | null> | undefined;
+  let pattern: Map<number, string[] | null> | undefined;
   let patternStart = '';
   for (const [start, week] of byWeek) {
     const fuller = !pattern || week.size > pattern.size;
@@ -379,7 +483,7 @@ export async function repeatWeekAcrossMonth(
     if (recent.has(date)) continue;
     const weekday = parseLocalDate(date).getDay();
     if (!pattern.has(weekday)) continue;
-    await setScheduledDay(db, userId, newId, date, pattern.get(weekday) ?? null, clock);
+    await setScheduledWorkouts(db, userId, newId, date, pattern.get(weekday) ?? null, clock);
     written += 1;
   }
   return written;

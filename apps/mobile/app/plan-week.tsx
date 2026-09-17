@@ -42,10 +42,12 @@ import {
 import { getActivePlan, listPlanDays } from '../src/db/plans.js';
 import { getExecutor, newId } from '../src/db/provider.js';
 import {
+  addScheduledWorkout,
   clearScheduledDay,
   getWeek,
   localDate,
   nextWeekStart,
+  removeScheduledWorkout,
   seedWeekFromPrevious,
   setScheduledDay,
   weekDates,
@@ -111,6 +113,20 @@ export default function PlanWeekScreen() {
     void (async () => {
       const db = await getExecutor();
       await setScheduledDay(db, userId, newId, date, planDayId);
+      setWeek(await getWeek(db, userId, start));
+    })();
+  };
+
+  /**
+   * A workout chip toggles. Tapping a second workout on a day that already has one adds it
+   * beside the first rather than replacing it — two sessions on one day is a plan, and the
+   * chips already say which are on. Tapping one that is on takes it off.
+   */
+  const toggle = (date: string, planDayId: string, on: boolean) => {
+    void (async () => {
+      const db = await getExecutor();
+      if (on) await removeScheduledWorkout(db, userId, newId, date, planDayId);
+      else await addScheduledWorkout(db, userId, newId, date, planDayId);
       setWeek(await getWeek(db, userId, start));
     })();
   };
@@ -220,11 +236,11 @@ export default function PlanWeekScreen() {
                   contentContainerStyle={styles.chipRow}
                 >
                   {options.map((option) => {
-                    const on = day.planned && day.planDayId === option.id;
+                    const on = day.planDayIds.includes(option.id);
                     return (
                       <Pressable
                         key={option.id}
-                        onPress={() => choose(day.date, option.id)}
+                        onPress={() => toggle(day.date, option.id, on)}
                         style={[styles.chip, on && styles.chipOn]}
                         accessibilityRole="button"
                         accessibilityState={{ selected: on }}
@@ -241,14 +257,14 @@ export default function PlanWeekScreen() {
                     onPress={() => choose(day.date, null)}
                     style={[
                       styles.chip,
-                      day.planned && day.planDayId === null && styles.chipRest,
+                      day.planned && day.planDayIds.length === 0 && styles.chipRest,
                     ]}
                     accessibilityRole="button"
                   >
                     <Text
                       style={[
                         styles.chipText,
-                        day.planned && day.planDayId === null && styles.chipTextRest,
+                        day.planned && day.planDayIds.length === 0 && styles.chipTextRest,
                       ]}
                     >
                       {t('week.rest')}

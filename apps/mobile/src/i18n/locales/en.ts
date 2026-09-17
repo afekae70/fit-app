@@ -356,6 +356,7 @@ export const en = {
     settings: 'Settings',
   },
   home: {
+    workoutSlot: 'Workout {{slot}} of {{slots}} today',
     missedYesterday: 'Yesterday ({{day}}) was missed',
     greetingMorning: 'Good morning',
     greetingAfternoon: 'Good afternoon',
@@ -666,6 +667,9 @@ export const en = {
     more: 'More',
   },
   month: {
+    addWorkout: '+ Add {{name}}',
+    removeWorkout: '✕ Remove {{name}}',
+    onThisDay: 'On this day: {{names}}',
     title: 'Monthly calendar',
     prev: 'Previous month',
     next: 'Next month',

@@ -10,7 +10,7 @@ import {
   weekSummary,
 } from './home.js';
 import { saveProfile } from './metrics.js';
-import { setScheduledDay } from './schedule.js';
+import { setScheduledDay, setScheduledWorkouts } from './schedule.js';
 import type { SqlExecutor } from './executor.js';
 import { localDate } from './schedule.js';
 import { createTestExecutor } from './testUtils.js';
@@ -263,7 +263,7 @@ describe('getTodayWorkout', () => {
     expect(today?.missedYesterday).toBeNull();
   });
 
-  it('stays on the day already trained today', async () => {
+  it('offers nothing more today once the workout for today is trained, without rolling on to tomorrow', async () => {
     const [push] = await seedPlan([
       { name: 'דחיפה A', exercises: [['Barbell Bench Press', 4]] },
       { name: 'משיכה A', exercises: [['Barbell Row', 4]] },
@@ -272,10 +272,80 @@ describe('getTodayWorkout', () => {
       planDayId: push,
     });
 
-    const today = await getTodayWorkout(db, USER, NOW);
-    // Finishing a workout must not immediately roll the card on to tomorrow's.
-    expect(today?.dayName).toBe('דחיפה A');
-    expect(today?.missedYesterday).toBeNull();
+    // Finishing a workout must not immediately roll the card on to tomorrow's — and with dates
+    // able to hold more than one workout, it must not offer the one just done again either.
+    expect(await getTodayWorkout(db, USER, NOW)).toBeNull();
+    // Tomorrow is still the next slot, so the rotation did not skip ahead.
+    const tomorrow = await getTodayWorkout(db, USER, new Date('2026-08-06T09:00:00'));
+    expect(tomorrow?.dayName).toBe('משיכה A');
+  });
+
+  describe('with more than one workout on the day', () => {
+    async function twoToday() {
+      const [push, abs] = await seedPlan([
+        { name: 'דחיפה A', exercises: [['Barbell Bench Press', 4]] },
+        { name: 'בטן', exercises: [['Plank', 1]] },
+      ]);
+      await setScheduledWorkouts(db, USER, () => id('sd'), localDate(NOW), [push!, abs!]);
+      return { push: push!, abs: abs! };
+    }
+
+    it('offers the first one, and says it is one of two', async () => {
+      await twoToday();
+      const today = await getTodayWorkout(db, USER, NOW);
+      expect(today?.dayName).toBe('דחיפה A');
+      expect([today?.slot, today?.slots]).toEqual([1, 2]);
+    });
+
+    it('moves on to the second once the first is trained', async () => {
+      const { push } = await twoToday();
+      await logWorkout('2026-08-05T07:00:00', [{ exercise: 'Barbell Bench Press', weight: 80, reps: 5 }], {
+        planDayId: push,
+      });
+      const today = await getTodayWorkout(db, USER, NOW);
+      expect(today?.dayName).toBe('בטן');
+      expect([today?.slot, today?.slots]).toEqual([2, 2]);
+    });
+
+    it('offers the second even when it was trained first', async () => {
+      const { abs } = await twoToday();
+      await logWorkout('2026-08-05T07:00:00', [{ exercise: 'Plank', weight: 0, reps: 1 }], {
+        planDayId: abs,
+      });
+      expect((await getTodayWorkout(db, USER, NOW))?.dayName).toBe('דחיפה A');
+    });
+
+    it('offers nothing once both are trained', async () => {
+      const { push, abs } = await twoToday();
+      await logWorkout('2026-08-05T07:00:00', [{ exercise: 'Barbell Bench Press', weight: 80, reps: 5 }], {
+        planDayId: push,
+      });
+      await logWorkout('2026-08-05T18:00:00', [{ exercise: 'Plank', weight: 0, reps: 1 }], {
+        planDayId: abs,
+      });
+      expect(await getTodayWorkout(db, USER, NOW)).toBeNull();
+    });
+
+    it('still offers the plan after one unplanned session, since two were planned', async () => {
+      await twoToday();
+      await logWorkout('2026-08-05T07:00:00', [{ exercise: 'Barbell Row', weight: 60, reps: 8 }]);
+      expect((await getTodayWorkout(db, USER, NOW))?.dayName).toBe('דחיפה A');
+    });
+
+    it('counts training from yesterday as nothing for today', async () => {
+      const { push } = await twoToday();
+      await logWorkout('2026-08-04T07:00:00', [{ exercise: 'Barbell Bench Press', weight: 80, reps: 5 }], {
+        planDayId: push,
+      });
+      expect((await getTodayWorkout(db, USER, NOW))?.slot).toBe(1);
+    });
+  });
+
+  it('treats one planned workout replaced by an unplanned session as a trained day, as before', async () => {
+    const [push] = await seedPlan([{ name: 'דחיפה A', exercises: [['Barbell Bench Press', 4]] }]);
+    await setScheduledDay(db, USER, () => id('sd'), localDate(NOW), push!);
+    await logWorkout('2026-08-05T07:00:00', [{ exercise: 'Barbell Row', weight: 60, reps: 8 }]);
+    expect(await getTodayWorkout(db, USER, NOW)).toBeNull();
   });
 
   it('wraps around the end of the plan', async () => {
