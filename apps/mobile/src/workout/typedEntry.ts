@@ -42,3 +42,24 @@ export function valueToCommit(
   const stored = toStored(parsed);
   return stored === committed ? null : stored;
 }
+
+/**
+ * The same decision for a field where clearing means something.
+ *
+ * A set's weight is never deliberately blanked, so `valueToCommit` leaves an empty field alone.
+ * A plan's target and a finished workout's fields are different: emptying one is how the target
+ * or the value is removed. So an empty field here commits null rather than being ignored.
+ *
+ * Returns `undefined` when there is nothing to do — nothing typed, or typed the value already
+ * saved — and otherwise the value to save, which may be null for "cleared".
+ */
+export function valueOrClearToCommit(
+  typed: string | null,
+  committed: number | null,
+  toStored: (value: number) => number = (value) => value,
+): number | null | undefined {
+  if (typed === null) return undefined;
+  const parsed = parseTyped(typed);
+  const next = parsed === null ? null : toStored(parsed);
+  return next === committed ? undefined : next;
+}

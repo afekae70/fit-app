@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseTyped, valueToCommit } from './typedEntry.js';
+import { parseTyped, valueOrClearToCommit, valueToCommit } from './typedEntry.js';
 
 describe('reading a typed number', () => {
   it('accepts whole and decimal numbers, with either decimal mark', () => {
@@ -49,5 +49,22 @@ describe('what a set row still has to save', () => {
 
   it('rounds reps typed with a fraction to a whole number', () => {
     expect(valueToCommit('9.6', 8, Math.round)).toBe(10);
+  });
+});
+
+describe('a field where clearing means something', () => {
+  it('saves a typed value', () => {
+    expect(valueOrClearToCommit('4', 3, Math.round)).toBe(4);
+  });
+
+  it('clears the saved value when the field was emptied', () => {
+    // A plan target removed on purpose, unlike a set weight that was never meant to be blank.
+    expect(valueOrClearToCommit('', 3, Math.round)).toBeNull();
+  });
+
+  it('does nothing when nothing was typed, or the value is unchanged', () => {
+    expect(valueOrClearToCommit(null, 3, Math.round)).toBeUndefined();
+    expect(valueOrClearToCommit('3', 3, Math.round)).toBeUndefined();
+    expect(valueOrClearToCommit('', null, Math.round)).toBeUndefined();
   });
 });

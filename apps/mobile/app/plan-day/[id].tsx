@@ -41,6 +41,7 @@ import {
 } from '../../src/db/plans.js';
 import { getExecutor, newId } from '../../src/db/provider.js';
 import { DragReorderList } from '../../src/components/DragReorderList.js';
+import { NumberField } from '../../src/components/workout/NumberField.js';
 import { KeyboardSafe } from '../../src/components/KeyboardSafe.js';
 import { TimingCard } from '../../src/components/workout/TimingCard.js';
 import { useTheme } from '../../src/ThemeProvider.js';
@@ -49,14 +50,6 @@ import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../../
 const EXERCISE_BY_KEY = new Map<string, ExerciseSeed>(
   EXERCISE_SEED.map((exercise) => [exercise.nameEn, exercise]),
 );
-
-/** Empty means "no target", which is a real state — not zero. */
-function parseTarget(raw: string): number | null {
-  const trimmed = raw.trim();
-  if (trimmed === '') return null;
-  const value = Number(trimmed);
-  return Number.isInteger(value) && value > 0 ? value : null;
-}
 
 export default function PlanDayScreen() {
   const { confirm } = useActionSheet();
@@ -151,11 +144,11 @@ export default function PlanDayScreen() {
   const patch = (
     prescriptionId: string,
     field: 'targetSets' | 'targetRepsMin' | 'targetRepsMax',
-    raw: string,
+    next: number | null,
   ) => {
     void (async () => {
       const db = await getExecutor();
-      await updatePlanDayExercise(db, prescriptionId, { [field]: parseTarget(raw) });
+      await updatePlanDayExercise(db, prescriptionId, { [field]: next });
       await load();
     })();
   };
@@ -334,53 +327,23 @@ export default function PlanDayScreen() {
 
                     {timing ? null : (
                       <>
-                        <TextInput
-                          defaultValue={
-                            prescription.target_sets === null
-                              ? ''
-                              : String(prescription.target_sets)
-                          }
-                          onEndEditing={(e) =>
-                            patch(prescription.id, 'targetSets', e.nativeEvent.text)
-                          }
-                          keyboardType="number-pad"
-                          inputMode="numeric"
-                          style={[styles.input, styles.colField]}
-                          selectTextOnFocus
-                          placeholder="—"
+                        <NumberField
+                          value={prescription.target_sets}
+                          onCommit={(next) => patch(prescription.id, 'targetSets', next)}
                           placeholderTextColor={colors.textFaint}
+                          style={[styles.input, styles.colField]}
                         />
-                        <TextInput
-                          defaultValue={
-                            prescription.target_reps_min === null
-                              ? ''
-                              : String(prescription.target_reps_min)
-                          }
-                          onEndEditing={(e) =>
-                            patch(prescription.id, 'targetRepsMin', e.nativeEvent.text)
-                          }
-                          keyboardType="number-pad"
-                          inputMode="numeric"
-                          style={[styles.input, styles.colField]}
-                          selectTextOnFocus
-                          placeholder="—"
+                        <NumberField
+                          value={prescription.target_reps_min}
+                          onCommit={(next) => patch(prescription.id, 'targetRepsMin', next)}
                           placeholderTextColor={colors.textFaint}
+                          style={[styles.input, styles.colField]}
                         />
-                        <TextInput
-                          defaultValue={
-                            prescription.target_reps_max === null
-                              ? ''
-                              : String(prescription.target_reps_max)
-                          }
-                          onEndEditing={(e) =>
-                            patch(prescription.id, 'targetRepsMax', e.nativeEvent.text)
-                          }
-                          keyboardType="number-pad"
-                          inputMode="numeric"
-                          style={[styles.input, styles.colField]}
-                          selectTextOnFocus
-                          placeholder="—"
+                        <NumberField
+                          value={prescription.target_reps_max}
+                          onCommit={(next) => patch(prescription.id, 'targetRepsMax', next)}
                           placeholderTextColor={colors.textFaint}
+                          style={[styles.input, styles.colField]}
                         />
                       </>
                     )}

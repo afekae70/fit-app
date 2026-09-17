@@ -41,6 +41,7 @@ import {
   weightUnitKey,
 } from '../units.js';
 import { WEIGHT_STEP_KG, WEIGHT_STEP_LB } from '../workout/derived.js';
+import { valueOrClearToCommit } from '../workout/typedEntry.js';
 import { duration, fontSize, radius, spacing, type ColorPalette } from '../theme.js';
 
 export interface PreviousSet {
@@ -145,8 +146,28 @@ function SteppedField({
   buttonStyle: StyleProp<ViewStyle>;
   buttonTextStyle: StyleProp<TextStyle>;
 }) {
+  /*
+   * What has been typed and not saved.
+   *
+   * The field saves when an edit ends, and leaving the screen with the keyboard still up ends
+   * nothing — the field is removed and the number with it, the same fault that lost the reps in
+   * every exercise's last set. Kept here and saved on the way out, and before a stepper press,
+   * which would otherwise count from the value on screen rather than the one just typed.
+   */
+  const typed = useRef<string | null>(null);
+  const flush = useRef(() => {
+    /* replaced on every render */
+  });
+  flush.current = () => {
+    const next = valueOrClearToCommit(typed.current, value);
+    typed.current = null;
+    if (next !== undefined) onCommit(next);
+  };
+  useEffect(() => () => flush.current(), []);
+
   const adjust = (delta: number) => {
     hapticLight();
+    flush.current();
     const next = Math.max(0, Number(((value ?? 0) + delta).toFixed(decimals)));
     onCommit(next);
   };
@@ -159,7 +180,13 @@ function SteppedField({
       <TextInput
         key={value ?? 'empty'}
         defaultValue={value === null ? '' : String(value)}
-        onEndEditing={(e) => onCommit(parseField(e.nativeEvent.text))}
+        onChangeText={(text) => {
+          typed.current = text;
+        }}
+        onEndEditing={(e) => {
+          typed.current = null;
+          onCommit(parseField(e.nativeEvent.text));
+        }}
         keyboardType={decimals > 0 ? 'numeric' : 'number-pad'}
         inputMode={decimals > 0 ? 'decimal' : 'numeric'}
         style={inputStyle}
