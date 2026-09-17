@@ -1,6 +1,6 @@
 /**
- * The three sounds of a timed workout: an exercise ending, a rest ending, and the whole thing
- * finishing.
+ * The sounds of a timed workout: a short pip on each of the last three seconds of a phase, then
+ * an exercise ending, a rest ending, or the whole thing finishing.
  *
  * Three rather than one, because the sound is the whole interface while someone is holding a
  * plank with the phone on the floor. A falling pair means stop, a rising pair means go, and a
@@ -17,11 +17,12 @@ import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-aud
 
 import done from '../../assets/sounds/done.wav';
 import restEnd from '../../assets/sounds/rest-end.wav';
+import tick from '../../assets/sounds/tick.wav';
 import workEnd from '../../assets/sounds/work-end.wav';
 
-export type Cue = 'workEnd' | 'restEnd' | 'done';
+export type Cue = 'tick' | 'workEnd' | 'restEnd' | 'done';
 
-const SOURCES: Record<Cue, number> = { workEnd, restEnd, done };
+const SOURCES: Record<Cue, number> = { tick, workEnd, restEnd, done };
 
 let players: Partial<Record<Cue, AudioPlayer>> | null = null;
 

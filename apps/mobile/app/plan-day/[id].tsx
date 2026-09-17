@@ -40,6 +40,7 @@ import {
   type PlanDayWithExercises,
 } from '../../src/db/plans.js';
 import { getExecutor, newId } from '../../src/db/provider.js';
+import { DragReorderList } from '../../src/components/DragReorderList.js';
 import { KeyboardSafe } from '../../src/components/KeyboardSafe.js';
 import { TimingCard } from '../../src/components/workout/TimingCard.js';
 import { useTheme } from '../../src/ThemeProvider.js';
@@ -160,22 +161,51 @@ export default function PlanDayScreen() {
   };
 
   /**
-   * Nudge an exercise up or down the day.
+   * Move an exercise to a new place in the day, by dragging its handle or holding the row.
    *
-   * Arrows rather than drag, matching how the plan's days are reordered and for the reason
-   * written there: a drag inside a vertical ScrollView has to win a gesture race against the
-   * scroll, and the loser is always the user.
+   * These were arrows, on the reasoning that a drag inside a vertical ScrollView loses a gesture
+   * race against the scroll. `DragReorderList` does not enter that race — the handle takes the
+   * touch outright and a long press waits out the ambiguity — and the active workout has used it
+   * for exactly this since. Moving the sixth exercise to the top took five taps; it is one drag.
    */
-  const move = (prescriptionId: string, delta: number) => {
-    if (!day) return;
-    const from = day.exercises.findIndex((e) => e.id === prescriptionId);
-    if (from < 0) return;
+  const move = (fromIndex: number, toIndex: number) => {
+    const prescription = day?.exercises[fromIndex];
+    if (!day || !prescription) return;
     void (async () => {
       const db = await getExecutor();
-      await reorderPlanDayExercise(db, day.id, prescriptionId, from + delta);
+      await reorderPlanDayExercise(db, day.id, prescription.id, toIndex);
       await load();
     })();
   };
+
+  /*
+   * While a row is in the air the list must not scroll under it, and dragging toward either edge
+   * should scroll the list along.
+   *
+   * The edges are measured in the window, not taken as 0 and the viewport height: the fixed
+   * masthead sits above this screen, and the finger's position arrives in screen coordinates.
+   * Treating the top of the screen as the top of the list put the upper scroll band under the
+   * masthead, where a finger dragging a row could barely reach it.
+   */
+  const [dragging, setDragging] = useState(false);
+  const scrollRef = useRef<ScrollView | null>(null);
+  const scrollY = useRef(0);
+  const viewport = useRef({ top: 0, height: 0 });
+
+  const autoScroll = useCallback((screenY: number) => {
+    const { top, height } = viewport.current;
+    if (height <= 0) return;
+    const EDGE = 110;
+    const MAX_STEP = 11;
+    const fromTop = screenY - top - EDGE;
+    const fromBottom = screenY - (top + height - EDGE);
+    let step = 0;
+    if (fromTop < 0) step = Math.max(-MAX_STEP, (fromTop / EDGE) * MAX_STEP);
+    else if (fromBottom > 0) step = Math.min(MAX_STEP, (fromBottom / EDGE) * MAX_STEP);
+    if (step === 0) return;
+    scrollY.current = Math.max(0, scrollY.current + step);
+    scrollRef.current?.scrollTo({ y: scrollY.current, animated: false });
+  }, []);
 
   const changeTiming = (next: PlanDayTiming | null) => {
     if (!id) return;
@@ -225,6 +255,17 @@ export default function PlanDayScreen() {
   return (
     <KeyboardSafe>
       <ScrollView
+        ref={scrollRef}
+        scrollEnabled={!dragging}
+        scrollEventThrottle={16}
+        onScroll={(event) => {
+          scrollY.current = event.nativeEvent.contentOffset.y;
+        }}
+        onLayout={() => {
+          scrollRef.current?.getNativeScrollRef()?.measureInWindow((_x, top, _width, height) => {
+            viewport.current = { top, height };
+          });
+        }}
         style={styles.screen}
         contentContainerStyle={[
           styles.content,
@@ -271,111 +312,117 @@ export default function PlanDayScreen() {
               <View style={styles.colActions} />
             </View>
 
-            {day.exercises.map((prescription, position) => {
-              const seed = EXERCISE_BY_KEY.get(prescription.exercise_key);
-              const label = seed
-                ? isHebrew
-                  ? seed.nameHe
-                  : seed.nameEn
-                : prescription.exercise_key;
+            <DragReorderList
+              data={day.exercises}
+              keyExtractor={(prescription) => prescription.id}
+              onReorder={move}
+              onDragStateChange={setDragging}
+              onDragMove={autoScroll}
+              renderItem={(prescription, _position, dragHandle) => {
+                const seed = EXERCISE_BY_KEY.get(prescription.exercise_key);
+                const label = seed
+                  ? isHebrew
+                    ? seed.nameHe
+                    : seed.nameEn
+                  : prescription.exercise_key;
 
-              return (
-                <View key={prescription.id} style={styles.row}>
-                  <Text style={[styles.exerciseName, styles.colName]} numberOfLines={2}>
-                    {label}
-                  </Text>
+                return (
+                  <View style={[styles.row, dragHandle.active && styles.rowDragging]}>
+                    <Text style={[styles.exerciseName, styles.colName]} numberOfLines={2}>
+                      {label}
+                    </Text>
 
-                  {timing ? null : (
-                    <>
-                      <TextInput
-                        defaultValue={
-                          prescription.target_sets === null ? '' : String(prescription.target_sets)
-                        }
-                        onEndEditing={(e) =>
-                          patch(prescription.id, 'targetSets', e.nativeEvent.text)
-                        }
-                        keyboardType="number-pad"
-                        inputMode="numeric"
-                        style={[styles.input, styles.colField]}
-                        selectTextOnFocus
-                        placeholder="—"
-                        placeholderTextColor={colors.textFaint}
-                      />
-                      <TextInput
-                        defaultValue={
-                          prescription.target_reps_min === null
-                            ? ''
-                            : String(prescription.target_reps_min)
-                        }
-                        onEndEditing={(e) =>
-                          patch(prescription.id, 'targetRepsMin', e.nativeEvent.text)
-                        }
-                        keyboardType="number-pad"
-                        inputMode="numeric"
-                        style={[styles.input, styles.colField]}
-                        selectTextOnFocus
-                        placeholder="—"
-                        placeholderTextColor={colors.textFaint}
-                      />
-                      <TextInput
-                        defaultValue={
-                          prescription.target_reps_max === null
-                            ? ''
-                            : String(prescription.target_reps_max)
-                        }
-                        onEndEditing={(e) =>
-                          patch(prescription.id, 'targetRepsMax', e.nativeEvent.text)
-                        }
-                        keyboardType="number-pad"
-                        inputMode="numeric"
-                        style={[styles.input, styles.colField]}
-                        selectTextOnFocus
-                        placeholder="—"
-                        placeholderTextColor={colors.textFaint}
-                      />
-                    </>
-                  )}
+                    {timing ? null : (
+                      <>
+                        <TextInput
+                          defaultValue={
+                            prescription.target_sets === null
+                              ? ''
+                              : String(prescription.target_sets)
+                          }
+                          onEndEditing={(e) =>
+                            patch(prescription.id, 'targetSets', e.nativeEvent.text)
+                          }
+                          keyboardType="number-pad"
+                          inputMode="numeric"
+                          style={[styles.input, styles.colField]}
+                          selectTextOnFocus
+                          placeholder="—"
+                          placeholderTextColor={colors.textFaint}
+                        />
+                        <TextInput
+                          defaultValue={
+                            prescription.target_reps_min === null
+                              ? ''
+                              : String(prescription.target_reps_min)
+                          }
+                          onEndEditing={(e) =>
+                            patch(prescription.id, 'targetRepsMin', e.nativeEvent.text)
+                          }
+                          keyboardType="number-pad"
+                          inputMode="numeric"
+                          style={[styles.input, styles.colField]}
+                          selectTextOnFocus
+                          placeholder="—"
+                          placeholderTextColor={colors.textFaint}
+                        />
+                        <TextInput
+                          defaultValue={
+                            prescription.target_reps_max === null
+                              ? ''
+                              : String(prescription.target_reps_max)
+                          }
+                          onEndEditing={(e) =>
+                            patch(prescription.id, 'targetRepsMax', e.nativeEvent.text)
+                          }
+                          keyboardType="number-pad"
+                          inputMode="numeric"
+                          style={[styles.input, styles.colField]}
+                          selectTextOnFocus
+                          placeholder="—"
+                          placeholderTextColor={colors.textFaint}
+                        />
+                      </>
+                    )}
 
-                  <View style={styles.reorder}>
-                    <Pressable
-                      onPress={() => move(prescription.id, -1)}
-                      disabled={position === 0}
-                      accessibilityRole="button"
-                      accessibilityLabel={t('plan.moveExerciseUp')}
-                      hitSlop={6}
+                    {/* The handle. Arrows stay available to a screen reader through the actions below,
+                      since a drag cannot be performed without sight. */}
+                    <View
+                      {...dragHandle.handlers}
+                      style={styles.reorder}
+                      accessibilityRole="adjustable"
+                      accessibilityLabel={t('workout.dragExercise')}
+                      accessibilityActions={[
+                        ...(dragHandle.canMoveUp
+                          ? [{ name: 'moveUp', label: t('plan.moveExerciseUp') }]
+                          : []),
+                        ...(dragHandle.canMoveDown
+                          ? [{ name: 'moveDown', label: t('plan.moveExerciseDown') }]
+                          : []),
+                      ]}
+                      onAccessibilityAction={(event) => {
+                        if (event.nativeEvent.actionName === 'moveUp') dragHandle.moveUp();
+                        if (event.nativeEvent.actionName === 'moveDown') dragHandle.moveDown();
+                      }}
                     >
-                      <Text style={[styles.moveText, position === 0 && styles.moveTextOff]}>↑</Text>
-                    </Pressable>
-                    <Pressable
-                      onPress={() => move(prescription.id, 1)}
-                      disabled={position === day.exercises.length - 1}
-                      accessibilityRole="button"
-                      accessibilityLabel={t('plan.moveExerciseDown')}
-                      hitSlop={6}
-                    >
-                      <Text
-                        style={[
-                          styles.moveText,
-                          position === day.exercises.length - 1 && styles.moveTextOff,
-                        ]}
-                      >
-                        ↓
+                      <Text style={[styles.moveText, dragHandle.active && styles.handleActive]}>
+                        ⠿
                       </Text>
+                    </View>
+
+                    <Pressable
+                      onPress={() => removeExercise(prescription.id)}
+                      style={styles.colActions}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('workout.removeExercise')}
+                      hitSlop={8}
+                    >
+                      <Text style={styles.deleteText}>✕</Text>
                     </Pressable>
                   </View>
-
-                  <Pressable
-                    onPress={() => removeExercise(prescription.id)}
-                    style={styles.colActions}
-                    accessibilityRole="button"
-                    accessibilityLabel={t('workout.removeExercise')}
-                    hitSlop={8}
-                  >
-                    <Text style={styles.deleteText}>✕</Text>
-                  </Pressable>
-                </View>
-              );
-            })}
+                );
+              }}
+            />
           </>
         )}
 
@@ -420,8 +467,9 @@ const createStyles = (colors: ColorPalette) =>
     exerciseName: TextStyle;
     input: TextStyle;
     reorder: ViewStyle;
+    rowDragging: ViewStyle;
     moveText: TextStyle;
-    moveTextOff: TextStyle;
+    handleActive: TextStyle;
     deleteText: TextStyle;
     addButton: ViewStyle;
     addButtonText: TextStyle;
@@ -479,8 +527,15 @@ const createStyles = (colors: ColorPalette) =>
       textAlign: 'center',
     },
     reorder: { flexDirection: 'row', gap: 6, alignItems: 'center' },
-    moveText: { color: colors.textSecondary, fontSize: fontSize.sm },
-    moveTextOff: { color: colors.textFaint },
+    // Big enough to take a thumb: this is what starts a drag, not a decoration beside one.
+    moveText: { color: colors.textSecondary, fontSize: fontSize.xl, lineHeight: 26 },
+    handleActive: { color: colors.accent },
+    rowDragging: {
+      backgroundColor: colors.surfaceRaised,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      borderColor: colors.accentBorder,
+    },
     deleteText: { color: colors.textMuted, fontSize: fontSize.sm },
     addButton: {
       marginTop: spacing.md,

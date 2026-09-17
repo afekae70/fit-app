@@ -577,10 +577,11 @@ export default function WorkoutsScreen() {
   const [dragging, setDragging] = useState(false);
   const scrollRef = useRef<ScrollView | null>(null);
   const scrollY = useRef(0);
-  const viewportHeight = useRef(0);
+  /** Where the list sits in the window — below the fixed masthead, not at the top of the screen. */
+  const viewport = useRef({ top: 0, height: 0 });
 
   const autoScroll = useCallback((screenY: number) => {
-    const height = viewportHeight.current;
+    const { top, height } = viewport.current;
     if (height <= 0) return;
 
     // A band at each edge, and a speed that grows the deeper into it the finger goes — a fixed
@@ -589,8 +590,11 @@ export default function WorkoutsScreen() {
     // Halved from the first attempt, which overshot: the list ran away faster than the eye
     // could pick a landing spot, so aiming meant backing off the edge and creeping in again.
     const MAX_STEP = 11;
-    const fromTop = screenY - EDGE;
-    const fromBottom = screenY - (height - EDGE);
+    // Measured from the list's own edges. The finger arrives in screen coordinates, and since the
+    // masthead was fixed above every screen, taking the screen's top as the list's top put the
+    // upper scroll band under the masthead, out of a dragging finger's reach.
+    const fromTop = screenY - top - EDGE;
+    const fromBottom = screenY - (top + height - EDGE);
 
     let step = 0;
     if (fromTop < 0) step = Math.max(-MAX_STEP, (fromTop / EDGE) * MAX_STEP);
@@ -1252,8 +1256,10 @@ export default function WorkoutsScreen() {
         onScroll={(event) => {
           scrollY.current = event.nativeEvent.contentOffset.y;
         }}
-        onLayout={(event) => {
-          viewportHeight.current = event.nativeEvent.layout.height;
+        onLayout={() => {
+          scrollRef.current?.getNativeScrollRef()?.measureInWindow((_x, top, _width, height) => {
+            viewport.current = { top, height };
+          });
         }}
       >
         {exercises.length === 0 ? (

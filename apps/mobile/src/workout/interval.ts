@@ -144,6 +144,38 @@ export function remainingSeconds(state: IntervalState, now: number): number {
   return Math.max(0, Math.ceil(ms / 1000));
 }
 
+/** How many seconds before the end of a phase the countdown starts sounding. */
+export const COUNTDOWN_SECONDS = 3;
+
+/**
+ * Whether a countdown tone is due right now, and which one.
+ *
+ * One tone for each of the last three whole seconds of a phase — 3, 2, 1 — and then the phase's
+ * own end sound at zero. `lastKey` is the key of the tone already played; a tone is due only
+ * when the second has changed, because the screen ticks four times a second and each whole
+ * second would otherwise sound four times.
+ *
+ * Nothing while paused, and nothing on the phase's very first second: a phase only three
+ * seconds long would otherwise start with a countdown tone in the same instant as the end sound
+ * of the phase before it, and the two would be heard as one noise. After the screen was off,
+ * only the second that is current is announced — the ones missed are gone, and replaying them
+ * late would count down to a moment that has already passed.
+ */
+export function countdownCue(
+  phases: readonly Phase[],
+  state: IntervalState,
+  now: number,
+  lastKey: string | null,
+): string | null {
+  if (state.endsAt === null) return null;
+  const phase = phases[state.phase];
+  if (!phase) return null;
+  const left = remainingSeconds(state, now);
+  if (left < 1 || left > COUNTDOWN_SECONDS || left >= phase.seconds) return null;
+  const key = `${state.phase}:${left}`;
+  return key === lastKey ? null : key;
+}
+
 export function isFinished(phases: readonly Phase[], state: IntervalState): boolean {
   return state.phase >= phases.length;
 }

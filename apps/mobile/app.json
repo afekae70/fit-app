@@ -20,7 +20,7 @@
       "blockedPermissions": ["android.permission.RECORD_AUDIO"],
       "package": "com.afeka.fitapp",
       "adaptiveIcon": {
-        "backgroundColor": "#9A9DBC",
+        "backgroundColor": "#FBFBFC",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"

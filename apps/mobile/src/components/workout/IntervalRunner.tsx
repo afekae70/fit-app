@@ -29,6 +29,7 @@ import { formatRemaining } from '../../workout/derived.js';
 import {
   advance,
   buildPhases,
+  countdownCue,
   isFinished,
   pause,
   remainingSeconds,
@@ -83,6 +84,8 @@ export function IntervalRunner({
   stateRef.current = state;
   const onWorkDoneRef = useRef(onWorkDone);
   onWorkDoneRef.current = onWorkDone;
+  /** The countdown second last sounded, so each of 3, 2, 1 is heard once and not four times. */
+  const lastCountdown = useRef<string | null>(null);
 
   const running = state !== null && state.endsAt !== null;
   const finished = state !== null && isFinished(phases, state);
@@ -111,7 +114,16 @@ export function IntervalRunner({
       const at = Date.now();
       const result = advance(phases, current, at);
       setNow(at);
-      if (result.completed.length === 0) return;
+      if (result.completed.length === 0) {
+        // The last three seconds of whatever is running — exercise or rest — each get a pip, so
+        // the end can be seen coming without looking at the screen.
+        const cue = countdownCue(phases, result.state, at, lastCountdown.current);
+        if (cue) {
+          lastCountdown.current = cue;
+          playCue('tick');
+        }
+        return;
+      }
 
       for (const phase of result.completed) {
         if (phase.kind === 'work') onWorkDoneRef.current(phase.exercise);

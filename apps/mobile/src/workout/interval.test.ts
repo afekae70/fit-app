@@ -4,6 +4,7 @@ import {
   advance,
   buildPhases,
   clampSeconds,
+  countdownCue,
   isFinished,
   pause,
   remainingSeconds,
@@ -176,5 +177,54 @@ describe('keeping the settings sane', () => {
   it('falls back to the defaults for a value that is not a number', () => {
     expect(clampSeconds(Number.NaN, 'work')).toBe(50);
     expect(clampSeconds(Number.NaN, 'rest')).toBe(10);
+  });
+});
+
+describe('the countdown before a phase ends', () => {
+  const phases = buildPhases(2, 50, 10);
+
+  it('is silent until the last three seconds', () => {
+    const state = startIntervals(phases, T0);
+    expect(countdownCue(phases, state, T0 + s(40), null)).toBeNull();
+    expect(countdownCue(phases, state, T0 + s(46) + 500, null)).toBeNull();
+  });
+
+  it('sounds on 3, 2 and 1, once each', () => {
+    const state = startIntervals(phases, T0);
+    let last: string | null = null;
+    const heard: string[] = [];
+    // Ticks four times a second through the end of the phase, as the screen does.
+    for (let ms = s(46); ms < s(50); ms += 250) {
+      const cue = countdownCue(phases, state, T0 + ms, last);
+      if (cue) {
+        heard.push(cue);
+        last = cue;
+      }
+    }
+    expect(heard).toEqual(['0:3', '0:2', '0:1']);
+  });
+
+  it('counts down the rest the same way', () => {
+    const resting = advance(phases, startIntervals(phases, T0), T0 + s(50)).state;
+    expect(countdownCue(phases, resting, T0 + s(57) + 100, null)).toBe('1:3');
+  });
+
+  it('stays quiet while paused', () => {
+    const paused = pause(startIntervals(phases, T0), T0 + s(48));
+    expect(countdownCue(phases, paused, T0 + s(48), null)).toBeNull();
+  });
+
+  it('does not start a very short phase with a countdown tone', () => {
+    // A three-second phase would otherwise sound its first tone together with the end of the
+    // phase before it.
+    const short = buildPhases(1, 3, 0);
+    const state = startIntervals(short, T0);
+    expect(countdownCue(short, state, T0, null)).toBeNull();
+    expect(countdownCue(short, state, T0 + 1500, null)).toBe('0:2');
+  });
+
+  it('is silent once the workout is over', () => {
+    const done = advance(phases, startIntervals(phases, T0), T0 + s(200)).state;
+    expect(countdownCue(phases, done, T0 + s(200), null)).toBeNull();
   });
 });
