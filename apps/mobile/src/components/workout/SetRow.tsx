@@ -34,6 +34,7 @@ import {
 } from 'react-native';
 
 import { stepReps, stepWeight } from '../../workout/derived.js';
+import { parseTyped, valueToCommit } from '../../workout/typedEntry.js';
 import { hapticLight, hapticSuccess } from '../../haptics.js';
 import { useTheme } from '../../ThemeProvider.js';
 import { useUnit } from '../../UnitsProvider.js';
@@ -45,19 +46,6 @@ import { duration, radius, type ColorPalette } from '../../theme.js';
 // this row and another on the segmented control is exactly the drift the scale exists to stop.
 const TINT_MS = duration.quick;
 const POP_MS = duration.slow;
-
-/**
- * Parse a typed number, treating an empty or unparseable field as "leave it alone".
- *
- * Returning null rather than 0 matters: clearing the field and tapping away should not silently
- * record a set lifted with no weight.
- */
-function parseTyped(raw: string): number | null {
-  const normalised = raw.replace(',', '.').trim();
-  if (normalised === '') return null;
-  const value = Number(normalised);
-  return Number.isFinite(value) && value >= 0 ? value : null;
-}
 
 export interface SetRowProps {
   index: number;
@@ -154,8 +142,38 @@ export function SetRow({
   };
   const numeralColor = done ? colors.accentLift : colors.text;
 
+  /*
+   * What has been typed into the two fields and not saved yet.
+   *
+   * The fields save when an edit ends, and an edit does not reliably end: tapping the tick right
+   * after typing leaves the keyboard up, and ticking an exercise's last set in focus mode removes
+   * this row before the edit can end at all. The reps typed into every last set were lost to
+   * that. So the row saves what is pending itself — before the tick, and when it unmounts.
+   */
+  const typedWeight = useRef<string | null>(null);
+  const typedReps = useRef<string | null>(null);
+
+  const flushTyped = () => {
+    const weight = valueToCommit(typedWeight.current, weightKg, (value) =>
+      displayWeightToKg(value, unit),
+    );
+    const repsValue = valueToCommit(typedReps.current, reps, Math.round);
+    typedWeight.current = null;
+    typedReps.current = null;
+    if (weight !== null) onChangeWeight(weight);
+    if (repsValue !== null) onChangeReps(repsValue);
+  };
+
+  // The latest flush, for the unmount below — the cleanup would otherwise hold the props of the
+  // first render and compare what was typed against values long since changed.
+  const flushRef = useRef(flushTyped);
+  flushRef.current = flushTyped;
+  useEffect(() => () => flushRef.current(), []);
+
   const handleToggle = () => {
     void (done ? hapticLight() : hapticSuccess());
+    // Saved first, so the set is ticked with the numbers actually typed into it.
+    flushTyped();
     onToggle();
   };
 
@@ -200,7 +218,11 @@ export function SetRow({
           <TextInput
             key={`w-${weightKg ?? 'empty'}-${unit}`}
             defaultValue={weightKg === null ? '' : String(kgToDisplay(weightKg, unit))}
+            onChangeText={(text) => {
+              typedWeight.current = text;
+            }}
             onEndEditing={(e) => {
+              typedWeight.current = null;
               const typed = parseTyped(e.nativeEvent.text);
               if (typed === null) return;
               onChangeWeight(displayWeightToKg(typed, unit));
@@ -223,7 +245,11 @@ export function SetRow({
           <TextInput
             key={`r-${reps ?? 'empty'}`}
             defaultValue={reps === null ? '' : String(reps)}
+            onChangeText={(text) => {
+              typedReps.current = text;
+            }}
             onEndEditing={(e) => {
+              typedReps.current = null;
               const typed = parseTyped(e.nativeEvent.text);
               if (typed === null) return;
               onChangeReps(Math.round(typed));
