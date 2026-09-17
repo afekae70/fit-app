@@ -176,6 +176,41 @@ export function countdownCue(
   return key === lastKey ? null : key;
 }
 
+/** How long before the next exercise starts that its name is announced. */
+export const ANNOUNCE_SECONDS = 5;
+
+/**
+ * Minimum time into a rest before announcing. A rest of five seconds or less would otherwise
+ * announce in the same instant the exercise-end chime plays, and the two would be heard as one.
+ */
+const ANNOUNCE_AFTER_REST_STARTS_MS = 700;
+
+/**
+ * Whether the upcoming exercise should be announced now, and for which rest.
+ *
+ * Only during a rest: it is the rest that is spent getting into position, and the name is what
+ * tells you which position. Nothing before the first exercise, which has no rest in front of
+ * it — the start screen already shows what it is. Once per rest, nothing while paused, and in a
+ * rest of five seconds or less, as early as the chime allows.
+ *
+ * Returns the rest's phase index — the key for "already announced" — or null.
+ */
+export function announcementDue(
+  phases: readonly Phase[],
+  state: IntervalState,
+  now: number,
+  lastAnnounced: number | null,
+): number | null {
+  if (state.endsAt === null || state.phase === lastAnnounced) return null;
+  const phase = phases[state.phase];
+  if (!phase || phase.kind !== 'rest') return null;
+  const remainingMs = state.endsAt - now;
+  const elapsedMs = phase.seconds * 1000 - remainingMs;
+  if (remainingMs > ANNOUNCE_SECONDS * 1000 || remainingMs <= 0) return null;
+  if (elapsedMs < ANNOUNCE_AFTER_REST_STARTS_MS) return null;
+  return state.phase;
+}
+
 export function isFinished(phases: readonly Phase[], state: IntervalState): boolean {
   return state.phase >= phases.length;
 }

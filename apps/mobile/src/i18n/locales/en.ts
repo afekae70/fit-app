@@ -653,6 +653,8 @@ export const en = {
     blePermission: 'Bluetooth permission is required to scan.',
   },
   interval: {
+    voiceHint:
+      'The next exercise is announced in English because the phone’s speech engine has no Hebrew voice. For Hebrew, in the phone’s settings: General management → Text-to-speech output → Preferred engine → Google.',
     title: 'Timed workout',
     toggleHint: 'Each exercise runs for a set time, with rest between exercises and a sound at the end of each phase. No sets or reps to type.',
     work: 'Work',

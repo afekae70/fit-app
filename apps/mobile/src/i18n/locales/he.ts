@@ -646,6 +646,8 @@ export const he = {
     blePermission: 'נדרשת הרשאת בלוטות׳ כדי לסרוק.',
   },
   interval: {
+    voiceHint:
+      'ההודעה על התרגיל הבא תושמע באנגלית: במנוע הדיבור של הטלפון אין קול עברי. לעברית — בהגדרות הטלפון: General management ← Text-to-speech output ← Preferred engine ← Google.',
     title: 'אימון לפי זמן',
     toggleHint: 'כל תרגיל מתבצע לפי זמן, עם מנוחה בין תרגיל לתרגיל וצליל בסוף כל שלב. אין צורך להקליד סטים וחזרות.',
     work: 'עבודה',

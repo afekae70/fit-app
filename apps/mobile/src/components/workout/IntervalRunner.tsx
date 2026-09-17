@@ -28,6 +28,7 @@ import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../../
 import { formatRemaining } from '../../workout/derived.js';
 import {
   advance,
+  announcementDue,
   buildPhases,
   countdownCue,
   isFinished,
@@ -45,6 +46,7 @@ import {
   startKeepAlive,
   stopKeepAlive,
 } from '../../workout/sounds.js';
+import { announceNext, prepareSpeech, stopSpeech } from '../../workout/speech.js';
 import { ExerciseVisual } from '../ExerciseVisual.js';
 
 export interface IntervalExercise {
@@ -72,7 +74,7 @@ export function IntervalRunner({
   /** An exercise's work phase ran out: log it. */
   onWorkDone: (exerciseIndex: number) => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { colors } = useTheme();
   const s = useMemo(() => createStyles(colors), [colors]);
 
@@ -92,13 +94,23 @@ export function IntervalRunner({
   onWorkDoneRef.current = onWorkDone;
   /** The countdown second last sounded, so each of 3, 2, 1 is heard once and not four times. */
   const lastCountdown = useRef<string | null>(null);
+  /** The rest whose next exercise was last announced, so each is said once. */
+  const lastAnnounced = useRef<number | null>(null);
+  const exercisesRef = useRef(exercises);
+  exercisesRef.current = exercises;
+  const languageRef = useRef(i18n.language);
+  languageRef.current = i18n.language;
+  /** Null until checked; false means announcements will be in English. */
+  const [hebrewVoice, setHebrewVoice] = useState<boolean | null>(null);
 
   const running = state !== null && state.endsAt !== null;
   const finished = state !== null && isFinished(phases, state);
 
   useEffect(() => {
     void prepareCues();
+    void prepareSpeech().then(setHebrewVoice);
     return () => {
+      stopSpeech();
       releaseCues();
       void deactivateKeepAwake(KEEP_AWAKE_TAG);
     };
@@ -117,7 +129,11 @@ export function IntervalRunner({
   useEffect(() => {
     if (!running) return;
     startKeepAlive();
-    return () => stopKeepAlive();
+    return () => {
+      stopKeepAlive();
+      // A pause stops an announcement mid-word rather than letting it finish into the silence.
+      stopSpeech();
+    };
   }, [running]);
 
   useEffect(() => {
@@ -135,6 +151,16 @@ export function IntervalRunner({
         if (cue) {
           lastCountdown.current = cue;
           playCue('tick');
+        }
+        // Five seconds before the next exercise, during the rest: say which one it is.
+        const due = announcementDue(phases, result.state, at, lastAnnounced.current);
+        const upcoming = due === null ? undefined : exercisesRef.current[phases[due]?.exercise ?? -1];
+        if (due !== null && upcoming) {
+          lastAnnounced.current = due;
+          announceNext(
+            { he: upcoming.seed?.nameHe ?? upcoming.name, en: upcoming.seed?.nameEn ?? upcoming.name },
+            languageRef.current,
+          );
         }
         return;
       }
@@ -206,6 +232,11 @@ export function IntervalRunner({
           })}
         </Text>
         <Text style={s.total}>{t('interval.total', { time: formatRemaining(totalSeconds) })}</Text>
+        {/* Said only when it is true and only in Hebrew: an English phone gets English
+            announcements, which is exactly right, and has nothing to be told. */}
+        {i18n.language === 'he' && hebrewVoice === false && restSeconds > 0 ? (
+          <Text style={s.voiceHint}>{t('interval.voiceHint')}</Text>
+        ) : null}
 
         {first ? (
           <>
@@ -311,6 +342,7 @@ const createStyles = (colors: ColorPalette) =>
     kicker: TextStyle;
     summary: TextStyle;
     total: TextStyle;
+    voiceHint: TextStyle;
     firstUp: TextStyle;
     startButton: ViewStyle;
     startText: TextStyle;
@@ -355,6 +387,15 @@ const createStyles = (colors: ColorPalette) =>
     },
     summary: { color: colors.text, fontSize: fontSize.md, textAlign: 'auto' },
     total: { color: colors.textMuted, fontSize: fontSize.sm, textAlign: 'auto' },
+    voiceHint: {
+      color: colors.textMuted,
+      fontSize: fontSize.xs,
+      lineHeight: 18,
+      textAlign: 'auto',
+      backgroundColor: colors.surfaceRaised,
+      borderRadius: radius.sm,
+      padding: spacing.sm,
+    },
     firstUp: {
       color: colors.text,
       fontSize: fontSize.lg,

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   advance,
+  announcementDue,
   buildPhases,
   clampSeconds,
   countdownCue,
@@ -226,5 +227,45 @@ describe('the countdown before a phase ends', () => {
   it('is silent once the workout is over', () => {
     const done = advance(phases, startIntervals(phases, T0), T0 + s(200)).state;
     expect(countdownCue(phases, done, T0 + s(200), null)).toBeNull();
+  });
+});
+
+describe('announcing the next exercise', () => {
+  const phases = buildPhases(3, 50, 10);
+  const inRest = () => advance(phases, startIntervals(phases, T0), T0 + s(50)).state;
+
+  it('says nothing before the first exercise, or during any exercise', () => {
+    const state = startIntervals(phases, T0);
+    for (const at of [0, s(10), s(45), s(49)]) {
+      expect(announcementDue(phases, state, T0 + at, null)).toBeNull();
+    }
+  });
+
+  it('announces five seconds before the rest ends', () => {
+    const rest = inRest();
+    expect(announcementDue(phases, rest, T0 + s(54), null)).toBeNull();
+    expect(announcementDue(phases, rest, T0 + s(55), null)).toBe(1);
+  });
+
+  it('announces each rest once', () => {
+    expect(announcementDue(phases, inRest(), T0 + s(56), 1)).toBeNull();
+  });
+
+  it('announces the later rests too, not only the first', () => {
+    const second = advance(phases, startIntervals(phases, T0), T0 + s(110)).state;
+    expect(phases[second.phase]).toEqual({ kind: 'rest', exercise: 2, seconds: 10 });
+    expect(announcementDue(phases, second, T0 + s(115), 1)).toBe(3);
+  });
+
+  it('waits for the chime in a rest of five seconds or less', () => {
+    const short = buildPhases(2, 30, 5);
+    const rest = advance(short, startIntervals(short, T0), T0 + s(30)).state;
+    expect(announcementDue(short, rest, T0 + s(30) + 200, null)).toBeNull();
+    expect(announcementDue(short, rest, T0 + s(30) + 800, null)).toBe(1);
+  });
+
+  it('stays quiet while paused', () => {
+    const paused = pause(inRest(), T0 + s(56));
+    expect(announcementDue(phases, paused, T0 + s(56), null)).toBeNull();
   });
 });
