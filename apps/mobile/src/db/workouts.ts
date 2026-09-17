@@ -947,6 +947,11 @@ export async function listSessionSummaries(
   db: SqlExecutor,
   userId: string,
   limit = 100,
+  /**
+   * Only sessions started at or after this instant (ISO). Omitted means all of history — the
+   * coach's recent-sessions payload relies on that.
+   */
+  since?: string,
 ): Promise<SessionSummaryRow[]> {
   return db.all<SessionSummaryRow>(
     `SELECT
@@ -960,10 +965,11 @@ export async function listSessionSummaries(
      LEFT JOIN session_exercises se ON se.session_id = ws.id AND se.deleted_at IS NULL
      LEFT JOIN sets s               ON s.session_exercise_id = se.id AND s.deleted_at IS NULL
      WHERE ws.user_id = ? AND ws.deleted_at IS NULL
+       AND (? IS NULL OR ws.started_at >= ?)
      GROUP BY ws.id
      ORDER BY ws.started_at DESC
      LIMIT ?`,
-    [userId, limit],
+    [userId, since ?? null, since ?? null, limit],
   );
 }
 
@@ -1153,36 +1159,6 @@ export async function getPreviousSessionSets(
         )
       ORDER BY s.set_index`,
     [userId, exerciseKey, userId, exerciseKey, exclude, exclude, ...type.params],
-  );
-}
-
-/**
- * Distinct named workouts, most recently performed first — the template list.
- * Only the latest session per name is offered, since that is the one carrying current weights.
- */
-export async function listNamedTemplates(
-  db: SqlExecutor,
-  userId: string,
-  limit = 20,
-): Promise<{ id: string; name: string; started_at: string; exercise_count: number }[]> {
-  return db.all(
-    `SELECT ws.id, ws.name, ws.started_at, COUNT(DISTINCT se.id) AS exercise_count
-       FROM workout_sessions ws
-       LEFT JOIN session_exercises se ON se.session_id = ws.id AND se.deleted_at IS NULL
-      WHERE ws.user_id = ?
-        AND ws.name IS NOT NULL
-        AND ws.deleted_at IS NULL
-        AND ws.id = (
-          SELECT inner_ws.id FROM workout_sessions inner_ws
-           WHERE inner_ws.user_id = ? AND inner_ws.name = ws.name
-             AND inner_ws.deleted_at IS NULL
-           ORDER BY inner_ws.started_at DESC LIMIT 1
-        )
-      GROUP BY ws.id
-      HAVING exercise_count > 0
-      ORDER BY ws.started_at DESC
-      LIMIT ?`,
-    [userId, userId, limit],
   );
 }
 

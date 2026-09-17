@@ -60,7 +60,12 @@ import {
   swipeTarget,
 } from '../../src/workout/derived.js';
 import { Banner, EmptyState, SkeletonScreen } from '../../src/components/ui.js';
-import { WorkoutHome, type TemplateEntry } from '../../src/components/WorkoutHome.js';
+import { WorkoutHome } from '../../src/components/WorkoutHome.js';
+import {
+  DEFAULT_HISTORY_PERIOD,
+  periodStart,
+  type HistoryPeriod,
+} from '../../src/workout/historyPeriod.js';
 import { getPlanDay, listPlanDayExercises, timingOf, type PlanDayTiming } from '../../src/db/plans.js';
 import { getExecutor, newId } from '../../src/db/provider.js';
 import { checkHealthAvailability, importForSession, requestHealthPermissions } from '../../src/health/reader.js';
@@ -79,14 +84,12 @@ import {
   getPreviousBest,
   getPreviousSessionSets,
   getSessionDetail,
-  listNamedTemplates,
   listSessionSummaries,
   markSetDone,
   removeExerciseFromSession,
   removeSet,
   reorderSessionExercise,
   renameSession,
-  repeatSession,
   startSession,
   swapSessionExercise,
   updateSet,
@@ -160,7 +163,7 @@ export default function WorkoutsScreen() {
   const [loading, setLoading] = useState(true);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [sessionName, setSessionName] = useState<string | null>(null);
-  const [templates, setTemplates] = useState<TemplateEntry[]>([]);
+  const [historyPeriod, setHistoryPeriod] = useState<HistoryPeriod>(DEFAULT_HISTORY_PERIOD);
   const [history, setHistory] = useState<SessionSummaryRow[]>([]);
   const [prToast, setPrToast] = useState<PrToastData | null>(null);
   // Held as an absolute deadline, not a countdown — see RestBanner for why a tick counter drifts
@@ -180,12 +183,17 @@ export default function WorkoutsScreen() {
   // otherwise nudging the same field twice (even to the same value) would re-fire the toast.
   const celebratedSetIds = useRef<Set<string>>(new Set());
 
-  /** Refresh the idle-state lists (templates + history). */
+  /**
+   * Refresh the history list for the chosen period.
+   *
+   * No fifty-row cap any more: a period is the limit now, and capping a year of training at its
+   * latest fifty sessions would quietly cut the year short. The ceiling left is only a guard.
+   */
   const reloadHome = useCallback(async () => {
     const db = await getExecutor();
-    setTemplates((await listNamedTemplates(db, userId)));
-    setHistory(await listSessionSummaries(db, userId, 50));
-  }, [userId]);
+    const start = periodStart(historyPeriod, new Date());
+    setHistory(await listSessionSummaries(db, userId, 2000, start?.toISOString()));
+  }, [userId, historyPeriod]);
 
   const [homeRefreshing, setHomeRefreshing] = useState(false);
   const handleHomeRefresh = useCallback(() => {
@@ -353,19 +361,6 @@ export default function WorkoutsScreen() {
     handledParam.current = null;
     celebratedSetIds.current.clear();
     await reload(id);
-  };
-
-  /** Clone a previous session's structure — same exercises and set counts, all values blank. */
-  const useTemplate = (sourceSessionId: string) => {
-    void (async () => {
-      const db = await getExecutor();
-      const id = await repeatSession(db, userId, newId, sourceSessionId);
-      if (!id) return;
-      setSessionId(id);
-      handledParam.current = null;
-      celebratedSetIds.current.clear();
-      await reload(id);
-    })();
   };
 
   const closeOut = useCallback(async () => {
@@ -1049,10 +1044,10 @@ export default function WorkoutsScreen() {
   if (!sessionId) {
     return (
       <WorkoutHome
-        templates={templates}
         history={history}
+        period={historyPeriod}
+        onChangePeriod={setHistoryPeriod}
         onStartEmpty={() => void begin()}
-        onUseTemplate={useTemplate}
         onOpenSession={(id) => router.push({ pathname: '/session/[id]', params: { id } })}
         contentPadding={{
           paddingTop: spacing.lg,

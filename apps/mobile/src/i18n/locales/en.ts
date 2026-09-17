@@ -480,6 +480,17 @@ export const en = {
       'A plan sets a target, it does not constrain. Add sets, drop them, or swap an exercise — the log records what you actually did.',
   },
   history: {
+    period: {
+      week: 'Last week',
+      month: 'Last month',
+      halfYear: 'Half a year',
+      year: 'Last year',
+      all: 'All',
+    },
+    count_one: '1 workout in this period',
+    count_other: '{{count}} workouts in this period',
+    emptyPeriod: 'No workouts in this period',
+    emptyPeriodHint: 'Pick a longer period above',
     title: 'Workout history',
     empty: 'No workouts yet',
     emptyHint: 'The first workout you log will show up here',
@@ -501,9 +512,6 @@ export const en = {
     namePlaceholder: 'e.g. Push A',
     delete: 'Delete workout',
     confirmDelete: 'Delete this workout permanently?',
-    templates: 'Start from a template',
-    templatesHint:
-      'Workouts you named — tapping one starts a new session with the same exercises, empty to fill in',
     activeWarning: 'A workout is already in progress. Finish it before starting another.',
     viewDetail: 'Details',
   },

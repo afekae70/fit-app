@@ -13,7 +13,6 @@ import {
   getActiveSession,
   getPreviousSessionSets,
   getSessionDetail,
-  listNamedTemplates,
   listSessionSummaries,
   renameSession,
   repeatSession,
@@ -338,37 +337,31 @@ describe('previous session reference', () => {
   });
 });
 
-describe('template list', () => {
-  it('offers only the most recent session for each name', async () => {
-    const tick = tickingClock();
+describe('history over a period', () => {
+  async function sessionOn(startedAt: string) {
+    const id = await startSession(db, USER, newId, {}, () => startedAt);
+    await addExerciseToSession(db, newId, id, 'Barbell Bench Press', clock);
+    return id;
+  }
 
-    const older = await startSession(db, USER, newId, {}, tick);
-    await renameSession(db, USER, older, 'Push A', tick);
-    await addExerciseToSession(db, newId, older, 'Barbell Bench Press', tick);
+  it('keeps only sessions started on or after the start of the period', async () => {
+    const old = await sessionOn('2026-06-01T10:00:00.000Z');
+    const boundary = await sessionOn('2026-08-17T00:00:00.000Z');
+    const recent = await sessionOn('2026-09-15T10:00:00.000Z');
 
-    const newer = await startSession(db, USER, newId, {}, tick);
-    await renameSession(db, USER, newer, 'Push A', tick);
-    await addExerciseToSession(db, newId, newer, 'Barbell Bench Press', tick);
-
-    const templates = await listNamedTemplates(db, USER);
-    // One entry per name, pointing at the latest session — that is the one carrying current
-    // weights, which is the entire reason to repeat it.
-    expect(templates).toHaveLength(1);
-    expect(templates[0]?.id).toBe(newer);
+    const inPeriod = await listSessionSummaries(db, USER, 1000, '2026-08-17T00:00:00.000Z');
+    expect(inPeriod.map((s) => s.id)).toEqual([recent, boundary]);
+    expect(inPeriod.map((s) => s.id)).not.toContain(old);
   });
 
-  it('ignores unnamed sessions', async () => {
-    const sessionId = await startSession(db, USER, newId, {}, clock);
-    await addExerciseToSession(db, newId, sessionId, 'Barbell Bench Press', clock);
-
-    expect(await listNamedTemplates(db, USER)).toHaveLength(0);
+  it('returns all of history when no start is given', async () => {
+    await sessionOn('2025-01-01T10:00:00.000Z');
+    await sessionOn('2026-09-15T10:00:00.000Z');
+    expect(await listSessionSummaries(db, USER)).toHaveLength(2);
   });
 
-  it('ignores a named session with no exercises', async () => {
-    const sessionId = await startSession(db, USER, newId, {}, clock);
-    await renameSession(db, USER, sessionId, 'Empty', clock);
-
-    // Repeating it would produce nothing, so it is not a usable template.
-    expect(await listNamedTemplates(db, USER)).toHaveLength(0);
+  it('still keeps two users apart inside a period', async () => {
+    await sessionOn('2026-09-15T10:00:00.000Z');
+    expect(await listSessionSummaries(db, 'user-2', 1000, '2026-01-01T00:00:00.000Z')).toHaveLength(0);
   });
 });

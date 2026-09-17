@@ -1,10 +1,14 @@
 /**
- * The workouts tab when nothing is in progress: start fresh, repeat a saved template, or
- * browse history.
+ * The workouts tab when nothing is in progress: start a workout, or look back through history.
  *
- * Templates sit above history deliberately. Re-entering eight exercises and their weights is
- * the most tedious part of logging, and repeating last week's session removes it entirely —
- * so it gets the prominent position, not a menu somewhere.
+ * History is filtered by period — the last week, month, half year, year, or all of it. An
+ * unfiltered list capped at the latest fifty answered "what did I do recently" and nothing else;
+ * a period answers "how much did I train this month", and the count at the top of the list says
+ * it without having to scroll and add up.
+ *
+ * Repeating a saved workout used to sit above history as its own section. It was taken out: the
+ * plan is where a workout is started from now, and a second way in, listing the same workouts
+ * again, was one more thing between the Start button and the history.
  */
 
 import { useMemo } from 'react';
@@ -21,34 +25,31 @@ import {
 } from 'react-native';
 
 import type { SessionSummaryRow } from '../db/workouts.js';
+import { HISTORY_PERIODS, type HistoryPeriod } from '../workout/historyPeriod.js';
 import { useTheme } from '../ThemeProvider.js';
 import { useUnit } from '../UnitsProvider.js';
 import { formatVolume, weightUnitKey } from '../units.js';
 import { fontSize, radius, spacing, type ColorPalette } from '../theme.js';
 import { EmptyState, ScreenHeader } from './ui.js';
 
-export interface TemplateEntry {
-  id: string;
-  name: string;
-  started_at: string;
-  exercise_count: number;
-}
-
 export interface WorkoutHomeProps {
-  templates: TemplateEntry[];
   history: SessionSummaryRow[];
+  period: HistoryPeriod;
+  onChangePeriod: (period: HistoryPeriod) => void;
   onStartEmpty: () => void;
-  onUseTemplate: (sessionId: string) => void;
   onOpenSession: (sessionId: string) => void;
   contentPadding: { paddingTop: number; paddingBottom: number };
   refreshing: boolean;
   onRefresh: () => void;
 }
 
-function formatDate(iso: string): string {
+function formatDate(iso: string, withYear: boolean): string {
+  // The year only once the list can span more than one: "12 Mar" is ambiguous in a year of
+  // history and noise in a week of it.
   return new Date(iso).toLocaleDateString(undefined, {
     day: 'numeric',
     month: 'short',
+    ...(withYear ? { year: 'numeric' as const } : {}),
   });
 }
 
@@ -61,10 +62,10 @@ function durationMinutes(startedAt: string, endedAt: string | null): number | nu
 }
 
 export function WorkoutHome({
-  templates,
   history,
+  period,
+  onChangePeriod,
   onStartEmpty,
-  onUseTemplate,
   onOpenSession,
   contentPadding,
   refreshing,
@@ -89,36 +90,48 @@ export function WorkoutHome({
         <Text style={styles.primaryButtonText}>{t('workout.startButton')}</Text>
       </Pressable>
 
-      {templates.length > 0 ? (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t('history.templates')}</Text>
-          <Text style={styles.sectionHint}>{t('history.templatesHint')}</Text>
-
-          {templates.map((template) => (
-            <Pressable
-              key={template.id}
-              onPress={() => onUseTemplate(template.id)}
-              style={styles.templateRow}
-              accessibilityRole="button"
-            >
-              <View style={styles.rowMain}>
-                <Text style={styles.templateName}>{template.name}</Text>
-                <Text style={styles.rowMeta}>
-                  {template.exercise_count} {t('history.exercises')} ·{' '}
-                  {formatDate(template.started_at)}
-                </Text>
-              </View>
-              <Text style={styles.repeatIcon}>↻</Text>
-            </Pressable>
-          ))}
-        </View>
-      ) : null}
-
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>{t('history.title')}</Text>
 
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.periodRow}
+        >
+          {HISTORY_PERIODS.map((option) => {
+            const on = option === period;
+            return (
+              <Pressable
+                key={option}
+                onPress={() => onChangePeriod(option)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: on }}
+                style={({ pressed }) => [
+                  styles.periodChip,
+                  on && styles.periodChipOn,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={[styles.periodText, on && styles.periodTextOn]}>
+                  {t(`history.period.${option}`)}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+
+        {history.length > 0 ? (
+          <Text style={styles.sectionHint}>{t('history.count', { count: history.length })}</Text>
+        ) : null}
+
         {history.length === 0 ? (
-          <EmptyState emoji="🏋️" title={t('history.empty')} hint={t('history.emptyHint')} />
+          period === 'all' ? (
+            <EmptyState emoji="🏋️" title={t('history.empty')} hint={t('history.emptyHint')} />
+          ) : (
+            // Not the first-run message: there is history, just none in this window, and saying
+            // "no workouts yet" here would read as history lost.
+            <EmptyState emoji="🗓️" title={t('history.emptyPeriod')} hint={t('history.emptyPeriodHint')} />
+          )
         ) : (
           history.map((session) => {
             const minutes = durationMinutes(session.started_at, session.ended_at);
@@ -134,7 +147,7 @@ export function WorkoutHome({
                     {session.name ?? t('history.unnamed')}
                   </Text>
                   <Text style={styles.rowMeta}>
-                    {formatDate(session.started_at)}
+                    {formatDate(session.started_at, period === 'halfYear' || period === 'year' || period === 'all')}
                     {session.ended_at === null ? ` · ${t('history.inProgress')}` : ''}
                     {minutes !== null ? ` · ${minutes} ${t('history.minutes')}` : ''}
                   </Text>
@@ -164,9 +177,12 @@ const createStyles = (colors: ColorPalette) =>
     section: ViewStyle;
     sectionTitle: TextStyle;
     sectionHint: TextStyle;
-    templateRow: ViewStyle;
-    templateName: TextStyle;
-    repeatIcon: TextStyle;
+    periodRow: ViewStyle;
+    periodChip: ViewStyle;
+    periodChipOn: ViewStyle;
+    periodText: TextStyle;
+    periodTextOn: TextStyle;
+    pressed: ViewStyle;
     historyRow: ViewStyle;
     historyName: TextStyle;
     rowMain: ViewStyle;
@@ -198,18 +214,19 @@ const createStyles = (colors: ColorPalette) =>
     marginBottom: spacing.sm,
     textAlign: 'auto',
   },
-  templateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
+  periodRow: { gap: spacing.xs, paddingVertical: spacing.sm },
+  periodChip: {
+    paddingVertical: 6,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceRaised,
     borderWidth: 1,
-    borderColor: colors.accent,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    marginTop: spacing.sm,
+    borderColor: colors.borderSubtle,
   },
-  templateName: { color: colors.accent, fontSize: fontSize.md, fontWeight: '700', textAlign: 'auto' },
-  repeatIcon: { color: colors.accent, fontSize: fontSize.lg, marginStart: spacing.sm },
+  periodChipOn: { backgroundColor: colors.accentSoft, borderColor: colors.accentBorder },
+  periodText: { color: colors.textMuted, fontSize: fontSize.sm },
+  periodTextOn: { color: colors.accent, fontWeight: '700' },
+  pressed: { opacity: 0.7 },
   historyRow: {
     backgroundColor: colors.surface,
     borderWidth: 1,
