@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { replayFromStart, type ReplayablePlayer } from './replay.js';
+import {
+  primePlayers,
+  replayFromStart,
+  type PrimablePlayer,
+  type ReplayablePlayer,
+} from './replay.js';
 
 /** A player that records what reached it, and in what order — the order is the bug. */
 function recorder(startAt: number, seekDelayMs = 20) {
@@ -47,5 +52,65 @@ describe('replaying a cue', () => {
     await replayFromStart(player);
     expect(calls[calls.length - 1]).toBe('play@0');
     expect(calls.indexOf('seek:0')).toBeLessThan(calls.indexOf('play@0'));
+  });
+});
+
+describe('warming the players up', () => {
+  function logged(name: string, log: string[], failOnPlay = false): PrimablePlayer {
+    let volume = 1;
+    return {
+      currentTime: 0,
+      get volume() {
+        return volume;
+      },
+      set volume(value: number) {
+        volume = value;
+        log.push(`${name}:volume=${value}`);
+      },
+      seekTo: () => Promise.resolve(),
+      play: () => {
+        if (failOnPlay) throw new Error('no audio');
+        log.push(`${name}:play@${volume}`);
+      },
+      pause: () => log.push(`${name}:pause`),
+    };
+  }
+  const instant = () => Promise.resolve();
+
+  it('plays every player only after it has been silenced, and gives the volume back after', async () => {
+    const log: string[] = [];
+    await primePlayers([logged('tick', log), logged('end', log)], instant);
+    expect(log).toEqual([
+      'tick:volume=0',
+      'end:volume=0',
+      'tick:play@0',
+      'end:play@0',
+      'tick:pause',
+      'end:pause',
+      'tick:volume=1',
+      'end:volume=1',
+    ]);
+  });
+
+  it('never plays anything at full volume', async () => {
+    const log: string[] = [];
+    await primePlayers([logged('tick', log), logged('end', log)], instant);
+    expect(log.filter((entry) => entry.includes(':play@')).every((entry) => entry.endsWith('@0'))).toBe(true);
+  });
+
+  it('restores the volume even when a play fails, so the workout is not left silent', async () => {
+    const log: string[] = [];
+    const tick = logged('tick', log, true);
+    await expect(primePlayers([tick], instant)).rejects.toThrow('no audio');
+    expect(tick.volume).toBe(1);
+  });
+
+  it('waits before playing, so the silenced volume has reached the player', async () => {
+    const order: string[] = [];
+    const player = logged('tick', order);
+    await primePlayers([player], async (ms) => {
+      order.push(`wait:${ms}`);
+    });
+    expect(order.indexOf('wait:150')).toBeLessThan(order.indexOf('tick:play@0'));
   });
 });

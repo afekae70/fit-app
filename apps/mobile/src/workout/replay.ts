@@ -30,3 +30,35 @@ export async function replayFromStart(player: ReplayablePlayer): Promise<void> {
   if (player.currentTime > 0) await player.seekTo(0);
   player.play();
 }
+
+export interface PrimablePlayer extends ReplayablePlayer {
+  volume: number;
+  pause(): void;
+}
+
+/**
+ * Play every player once, inaudibly, so that none of them makes its first real sound cold.
+ *
+ * Android builds a player's audio output the first time it plays, and the first fraction of a
+ * second of that play can be lost while it does. For a 0.1-second countdown pip that is the whole
+ * sound — which is how the first "3" of a workout went missing while every later pip played.
+ *
+ * The volume goes to zero first and play waits for it: the setter reaches the native player
+ * asynchronously, and a play that arrived before it would sound all four cues at once. Each is
+ * paused and its volume restored only after it has had time to run, and restored even when a
+ * step fails, so a hiccup here can never leave the cues muted for the workout.
+ */
+export async function primePlayers(
+  players: readonly PrimablePlayer[],
+  wait: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+): Promise<void> {
+  for (const player of players) player.volume = 0;
+  try {
+    await wait(150);
+    for (const player of players) player.play();
+    await wait(900);
+    for (const player of players) player.pause();
+  } finally {
+    for (const player of players) player.volume = 1;
+  }
+}

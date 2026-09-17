@@ -38,7 +38,13 @@ import {
   startIntervals,
   type IntervalState,
 } from '../../workout/interval.js';
-import { playCue, prepareCues, releaseCues } from '../../workout/sounds.js';
+import {
+  playCue,
+  prepareCues,
+  releaseCues,
+  startKeepAlive,
+  stopKeepAlive,
+} from '../../workout/sounds.js';
 import { ExerciseVisual } from '../ExerciseVisual.js';
 
 export interface IntervalExercise {
@@ -105,6 +111,14 @@ export function IntervalRunner({
       void activateKeepAwakeAsync(KEEP_AWAKE_TAG).catch(() => undefined);
     else void deactivateKeepAwake(KEEP_AWAKE_TAG);
   }, [state, finished]);
+
+  // The audio output stays awake exactly while the countdown can make a sound: running, not
+  // paused, not finished. See sounds.ts for why a quiet output cut off the first pip.
+  useEffect(() => {
+    if (!running) return;
+    startKeepAlive();
+    return () => stopKeepAlive();
+  }, [running]);
 
   useEffect(() => {
     if (!running) return;
