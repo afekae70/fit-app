@@ -264,9 +264,10 @@ export function ActionSheetProvider({ children }: { children: ReactNode }) {
                 style={styles.search}
                 returnKeyType="search"
                 autoCorrect={false}
-                // Straight to the keyboard: the sheet was opened from the calendar to find a
-                // workout, and a search field that needs its own tap first is a step in the way.
-                autoFocus
+                // Deliberately not autoFocus. Inside the Modal it put the cursor in the field
+                // without ever raising the keyboard (checked on the device: the IME never showed),
+                // and a tap on a field already focused that way closed the sheet once instead of
+                // opening the keyboard. A tap on an unfocused field opened it every time.
                 clearButtonMode="while-editing"
                 accessibilityLabel={request.searchPlaceholder}
               />
