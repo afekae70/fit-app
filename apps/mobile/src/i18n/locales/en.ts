@@ -441,6 +441,7 @@ export const en = {
     errorUnknown: 'Something went wrong — try again',
   },
   plan: {
+    dragDay: 'Drag to reorder the workout',
     title: 'Weekly plan',
     subtitle: 'What is programmed, and which day is most overdue',
     empty: 'No plan yet',
