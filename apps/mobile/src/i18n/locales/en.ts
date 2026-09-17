@@ -365,7 +365,7 @@ export const en = {
     todayKicker: 'TODAY · {{plan}}',
     workoutMeta: '{{exercises}} exercises · {{sets}} sets · ~{{minutes}} min',
     startWorkout: 'Start workout',
-    streakWeeks: '{{count}}-week streak',
+    monthWeeks: '{{month}}: {{done}} of {{total}} full weeks',
     streakThisWeek: '{{done}} of {{target}} this week',
     streakInvite: 'Train today to keep the streak',
     statWorkouts: 'Workouts',

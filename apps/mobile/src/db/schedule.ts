@@ -349,6 +349,25 @@ export async function seedWeekFromPrevious(
 /** How far back to look for a week worth repeating. Two months covers a planned previous month. */
 const LOOKBACK_WEEKS = 8;
 
+/**
+ * The weeks a month owns, as the dates of their Sundays.
+ *
+ * A week belongs to the month it starts in. The week of Sunday September 27th runs into October
+ * and is still September's, and the first days of October before its first Sunday belong to that
+ * week, not to an October week of their own. Every week therefore belongs to exactly one month —
+ * a week split between two would be counted twice or argued over — and a month owns four or five.
+ */
+export function weeksOfMonth(month: string): string[] {
+  const first = `${month}-01`;
+  const lastDay = addDays(`${addMonths(month, 1)}-01`, -1);
+  const offset = (WEEK_STARTS_ON - parseLocalDate(first).getDay() + 7) % 7;
+  const weeks: string[] = [];
+  for (let sunday = addDays(first, offset); sunday <= lastDay; sunday = addDays(sunday, 7)) {
+    weeks.push(sunday);
+  }
+  return weeks;
+}
+
 /** `YYYY-MM` for the month a local date falls in. */
 export function monthKey(date: string): string {
   return date.slice(0, 7);

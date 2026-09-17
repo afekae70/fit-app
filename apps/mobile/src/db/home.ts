@@ -19,7 +19,7 @@ import {
   type TargetsResult,
 } from './metrics.js';
 import { getActivePlan, listPlanDayExercises, listPlanDays } from './plans.js';
-import { localDate, scheduledFor } from './schedule.js';
+import { addDays, localDate, monthKey, scheduledFor, weekStart, weeksOfMonth } from './schedule.js';
 
 /**
  * What counts as having trained on a day.
@@ -375,6 +375,97 @@ export async function weekStrip(db: SqlExecutor, userId: string, now = new Date(
     days.push({ date, trained: trained.has(date), isToday: date === today });
   }
   return days;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Full weeks this month                                                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Sessions a week counts against when nothing is planned for it. The calendar replaces it for
+ * any week that has workouts committed.
+ */
+export const DEFAULT_WEEKLY_TARGET = 4;
+
+export interface WeekProgress {
+  /** Sunday, `YYYY-MM-DD`. */
+  start: string;
+  trained: number;
+  /** Workouts planned on the calendar for the week, or the default when none are. */
+  target: number;
+  complete: boolean;
+}
+
+export interface MonthWeeks {
+  /** `YYYY-MM` — the month the current week belongs to, which is not always today's month. */
+  month: string;
+  /** How many weeks the month owns: four or five. */
+  weeks: number;
+  /** Of those, the ones already complete. A week still under way counts the moment it is. */
+  completed: number;
+  thisWeek: WeekProgress;
+}
+
+/**
+ * How many of the month's weeks had every workout done.
+ *
+ * This replaced a "streak of N weeks" that was consecutive trained *days* divided by seven. It
+ * could only move after training seven days running, so for anyone with a rest day in their week
+ * it read zero, permanently — the one number on the home screen that never changed.
+ *
+ * A week is complete when it has had as many trained sessions as workouts planned for it on the
+ * calendar — the same counting rule as today's card, so two sessions on one day count as two, and
+ * a planned workout swapped for another still counts. A week with nothing planned is measured
+ * against DEFAULT_WEEKLY_TARGET instead, so an unplanned month is not a month of zeroes.
+ *
+ * The month shown is the one the current week belongs to (see `weeksOfMonth`). On Friday October
+ * 2nd that is still September, because this week started on September 27th; it becomes October
+ * on the Sunday. The week under way is always part of the tally on screen.
+ *
+ * `thisWeek` is exposed for the line beside the tally, so "5 of 7 this week" and the month's
+ * count use the same target and cannot disagree about whether this week is done.
+ */
+export async function monthWeeks(db: SqlExecutor, userId: string, now = new Date()): Promise<MonthWeeks> {
+  const currentWeek = weekStart(localDate(now));
+  const month = monthKey(currentWeek);
+  const starts = weeksOfMonth(month);
+
+  const progress = async (start: string): Promise<WeekProgress> => {
+    const end = addDays(start, 6);
+    const trained = await db.get<{ n: number }>(
+      `SELECT COUNT(*) AS n FROM workout_sessions ws
+        WHERE ws.user_id = ? AND ws.deleted_at IS NULL
+          AND date(ws.started_at, 'localtime') BETWEEN ? AND ?
+          AND ${TRAINED}`,
+      [userId, start, end],
+    );
+    const planned = await db.get<{ n: number }>(
+      `SELECT COUNT(*) AS n FROM scheduled_days
+        WHERE user_id = ? AND deleted_at IS NULL AND plan_day_id IS NOT NULL
+          AND scheduled_on BETWEEN ? AND ?`,
+      [userId, start, end],
+    );
+    const target = (planned?.n ?? 0) > 0 ? (planned?.n ?? 0) : DEFAULT_WEEKLY_TARGET;
+    const done = trained?.n ?? 0;
+    return { start, trained: done, target, complete: done >= target };
+  };
+
+  let completed = 0;
+  let thisWeek: WeekProgress | null = null;
+  for (const start of starts) {
+    // Weeks still to come cannot have been completed; they count only toward the total.
+    if (start > currentWeek) break;
+    const week = await progress(start);
+    if (week.complete) completed += 1;
+    if (start === currentWeek) thisWeek = week;
+  }
+
+  return {
+    month,
+    weeks: starts.length,
+    completed,
+    thisWeek: thisWeek ?? (await progress(currentWeek)),
+  };
 }
 
 /* -------------------------------------------------------------------------- */

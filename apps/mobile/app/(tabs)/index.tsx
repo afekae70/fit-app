@@ -42,22 +42,21 @@ import {
   type TodayWorkout,
   type WeekSummary,
   type TrainedToday,
+  monthWeeks,
+  type MonthWeeks,
 } from '../../src/db/home.js';
 import { startSessionFromPlanDay } from '../../src/db/plans.js';
 import { getExecutor, newId } from '../../src/db/provider.js';
-import { getActiveSession, getWorkoutStreak, type WorkoutStreak } from '../../src/db/workouts.js';
+import { getActiveSession } from '../../src/db/workouts.js';
 import { hapticLight } from '../../src/haptics.js';
 import { useTheme } from '../../src/ThemeProvider.js';
 import { radius, type ColorPalette } from '../../src/theme.js';
-
-/** How many sessions a week the streak line measures against, until settings can say otherwise. */
-const WEEKLY_TARGET = 4;
 
 interface HomeData {
   workout: TodayWorkout | null;
   strip: StripDay[];
   summary: WeekSummary;
-  streak: WorkoutStreak;
+  monthWeeks: MonthWeeks;
   nutrition: HomeNutrition;
   /**
    * Today was deliberately marked as a rest day, as opposed to there being no plan at all.
@@ -83,16 +82,16 @@ export default function TodayScreen() {
   const load = useCallback(async () => {
     try {
       const db = await getExecutor();
-      const [workout, strip, summary, streak, nutrition, restDay, trained] = await Promise.all([
+      const [workout, strip, summary, weeks, nutrition, restDay, trained] = await Promise.all([
         getTodayWorkout(db, userId),
         weekStrip(db, userId),
         weekSummary(db, userId),
-        getWorkoutStreak(db, userId),
+        monthWeeks(db, userId),
         getHomeNutrition(db, userId),
         isScheduledRestDay(db, userId),
         getTrainedToday(db, userId),
       ]);
-      setData({ workout, strip, summary, streak, nutrition, restDay, trained });
+      setData({ workout, strip, summary, monthWeeks: weeks, nutrition, restDay, trained });
       setFailed(false);
     } catch {
       setFailed(true);
@@ -185,9 +184,7 @@ export default function TodayScreen() {
               <FadeSlideIn index={1}>
                 <StreakCard
                   days={data.strip}
-                  streakWeeks={Math.floor(data.streak.currentDays / 7)}
-                  trainedThisWeek={data.summary.workouts}
-                  targetPerWeek={WEEKLY_TARGET}
+                  monthWeeks={data.monthWeeks}
                 />
               </FadeSlideIn>
               <FadeSlideIn index={2}>
@@ -204,9 +201,7 @@ export default function TodayScreen() {
               <FadeSlideIn index={1}>
                 <StreakCard
                   days={data.strip}
-                  streakWeeks={Math.floor(data.streak.currentDays / 7)}
-                  trainedThisWeek={data.summary.workouts}
-                  targetPerWeek={WEEKLY_TARGET}
+                  monthWeeks={data.monthWeeks}
                 />
               </FadeSlideIn>
               <FadeSlideIn index={2}>
@@ -224,9 +219,7 @@ export default function TodayScreen() {
               <FadeSlideIn index={1}>
                 <StreakCard
                   days={data.strip}
-                  streakWeeks={Math.floor(data.streak.currentDays / 7)}
-                  trainedThisWeek={data.summary.workouts}
-                  targetPerWeek={WEEKLY_TARGET}
+                  monthWeeks={data.monthWeeks}
                 />
               </FadeSlideIn>
               <FadeSlideIn index={2}>

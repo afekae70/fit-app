@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
+  DEFAULT_WEEKLY_TARGET,
+  monthWeeks,
   getHomeNutrition,
   getTodayWorkout,
   getTrainedToday,
@@ -10,7 +12,7 @@ import {
   weekSummary,
 } from './home.js';
 import { saveProfile } from './metrics.js';
-import { setScheduledDay, setScheduledWorkouts } from './schedule.js';
+import { setScheduledDay, setScheduledWorkouts, weeksOfMonth } from './schedule.js';
 import type { SqlExecutor } from './executor.js';
 import { localDate } from './schedule.js';
 import { createTestExecutor } from './testUtils.js';
@@ -693,5 +695,125 @@ describe('getTrainedToday', () => {
     );
 
     expect((await getTrainedToday(db, USER))?.setCount).toBe(1);
+  });
+});
+
+describe('which weeks a month owns', () => {
+  it('gives each month the weeks that start in it', () => {
+    // September 2026 begins on a Tuesday; its Sundays are the 6th, 13th, 20th and 27th.
+    expect(weeksOfMonth('2026-09')).toEqual(['2026-09-06', '2026-09-13', '2026-09-20', '2026-09-27']);
+    // August 2026 begins on a Saturday and has five Sundays.
+    expect(weeksOfMonth('2026-08')).toHaveLength(5);
+  });
+
+  it('never gives one week to two months', () => {
+    const all = [...weeksOfMonth('2026-09'), ...weeksOfMonth('2026-10')];
+    expect(new Set(all).size).toBe(all.length);
+    // The week of September 27th runs into October, and belongs to September alone.
+    expect(weeksOfMonth('2026-10')[0]).toBe('2026-10-04');
+  });
+});
+
+describe('full weeks this month', () => {
+  const trainOn = (local: string, planDayId: string | null = null) =>
+    logWorkout(local, [{ exercise: 'Barbell Row', weight: 60, reps: 8 }], { planDayId });
+
+  it('counts a week complete once every planned workout in it is trained', async () => {
+    const [push, pull] = await seedPlan([
+      { name: 'דחיפה', exercises: [['Barbell Bench Press', 3]] },
+      { name: 'משיכה', exercises: [['Barbell Row', 3]] },
+    ]);
+    // Week of September 6th: two planned, two trained.
+    await setScheduledDay(db, USER, () => id('sd'), '2026-09-07', push!);
+    await setScheduledDay(db, USER, () => id('sd'), '2026-09-09', pull!);
+    await trainOn('2026-09-07T07:00:00', push);
+    await trainOn('2026-09-09T07:00:00', pull);
+
+    const tally = await monthWeeks(db, USER, new Date('2026-09-10T12:00:00'));
+    expect(tally.month).toBe('2026-09');
+    expect(tally.weeks).toBe(4);
+    expect(tally.completed).toBe(1);
+    expect(tally.thisWeek).toMatchObject({ trained: 2, target: 2, complete: true });
+  });
+
+  it('does not count a week with a planned workout still missing', async () => {
+    const [push, pull] = await seedPlan([
+      { name: 'דחיפה', exercises: [['Barbell Bench Press', 3]] },
+      { name: 'משיכה', exercises: [['Barbell Row', 3]] },
+    ]);
+    await setScheduledWorkouts(db, USER, () => id('sd'), '2026-09-07', [push!, pull!]);
+    await trainOn('2026-09-07T07:00:00', push);
+
+    const tally = await monthWeeks(db, USER, new Date('2026-09-10T12:00:00'));
+    expect(tally.completed).toBe(0);
+    expect(tally.thisWeek).toMatchObject({ trained: 1, target: 2, complete: false });
+  });
+
+  it('measures a week with nothing planned against the default target', async () => {
+    for (const day of ['06', '07', '08']) await trainOn(`2026-09-${day}T07:00:00`);
+    let tally = await monthWeeks(db, USER, new Date('2026-09-10T12:00:00'));
+    expect(tally.thisWeek.target).toBe(DEFAULT_WEEKLY_TARGET);
+    expect(tally.completed).toBe(0);
+
+    await trainOn('2026-09-10T07:00:00');
+    tally = await monthWeeks(db, USER, new Date('2026-09-10T20:00:00'));
+    expect(tally.completed).toBe(1);
+  });
+
+  it('keeps counting the week that runs past the end of the month as that month', async () => {
+    // Friday October 2nd is in the week of September 27th, so the card still shows September.
+    for (const day of ['2026-09-27', '2026-09-29', '2026-10-01', '2026-10-02']) {
+      await trainOn(`${day}T07:00:00`);
+    }
+    const tally = await monthWeeks(db, USER, new Date('2026-10-02T20:00:00'));
+    expect(tally.month).toBe('2026-09');
+    expect(tally.thisWeek.start).toBe('2026-09-27');
+    expect(tally.completed).toBe(1);
+  });
+
+  it('starts the next month from zero on its first Sunday', async () => {
+    for (const day of ['2026-09-27', '2026-09-29', '2026-10-01', '2026-10-02']) {
+      await trainOn(`${day}T07:00:00`);
+    }
+    const tally = await monthWeeks(db, USER, new Date('2026-10-04T09:00:00'));
+    expect(tally.month).toBe('2026-10');
+    expect(tally.completed).toBe(0);
+    expect(tally.weeks).toBe(4);
+  });
+
+  it('adds up several complete weeks, and only past and current ones', async () => {
+    for (const week of ['2026-09-06', '2026-09-13']) {
+      for (let i = 0; i < DEFAULT_WEEKLY_TARGET; i += 1) {
+        const [y, m, d] = week.split('-').map(Number);
+        const day = new Date(y!, m! - 1, d! + i, 7);
+        await trainOn(
+          `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}T07:00:00`,
+        );
+      }
+    }
+    const tally = await monthWeeks(db, USER, new Date('2026-09-15T12:00:00'));
+    expect(tally.completed).toBe(2);
+    expect(tally.weeks).toBe(4);
+  });
+
+  it('counts two sessions on one day as two', async () => {
+    const [push, abs] = await seedPlan([
+      { name: 'דחיפה', exercises: [['Barbell Bench Press', 3]] },
+      { name: 'בטן', exercises: [['Plank', 1]] },
+    ]);
+    await setScheduledWorkouts(db, USER, () => id('sd'), '2026-09-07', [push!, abs!]);
+    await trainOn('2026-09-07T07:00:00', push);
+    await trainOn('2026-09-07T19:00:00', abs);
+    const tally = await monthWeeks(db, USER, new Date('2026-09-08T12:00:00'));
+    expect(tally.thisWeek).toMatchObject({ trained: 2, target: 2, complete: true });
+  });
+
+  it('keeps two users apart', async () => {
+    for (let i = 0; i < DEFAULT_WEEKLY_TARGET; i += 1) {
+      await logWorkout(`2026-09-0${6 + i}T07:00:00`, [{ exercise: 'Barbell Row', weight: 60, reps: 8 }], {
+        user: 'someone-else',
+      });
+    }
+    expect((await monthWeeks(db, USER, new Date('2026-09-10T20:00:00'))).completed).toBe(0);
   });
 });

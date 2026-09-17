@@ -30,8 +30,7 @@ import {
   type StripDay,
   type TodayWorkout,
   type TrainedToday,
-  type WeekSummary,
-} from '../../db/home.js';
+  type WeekSummary, type MonthWeeks } from '../../db/home.js';
 import type { TargetsResult } from '../../db/metrics.js';
 import { useTheme } from '../../ThemeProvider.js';
 import { radius, type ColorPalette } from '../../theme.js';
@@ -188,25 +187,36 @@ export function RestDayCard() {
 
 export function StreakCard({
   days,
-  streakWeeks,
-  trainedThisWeek,
-  targetPerWeek,
+  monthWeeks,
 }: {
   days: readonly StripDay[];
-  streakWeeks: number;
-  trainedThisWeek: number;
-  targetPerWeek: number;
+  /** Full weeks in the month the current week belongs to, and this week's own progress. */
+  monthWeeks: MonthWeeks;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  // Named rather than "this month": for the first days of a month that fall in a week begun in
+  // the month before, the tally is still that earlier month's, and "this month" would be wrong.
+  const monthName = new Date(`${monthWeeks.month}-01T00:00:00`).toLocaleDateString(i18n.language, {
+    month: 'long',
+  });
   const { colors } = useTheme();
   const s = useMemo(() => createStyles(colors), [colors]);
 
   return (
     <View style={s.card}>
       <View style={s.streakHeader}>
-        <Text style={s.streakTitle}>{t('home.streakWeeks', { count: streakWeeks })}</Text>
+        <Text style={s.streakTitle}>
+          {t('home.monthWeeks', {
+            month: monthName,
+            done: monthWeeks.completed,
+            total: monthWeeks.weeks,
+          })}
+        </Text>
         <Text style={s.streakCount}>
-          {t('home.streakThisWeek', { done: trainedThisWeek, target: targetPerWeek })}
+          {t('home.streakThisWeek', {
+            done: monthWeeks.thisWeek.trained,
+            target: monthWeeks.thisWeek.target,
+          })}
         </Text>
       </View>
 

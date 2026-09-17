@@ -358,7 +358,7 @@ export const he = {
     todayKicker: 'היום · תוכנית {{plan}}',
     workoutMeta: '{{exercises}} תרגילים · {{sets}} סטים · ~{{minutes}} דק׳',
     startWorkout: 'התחל אימון',
-    streakWeeks: 'רצף של {{count}} שבועות',
+    monthWeeks: '{{month}}: {{done}} מתוך {{total}} שבועות מלאים',
     streakThisWeek: '{{done}} מתוך {{target}} השבוע',
     streakInvite: 'התאמן היום כדי לשמור על הרצף',
     statWorkouts: 'אימונים',
