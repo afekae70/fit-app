@@ -1,14 +1,17 @@
 /**
  * One exercise of a finished workout, read rather than edited.
  *
- * Built to look like the card used while training (`ExercisePanel`): the same picture, the same
- * name, the same numbered rows. A workout looked at afterwards should be recognisable as the one
- * that was done — a different layout for the same sets makes the reader translate between two
- * pictures of one session.
+ * The card is the one used while training (`ExercisePanel`): the same picture, the same name. A
+ * workout looked at afterwards should be recognisable as the one that was done.
  *
- * What it drops is everything that only makes sense while training: the steppers, the tick, the
- * target and the advice. What it adds is the line under the name — how many working sets, and
- * the volume they came to — which is the question actually asked of a workout in the past.
+ * The sets are not. While training, each set is a row because each is a thing to be done — a
+ * weight to type, a box to tick. Afterwards they are a result, and a column of rows makes the
+ * reader walk down eight lines to see what was a short sentence: 80×8, 80×8, 75×6. So they are
+ * laid out as pills that wrap, the shape the app already uses for "last time" during a workout,
+ * and the whole exercise is taken in at a glance.
+ *
+ * The best working set is marked. It is the number anyone actually looks for afterwards, and
+ * picking it out is otherwise a comparison done by eye down a list.
  */
 
 import type { ExerciseSeed } from '@fit/shared/catalog';
@@ -27,6 +30,7 @@ import {
   metresToDisplay,
   weightUnitKey,
 } from '../../units.js';
+import { bestSetIndex, formatSet } from '../../workout/setFormat.js';
 import { ExerciseVisual } from '../ExerciseVisual.js';
 
 export function SessionExerciseSummary({
@@ -45,9 +49,13 @@ export function SessionExerciseSummary({
 
   const working = sets.filter((set) => set.is_warmup === 0);
   const volume = working.reduce((sum, set) => sum + (set.weight_kg ?? 0) * (set.reps ?? 0), 0);
+  const best = bestSetIndex(sets);
 
-  /** Warm-ups are not numbered: they are a ramp, and numbering them shifts every working set. */
-  let workingIndex = 0;
+  const labels = {
+    weight: t(`common.${weightUnitKey(unit)}`),
+    distance: t(`common.${distanceUnitKey(unit)}`),
+    seconds: t('workout.seconds'),
+  };
 
   return (
     <View style={s.card}>
@@ -60,7 +68,7 @@ export function SessionExerciseSummary({
         <View style={s.headerText}>
           <Text style={s.name}>{name}</Text>
           <Text style={s.meta}>
-            {t('history.sets')}: {working.length}
+            {working.length} {t('history.sets')}
             {volume > 0
               ? ` · ${formatVolume(volume, unit)} ${t(`common.${weightUnitKey(unit)}`)}`
               : ''}
@@ -68,49 +76,56 @@ export function SessionExerciseSummary({
         </View>
       </View>
 
-      <View style={s.sets}>
-        {sets.map((set) => {
+      <View style={s.pills}>
+        {sets.map((set, index) => {
           const warmup = set.is_warmup === 1;
-          if (!warmup) workingIndex += 1;
+          const isBest = index === best;
           return (
-            <View key={set.id} style={s.setLine}>
-              <Text
-                style={[s.index, warmup && s.indexWarmup, set.is_drop === 1 && s.indexDrop]}
-              >
-                {warmup ? t('workout.warmupShort') : set.is_drop === 1 ? '↓' : workingIndex}
-              </Text>
-              <Text style={[s.value, warmup && s.valueWarmup]}>
-                {describeSet(set, unit, t)}
+            <View
+              key={set.id}
+              style={[s.pill, warmup && s.pillWarmup, isBest && s.pillBest]}
+              // Read as one thing: "warm-up, 60 kg × 5" rather than five separate scraps.
+              accessibilityLabel={[
+                warmup ? t('workout.warmup') : null,
+                formatSet(
+                  {
+                    ...set,
+                    weight_kg: set.weight_kg === null ? null : kgToDisplay(set.weight_kg, unit),
+                    distance_m:
+                      set.distance_m === null ? null : metresToDisplay(set.distance_m, unit),
+                  },
+                  labels,
+                ),
+                set.to_failure === 1 ? t('workout.toFailure') : null,
+              ]
+                .filter(Boolean)
+                .join(', ')}
+            >
+              {/* A warm-up says so; a drop set keeps the arrow it is marked with everywhere else. */}
+              {warmup || set.is_drop === 1 ? (
+                <Text style={[s.tag, warmup && s.tagWarmup]}>
+                  {warmup ? t('workout.warmupShort') : '↓'}
+                </Text>
+              ) : null}
+              <Text style={[s.value, warmup && s.valueWarmup, isBest && s.valueBest]}>
+                {formatSet(
+                  {
+                    ...set,
+                    weight_kg: set.weight_kg === null ? null : kgToDisplay(set.weight_kg, unit),
+                    distance_m:
+                      set.distance_m === null ? null : metresToDisplay(set.distance_m, unit),
+                  },
+                  labels,
+                )}
               </Text>
               {set.rpe !== null ? <Text style={s.rpe}>@{set.rpe}</Text> : null}
-              {set.to_failure === 1 ? <Text style={s.failure}>{t('workout.toFailure')}</Text> : null}
+              {set.to_failure === 1 ? <Text style={s.failure}>✗</Text> : null}
             </View>
           );
         })}
       </View>
     </View>
   );
-}
-
-/** A set as it is read back: "82.5 kg × 8", "45 sec", "400 m" — whichever it was logged as. */
-function describeSet(
-  set: SetRow,
-  unit: Parameters<typeof kgToDisplay>[1],
-  t: (key: string) => string,
-): string {
-  const parts: string[] = [];
-  if (set.weight_kg !== null && set.reps !== null) {
-    parts.push(`${kgToDisplay(set.weight_kg, unit)} ${t(`common.${weightUnitKey(unit)}`)} × ${set.reps}`);
-  } else if (set.weight_kg !== null) {
-    parts.push(`${kgToDisplay(set.weight_kg, unit)} ${t(`common.${weightUnitKey(unit)}`)}`);
-  } else if (set.reps !== null) {
-    parts.push(`${set.reps}`);
-  }
-  if (set.duration_seconds !== null) parts.push(`${set.duration_seconds} ${t('workout.seconds')}`);
-  if (set.distance_m !== null) {
-    parts.push(`${metresToDisplay(set.distance_m, unit)} ${t(`common.${distanceUnitKey(unit)}`)}`);
-  }
-  return parts.join(' · ') || '—';
 }
 
 const createStyles = (colors: ColorPalette) =>
@@ -121,13 +136,15 @@ const createStyles = (colors: ColorPalette) =>
     headerText: ViewStyle;
     name: TextStyle;
     meta: TextStyle;
-    sets: ViewStyle;
-    setLine: ViewStyle;
-    index: TextStyle;
-    indexWarmup: TextStyle;
-    indexDrop: TextStyle;
+    pills: ViewStyle;
+    pill: ViewStyle;
+    pillWarmup: ViewStyle;
+    pillBest: ViewStyle;
+    tag: TextStyle;
+    tagWarmup: TextStyle;
     value: TextStyle;
     valueWarmup: TextStyle;
+    valueBest: TextStyle;
     rpe: TextStyle;
     failure: TextStyle;
   }>({
@@ -149,30 +166,31 @@ const createStyles = (colors: ColorPalette) =>
       textAlign: 'auto',
     },
     meta: { color: colors.textMuted, fontSize: fontSize.xs, marginTop: 2, textAlign: 'auto' },
-    sets: { gap: 6 },
-    setLine: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-    // The same numbered chip the logging row uses, so a set is recognisable in both places.
-    index: {
-      width: 26,
-      height: 26,
-      borderRadius: radius.pill,
+    // Wrapping, so three sets take one line and eight take two, instead of eight rows either way.
+    pills: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+    pill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingVertical: 6,
+      paddingHorizontal: spacing.sm,
+      borderRadius: radius.sm,
       backgroundColor: colors.surfaceRaised,
-      color: colors.textSecondary,
-      fontSize: fontSize.xs,
-      textAlign: 'center',
-      lineHeight: 26,
-      fontVariant: ['tabular-nums'],
+      borderWidth: 1,
+      borderColor: colors.borderSubtle,
     },
-    indexWarmup: { color: colors.textFaint },
-    indexDrop: { color: colors.accent },
+    // A ramp, present but not competing with the work.
+    pillWarmup: { backgroundColor: 'transparent', borderStyle: 'dashed' },
+    pillBest: { borderColor: colors.accentBorder, backgroundColor: colors.accentSoft },
+    tag: { color: colors.accent, fontSize: fontSize.xxs, fontWeight: fontWeight.bold },
+    tagWarmup: { color: colors.textFaint },
     value: {
-      flex: 1,
       color: colors.text,
       fontSize: fontSize.sm,
-      textAlign: 'auto',
       fontVariant: ['tabular-nums'],
     },
     valueWarmup: { color: colors.textMuted },
-    rpe: { color: colors.textMuted, fontSize: fontSize.xs, fontVariant: ['tabular-nums'] },
+    valueBest: { color: colors.accent, fontWeight: fontWeight.bold },
+    rpe: { color: colors.textMuted, fontSize: fontSize.xxs, fontVariant: ['tabular-nums'] },
     failure: { color: colors.warning, fontSize: fontSize.xxs },
   });
