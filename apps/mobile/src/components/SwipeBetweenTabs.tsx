@@ -20,9 +20,16 @@
  *
  * ## Which way is forward
  *
- * Dragging left moves to the next tab, in both languages. The tab bar mirrors with the layout —
- * in Hebrew the first tab sits on the right — so the next tab is always the one to the left of
- * the current one, and the gesture points at it. The same rule the workout's exercise strip uses.
+ * Dragging from left to right moves forward — היום → אימון → תוכנית → התקדמות — and back the other
+ * way returns. See `tabSwipe.ts`, where the rule lives and is tested.
+ *
+ * ## The two edges
+ *
+ * A drag that begins within a finger's width of either edge belongs to Android, not to the app:
+ * that is where the system back gesture lives, and it takes the touch before any view sees it.
+ * Nothing here can claim those strips — an app may only ask for exclusions through a native call
+ * this project does not make — so the swipe starts a little inside them. The threshold is kept
+ * short for that reason.
  */
 
 import { usePathname, router, type Href } from 'expo-router';
@@ -30,12 +37,12 @@ import { useRef, type ReactNode } from 'react';
 import { PanResponder, StyleSheet, View } from 'react-native';
 
 import { hapticLight } from '../haptics.js';
+import { tabAfterSwipe } from './tabSwipe.js';
 
 /** The tabs in bar order. Index 0 is the first tab, whichever side the language puts it on. */
 const TABS: readonly Href[] = ['/', '/workouts', '/plan', '/progress'];
 
-/** Enough travel to be a deliberate sideways drag, and clearly more sideways than up. */
-const DISTANCE = 60;
+/** Clearly more sideways than up; how far it has to travel lives with the rule in tabSwipe.ts. */
 const DIRECTION_RATIO = 2;
 
 export function SwipeBetweenTabs({ children }: { children: ReactNode }) {
@@ -54,11 +61,8 @@ export function SwipeBetweenTabs({ children }: { children: ReactNode }) {
       onMoveShouldSetPanResponder: (_event, gesture) =>
         Math.abs(gesture.dx) > 24 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * DIRECTION_RATIO,
       onPanResponderRelease: (_event, gesture) => {
-        if (Math.abs(gesture.dx) < DISTANCE) return;
-        const target = index.current + (gesture.dx < 0 ? 1 : -1);
-        const next = TABS[target];
-        // Nothing at either end: the first tab does not wrap round to the last, which would
-        // turn a mis-swipe into a jump across the app.
+        const target = tabAfterSwipe(gesture.dx, index.current, TABS.length);
+        const next = target === null ? undefined : TABS[target];
         if (!next) return;
         void hapticLight();
         router.navigate(next);
