@@ -35,6 +35,21 @@ export interface PlanDayRow {
   plan_id: string;
   day_index: number;
   name: string | null;
+  /** Set only for a timed workout; null for an ordinary sets-and-reps day. */
+  work_seconds?: number | null;
+  rest_seconds?: number | null;
+}
+
+/** How a timed workout runs. Null on the day means it is not one. */
+export interface PlanDayTiming {
+  workSeconds: number;
+  restSeconds: number;
+}
+
+/** A day's timing, or null when it is an ordinary workout. */
+export function timingOf(day: Pick<PlanDayRow, 'work_seconds' | 'rest_seconds'>): PlanDayTiming | null {
+  if (day.work_seconds === null || day.work_seconds === undefined || day.work_seconds <= 0) return null;
+  return { workSeconds: day.work_seconds, restSeconds: Math.max(0, day.rest_seconds ?? 0) };
 }
 
 export interface PlanDayExerciseRow {
@@ -225,6 +240,25 @@ export async function renamePlanDay(
     clock(),
     planDayId,
   ]);
+}
+
+/**
+ * Make a day a timed workout, change its timing, or turn it back into an ordinary one.
+ *
+ * Both columns are written together, and cleared together. A day with work time but no rest
+ * would still run; a day with rest time but no work would be a timed workout of nothing, and
+ * writing them as a pair means that state cannot exist.
+ */
+export async function setPlanDayTiming(
+  db: SqlExecutor,
+  planDayId: string,
+  timing: PlanDayTiming | null,
+  clock: Clock = defaultClock,
+): Promise<void> {
+  await db.run(
+    `UPDATE plan_days SET work_seconds = ?, rest_seconds = ?, updated_at = ? WHERE id = ?`,
+    [timing?.workSeconds ?? null, timing ? Math.max(0, timing.restSeconds) : null, clock(), planDayId],
+  );
 }
 
 /**
@@ -718,9 +752,12 @@ export async function duplicatePlanWeek(
 
   for (const [i, day] of days.entries()) {
     const copyId = newId();
+    // Timing travels with the day. Duplicating a week of circuits and getting back a week of
+    // ordinary workouts would lose the one thing that made those days what they were.
     await db.run(
-      `INSERT INTO plan_days (id, plan_id, day_index, name, updated_at) VALUES (?, ?, ?, ?, ?)`,
-      [copyId, planId, offset + i + 1, day.name, at],
+      `INSERT INTO plan_days (id, plan_id, day_index, name, work_seconds, rest_seconds, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [copyId, planId, offset + i + 1, day.name, day.work_seconds ?? null, day.rest_seconds ?? null, at],
     );
 
     const prescriptions = await db.all<PlanDayExerciseRow>(

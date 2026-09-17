@@ -33,11 +33,15 @@ import {
   removePlanDayExercise,
   reorderPlanDayExercise,
   renamePlanDay,
+  setPlanDayTiming,
+  timingOf,
   updatePlanDayExercise,
+  type PlanDayTiming,
   type PlanDayWithExercises,
 } from '../../src/db/plans.js';
 import { getExecutor, newId } from '../../src/db/provider.js';
 import { KeyboardSafe } from '../../src/components/KeyboardSafe.js';
+import { TimingCard } from '../../src/components/workout/TimingCard.js';
 import { useTheme } from '../../src/ThemeProvider.js';
 import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../../src/theme.js';
 
@@ -129,6 +133,15 @@ export default function PlanDayScreen() {
     })();
   };
 
+  const changeTiming = (next: PlanDayTiming | null) => {
+    if (!id) return;
+    void (async () => {
+      const db = await getExecutor();
+      await setPlanDayTiming(db, id, next);
+      await load();
+    })();
+  };
+
   const removeExercise = (prescriptionId: string) => {
     void (async () => {
       const db = await getExecutor();
@@ -154,6 +167,8 @@ export default function PlanDayScreen() {
   if (loading) {
     return <SkeletonScreen paddingTop={spacing.xxl} />;
   }
+
+  const timing = day ? timingOf(day) : null;
 
   if (!day) {
     return (
@@ -194,15 +209,21 @@ export default function PlanDayScreen() {
 
         <Hint>{t('plan.dayHint')}</Hint>
 
+        <TimingCard timing={timing} exerciseCount={day.exercises.length} onChange={changeTiming} />
+
         {day.exercises.length === 0 ? (
           <Text style={styles.emptyText}>{t('plan.dayEmptyHint')}</Text>
         ) : (
           <>
             <View style={styles.columnHeader}>
               <Text style={[styles.columnLabel, styles.colName]}>{t('plan.exercise')}</Text>
-              <Text style={[styles.columnLabel, styles.colField]}>{t('plan.sets')}</Text>
-              <Text style={[styles.columnLabel, styles.colField]}>{t('plan.repsFrom')}</Text>
-              <Text style={[styles.columnLabel, styles.colField]}>{t('plan.repsTo')}</Text>
+              {timing ? null : (
+                <>
+                  <Text style={[styles.columnLabel, styles.colField]}>{t('plan.sets')}</Text>
+                  <Text style={[styles.columnLabel, styles.colField]}>{t('plan.repsFrom')}</Text>
+                  <Text style={[styles.columnLabel, styles.colField]}>{t('plan.repsTo')}</Text>
+                </>
+              )}
               <View style={styles.colActions} />
             </View>
 
@@ -220,46 +241,56 @@ export default function PlanDayScreen() {
                     {label}
                   </Text>
 
-                  <TextInput
-                    defaultValue={
-                      prescription.target_sets === null ? '' : String(prescription.target_sets)
-                    }
-                    onEndEditing={(e) => patch(prescription.id, 'targetSets', e.nativeEvent.text)}
-                    keyboardType="number-pad"
-                    inputMode="numeric"
-                    style={[styles.input, styles.colField]}
-                    selectTextOnFocus
-                    placeholder="—"
-                    placeholderTextColor={colors.textFaint}
-                  />
-                  <TextInput
-                    defaultValue={
-                      prescription.target_reps_min === null
-                        ? ''
-                        : String(prescription.target_reps_min)
-                    }
-                    onEndEditing={(e) => patch(prescription.id, 'targetRepsMin', e.nativeEvent.text)}
-                    keyboardType="number-pad"
-                    inputMode="numeric"
-                    style={[styles.input, styles.colField]}
-                    selectTextOnFocus
-                    placeholder="—"
-                    placeholderTextColor={colors.textFaint}
-                  />
-                  <TextInput
-                    defaultValue={
-                      prescription.target_reps_max === null
-                        ? ''
-                        : String(prescription.target_reps_max)
-                    }
-                    onEndEditing={(e) => patch(prescription.id, 'targetRepsMax', e.nativeEvent.text)}
-                    keyboardType="number-pad"
-                    inputMode="numeric"
-                    style={[styles.input, styles.colField]}
-                    selectTextOnFocus
-                    placeholder="—"
-                    placeholderTextColor={colors.textFaint}
-                  />
+                  {timing ? null : (
+                    <>
+                      <TextInput
+                        defaultValue={
+                          prescription.target_sets === null ? '' : String(prescription.target_sets)
+                        }
+                        onEndEditing={(e) =>
+                          patch(prescription.id, 'targetSets', e.nativeEvent.text)
+                        }
+                        keyboardType="number-pad"
+                        inputMode="numeric"
+                        style={[styles.input, styles.colField]}
+                        selectTextOnFocus
+                        placeholder="—"
+                        placeholderTextColor={colors.textFaint}
+                      />
+                      <TextInput
+                        defaultValue={
+                          prescription.target_reps_min === null
+                            ? ''
+                            : String(prescription.target_reps_min)
+                        }
+                        onEndEditing={(e) =>
+                          patch(prescription.id, 'targetRepsMin', e.nativeEvent.text)
+                        }
+                        keyboardType="number-pad"
+                        inputMode="numeric"
+                        style={[styles.input, styles.colField]}
+                        selectTextOnFocus
+                        placeholder="—"
+                        placeholderTextColor={colors.textFaint}
+                      />
+                      <TextInput
+                        defaultValue={
+                          prescription.target_reps_max === null
+                            ? ''
+                            : String(prescription.target_reps_max)
+                        }
+                        onEndEditing={(e) =>
+                          patch(prescription.id, 'targetRepsMax', e.nativeEvent.text)
+                        }
+                        keyboardType="number-pad"
+                        inputMode="numeric"
+                        style={[styles.input, styles.colField]}
+                        selectTextOnFocus
+                        placeholder="—"
+                        placeholderTextColor={colors.textFaint}
+                      />
+                    </>
+                  )}
 
                   <View style={styles.reorder}>
                     <Pressable
@@ -353,70 +384,70 @@ const createStyles = (colors: ColorPalette) =>
     deleteDayButton: ViewStyle;
     deleteDayText: TextStyle;
   }>({
-  screen: { flex: 1, backgroundColor: colors.bg },
-  content: { paddingHorizontal: spacing.lg },
-  centered: { flex: 1, backgroundColor: colors.bg, alignItems: 'center' },
-  muted: { color: colors.textMuted, fontSize: fontSize.sm },
-  header: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  back: { color: colors.accent, fontSize: fontSize.xl, fontWeight: fontWeight.bold },
-  dayIndex: { color: colors.textMuted, fontSize: fontSize.sm },
-  nameInput: {
-    color: colors.text,
-    fontSize: fontSize.lg,
-    fontWeight: fontWeight.bold,
-    backgroundColor: colors.surfaceRaised,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    marginTop: spacing.md,
-    marginBottom: spacing.sm,
-    textAlign: 'auto',
-  },
-  emptyText: {
-    color: colors.textFaint,
-    fontSize: fontSize.sm,
-    marginVertical: spacing.lg,
-    textAlign: 'auto',
-  },
-  columnHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    marginTop: spacing.md,
-    marginBottom: spacing.xs,
-  },
-  columnLabel: { color: colors.textMuted, fontSize: fontSize.xxs, textAlign: 'center' },
-  colName: { flex: 3, textAlign: 'auto' },
-  colField: { flex: 1 },
-  colActions: { width: 28, alignItems: 'center' },
-  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.xs },
-  exerciseName: { color: colors.text, fontSize: fontSize.sm },
-  input: {
-    height: 40,
-    backgroundColor: colors.surfaceRaised,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    color: colors.text,
-    fontSize: fontSize.sm,
-    textAlign: 'center',
-  },
-  reorder: { flexDirection: 'row', gap: 6, alignItems: 'center' },
-  moveText: { color: colors.textSecondary, fontSize: fontSize.sm },
-  moveTextOff: { color: colors.textFaint },
-  deleteText: { color: colors.textMuted, fontSize: fontSize.sm },
-  addButton: {
-    marginTop: spacing.md,
-    paddingVertical: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderStyle: 'dashed',
-    alignItems: 'center',
-  },
-  addButtonText: { color: colors.accent, fontSize: fontSize.sm, fontWeight: fontWeight.bold },
-  deleteDayButton: { marginTop: spacing.xl, padding: spacing.md, alignItems: 'center' },
-  deleteDayText: { color: colors.danger, fontSize: fontSize.sm },
-});
+    screen: { flex: 1, backgroundColor: colors.bg },
+    content: { paddingHorizontal: spacing.lg },
+    centered: { flex: 1, backgroundColor: colors.bg, alignItems: 'center' },
+    muted: { color: colors.textMuted, fontSize: fontSize.sm },
+    header: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+    back: { color: colors.accent, fontSize: fontSize.xl, fontWeight: fontWeight.bold },
+    dayIndex: { color: colors.textMuted, fontSize: fontSize.sm },
+    nameInput: {
+      color: colors.text,
+      fontSize: fontSize.lg,
+      fontWeight: fontWeight.bold,
+      backgroundColor: colors.surfaceRaised,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      marginTop: spacing.md,
+      marginBottom: spacing.sm,
+      textAlign: 'auto',
+    },
+    emptyText: {
+      color: colors.textFaint,
+      fontSize: fontSize.sm,
+      marginVertical: spacing.lg,
+      textAlign: 'auto',
+    },
+    columnHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      marginTop: spacing.md,
+      marginBottom: spacing.xs,
+    },
+    columnLabel: { color: colors.textMuted, fontSize: fontSize.xxs, textAlign: 'center' },
+    colName: { flex: 3, textAlign: 'auto' },
+    colField: { flex: 1 },
+    colActions: { width: 28, alignItems: 'center' },
+    row: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.xs },
+    exerciseName: { color: colors.text, fontSize: fontSize.sm },
+    input: {
+      height: 40,
+      backgroundColor: colors.surfaceRaised,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      borderColor: colors.border,
+      color: colors.text,
+      fontSize: fontSize.sm,
+      textAlign: 'center',
+    },
+    reorder: { flexDirection: 'row', gap: 6, alignItems: 'center' },
+    moveText: { color: colors.textSecondary, fontSize: fontSize.sm },
+    moveTextOff: { color: colors.textFaint },
+    deleteText: { color: colors.textMuted, fontSize: fontSize.sm },
+    addButton: {
+      marginTop: spacing.md,
+      paddingVertical: spacing.md,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderStyle: 'dashed',
+      alignItems: 'center',
+    },
+    addButtonText: { color: colors.accent, fontSize: fontSize.sm, fontWeight: fontWeight.bold },
+    deleteDayButton: { marginTop: spacing.xl, padding: spacing.md, alignItems: 'center' },
+    deleteDayText: { color: colors.danger, fontSize: fontSize.sm },
+  });

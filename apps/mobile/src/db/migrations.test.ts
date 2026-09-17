@@ -463,3 +463,37 @@ describe('migration 14 — drop sets', () => {
     db.close();
   });
 });
+
+describe('migration 15 — timed workouts', () => {
+  it('is on the app upgrade path', () => {
+    expect(SCHEMA_VERSION).toBeGreaterThanOrEqual(15);
+    expect(MIGRATIONS[15]).toBeDefined();
+  });
+
+  it('adds both columns to a database that already holds a plan', () => {
+    const db = seededV6Database();
+    startUpLikeTheApp(db);
+
+    db.exec(`UPDATE plan_days SET work_seconds = 50, rest_seconds = 10 WHERE id = 'd1'`);
+    const row = db.prepare(`SELECT work_seconds, rest_seconds FROM plan_days WHERE id = 'd1'`).get() as {
+      work_seconds: number;
+      rest_seconds: number;
+    };
+    expect(row).toEqual({ work_seconds: 50, rest_seconds: 10 });
+    db.close();
+  });
+
+  it('leaves every existing day an ordinary workout', () => {
+    // A default here would have turned the whole plan into countdowns on the first launch after
+    // the update. NULL is the only honest value for a day that was never timed.
+    const db = seededV6Database();
+    startUpLikeTheApp(db);
+    const row = db.prepare(`SELECT work_seconds, rest_seconds, name FROM plan_days WHERE id = 'd1'`).get() as {
+      work_seconds: number | null;
+      rest_seconds: number | null;
+      name: string;
+    };
+    expect(row).toEqual({ work_seconds: null, rest_seconds: null, name: 'Push' });
+    db.close();
+  });
+});

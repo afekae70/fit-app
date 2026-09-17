@@ -29,7 +29,9 @@ import {
   removePlanDayExercise,
   reorderPlanDay,
   reorderPlanDayExercise,
+  setPlanDayTiming,
   startSessionFromPlanDay,
+  timingOf,
   updatePlanDayExercise,
 } from './plans.js';
 import { createTestExecutor } from './testUtils.js';
@@ -627,5 +629,64 @@ describe('duplicatePlanWeek', () => {
     await duplicatePlanWeek(db, newId, plan);
 
     expect((await listPlanDays(db, plan)).map((d) => d.name)).toEqual(['Push', 'Push']);
+  });
+});
+
+describe('timed workouts', () => {
+  it('is an ordinary workout until timing is set', async () => {
+    const plan = await createPlan(db, USER, newId, 'Core', clock);
+    const abs = await addPlanDay(db, newId, plan, 'Abs');
+    const day = await getPlanDay(db, abs);
+    expect(timingOf(day!)).toBeNull();
+  });
+
+  it('stores work and rest, and reads them back', async () => {
+    const plan = await createPlan(db, USER, newId, 'Core', clock);
+    const abs = await addPlanDay(db, newId, plan, 'Abs');
+
+    await setPlanDayTiming(db, abs, { workSeconds: 50, restSeconds: 10 }, clock);
+
+    expect(timingOf((await getPlanDay(db, abs))!)).toEqual({ workSeconds: 50, restSeconds: 10 });
+  });
+
+  it('turns back into an ordinary workout, clearing both values', async () => {
+    const plan = await createPlan(db, USER, newId, 'Core', clock);
+    const abs = await addPlanDay(db, newId, plan, 'Abs');
+    await setPlanDayTiming(db, abs, { workSeconds: 50, restSeconds: 10 }, clock);
+
+    await setPlanDayTiming(db, abs, null, clock);
+
+    const day = await getPlanDay(db, abs);
+    expect(timingOf(day!)).toBeNull();
+    expect(day?.rest_seconds).toBeNull();
+  });
+
+  it('keeps a rest of zero as zero rather than as no timing', async () => {
+    const plan = await createPlan(db, USER, newId, 'Core', clock);
+    const abs = await addPlanDay(db, newId, plan, 'Abs');
+    await setPlanDayTiming(db, abs, { workSeconds: 30, restSeconds: 0 }, clock);
+    expect(timingOf((await getPlanDay(db, abs))!)).toEqual({ workSeconds: 30, restSeconds: 0 });
+  });
+
+  it('only touches the day it was given', async () => {
+    const plan = await createPlan(db, USER, newId, 'Split', clock);
+    const abs = await addPlanDay(db, newId, plan, 'Abs');
+    const legs = await addPlanDay(db, newId, plan, 'Legs');
+    await setPlanDayTiming(db, abs, { workSeconds: 50, restSeconds: 10 }, clock);
+    expect(timingOf((await getPlanDay(db, legs))!)).toBeNull();
+  });
+
+  it('survives duplicating the week', async () => {
+    const plan = await createPlan(db, USER, newId, 'Core', clock);
+    const abs = await addPlanDay(db, newId, plan, 'Abs');
+    await setPlanDayTiming(db, abs, { workSeconds: 45, restSeconds: 15 }, clock);
+
+    await duplicatePlanWeek(db, newId, plan);
+
+    const days = await listPlanDays(db, plan);
+    expect(days.map((d) => timingOf(d))).toEqual([
+      { workSeconds: 45, restSeconds: 15 },
+      { workSeconds: 45, restSeconds: 15 },
+    ]);
   });
 });

@@ -26,7 +26,7 @@
  * TEXT (lexicographically sortable, which is what the history queries rely on).
  */
 
-export const SCHEMA_VERSION = 14;
+export const SCHEMA_VERSION = 15;
 
 /**
  * Incremental migrations, keyed by the version they upgrade TO.
@@ -279,6 +279,14 @@ CREATE INDEX IF NOT EXISTS locations_user_idx ON locations (user_id);
   14: `
     ALTER TABLE sets ADD COLUMN is_drop INTEGER NOT NULL DEFAULT 0;
   `,
+
+  // Timed workouts. Nullable on purpose, with no default: NULL is the answer "this is an ordinary
+  // workout", and every plan day written before today is one. A default of 50 would have
+  // turned every existing leg day into a countdown.
+  15: `
+    ALTER TABLE plan_days ADD COLUMN work_seconds INTEGER;
+    ALTER TABLE plan_days ADD COLUMN rest_seconds INTEGER;
+  `,
 };
 
 export const CREATE_SCHEMA_SQL = `
@@ -483,6 +491,11 @@ CREATE TABLE IF NOT EXISTS plan_days (
   -- Sunday-Saturday, and pinning days to dates makes a missed session cascade into the rest.
   day_index  INTEGER NOT NULL,
   name       TEXT,
+  -- A timed workout: every exercise done for work_seconds, with rest_seconds between. NULL
+  -- work_seconds means an ordinary sets-and-reps day. Local only — not in the sync column list,
+  -- the same way workout_sessions.location_id is not, so no server migration is needed for it.
+  work_seconds INTEGER,
+  rest_seconds INTEGER,
   updated_at TEXT,
   deleted_at TEXT,
   remote_updated_at TEXT,

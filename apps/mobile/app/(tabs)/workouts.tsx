@@ -48,6 +48,7 @@ import { DragReorderList, type DragHandleProps } from '../../src/components/Drag
 import { KeyboardSafe } from '../../src/components/KeyboardSafe.js';
 import { ExerciseVisual } from '../../src/components/ExerciseVisual.js';
 import { ExercisePanel } from '../../src/components/workout/ExercisePanel.js';
+import { IntervalRunner } from '../../src/components/workout/IntervalRunner.js';
 import { EXTEND_SECONDS, RestBanner } from '../../src/components/workout/RestBanner.js';
 import { WorkoutHeader } from '../../src/components/workout/WorkoutHeader.js';
 import { PrToast, type PrToastData } from '../../src/components/PrToast.js';
@@ -60,7 +61,7 @@ import {
 } from '../../src/workout/derived.js';
 import { Banner, EmptyState, SkeletonScreen } from '../../src/components/ui.js';
 import { WorkoutHome, type TemplateEntry } from '../../src/components/WorkoutHome.js';
-import { listPlanDayExercises } from '../../src/db/plans.js';
+import { getPlanDay, listPlanDayExercises, timingOf, type PlanDayTiming } from '../../src/db/plans.js';
 import { getExecutor, newId } from '../../src/db/provider.js';
 import { checkHealthAvailability, importForSession, requestHealthPermissions } from '../../src/health/reader.js';
 import { isExerciseStalling } from '../../src/db/progression.js';
@@ -68,6 +69,7 @@ import { listLocations, setSessionLocation, type LocationRow } from '../../src/d
 import { getSessionType, hasType } from '../../src/db/sessionType.js';
 import {
   addExerciseToSession,
+  addSet as insertSet,
   addSetCopyingPrevious,
   addDropSet,
   addWarmupSets,
@@ -138,6 +140,8 @@ export default function WorkoutsScreen() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [startedAt, setStartedAt] = useState<string | null>(null);
   const [exercises, setExercises] = useState<SessionExerciseWithSets[]>([]);
+  /** Set when this session came from a timed plan day; the screen is then a countdown, not cards. */
+  const [timing, setTiming] = useState<PlanDayTiming | null>(null);
   const [watchAvailable, setWatchAvailable] = useState(false);
   const [watchDuration, setWatchDuration] = useState<number | null>(null);
   const [targets, setTargets] = useState<Record<string, ExerciseTarget>>({});
@@ -228,6 +232,11 @@ export default function WorkoutsScreen() {
     // Targets exist only for a session started from a plan day. A freestyle session leaves this
     // empty and the cards simply show no target badge.
     const nextTargets: Record<string, ExerciseTarget> = {};
+    // Read from the plan day each time rather than copied onto the session: changing a day's
+    // timing between workouts should change the next one, and there is nothing to migrate when
+    // it does.
+    const planDay = session?.plan_day_id ? await getPlanDay(db, session.plan_day_id) : null;
+    setTiming(planDay ? timingOf(planDay) : null);
     if (session?.plan_day_id) {
       for (const prescription of await listPlanDayExercises(db, session.plan_day_id)) {
         nextTargets[prescription.exercise_key] = {
@@ -455,6 +464,35 @@ export default function WorkoutsScreen() {
       setRest(done && seconds > 0 ? { deadline: Date.now() + seconds * 1000, total: seconds } : null);
     },
     [sessionId, reload, exercises],
+  );
+
+  /**
+   * A timed exercise ran its course: record it as a set carrying its duration.
+   *
+   * Fills the first open set the plan created before adding one, so a timed day started from a
+   * plan does not end up with an empty set beside every logged one. Not a tick of the done box in
+   * the usual sense — no rest timer is started, because in a timed workout the rest is already
+   * part of the countdown.
+   */
+  const logTimedWork = useCallback(
+    (index: number) => {
+      const exercise = exercises[index];
+      if (!exercise || !timing || !sessionId) return;
+      void (async () => {
+        const db = await getExecutor();
+        const open = exercise.sets.find((set) => set.done_at === null && set.is_warmup === 0);
+        let setId: string;
+        if (open) {
+          await updateSet(db, open.id, { durationSeconds: timing.workSeconds });
+          setId = open.id;
+        } else {
+          setId = await insertSet(db, newId, exercise.id, { durationSeconds: timing.workSeconds });
+        }
+        await markSetDone(db, setId, true);
+        await reload(sessionId);
+      })();
+    },
+    [exercises, timing, sessionId, reload],
   );
 
   const deleteSet = useCallback(
@@ -1139,6 +1177,7 @@ export default function WorkoutsScreen() {
       {/* One station at a time, or the whole list. Focus is the default: during a workout the
           question is what to do now, and eight cards of which seven are not it is an answer the
           reader has to search for. The list stays one tap away for planning and reordering. */}
+      {timing ? null : (
       <View style={styles.modeRow}>
         <Pressable
           onPress={() => setFocusMode(true)}
@@ -1169,6 +1208,7 @@ export default function WorkoutsScreen() {
           </Text>
         </Pressable>
       </View>
+      )}
 
       <PrToast data={prToast} onDone={() => setPrToast(null)} />
 
@@ -1223,6 +1263,19 @@ export default function WorkoutsScreen() {
       >
         {exercises.length === 0 ? (
           <EmptyState emoji="➕" title={t('workout.noExercises')} hint={t('workout.noExercisesHint')} />
+        ) : timing ? (
+          <IntervalRunner
+            exercises={exercises.map((exercise) => {
+              const seed = EXERCISE_BY_KEY.get(exercise.exercise_key);
+              return { name: (isHebrew ? seed?.nameHe : seed?.nameEn) ?? exercise.exercise_key, seed };
+            })}
+            workSeconds={timing.workSeconds}
+            restSeconds={timing.restSeconds}
+            // After everything is logged, Start means another round from the top rather than
+            // repeating only the last exercise.
+            firstUnfinished={Math.max(0, exerciseDone.indexOf(false))}
+            onWorkDone={logTimedWork}
+          />
         ) : focus ? (
           <>
             {/* The whole station, which for a superset is both exercises: they are performed
