@@ -197,7 +197,7 @@ export default function ScaleDebugScreen() {
         { paddingTop: 8, paddingBottom: insets.bottom + 28 },
       ]}
     >
-      <ScreenHeader title={t('scaleDebug.title')} back />
+      <ScreenHeader title={t('scaleDebug.title')} />
 
       <Card>
         <SectionTitle>{t('scaleDebug.autoTitle')}</SectionTitle>

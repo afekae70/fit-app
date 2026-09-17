@@ -267,9 +267,6 @@ export default function PlanDayScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} accessibilityRole="button" hitSlop={8}>
-            <Text style={styles.back}>{isHebrew ? '›' : '‹'}</Text>
-          </Pressable>
           <Text style={styles.dayIndex}>
             {t('plan.day')} {day.day_index}
           </Text>

@@ -318,7 +318,7 @@ export default function MetricsScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.accent} />
       }
     >
-      <ScreenHeader title={t('metrics.title')} back />
+      <ScreenHeader title={t('metrics.title')} />
 
       <Card index={0}>
         <SectionTitle>{t('metrics.addWeight')}</SectionTitle>

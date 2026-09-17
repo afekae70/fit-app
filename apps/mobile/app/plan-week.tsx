@@ -176,7 +176,7 @@ export default function PlanWeekScreen() {
         { paddingTop: spacing.lg, paddingBottom: insets.bottom + spacing.xxl },
       ]}
     >
-      <ScreenHeader title={t('week.title')} back />
+      <ScreenHeader title={t('week.title')} />
 
       <View style={styles.weekToggle}>
         <Pressable

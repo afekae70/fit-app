@@ -120,7 +120,7 @@ export default function GymsScreen() {
         ]}
         keyboardShouldPersistTaps="handled"
       >
-        <ScreenHeader title={t('gyms.title')} back />
+        <ScreenHeader title={t('gyms.title')} />
 
         <Card>
           <SectionTitle>{t('gyms.addTitle')}</SectionTitle>

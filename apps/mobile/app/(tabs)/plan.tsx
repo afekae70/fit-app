@@ -470,7 +470,7 @@ export default function PlanScreen() {
         />
       }
     >
-      <ScreenHeader title={t('plan.title')} back />
+      <ScreenHeader title={t('plan.title')} />
 
       {!plan ? (
         <>

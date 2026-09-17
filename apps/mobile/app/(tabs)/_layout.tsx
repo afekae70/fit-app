@@ -4,10 +4,12 @@ import { useTranslation } from 'react-i18next';
 import { Animated } from 'react-native';
 import { Barbell, CalendarBlank, ChartBar, House, type Icon } from 'phosphor-react-native';
 
+import { SwipeBetweenTabs } from '../../src/components/SwipeBetweenTabs.js';
 import { useTheme } from '../../src/ThemeProvider.js';
 
 /**
- * Four tabs: היום · אימון · תוכנית · התקדמות — the things done while training.
+ * Four tabs: היום · אימון · תוכנית · התקדמות — the things done while training. They are also
+ * swiped between; `SwipeBetweenTabs` keeps the same order, and dragging left moves forward.
  *
  * The exercise library was the fifth. It was the reading version of the catalogue, and the
  * catalogue is already in front of you at the moment it is wanted: the picker that opens when an
@@ -63,40 +65,39 @@ export default function TabsLayout() {
     );
 
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: colors.accent,
-        tabBarInactiveTintColor: colors.textFaint,
-        tabBarStyle: {
-          height: 74,
-          paddingTop: 8,
-          backgroundColor: colors.surface,
-          borderTopColor: colors.border,
-        },
-        tabBarLabelStyle: { fontSize: 10 },
-        sceneStyle: { backgroundColor: colors.bg },
-        // Deliberately no custom tab-switch animation (e.g. sceneStyleInterpolator): it was
-        // inconsistent in practice — sometimes animating, sometimes not — worse than the
-        // instant default it was meant to improve on.
-      }}
-    >
-      <Tabs.Screen
-        name="index"
-        options={{ title: t('tabs.today'), tabBarIcon: icon(House) }}
-      />
-      <Tabs.Screen
-        name="workouts"
-        options={{ title: t('tabs.workout'), tabBarIcon: icon(Barbell) }}
-      />
-      <Tabs.Screen
-        name="plan"
-        options={{ title: t('tabs.plan'), tabBarIcon: icon(CalendarBlank) }}
-      />
-      <Tabs.Screen
-        name="progress"
-        options={{ title: t('tabs.progress'), tabBarIcon: icon(ChartBar) }}
-      />
-    </Tabs>
+    <SwipeBetweenTabs>
+      <Tabs
+        screenOptions={{
+          headerShown: false,
+          tabBarActiveTintColor: colors.accent,
+          tabBarInactiveTintColor: colors.textFaint,
+          tabBarStyle: {
+            height: 74,
+            paddingTop: 8,
+            backgroundColor: colors.surface,
+            borderTopColor: colors.border,
+          },
+          tabBarLabelStyle: { fontSize: 10 },
+          sceneStyle: { backgroundColor: colors.bg },
+          // Deliberately no custom tab-switch animation (e.g. sceneStyleInterpolator): it was
+          // inconsistent in practice — sometimes animating, sometimes not — worse than the
+          // instant default it was meant to improve on.
+        }}
+      >
+        <Tabs.Screen name="index" options={{ title: t('tabs.today'), tabBarIcon: icon(House) }} />
+        <Tabs.Screen
+          name="workouts"
+          options={{ title: t('tabs.workout'), tabBarIcon: icon(Barbell) }}
+        />
+        <Tabs.Screen
+          name="plan"
+          options={{ title: t('tabs.plan'), tabBarIcon: icon(CalendarBlank) }}
+        />
+        <Tabs.Screen
+          name="progress"
+          options={{ title: t('tabs.progress'), tabBarIcon: icon(ChartBar) }}
+        />
+      </Tabs>
+    </SwipeBetweenTabs>
   );
 }

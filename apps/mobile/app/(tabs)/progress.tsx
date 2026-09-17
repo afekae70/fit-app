@@ -127,7 +127,7 @@ export default function ProgressScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.accent} />
       }
     >
-      <ScreenHeader title={t('progress.title')} back />
+      <ScreenHeader title={t('progress.title')} />
 
       {volume.some((w) => w.volumeKg > 0) ? (
         <>

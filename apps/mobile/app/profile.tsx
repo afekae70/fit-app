@@ -88,17 +88,6 @@ export default function ProfileScreen() {
         { paddingTop: 8, paddingBottom: insets.bottom + 28 },
       ]}
     >
-      <View style={styles.topRow}>
-        <Pressable onPress={() => router.back()} accessibilityRole="button" hitSlop={8} style={styles.back}>
-          {/* Directional, so it mirrors. Non-directional glyphs elsewhere deliberately do not. */}
-          {I18nManager.isRTL ? (
-            <CaretRight size={20} color={colors.text} />
-          ) : (
-            <CaretLeft size={20} color={colors.text} />
-          )}
-        </Pressable>
-      </View>
-
       <View style={styles.identity}>
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>{initialsFor(email)}</Text>

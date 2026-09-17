@@ -179,7 +179,7 @@ export default function SettingsScreen() {
       ]}
     >
       {/* No gear here — it would link to the screen you are already on. */}
-      <ScreenHeader title={t('settings.title')} back />
+      <ScreenHeader title={t('settings.title')} />
 
       <Card index={0}>
         <SectionTitle>{t('settings.appearance')}</SectionTitle>

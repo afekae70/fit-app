@@ -13,9 +13,7 @@
  * for rebuilding the stylesheet on every unrelated render.
  */
 
-import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, type ReactNode } from 'react';
-import { useTranslation } from 'react-i18next';
 import {
   Animated,
   Pressable,
@@ -135,65 +133,27 @@ export function Divider() {
 /** Screen title paired with a settings shortcut — every tab root uses this now, so settings
  *  is reachable from wherever the user happens to be instead of only from Today and Coach. */
 /**
- * The back control, on its own.
+ * The one header every screen uses: the title, and the menu in the masthead above it.
  *
- * Exported because several screens (Coach, Nutrition, the exercise library) carry bespoke
- * headers with their own links, and replacing those wholesale to gain a back button would throw
- * away the thing they were built for. This keeps one chevron rule without demanding one header
- * layout.
- *
- * Renders nothing when there is nowhere to go — a control that silently does nothing reads as
- * broken, and on a tab root there is usually no stack to pop.
- */
-export function BackButton() {
-  const { t, i18n } = useTranslation();
-  const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
-
-  if (!router.canGoBack()) return null;
-
-  // Points the way the language reads. Keyed on the active language rather than
-  // I18nManager.isRTL: layout direction now follows i18n immediately (see app/_layout.tsx) while
-  // the native flag only updates on relaunch, and a chevron disagreeing with the layout around
-  // it is exactly the half-flip that reads as a bug.
-  return (
-    <Pressable
-      onPress={() => router.back()}
-      accessibilityRole="button"
-      accessibilityLabel={t('common.back')}
-      hitSlop={8}
-    >
-      <Text style={styles.screenHeaderBack}>{i18n.language === 'he' ? '›' : '‹'}</Text>
-    </Pressable>
-  );
-}
-
-/**
- * The one header every screen uses: an optional back control, the title, and the menu.
+ * It carried a back chevron until every screen lost one. Android's own back — the gesture or
+ * the button — leaves any screen already, and a second one drawn inside the app repeated a
+ * control the phone always has. Tabs are moved between by swiping now; see the tabs layout.
  *
  * Consolidated because six screens had grown their own copy of the same back Pressable and
  * chevron. That mattered beyond tidiness — the chevron points the other way in Hebrew, so a
  * duplicated rule is a rule that gets half-updated. It is decided here, once.
  *
- * `back` renders only when there is somewhere to go. A tab root usually has nothing to pop, and
- * a control that silently does nothing is worse than an absent one.
- *
  * The settings gear that used to sit at the end of this row is gone. It became the menu, and
  * the menu moved into the masthead that the root layout mounts above every screen — one fixed
  * bar rather than a control each header had to remember to draw.
  */
-export function ScreenHeader({ title, back = false }: { title: string; back?: boolean }) {
+export function ScreenHeader({ title }: { title: string }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
-  // Points back the way the language reads. Keyed on the active language rather than
-  // I18nManager.isRTL: the layout direction now follows i18n immediately (see app/_layout.tsx),
-  // while the native flag only updates on relaunch, and a chevron disagreeing with the layout
-  // around it is exactly the kind of half-flip that reads as a bug.
   return (
     <View style={styles.screenHeaderRow}>
       <View style={styles.screenHeaderStart}>
-        {back ? <BackButton /> : null}
         <ScreenTitle>{title}</ScreenTitle>
       </View>
     </View>
