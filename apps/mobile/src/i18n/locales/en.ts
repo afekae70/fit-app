@@ -481,6 +481,7 @@ export const en = {
       'A plan sets a target, it does not constrain. Add sets, drop them, or swap an exercise — the log records what you actually did.',
   },
   history: {
+    sessionTitle: 'Workout',
     period: {
       week: 'Last week',
       month: 'Last month',

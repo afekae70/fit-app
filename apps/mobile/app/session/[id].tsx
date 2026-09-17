@@ -31,17 +31,21 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
 import { useUnit } from '../../src/UnitsProvider.js';
 import {
-  distanceUnitKey,
   formatVolume,
-  formatWeight,
-  metresToDisplay,
   weightUnitKey,
 } from '../../src/units.js';
 import { sessionLoad } from '@fit/shared/calculations';
 import { useActionSheet } from '../../src/components/ActionSheetProvider.js';
 import { ExerciseCard, type PreviousSet } from '../../src/components/ExerciseCard.js';
+import { SessionExerciseSummary } from '../../src/components/workout/SessionExerciseSummary.js';
 import { KeyboardSafe } from '../../src/components/KeyboardSafe.js';
-import { SkeletonScreen } from '../../src/components/ui.js';
+import {
+  Card,
+  MetricTile,
+  ScreenHeader,
+  SectionTitle,
+  SkeletonScreen,
+} from '../../src/components/ui.js';
 import { getExecutor, newId } from '../../src/db/provider.js';
 import {
   addExerciseToSession,
@@ -294,6 +298,19 @@ export default function SessionDetailScreen() {
     (sum, e) => sum + e.sets.filter((s) => s.is_warmup === 0).length,
     0,
   );
+  /** "Thursday, 17 September · 19:24 · 51 min" — placed, timed and measured in one line. */
+  const started = new Date(session.started_at);
+  const minutes = session.ended_at
+    ? Math.max(1, Math.round((Date.parse(session.ended_at) - Date.parse(session.started_at)) / 60000))
+    : null;
+  const when = [
+    started.toLocaleDateString(i18n.language, { weekday: 'long', day: 'numeric', month: 'long' }),
+    started.toLocaleTimeString(i18n.language, { hour: '2-digit', minute: '2-digit' }),
+    minutes === null ? null : `${minutes} ${t('history.minutes')}`,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
   const volume = exercises.reduce(
     (sum, e) =>
       sum +
@@ -313,23 +330,12 @@ export default function SessionDetailScreen() {
         ]}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.header}>
-          <Pressable onPress={() => router.back()} accessibilityRole="button" hitSlop={8}>
-            <Text style={styles.back}>{isHebrew ? '›' : '‹'}</Text>
-          </Pressable>
-          <Text style={styles.date}>{new Date(session.started_at).toLocaleDateString()}</Text>
-        </View>
+        <ScreenHeader title={t('history.sessionTitle')} back />
 
-        {/* The rating survives past the sheet that asked for it. A number collected once and
-            never shown again is the pattern this app has been unpicking all week. */}
-        {session.session_rpe !== null ? (
-          <Text style={styles.effortLine}>
-            {t('workout.effortPrompt')} {t(`workout.effort${session.session_rpe}`)}
-            {sessionEffortLoad !== null ? ` · ${t('workout.load')} ${sessionEffortLoad}` : ''}
-          </Text>
-        ) : null}
-
-        <View style={styles.nameRow}>
+        {/* The workout at a glance: what it was called, when, and what it came to. The name is
+            the heading rather than a field in a box — it is read far more often than it is
+            changed, and tapping it is still enough to change it. */}
+        <Card>
           <TextInput
             value={nameDraft}
             onChangeText={setNameDraft}
@@ -339,39 +345,59 @@ export default function SessionDetailScreen() {
             style={styles.nameInput}
             returnKeyType="done"
           />
-        </View>
+          <Text style={styles.when}>{when}</Text>
 
-        <View style={styles.statsRow}>
-          <Text style={styles.stat}>
-            {exercises.length} {t('history.exercises')}
-          </Text>
-          <Text style={styles.stat}>
-            {totalSets} {t('history.sets')}
-          </Text>
-          {volume > 0 ? (
-            <Text style={styles.stat}>
-              {formatVolume(volume, unit)} {t(`common.${weightUnitKey(unit)}`)}
-            </Text>
+          <View style={styles.tiles}>
+            <MetricTile value={String(exercises.length)} label={t('history.exercises')} />
+            <MetricTile value={String(totalSets)} label={t('history.sets')} />
+            {volume > 0 ? (
+              <MetricTile
+                value={`${formatVolume(volume, unit)} ${t(`common.${weightUnitKey(unit)}`)}`}
+                label={t('history.volume')}
+              />
+            ) : null}
+          </View>
+
+          {/* The rating survives past the sheet that asked for it. A number collected once and
+              never shown again is the pattern this app has been unpicking all week. */}
+          {session.session_rpe !== null ? (
+            <View style={styles.effortChip}>
+              <Text style={styles.effortText}>
+                {t(`workout.effort${session.session_rpe}`)}
+                {sessionEffortLoad !== null ? ` · ${t('workout.load')} ${sessionEffortLoad}` : ''}
+              </Text>
+            </View>
           ) : null}
+        </Card>
+
+        {/* Side by side, and the same height: repeating and correcting are both things done to a
+            finished workout, and neither is the headline the two stacked blocks made them. */}
+        <View style={styles.actions}>
+          {!editing ? (
+            <Pressable
+              onPress={repeat}
+              style={({ pressed }) => [styles.action, styles.actionPrimary, pressed && styles.pressed]}
+              accessibilityRole="button"
+            >
+              <Text style={styles.actionPrimaryText}>↻ {t('history.repeat')}</Text>
+            </Pressable>
+          ) : null}
+          <Pressable
+            onPress={() => setEditing((current) => !current)}
+            style={({ pressed }) => [
+              styles.action,
+              editing && styles.actionPrimary,
+              pressed && styles.pressed,
+            ]}
+            accessibilityRole="button"
+          >
+            <Text style={[styles.actionText, editing && styles.actionPrimaryText]}>
+              {editing ? `✓ ${t('history.editDone')}` : `✎ ${t('history.edit')}`}
+            </Text>
+          </Pressable>
         </View>
 
-        <Pressable
-          onPress={() => setEditing((current) => !current)}
-          style={[styles.editButton, editing && styles.editButtonActive]}
-          accessibilityRole="button"
-        >
-          <Text style={[styles.editButtonText, editing && styles.editButtonTextActive]}>
-            {editing ? `✓ ${t('history.editDone')}` : `✎ ${t('history.edit')}`}
-          </Text>
-          {!editing ? <Text style={styles.repeatHint}>{t('history.editHint')}</Text> : null}
-        </Pressable>
-
-        {!editing ? (
-          <Pressable onPress={repeat} style={styles.repeatButton} accessibilityRole="button">
-            <Text style={styles.repeatButtonText}>↻ {t('history.repeat')}</Text>
-            <Text style={styles.repeatHint}>{t('history.repeatHint')}</Text>
-          </Pressable>
-        ) : null}
+        <SectionTitle>{t('history.exercises')}</SectionTitle>
 
         {editing
           ? exercises.map((exercise) => {
@@ -394,31 +420,13 @@ export default function SessionDetailScreen() {
             })
           : exercises.map((exercise) => {
               const seed = EXERCISE_BY_KEY.get(exercise.exercise_key);
-              const label = seed ? (isHebrew ? seed.nameHe : seed.nameEn) : exercise.exercise_key;
               return (
-                <View key={exercise.id} style={styles.exerciseCard}>
-                  <Text style={styles.exerciseTitle}>{label}</Text>
-                  {exercise.sets.map((set) => (
-                    <View key={set.id} style={styles.setLine}>
-                      <Text style={styles.setIndex}>
-                        {set.is_warmup === 1 ? t('workout.warmupShort') : set.set_index}
-                      </Text>
-                      <Text style={styles.setValue}>
-                        {set.weight_kg !== null
-                          ? `${formatWeight(set.weight_kg, unit)} ${t(`common.${weightUnitKey(unit)}`)}`
-                          : ''}
-                        {set.weight_kg !== null && set.reps !== null ? ' × ' : ''}
-                        {set.reps !== null ? `${set.reps}` : ''}
-                        {set.duration_seconds !== null
-                          ? `${set.duration_seconds} ${t('workout.seconds')}`
-                          : ''}
-                        {set.distance_m !== null
-                          ? `${metresToDisplay(set.distance_m, unit)} ${t(`common.${distanceUnitKey(unit)}`)}`
-                          : ''}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
+                <SessionExerciseSummary
+                  key={exercise.id}
+                  seed={seed}
+                  name={seed ? (isHebrew ? seed.nameHe : seed.nameEn) : exercise.exercise_key}
+                  sets={exercise.sets}
+                />
               );
             })}
 
@@ -453,83 +461,66 @@ const createStyles = (colors: ColorPalette) =>
     muted: TextStyle;
     header: ViewStyle;
     back: TextStyle;
-    date: TextStyle;
-    nameRow: ViewStyle;
     nameInput: TextStyle;
-    effortLine: TextStyle;
-    statsRow: ViewStyle;
-    stat: TextStyle;
-    repeatButton: ViewStyle;
-    repeatButtonText: TextStyle;
-    repeatHint: TextStyle;
-    editButton: ViewStyle;
-    editButtonActive: ViewStyle;
-    editButtonText: TextStyle;
-    editButtonTextActive: TextStyle;
+    when: TextStyle;
+    tiles: ViewStyle;
+    effortChip: ViewStyle;
+    effortText: TextStyle;
+    actions: ViewStyle;
+    action: ViewStyle;
+    actionPrimary: ViewStyle;
+    actionText: TextStyle;
+    actionPrimaryText: TextStyle;
+    pressed: ViewStyle;
     addExerciseButton: ViewStyle;
     addExerciseText: TextStyle;
-    exerciseCard: ViewStyle;
-    exerciseTitle: TextStyle;
-    setLine: ViewStyle;
-    setIndex: TextStyle;
-    setValue: TextStyle;
     deleteButton: ViewStyle;
     deleteButtonText: TextStyle;
     secondaryButton: ViewStyle;
     secondaryButtonText: TextStyle;
   }>({
   screen: { flex: 1, backgroundColor: colors.bg },
-  content: { paddingHorizontal: spacing.lg },
+  content: { paddingHorizontal: spacing.lg, gap: spacing.md },
   centered: { flex: 1, backgroundColor: colors.bg, alignItems: 'center' },
   muted: { color: colors.textMuted, fontSize: fontSize.sm },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   back: { color: colors.accent, fontSize: fontSize.xl, fontWeight: '700' },
-  date: { color: colors.textMuted, fontSize: fontSize.sm },
-  nameRow: { marginTop: spacing.md },
-  effortLine: {
-    color: colors.textMuted,
-    fontSize: fontSize.xs,
-    textAlign: 'auto',
-    marginBottom: spacing.sm,
-    fontVariant: ['tabular-nums'],
-  },
+  // The name is the heading of the card, and a field only once it is tapped: no box, no border,
+  // the type size of a title. It is read every time this screen opens and edited almost never.
   nameInput: {
     color: colors.text,
-    fontSize: fontSize.lg,
+    fontSize: fontSize.xl,
     fontWeight: '700',
-    backgroundColor: colors.surfaceRaised,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    padding: 0,
     textAlign: 'auto',
   },
-  statsRow: { flexDirection: 'row', gap: spacing.lg, marginTop: spacing.md },
-  stat: { color: colors.textMuted, fontSize: fontSize.sm },
-  repeatButton: {
-    marginTop: spacing.lg,
-    padding: spacing.md,
-    borderRadius: radius.md,
+  when: { color: colors.textMuted, fontSize: fontSize.sm, marginTop: 2, textAlign: 'auto' },
+  tiles: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
+  effortChip: {
+    alignSelf: 'flex-start',
+    marginTop: spacing.sm,
+    paddingVertical: spacing.xxs,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceRaised,
     borderWidth: 1,
-    borderColor: colors.accent,
-    backgroundColor: colors.accentSoft,
-    alignItems: 'center',
+    borderColor: colors.borderSubtle,
   },
-  repeatButtonText: { color: colors.accent, fontSize: fontSize.md, fontWeight: '700' },
-  repeatHint: { color: colors.textMuted, fontSize: fontSize.xs, marginTop: 2, textAlign: 'center' },
-  editButton: {
-    marginTop: spacing.lg,
-    padding: spacing.md,
+  effortText: { color: colors.textSecondary, fontSize: fontSize.xs, fontVariant: ['tabular-nums'] },
+  actions: { flexDirection: 'row', gap: spacing.sm },
+  action: {
+    flex: 1,
+    paddingVertical: spacing.md,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
     alignItems: 'center',
   },
-  editButtonActive: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
-  editButtonText: { color: colors.textSecondary, fontSize: fontSize.md, fontWeight: '700' },
-  editButtonTextActive: { color: colors.accent },
+  actionPrimary: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
+  actionText: { color: colors.textSecondary, fontSize: fontSize.sm, fontWeight: '700' },
+  actionPrimaryText: { color: colors.accent, fontSize: fontSize.sm, fontWeight: '700' },
+  pressed: { opacity: 0.7 },
   addExerciseButton: {
     marginTop: spacing.md,
     paddingVertical: spacing.md,
@@ -540,24 +531,6 @@ const createStyles = (colors: ColorPalette) =>
     alignItems: 'center',
   },
   addExerciseText: { color: colors.accent, fontSize: fontSize.sm, fontWeight: '700' },
-  exerciseCard: {
-    marginTop: spacing.md,
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-    padding: spacing.md,
-  },
-  exerciseTitle: {
-    color: colors.text,
-    fontSize: fontSize.md,
-    fontWeight: '700',
-    marginBottom: spacing.xs,
-    textAlign: 'auto',
-  },
-  setLine: { flexDirection: 'row', alignItems: 'center', paddingVertical: 2, gap: spacing.md },
-  setIndex: { color: colors.textMuted, fontSize: fontSize.xs, width: 24 },
-  setValue: { color: colors.text, fontSize: fontSize.sm, textAlign: 'auto' },
   deleteButton: { marginTop: spacing.xl, padding: spacing.md, alignItems: 'center' },
   deleteButtonText: { color: colors.danger, fontSize: fontSize.sm },
   secondaryButton: { marginTop: spacing.lg, padding: spacing.md },
