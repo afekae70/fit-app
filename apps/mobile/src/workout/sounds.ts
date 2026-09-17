@@ -18,6 +18,7 @@ import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-aud
 import done from '../../assets/sounds/done.wav';
 import restEnd from '../../assets/sounds/rest-end.wav';
 import tick from '../../assets/sounds/tick.wav';
+import { replayFromStart } from './replay.js';
 import workEnd from '../../assets/sounds/work-end.wav';
 
 export type Cue = 'tick' | 'workEnd' | 'restEnd' | 'done';
@@ -58,13 +59,11 @@ export async function prepareCues(): Promise<void> {
 export function playCue(cue: Cue): void {
   const player = players?.[cue];
   if (!player) return;
-  try {
-    // From the start every time — a player left at its end would otherwise play nothing.
-    void player.seekTo(0);
-    player.play();
-  } catch {
+  // From the start every time, the rewind finished before the play — see replay.ts for why firing
+  // the two together silenced the first sound of every kind.
+  replayFromStart(player).catch(() => {
     // Silent rather than fatal. See the note at the top.
-  }
+  });
 }
 
 /** Free the players when the timer screen goes away; they hold native resources. */
