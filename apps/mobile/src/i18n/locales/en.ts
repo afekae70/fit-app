@@ -8,6 +8,7 @@
 
 export const en = {
   common: {
+    noMatches: 'Nothing by that name',
     appName: 'NovaFit',
     save: 'Save',
     cancel: 'Cancel',
@@ -675,6 +676,7 @@ export const en = {
     more: 'More',
   },
   month: {
+    searchPlaceholder: 'Search workouts by name',
     addWorkout: '+ Add {{name}}',
     removeWorkout: '✕ Remove {{name}}',
     onThisDay: 'On this day: {{names}}',

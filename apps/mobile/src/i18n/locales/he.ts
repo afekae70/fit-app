@@ -2,6 +2,7 @@
 
 export const he = {
   common: {
+    noMatches: 'לא נמצא דבר בשם הזה',
     appName: 'NovaFit',
     save: 'שמור',
     cancel: 'ביטול',
@@ -668,6 +669,7 @@ export const he = {
     more: 'יותר',
   },
   month: {
+    searchPlaceholder: 'חיפוש אימון לפי שם',
     addWorkout: '+ הוסף {{name}}',
     removeWorkout: '✕ הסר את {{name}}',
     onThisDay: 'ביום הזה: {{names}}',

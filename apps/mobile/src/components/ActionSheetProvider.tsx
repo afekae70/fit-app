@@ -34,14 +34,24 @@
  * `SegmentButton` documents.
  */
 
-import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import {
+  Keyboard,
   Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   useWindowDimensions,
   View,
   type TextStyle,
@@ -53,6 +63,7 @@ import { hapticLight } from '../haptics.js';
 import { isRtlLanguage, type Language } from '../i18n/index.js';
 import { useTheme } from '../ThemeProvider.js';
 import { fontSize, radius, spacing, type ColorPalette } from '../theme.js';
+import { filterChoices } from './sheetSearch.js';
 
 export interface SheetAction {
   label: string;
@@ -64,6 +75,14 @@ export interface SheetRequest {
   title?: string;
   message?: string;
   actions: readonly SheetAction[];
+  /**
+   * Offer a search field above the choices, with this as its placeholder.
+   *
+   * For lists long enough to hunt through — a plan's workout types on the calendar. Typing
+   * narrows the list; the answer is still the index into `actions` as passed, so a call site
+   * does not change whether the search was used or not.
+   */
+  searchPlaceholder?: string;
   /**
    * What the bottom row says. Defaults to "cancel", which is right when there is something to
    * cancel and wrong when there is not — a message that only reports something has nothing to
@@ -121,11 +140,35 @@ export function ActionSheetProvider({ children }: { children: ReactNode }) {
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [request, setRequest] = useState<SheetRequest | null>(null);
+  const [query, setQuery] = useState('');
+
+  /*
+   * A sheet with a search field opens from the top of the screen instead of the bottom.
+   *
+   * The keyboard rises from the bottom, and nothing inside this sheet can reliably learn how far.
+   * The sheet is a Modal, its own native window: on this edge-to-edge build that window is not
+   * resized for the keyboard, and React Native measures the keyboard on the app's main window
+   * (ReactRootView.checkForKeyboardEvents), not on a dialog's — so neither a resize nor
+   * KeyboardAvoidingView nor a keyboardDidShow listener can be counted on to lift it. A bottom
+   * sheet with a search field was therefore a search field under the keyboard.
+   *
+   * Anchored at the top, the field and the first results sit in the half of the screen a
+   * keyboard never reaches, whatever the keyboard's height and whether or not anyone reports it.
+   * The list is capped to stay in that half too.
+   */
+  //
+  // Remembered from the last open sheet rather than read from the current one. The request is
+  // cleared the moment a choice is made, while the Modal is still animating out — reading it
+  // live would re-lay the closing sheet as a bottom sheet and flick it down the screen as it went.
+  const lastSearchable = useRef(false);
+  if (request) lastSearchable.current = Boolean(request.searchPlaceholder);
+  const searchable = lastSearchable.current;
   // The promise's resolver, held across renders. A ref rather than state because resolving is
   // not something the sheet renders, and storing a function in state invites React to call it.
   const resolver = useRef<((index: number | null) => void) | null>(null);
 
   const settle = useCallback((index: number | null) => {
+    Keyboard.dismiss();
     setRequest(null);
     // Cleared before calling, so a handler that opens another sheet is not immediately closed
     // by the resolver of the one that opened it.
@@ -140,6 +183,9 @@ export function ActionSheetProvider({ children }: { children: ReactNode }) {
       // unresolved would hang whatever awaited it, forever and silently.
       resolver.current?.(null);
       void hapticLight();
+      // Every sheet opens with an empty search. A query left from the last one would open the
+      // next sheet already filtered, with no sign of why half its choices are missing.
+      setQuery('');
       setRequest(next);
       return new Promise<number | null>((resolve) => {
         resolver.current = resolve;
@@ -175,7 +221,8 @@ export function ActionSheetProvider({ children }: { children: ReactNode }) {
       <Modal
         visible={request !== null}
         transparent
-        animationType="slide"
+        // A top sheet sliding up from the bottom edge would cross the whole screen to arrive.
+        animationType={searchable ? 'fade' : 'slide'}
         // The Android back button. Without this it dismisses the modal and leaves the promise
         // pending, which is the same hang as above by a different route.
         onRequestClose={() => settle(null)}
@@ -183,14 +230,23 @@ export function ActionSheetProvider({ children }: { children: ReactNode }) {
         {/* Tapping away is a dismissal, which is why the backdrop is a button rather than a
             view. It carries no accessibility role: a screen reader is served by the cancel
             action below, and announcing the backdrop as a button would give it two. */}
-        <Pressable style={styles.backdrop} onPress={() => settle(null)} accessible={false}>
+        <Pressable
+          style={[styles.backdrop, searchable && styles.backdropTop]}
+          onPress={() => settle(null)}
+          accessible={false}
+        >
           {/* Swallows presses so a tap inside the sheet does not reach the backdrop. */}
           <Pressable
-            style={[styles.sheet, { direction, paddingBottom: insets.bottom + spacing.lg }]}
+            style={[
+              styles.sheet,
+              searchable
+                ? [styles.sheetTop, { direction, paddingTop: insets.top + spacing.md }]
+                : { direction, paddingBottom: insets.bottom + spacing.lg },
+            ]}
             onPress={() => undefined}
             accessible={false}
           >
-            <View style={styles.grabber} />
+            {searchable ? null : <View style={styles.grabber} />}
 
             {request?.title ? <Text style={styles.title}>{request.title}</Text> : null}
             {request?.message ? <Text style={styles.message}>{request.message}</Text> : null}
@@ -199,12 +255,39 @@ export function ActionSheetProvider({ children }: { children: ReactNode }) {
                 type in the plan plus rest and clear, and a plan with enough days used to push the
                 cancel row below the bottom edge, where nothing could reach it. Title and cancel
                 stay outside the scroll so both are always on screen. */}
+            {request?.searchPlaceholder ? (
+              <TextInput
+                value={query}
+                onChangeText={setQuery}
+                placeholder={request.searchPlaceholder}
+                placeholderTextColor={colors.textFaint}
+                style={styles.search}
+                returnKeyType="search"
+                autoCorrect={false}
+                // Straight to the keyboard: the sheet was opened from the calendar to find a
+                // workout, and a search field that needs its own tap first is a step in the way.
+                autoFocus
+                clearButtonMode="while-editing"
+                accessibilityLabel={request.searchPlaceholder}
+              />
+            ) : null}
+
             <ScrollView
-              style={{ maxHeight: windowHeight * 0.55 }}
+              style={{
+                // With a search field, capped to the top half of the screen so the results are
+                // never under the keyboard either. Without one, the old bottom-sheet height.
+                maxHeight: windowHeight * (searchable ? 0.3 : 0.55),
+              }}
               contentContainerStyle={styles.actionList}
               bounces={false}
+              keyboardShouldPersistTaps="handled"
             >
-              {request?.actions.map((action, index) => (
+              {request?.searchPlaceholder && query.trim() !== '' &&
+              filterChoices(request.actions, query).length === 0 ? (
+                <Text style={styles.noMatch}>{t('common.noMatches')}</Text>
+              ) : null}
+              {filterChoices(request?.actions ?? [], request?.searchPlaceholder ? query : '').map(
+                ({ choice: action, index }) => (
                 <Pressable
                   key={action.label}
                   onPress={() => {
@@ -224,7 +307,8 @@ export function ActionSheetProvider({ children }: { children: ReactNode }) {
                     {action.label}
                   </Text>
                 </Pressable>
-              ))}
+                ),
+              )}
             </ScrollView>
 
             {/* Always last and always present. Every sheet can be backed out of, and the way out
@@ -247,11 +331,15 @@ export function ActionSheetProvider({ children }: { children: ReactNode }) {
 
 interface Styles {
   backdrop: ViewStyle;
+  backdropTop: ViewStyle;
   actionList: ViewStyle;
   sheet: ViewStyle;
+  sheetTop: ViewStyle;
   grabber: ViewStyle;
   title: TextStyle;
   message: TextStyle;
+  search: TextStyle;
+  noMatch: TextStyle;
   action: ViewStyle;
   actionDestructive: ViewStyle;
   actionPressed: ViewStyle;
@@ -264,6 +352,7 @@ interface Styles {
 const createStyles = (colors: ColorPalette) =>
   StyleSheet.create<Styles>({
     backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+    backdropTop: { justifyContent: 'flex-start' },
     actionList: { gap: spacing.sm },
     sheet: {
       backgroundColor: colors.surface,
@@ -272,6 +361,15 @@ const createStyles = (colors: ColorPalette) =>
       paddingHorizontal: spacing.lg,
       paddingTop: spacing.sm,
       gap: spacing.sm,
+    },
+    // The same sheet hanging from the top: rounded at the bottom instead, and no grabber — a
+    // handle at the bottom edge would suggest it can be dragged up out of the way, which it cannot.
+    sheetTop: {
+      borderTopStartRadius: 0,
+      borderTopEndRadius: 0,
+      borderBottomStartRadius: radius.xl,
+      borderBottomEndRadius: radius.xl,
+      paddingBottom: spacing.md,
     },
     grabber: {
       alignSelf: 'center',
@@ -294,6 +392,23 @@ const createStyles = (colors: ColorPalette) =>
       lineHeight: 20,
       textAlign: 'auto',
       marginBottom: spacing.xs,
+    },
+    search: {
+      color: colors.text,
+      fontSize: fontSize.md,
+      backgroundColor: colors.surfaceRaised,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.md,
+      textAlign: 'auto',
+    },
+    noMatch: {
+      color: colors.textMuted,
+      fontSize: fontSize.sm,
+      textAlign: 'center',
+      paddingVertical: spacing.md,
     },
     action: {
       backgroundColor: colors.surfaceRaised,

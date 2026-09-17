@@ -234,6 +234,7 @@ export default function PlanScreen() {
 
         const choice = await ask({
           title: longDate(date),
+          searchPlaceholder: t('month.searchPlaceholder'),
           message:
             onDayTypes.length > 0
               ? t('month.onThisDay', { names: onDayTypes.map((day) => labelFor(day)).join(' · ') })
