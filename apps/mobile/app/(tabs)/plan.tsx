@@ -79,7 +79,6 @@ import {
   monthGrid,
   monthKey,
   removeScheduledWorkout,
-  repeatWeekAcrossMonth,
   setScheduledDay,
   weekDates,
   weekStart,
@@ -331,20 +330,6 @@ export default function PlanScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- longDate only reads i18n.language
     [decisions, days, ask, t, i18n.language, userId, reload, month, labelFor, choiceLabel],
   );
-
-  const repeat = useCallback(() => {
-    void hapticLight();
-    void (async () => {
-      const db = await getExecutor();
-      const written = await repeatWeekAcrossMonth(db, userId, newId, month, localDate(new Date()));
-      await reload(month);
-      // Always says what happened. A fill that found nothing to copy and stayed silent would be
-      // indistinguishable from a button that does not work.
-      await notify({
-        message: written > 0 ? t('month.repeated', { count: written }) : t('month.nothingToRepeat'),
-      });
-    })();
-  }, [userId, month, reload, notify, t]);
 
   /* ---------------------------------------------------------------- workouts */
 
@@ -890,20 +875,6 @@ export default function PlanScreen() {
 
             <Hint>{t('month.hint')}</Hint>
           </Card>
-
-          {days.length > 0 ? (
-            <Card>
-              <SectionTitle>{t('month.repeat')}</SectionTitle>
-              <Hint>{t('month.repeatHint')}</Hint>
-              <Pressable
-                onPress={repeat}
-                accessibilityRole="button"
-                style={({ pressed }) => [styles.fillButton, pressed && styles.pressed]}
-              >
-                <Text style={styles.fillButtonText}>{t('month.repeat')}</Text>
-              </Pressable>
-            </Card>
-          ) : null}
 
           {groups.map((group) => (
             <View key={group.plan.id} style={styles.group}>
