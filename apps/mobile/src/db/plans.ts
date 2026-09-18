@@ -314,6 +314,27 @@ export async function listPlanDays(db: SqlExecutor, planId: string): Promise<Pla
   );
 }
 
+/**
+ * Every workout the user has, across all of their plans, each with its plan's name.
+ *
+ * The plan screen shows every plan as a titled group, and the calendar schedules workouts from
+ * any of them — so "today's workout" has to find a scheduled day wherever it lives, not only in
+ * the active plan. Plans in creation order, days in their order within each.
+ */
+export async function listUserPlanDays(
+  db: SqlExecutor,
+  userId: string,
+): Promise<(PlanDayRow & { plan_name: string })[]> {
+  return db.all<PlanDayRow & { plan_name: string }>(
+    `SELECT pd.*, p.name AS plan_name
+       FROM plan_days pd
+       JOIN plans p ON p.id = pd.plan_id
+      WHERE p.user_id = ? AND p.deleted_at IS NULL AND pd.deleted_at IS NULL
+      ORDER BY p.created_at, p.id, pd.day_index`,
+    [userId],
+  );
+}
+
 /** A whole plan in one call — days in order, each with its prescribed exercises. */
 export async function getPlanDetail(
   db: SqlExecutor,

@@ -18,7 +18,13 @@ import {
   summariseTrend,
   type TargetsResult,
 } from './metrics.js';
-import { getActivePlan, listPlanDayExercises, listPlanDays } from './plans.js';
+import {
+  getActivePlan,
+  listPlanDayExercises,
+  listPlanDays,
+  listUserPlanDays,
+  type PlanDayRow,
+} from './plans.js';
 import { addDays, localDate, monthKey, scheduledFor, weekStart, weeksOfMonth } from './schedule.js';
 
 /**
@@ -177,11 +183,12 @@ export async function getTodayWorkout(
   userId: string,
   now = new Date(),
 ): Promise<TodayWorkout | null> {
+  // The active plan drives the rotation; the calendar can hold a workout from any plan.
   const plan = await getActivePlan(db, userId);
-  if (!plan) return null;
-
-  const days = await listPlanDays(db, plan.id);
-  if (days.length === 0) return null;
+  const days = plan ? await listPlanDays(db, plan.id) : [];
+  const everyDay = await listUserPlanDays(db, userId);
+  if (everyDay.length === 0) return null;
+  const planNameOf = new Map(everyDay.map((d) => [d.id, d.plan_name]));
 
   /*
    * The weekly calendar outranks the rotation, but only where a decision exists.
@@ -197,16 +204,17 @@ export async function getTodayWorkout(
   const committed = await scheduledFor(db, userId, today);
   if (committed === null) return null;
 
-  let candidates: (typeof days)[number][] = [];
+  let candidates: PlanDayRow[] = [];
   let missedPosition: number | null = null;
 
   if (committed !== undefined) {
-    // Committed days that have since been deleted from the plan drop out here.
+    // Committed days that have since been deleted drop out here. Looked up across every plan:
+    // the calendar schedules workouts from all of the user's groups, not only the active one.
     candidates = committed
-      .map((id) => days.find((d) => d.id === id))
-      .filter((d): d is (typeof days)[number] => d !== undefined);
+      .map((id) => everyDay.find((d) => d.id === id))
+      .filter((d): d is (typeof everyDay)[number] => d !== undefined);
   }
-  if (candidates.length === 0) {
+  if (candidates.length === 0 && plan && days.length > 0) {
     // Nothing decided, or every committed day was deleted from the plan. Fall back to the
     // rotation rather than showing nothing, which would read as "no plan".
     const rotated = await rotate(db, userId, plan.id, days.length, now);
@@ -238,7 +246,7 @@ export async function getTodayWorkout(
 
   return {
     planDayId: day.id,
-    planName: plan.name,
+    planName: planNameOf.get(day.id) ?? plan?.name ?? '',
     dayName: dayLabel(day),
     exerciseCount: exercises.length,
     setCount,

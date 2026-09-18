@@ -181,6 +181,29 @@ describe('getTodayWorkout — the weekly calendar', () => {
     expect((await getTodayWorkout(db, USER, NOW))?.dayName).toBe('משיכה A');
   });
 
+  it('shows a scheduled workout from a group that is not the active plan, under its own title', async () => {
+    await seedPlan([{ name: 'דחיפה A', exercises: [['Barbell Bench Press', 4]] }]);
+    // A second group — created later, so not active — with its own workout.
+    await db.run(
+      `INSERT INTO plans (id, user_id, name, is_active, created_at, updated_at)
+         VALUES ('abs-group', ?, 'בטן', 0, '2026-02-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z')`,
+      [USER],
+    );
+    await db.run(
+      `INSERT INTO plan_days (id, plan_id, day_index, name, updated_at)
+         VALUES ('abs-day', 'abs-group', 1, 'בטן 10 תרגילים', '2026-02-01T00:00:00.000Z')`,
+    );
+    await db.run(
+      `INSERT INTO plan_day_exercises (id, plan_day_id, exercise_key, order_index, updated_at)
+         VALUES ('abs-ex', 'abs-day', 'Crunch', 1, '2026-02-01T00:00:00.000Z')`,
+    );
+    await setScheduledDay(db, USER, () => id('sched'), TODAY, 'abs-day');
+
+    const today = await getTodayWorkout(db, USER, NOW);
+    expect(today?.dayName).toBe('בטן 10 תרגילים');
+    expect(today?.planName).toBe('בטן');
+  });
+
   it('treats a scheduled rest day as no workout, and says so', async () => {
     await seedPlan([{ name: 'דחיפה A', exercises: [['Barbell Bench Press', 4]] }]);
     await setScheduledDay(db, USER, () => id('sched'), TODAY, null);

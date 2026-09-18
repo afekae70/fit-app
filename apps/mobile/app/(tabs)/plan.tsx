@@ -37,7 +37,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
-import { DragReorderList } from '../../src/components/DragReorderList.js';
+import { DragReorderList, type DragHandleProps } from '../../src/components/DragReorderList.js';
 import { useActionSheet } from '../../src/components/ActionSheetProvider.js';
 import { FadeSlideIn } from '../../src/components/motion.js';
 import {
@@ -54,11 +54,12 @@ import {
   addPlanDay,
   createPlan,
   deletePlan,
-  duplicatePlanWeek,
   getActivePlan,
   getNextPlanDay,
   listPlanDayStatus,
+  listPlans,
   removePlanDay,
+  renamePlan,
   reorderPlanDay,
   startSessionFromPlanDay,
   type PlanRow,
@@ -125,10 +126,14 @@ export default function PlanScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
-  const [plan, setPlan] = useState<PlanRow | null>(null);
-  const [days, setDays] = useState<DayStatus[]>([]);
+  // Every plan the user has, each shown as a group under its own title. The calendar schedules
+  // workouts from all of them, so `days` is every group's workouts in screen order.
+  const [groups, setGroups] = useState<{ plan: PlanRow; days: DayStatus[] }[]>([]);
+  const days = useMemo(() => groups.flatMap((group) => group.days), [groups]);
   const [nextDayId, setNextDayId] = useState<string | null>(null);
   const [nameDraft, setNameDraft] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [renaming, setRenaming] = useState<{ id: string; draft: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -143,16 +148,19 @@ export default function PlanScreen() {
   const reload = useCallback(
     async (forMonth: string) => {
       const db = await getExecutor();
-      const active = await getActivePlan(db, userId);
-      setPlan(active);
-
-      if (active) {
-        setDays(await listPlanDayStatus(db, userId, active.id));
-        setNextDayId((await getNextPlanDay(db, userId, active.id))?.id ?? null);
-      } else {
-        setDays([]);
-        setNextDayId(null);
+      // Oldest first, so a group keeps its place as others are added below it.
+      const plans = (await listPlans(db, userId)).sort(
+        (a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id),
+      );
+      const loaded = [];
+      for (const each of plans) {
+        loaded.push({ plan: each, days: await listPlanDayStatus(db, userId, each.id) });
       }
+      setGroups(loaded);
+
+      // "Next up" belongs to the rotation, which only the active plan drives.
+      const active = await getActivePlan(db, userId);
+      setNextDayId(active ? ((await getNextPlanDay(db, userId, active.id))?.id ?? null) : null);
 
       // The whole grid, borrowed days included, so a decision on the 31st of last month still
       // shows in the first row rather than as a blank that contradicts the week editor.
@@ -197,6 +205,19 @@ export default function PlanScreen() {
     [t],
   );
 
+  /**
+   * A workout's name in the calendar sheet. With more than one group, the group's title goes
+   * with it — two groups can each have a "יום 1", and the sheet lists them side by side.
+   */
+  const choiceLabel = useCallback(
+    (day: DayStatus) => {
+      if (groups.length < 2) return labelFor(day);
+      const group = groups.find((g) => g.days.some((d) => d.id === day.id));
+      return group ? `${labelFor(day)} · ${group.plan.name}` : labelFor(day);
+    },
+    [groups, labelFor],
+  );
+
   const longDate = (date: string) =>
     new Date(`${date}T00:00:00`).toLocaleDateString(i18n.language, {
       weekday: 'long',
@@ -233,17 +254,17 @@ export default function PlanScreen() {
 
         if (onDayTypes.length === 0) {
           for (const day of days)
-            steps.push({ label: labelFor(day), step: { kind: 'set', id: day.id } });
+            steps.push({ label: choiceLabel(day), step: { kind: 'set', id: day.id } });
         } else {
           for (const day of onDayTypes) {
             steps.push({
-              label: t('month.removeWorkout', { name: labelFor(day) }),
+              label: t('month.removeWorkout', { name: choiceLabel(day) }),
               step: { kind: 'remove', id: day.id },
             });
           }
           for (const day of days.filter((d) => !onDay.includes(d.id))) {
             steps.push({
-              label: t('month.addWorkout', { name: labelFor(day) }),
+              label: t('month.addWorkout', { name: choiceLabel(day) }),
               step: { kind: 'add', id: day.id },
             });
           }
@@ -279,7 +300,7 @@ export default function PlanScreen() {
       })();
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- longDate only reads i18n.language
-    [decisions, days, ask, t, i18n.language, userId, reload, month, labelFor],
+    [decisions, days, ask, t, i18n.language, userId, reload, month, labelFor, choiceLabel],
   );
 
   const repeat = useCallback(() => {
@@ -307,16 +328,16 @@ export default function PlanScreen() {
    * fewer controls on it is the point of this screen.
    */
   const move = useCallback(
-    (fromIndex: number, toIndex: number) => {
-      const day = days[fromIndex];
-      if (!plan || !day) return;
+    (planId: string, planDays: DayStatus[], fromIndex: number, toIndex: number) => {
+      const day = planDays[fromIndex];
+      if (!day) return;
       void (async () => {
         const db = await getExecutor();
-        await reorderPlanDay(db, plan.id, day.id, toIndex);
+        await reorderPlanDay(db, planId, day.id, toIndex);
         await reload(month);
       })();
     },
-    [plan, days, reload, month],
+    [reload, month],
   );
 
   /* While a card is in the air the page must not scroll under it, and dragging toward an edge
@@ -342,15 +363,6 @@ export default function PlanScreen() {
     scrollRef.current?.scrollTo({ y: scrollY.current, animated: false });
   }, []);
 
-  const duplicate = useCallback(() => {
-    if (!plan) return;
-    void (async () => {
-      const db = await getExecutor();
-      await duplicatePlanWeek(db, newId, plan.id);
-      await reload(month);
-    })();
-  }, [plan, reload, month]);
-
   const create = () => {
     const name = nameDraft.trim();
     if (!name) return;
@@ -358,15 +370,27 @@ export default function PlanScreen() {
       const db = await getExecutor();
       await createPlan(db, userId, newId, name);
       setNameDraft('');
+      setCreating(false);
       await reload(month);
     })();
   };
 
-  const addDay = () => {
-    if (!plan) return;
+  const saveRename = () => {
+    const current = renaming;
+    const name = current?.draft.trim();
+    setRenaming(null);
+    if (!current || !name) return;
     void (async () => {
       const db = await getExecutor();
-      const dayId = await addPlanDay(db, newId, plan.id, null);
+      await renamePlan(db, userId, current.id, name);
+      await reload(month);
+    })();
+  };
+
+  const addDay = (planId: string) => {
+    void (async () => {
+      const db = await getExecutor();
+      const dayId = await addPlanDay(db, newId, planId, null);
       await reload(month);
       // Straight into the editor: a workout with no exercises is not yet a workout, and naming
       // it is the first thing anybody wants to do.
@@ -401,16 +425,28 @@ export default function PlanScreen() {
     [ask, confirm, t, labelFor, reload, month],
   );
 
-  const removeThisPlan = () => {
-    if (!plan) return;
+  /** Rename or delete a whole group. */
+  const openGroupOptions = (group: PlanRow) => {
     void (async () => {
+      const choice = await ask({
+        title: group.name,
+        actions: [
+          { label: t('plan.renameGroup') },
+          { label: t('plan.deletePlan'), destructive: true },
+        ],
+      });
+      if (choice === 0) {
+        setRenaming({ id: group.id, draft: group.name });
+        return;
+      }
+      if (choice !== 1) return;
       const ok = await confirm({
         message: t('plan.confirmDeletePlan'),
         confirmLabel: t('plan.deletePlan'),
       });
       if (!ok) return;
       const db = await getExecutor();
-      await deletePlan(db, userId, plan.id);
+      await deletePlan(db, userId, group.id);
       await reload(month);
     })();
   };
@@ -440,6 +476,146 @@ export default function PlanScreen() {
     days.map((day, index) => [day.id, HUES[index % HUES.length] ?? 'accent']),
   );
   const labelById = new Map(days.map((day) => [day.id, labelFor(day)]));
+
+  /** One workout's card, the same in every group. */
+  const renderDay = (
+    day: DayStatus,
+    index: number,
+    dragHandle: DragHandleProps,
+  ) => {
+    const isNext = day.id === nextDayId;
+    const hue = colors[hueById.get(day.id) ?? 'accent'];
+    const names = (day.exercise_keys ?? '')
+      .split(KEY_SEPARATOR)
+      .filter(Boolean)
+      .map(
+        (key) =>
+          (isHebrew
+            ? EXERCISE_BY_KEY.get(key)?.nameHe
+            : EXERCISE_BY_KEY.get(key)?.nameEn) ?? key,
+      );
+    const shown = names.slice(0, 3);
+    const hidden = names.length - shown.length;
+
+    return (
+      <FadeSlideIn index={index}>
+        <Pressable
+          onPress={() =>
+            router.push({ pathname: '/plan-day/[id]', params: { id: day.id } })
+          }
+          // The colour this workout wears on the calendar, as the card's own edge: the
+          // grid above needs no separate key, and the list reads as the same thing.
+          style={[
+            styles.dayCard,
+            { borderStartColor: hue },
+            isNext && styles.dayCardNext,
+            dragHandle.active && styles.dayCardDragging,
+          ]}
+          accessibilityRole="button"
+        >
+          <View style={styles.dayHeader}>
+            <Text style={styles.dayName} numberOfLines={1}>
+              {labelFor(day)}
+            </Text>
+            {isNext ? (
+              <View style={styles.nextBadge}>
+                <Text style={styles.nextBadgeText}>{t('plan.next')}</Text>
+              </View>
+            ) : null}
+            <View
+              {...dragHandle.handlers}
+              style={styles.handle}
+              accessibilityRole="adjustable"
+              accessibilityLabel={t('plan.dragDay')}
+              accessibilityActions={[
+                ...(dragHandle.canMoveUp
+                  ? [{ name: 'moveUp', label: t('plan.moveUp') }]
+                  : []),
+                ...(dragHandle.canMoveDown
+                  ? [{ name: 'moveDown', label: t('plan.moveDown') }]
+                  : []),
+              ]}
+              onAccessibilityAction={(event) => {
+                if (event.nativeEvent.actionName === 'moveUp') dragHandle.moveUp();
+                if (event.nativeEvent.actionName === 'moveDown') dragHandle.moveDown();
+              }}
+            >
+              <Text
+                style={[styles.handleGlyph, dragHandle.active && styles.handleActive]}
+              >
+                ⠿
+              </Text>
+            </View>
+          </View>
+
+          {/* What the day is made of, in the order it is trained. Three names and a
+            count: a plan is recognised by its first exercises, not by a number. */}
+          {shown.length > 0 ? (
+            <Text style={styles.preview} numberOfLines={1}>
+              {shown.join(' · ')}
+              {hidden > 0 ? ` · +${hidden}` : ''}
+            </Text>
+          ) : (
+            <Text style={styles.emptyDayHint}>{t('plan.dayEmptyHint')}</Text>
+          )}
+
+          <View style={styles.chips}>
+            <View style={styles.chip}>
+              <Text style={styles.chipText}>
+                {t('plan.exercises', { count: day.exercise_count })}
+              </Text>
+            </View>
+            {day.work_seconds ? (
+              <View style={[styles.chip, styles.chipAccent]}>
+                <Text style={[styles.chipText, styles.chipTextAccent]}>
+                  ⏱ {day.work_seconds}/{day.rest_seconds ?? 0}
+                </Text>
+              </View>
+            ) : null}
+            <View style={styles.chip}>
+              <Text style={styles.chipText}>
+                {day.last_trained_at
+                  ? `${t('plan.trained')} ${daysSince(day.last_trained_at, nowMs)} ${t('plan.daysAgo')}`
+                  : t('plan.neverTrained')}
+              </Text>
+            </View>
+          </View>
+
+          {day.exercise_count > 0 ? (
+            <View style={styles.dayActions}>
+              <Pressable
+                onPress={() => start(day.id)}
+                style={({ pressed }) => [styles.startButton, pressed && styles.pressed]}
+                accessibilityRole="button"
+              >
+                <Text style={styles.startButtonText}>▶ {t('plan.startDay')}</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => openDayOptions(day)}
+                style={({ pressed }) => [
+                  styles.optionsButton,
+                  pressed && styles.pressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel={t('workout.exerciseOptions')}
+              >
+                <Text style={styles.optionsGlyph}>⋯</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <Pressable
+              onPress={() => openDayOptions(day)}
+              style={({ pressed }) => [styles.optionsWide, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel={t('workout.exerciseOptions')}
+            >
+              <Text style={styles.optionsGlyph}>⋯</Text>
+            </Pressable>
+          )}
+        </Pressable>
+      </FadeSlideIn>
+    );
+  };
 
   const monthTitle = new Date(`${month}-01T00:00:00`).toLocaleDateString(i18n.language, {
     month: 'long',
@@ -480,7 +656,7 @@ export default function PlanScreen() {
     >
       <ScreenHeader title={t('plan.title')} />
 
-      {!plan ? (
+      {groups.length === 0 ? (
         <>
           <EmptyState emoji="🗓️" title={t('plan.empty')} hint={t('plan.emptyHint')} />
           <Card>
@@ -639,183 +815,105 @@ export default function PlanScreen() {
             </Card>
           ) : null}
 
-          <Text style={styles.planName}>{plan.name}</Text>
+          {groups.map((group) => (
+            <View key={group.plan.id} style={styles.group}>
+              {renaming?.id === group.plan.id ? (
+                <View style={styles.groupHeader}>
+                  <TextInput
+                    value={renaming.draft}
+                    onChangeText={(draft) => setRenaming({ id: group.plan.id, draft })}
+                    onSubmitEditing={saveRename}
+                    onBlur={saveRename}
+                    autoFocus
+                    selectTextOnFocus
+                    returnKeyType="done"
+                    placeholder={t('plan.namePlaceholder')}
+                    placeholderTextColor={colors.textMuted}
+                    style={[styles.input, styles.groupInput]}
+                  />
+                </View>
+              ) : (
+                <View style={styles.groupHeader}>
+                  <Text style={styles.planName} numberOfLines={1}>
+                    {group.plan.name}
+                  </Text>
+                  <Text style={styles.groupCount}>
+                    {t('plan.workoutCount', { count: group.days.length })}
+                  </Text>
+                  <Pressable
+                    onPress={() => openGroupOptions(group.plan)}
+                    hitSlop={8}
+                    style={({ pressed }) => [styles.groupOptions, pressed && styles.pressed]}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('plan.groupOptions')}
+                  >
+                    <Text style={styles.optionsGlyph}>⋯</Text>
+                  </Pressable>
+                </View>
+              )}
 
-          {days.length === 0 ? (
-            <EmptyState emoji="➕" title={t('plan.noDays')} hint={t('plan.noDaysHint')} />
+              {group.days.length === 0 ? (
+                <Text style={styles.emptyDayHint}>{t('plan.noDaysHint')}</Text>
+              ) : (
+                <DragReorderList
+                  data={group.days}
+                  keyExtractor={(day) => day.id}
+                  onReorder={(from, to) => move(group.plan.id, group.days, from, to)}
+                  onDragStateChange={setDragging}
+                  onDragMove={autoScroll}
+                  renderItem={renderDay}
+                />
+              )}
+
+              <Pressable
+                onPress={() => addDay(group.plan.id)}
+                style={styles.addDayButton}
+                accessibilityRole="button"
+              >
+                <Text style={styles.addDayText}>+ {t('plan.addDay')}</Text>
+              </Pressable>
+            </View>
+          ))}
+
+          {/* As many groups as wanted, each under a title of the user's own. */}
+          {creating ? (
+            <Card>
+              <SectionTitle>{t('plan.newGroup')}</SectionTitle>
+              <TextInput
+                value={nameDraft}
+                onChangeText={setNameDraft}
+                placeholder={t('plan.namePlaceholder')}
+                placeholderTextColor={colors.textMuted}
+                style={styles.input}
+                autoFocus
+                returnKeyType="done"
+                onSubmitEditing={create}
+              />
+              <View style={styles.spacer} />
+              <Button label={t('plan.create')} onPress={create} />
+              <Pressable
+                onPress={() => {
+                  setCreating(false);
+                  setNameDraft('');
+                }}
+                style={styles.cancelCreate}
+                accessibilityRole="button"
+              >
+                <Text style={styles.cancelCreateText}>{t('common.cancel')}</Text>
+              </Pressable>
+            </Card>
           ) : (
-            <DragReorderList
-              data={days}
-              keyExtractor={(day) => day.id}
-              onReorder={move}
-              onDragStateChange={setDragging}
-              onDragMove={autoScroll}
-              renderItem={(day, index, dragHandle) => {
-                const isNext = day.id === nextDayId;
-                const hue = colors[hueById.get(day.id) ?? 'accent'];
-                const names = (day.exercise_keys ?? '')
-                  .split(KEY_SEPARATOR)
-                  .filter(Boolean)
-                  .map(
-                    (key) =>
-                      (isHebrew
-                        ? EXERCISE_BY_KEY.get(key)?.nameHe
-                        : EXERCISE_BY_KEY.get(key)?.nameEn) ?? key,
-                  );
-                const shown = names.slice(0, 3);
-                const hidden = names.length - shown.length;
-
-                return (
-                  <FadeSlideIn index={index}>
-                    <Pressable
-                      onPress={() =>
-                        router.push({ pathname: '/plan-day/[id]', params: { id: day.id } })
-                      }
-                      // The colour this workout wears on the calendar, as the card's own edge: the
-                      // grid above needs no separate key, and the list reads as the same thing.
-                      style={[
-                        styles.dayCard,
-                        { borderStartColor: hue },
-                        isNext && styles.dayCardNext,
-                        dragHandle.active && styles.dayCardDragging,
-                      ]}
-                      accessibilityRole="button"
-                    >
-                      <View style={styles.dayHeader}>
-                        <Text style={styles.dayName} numberOfLines={1}>
-                          {labelFor(day)}
-                        </Text>
-                        {isNext ? (
-                          <View style={styles.nextBadge}>
-                            <Text style={styles.nextBadgeText}>{t('plan.next')}</Text>
-                          </View>
-                        ) : null}
-                        <View
-                          {...dragHandle.handlers}
-                          style={styles.handle}
-                          accessibilityRole="adjustable"
-                          accessibilityLabel={t('plan.dragDay')}
-                          accessibilityActions={[
-                            ...(dragHandle.canMoveUp
-                              ? [{ name: 'moveUp', label: t('plan.moveUp') }]
-                              : []),
-                            ...(dragHandle.canMoveDown
-                              ? [{ name: 'moveDown', label: t('plan.moveDown') }]
-                              : []),
-                          ]}
-                          onAccessibilityAction={(event) => {
-                            if (event.nativeEvent.actionName === 'moveUp') dragHandle.moveUp();
-                            if (event.nativeEvent.actionName === 'moveDown') dragHandle.moveDown();
-                          }}
-                        >
-                          <Text
-                            style={[styles.handleGlyph, dragHandle.active && styles.handleActive]}
-                          >
-                            ⠿
-                          </Text>
-                        </View>
-                      </View>
-
-                      {/* What the day is made of, in the order it is trained. Three names and a
-                        count: a plan is recognised by its first exercises, not by a number. */}
-                      {shown.length > 0 ? (
-                        <Text style={styles.preview} numberOfLines={1}>
-                          {shown.join(' · ')}
-                          {hidden > 0 ? ` · +${hidden}` : ''}
-                        </Text>
-                      ) : (
-                        <Text style={styles.emptyDayHint}>{t('plan.dayEmptyHint')}</Text>
-                      )}
-
-                      <View style={styles.chips}>
-                        <View style={styles.chip}>
-                          <Text style={styles.chipText}>
-                            {t('plan.exercises', { count: day.exercise_count })}
-                          </Text>
-                        </View>
-                        {day.work_seconds ? (
-                          <View style={[styles.chip, styles.chipAccent]}>
-                            <Text style={[styles.chipText, styles.chipTextAccent]}>
-                              ⏱ {day.work_seconds}/{day.rest_seconds ?? 0}
-                            </Text>
-                          </View>
-                        ) : null}
-                        <View style={styles.chip}>
-                          <Text style={styles.chipText}>
-                            {day.last_trained_at
-                              ? `${t('plan.trained')} ${daysSince(day.last_trained_at, nowMs)} ${t('plan.daysAgo')}`
-                              : t('plan.neverTrained')}
-                          </Text>
-                        </View>
-                      </View>
-
-                      {day.exercise_count > 0 ? (
-                        <View style={styles.dayActions}>
-                          <Pressable
-                            onPress={() => start(day.id)}
-                            style={({ pressed }) => [styles.startButton, pressed && styles.pressed]}
-                            accessibilityRole="button"
-                          >
-                            <Text style={styles.startButtonText}>▶ {t('plan.startDay')}</Text>
-                          </Pressable>
-                          <Pressable
-                            onPress={() => openDayOptions(day)}
-                            style={({ pressed }) => [
-                              styles.optionsButton,
-                              pressed && styles.pressed,
-                            ]}
-                            accessibilityRole="button"
-                            accessibilityLabel={t('workout.exerciseOptions')}
-                          >
-                            <Text style={styles.optionsGlyph}>⋯</Text>
-                          </Pressable>
-                        </View>
-                      ) : (
-                        <Pressable
-                          onPress={() => openDayOptions(day)}
-                          style={({ pressed }) => [styles.optionsWide, pressed && styles.pressed]}
-                          accessibilityRole="button"
-                          accessibilityLabel={t('workout.exerciseOptions')}
-                        >
-                          <Text style={styles.optionsGlyph}>⋯</Text>
-                        </Pressable>
-                      )}
-                    </Pressable>
-                  </FadeSlideIn>
-                );
-              }}
-            />
-          )}
-
-          <Pressable onPress={addDay} style={styles.addDayButton} accessibilityRole="button">
-            <Text style={styles.addDayText}>+ {t('plan.addDay')}</Text>
-          </Pressable>
-
-          {days.length > 0 ? (
-            <Pressable onPress={duplicate} style={styles.addDayButton} accessibilityRole="button">
-              <Text style={styles.addDayText}>⧉ {t('plan.duplicateWeek')}</Text>
+            <Pressable
+              onPress={() => setCreating(true)}
+              style={[styles.addDayButton, styles.newGroupButton]}
+              accessibilityRole="button"
+            >
+              <Text style={styles.addDayText}>＋ {t('plan.newGroup')}</Text>
             </Pressable>
-          ) : null}
-
-          {/* The week editor stays: committing the coming week one weekday at a time is a
-              different ritual from painting a month, and both write the same rows. */}
-          <Pressable
-            onPress={() => router.push('/plan-week')}
-            style={styles.addDayButton}
-            accessibilityRole="button"
-          >
-            <Text style={styles.addDayText}>🗓️ {t('week.planNext')}</Text>
-          </Pressable>
+          )}
 
           <Banner tone="info">{t('plan.prescriptionNote')}</Banner>
 
-          <Pressable
-            onPress={removeThisPlan}
-            style={styles.deleteButton}
-            accessibilityRole="button"
-          >
-            <Text style={styles.deleteButtonText}>{t('plan.deletePlan')}</Text>
-          </Pressable>
         </>
       )}
     </ScrollView>
@@ -881,8 +979,14 @@ const createStyles = (colors: ColorPalette) =>
     emptyDayHint: TextStyle;
     addDayButton: ViewStyle;
     addDayText: TextStyle;
-    deleteButton: ViewStyle;
-    deleteButtonText: TextStyle;
+    group: ViewStyle;
+    groupHeader: ViewStyle;
+    groupInput: TextStyle;
+    groupCount: TextStyle;
+    groupOptions: ViewStyle;
+    newGroupButton: ViewStyle;
+    cancelCreate: ViewStyle;
+    cancelCreateText: TextStyle;
     pressed: ViewStyle;
   }>({
     screen: { flex: 1, backgroundColor: colors.bg },
@@ -973,7 +1077,7 @@ const createStyles = (colors: ColorPalette) =>
       color: colors.text,
       fontSize: fontSize.lg,
       fontWeight: fontWeight.bold,
-      marginTop: spacing.sm,
+      flexShrink: 1,
       textAlign: 'auto',
     },
     dayCard: {
@@ -1076,7 +1180,22 @@ const createStyles = (colors: ColorPalette) =>
       alignItems: 'center',
     },
     addDayText: { color: colors.accent, fontSize: fontSize.sm, fontWeight: fontWeight.bold },
-    deleteButton: { marginTop: spacing.xl, padding: spacing.md, alignItems: 'center' },
-    deleteButtonText: { color: colors.danger, fontSize: fontSize.sm },
+    group: { gap: spacing.md, marginTop: spacing.sm },
+    groupHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    groupInput: { flex: 1 },
+    groupCount: { color: colors.textMuted, fontSize: fontSize.sm, flexShrink: 0 },
+    groupOptions: {
+      marginStart: 'auto',
+      width: 40,
+      height: 36,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    newGroupButton: { marginTop: spacing.md, borderColor: colors.accent },
+    cancelCreate: { marginTop: spacing.sm, padding: spacing.sm, alignItems: 'center' },
+    cancelCreateText: { color: colors.textMuted, fontSize: fontSize.sm },
     pressed: { opacity: 0.7 },
   });
