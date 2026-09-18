@@ -48,6 +48,7 @@ import {
 import { startSessionFromPlanDay } from '../../src/db/plans.js';
 import { getExecutor, newId } from '../../src/db/provider.js';
 import { getActiveSession } from '../../src/db/workouts.js';
+import { syncWorkoutReminders } from '../../src/reminders/sync.js';
 import { hapticLight } from '../../src/haptics.js';
 import { useTheme } from '../../src/ThemeProvider.js';
 import { radius, type ColorPalette } from '../../src/theme.js';
@@ -93,10 +94,15 @@ export default function TodayScreen() {
       ]);
       setData({ workout, strip, summary, monthWeeks: weeks, nutrition, restDay, trained });
       setFailed(false);
+      // After a workout this drops today's reminder; on launch it extends the month ahead.
+      void syncWorkoutReminders(db, userId, {
+        title: t('settings.workoutReminderNotification'),
+        channel: t('settings.workoutReminderTitle'),
+      });
     } catch {
       setFailed(true);
     }
-  }, [userId]);
+  }, [userId, t]);
 
   // On focus, not just on mount: finishing a workout on another tab changes every number here.
   useFocusEffect(

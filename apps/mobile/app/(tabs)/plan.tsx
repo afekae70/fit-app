@@ -79,6 +79,7 @@ import {
   weekStart,
 } from '../../src/db/schedule.js';
 import { getActiveSession } from '../../src/db/workouts.js';
+import { syncWorkoutReminders } from '../../src/reminders/sync.js';
 import { hapticLight } from '../../src/haptics.js';
 import { isRtlLanguage, type Language } from '../../src/i18n/index.js';
 import { useTheme } from '../../src/ThemeProvider.js';
@@ -161,8 +162,15 @@ export default function PlanScreen() {
       const last = lastRow?.[lastRow.length - 1]?.date ?? `${forMonth}-28`;
       setDecisions(await getRange(db, userId, first, last));
       setLoading(false);
+
+      // The calendar is what the workout-day reminders are made of, so they follow every change
+      // to it. Not awaited: a reminder being re-laid must never hold the calendar up.
+      void syncWorkoutReminders(db, userId, {
+        title: t('settings.workoutReminderNotification'),
+        channel: t('settings.workoutReminderTitle'),
+      });
     },
-    [userId],
+    [userId, t],
   );
 
   // useFocusEffect rather than useEffect: editing a workout happens on another screen, and

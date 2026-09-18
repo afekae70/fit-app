@@ -123,3 +123,82 @@ export async function isWeeklyReminderScheduled(): Promise<boolean> {
     return false;
   }
 }
+
+/* -------------------------------------------------------------------------- */
+/* Workout-day reminders                                                       */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * The one exception to "a single reminder". Asked for directly, and different in kind from the
+ * weekly one: it is not a ritual at a fixed hour but a nudge on the days a workout is planned, at
+ * a time the user chose. It stays off until turned on, and it never fires on a rest day.
+ *
+ * One notification per planned date, each with its own identifier, laid down a month ahead and
+ * replaced as a set whenever the calendar or the settings change — see src/reminders/sync.ts.
+ * Individual dated notifications rather than a repeating one, because what the reminder says
+ * (which workout) and whether it fires at all (rest day, already trained) differ day by day.
+ */
+
+const WORKOUT_CHANNEL = 'workout-days';
+
+export interface DatedReminder {
+  id: string;
+  fireAt: Date;
+  title: string;
+  body: string;
+}
+
+/** Cancel every workout-day reminder whose identifier starts with `prefix`. */
+export async function cancelRemindersWithPrefix(prefix: string): Promise<void> {
+  try {
+    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+    await Promise.all(
+      scheduled
+        .filter((notification) => notification.identifier.startsWith(prefix))
+        .map((notification) =>
+          Notifications.cancelScheduledNotificationAsync(notification.identifier).catch(() => {}),
+        ),
+    );
+  } catch {
+    /* no native module — nothing to cancel */
+  }
+}
+
+/**
+ * Replace the workout-day reminders with exactly these.
+ *
+ * Cancel-then-schedule as a set: a calendar edit can move, add or remove any number of days, and
+ * working out which of thirty reminders changed is bookkeeping with a bug in it waiting. Returns
+ * false when permission is refused, so the settings screen can say so.
+ */
+export async function replaceDatedReminders(
+  prefix: string,
+  reminders: readonly DatedReminder[],
+  channelName: string,
+): Promise<boolean> {
+  try {
+    await cancelRemindersWithPrefix(prefix);
+    if (reminders.length === 0) return true;
+    if (!(await ensureNotificationPermission())) return false;
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync(WORKOUT_CHANNEL, {
+        name: channelName,
+        importance: Notifications.AndroidImportance.HIGH,
+      });
+    }
+    for (const reminder of reminders) {
+      await Notifications.scheduleNotificationAsync({
+        identifier: reminder.id,
+        content: { title: reminder.title, body: reminder.body },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: reminder.fireAt,
+          channelId: WORKOUT_CHANNEL,
+        },
+      });
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
