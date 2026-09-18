@@ -12,7 +12,7 @@
  * missing here is not a gap to fill in later: it means no image could be trusted, and the
  * muscle map is shown in its place.
  *
- * Covers 168 of the catalogue.
+ * Covers 169 of the catalogue.
  */
 
 const IMAGE_BASE =
@@ -175,6 +175,7 @@ const EXERCISE_IMAGE_PATHS: Readonly<Record<string, string>> = {
   'Single-Arm Kettlebell Swing': 'One-Arm_Kettlebell_Swings/0.jpg',
   'Single-Arm Landmine Row': 'One-Arm_Long_Bar_Row/0.jpg',
   'Single-Arm Lat Pulldown': 'One_Arm_Lat_Pulldown/0.jpg',
+  'Single-Arm Lying Dumbbell Extension': 'One_Arm_Supinated_Dumbbell_Triceps_Extension/0.jpg',
   'Single-Arm Overhead Dumbbell Extension': 'Standing_One-Arm_Dumbbell_Triceps_Extension/0.jpg',
   'Single-Arm Preacher Curl': 'One_Arm_Dumbbell_Preacher_Curl/0.jpg',
   'Single-Arm Seated Cable Row': 'Seated_One-arm_Cable_Pulley_Rows/0.jpg',

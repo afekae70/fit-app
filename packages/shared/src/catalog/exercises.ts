@@ -349,6 +349,7 @@ export const EXERCISE_SEED: readonly ExerciseSeed[] = [
   { nameEn: 'Single-Arm Cable Pushdown', nameHe: 'פשיטת מרפקים בכבל יד יד', primaryMuscle: 'triceps', movementPattern: 'isolation', equipmentSlug: 'cable_machine', isUnilateral: true },
   { nameEn: 'Single-Arm Overhead Dumbbell Extension', nameHe: 'פשיטת מרפקים מעל הראש עם דמבל יד יד', primaryMuscle: 'triceps', movementPattern: 'isolation', equipmentSlug: 'dumbbell', isUnilateral: true },
   { nameEn: 'Single-Arm Cable Overhead Extension', nameHe: 'פשיטת מרפקים מעל הראש בכבל יד יד', primaryMuscle: 'triceps', movementPattern: 'isolation', equipmentSlug: 'cable_machine', isUnilateral: true },
+  { nameEn: 'Single-Arm Lying Dumbbell Extension', nameHe: 'פשיטת מרפקים בשכיבה עם דמבל יד יד', primaryMuscle: 'triceps', movementPattern: 'isolation', equipmentSlug: 'dumbbell', isUnilateral: true },
   { nameEn: 'Single-Arm Dumbbell Kickback', nameHe: 'בעיטת טרייספס יד יד', primaryMuscle: 'triceps', movementPattern: 'isolation', equipmentSlug: 'dumbbell', isUnilateral: true },
   { nameEn: 'Single-Arm Dumbbell Shoulder Press', nameHe: 'לחיצת כתפיים עם דמבל יד יד', primaryMuscle: 'front_delts', secondaryMuscles: ['triceps', 'core'], movementPattern: 'vertical_push', equipmentSlug: 'dumbbell', isUnilateral: true },
   { nameEn: 'Standing Alternating Dumbbell Press', nameHe: 'לחיצת כתפיים לסירוגין בעמידה', primaryMuscle: 'front_delts', secondaryMuscles: ['triceps', 'core'], movementPattern: 'vertical_push', equipmentSlug: 'dumbbell', isUnilateral: true },

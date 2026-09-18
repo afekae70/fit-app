@@ -27,6 +27,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useCurrentUserId } from '../src/auth/CurrentUserProvider.js';
+import { matchesExerciseSearch } from '../src/exerciseSearch.js';
 import { useUnit } from '../src/UnitsProvider.js';
 import { kgToDisplay, weightUnitKey } from '../src/units.js';
 import { ExerciseVisual } from '../src/components/ExerciseVisual.js';
@@ -103,18 +104,13 @@ export default function ExercisePickerScreen() {
   const showRecents = query.trim() === '' && muscle === null && recentExercises.length > 0;
 
   const results = useMemo(() => {
-    const needle = query.trim().toLowerCase();
     return EXERCISE_SEED.filter((exercise) => {
       if (muscle && exercise.primaryMuscle !== muscle) return false;
-      if (!needle) return true;
-      // Match either language, so a Hebrew UI can still find an exercise by its English name
-      // (common when the user knows the lift by its gym-floor name).
-      return (
-        exercise.nameEn.toLowerCase().includes(needle) ||
-        exercise.nameHe.toLowerCase().includes(needle)
-      );
+      // Either language's name, plus the muscle in the app's language — so "יד אחורית" finds the
+      // triceps work even though none of it is named that way.
+      return matchesExerciseSearch(exercise, query, [t(`muscle.${exercise.primaryMuscle}`)]);
     });
-  }, [query, muscle]);
+  }, [query, muscle, t]);
 
   const label = (exercise: ExerciseSeed) => (isHebrew ? exercise.nameHe : exercise.nameEn);
 
