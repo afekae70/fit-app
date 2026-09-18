@@ -52,12 +52,14 @@ import {
 } from '../../src/components/ui.js';
 import {
   addPlanDay,
+  copyPlanDayToPlan,
   createPlan,
   deletePlan,
   getActivePlan,
   getNextPlanDay,
   listPlanDayStatus,
   listPlans,
+  movePlanDayToPlan,
   removePlanDay,
   renamePlan,
   reorderPlanDay,
@@ -424,6 +426,42 @@ export default function PlanScreen() {
     },
     [ask, confirm, t, labelFor, reload, month],
   );
+
+  /**
+   * Bring a workout from another group into this one: moved (the same workout, with its calendar
+   * days and history) or copied (a separate one to change freely).
+   */
+  const addExisting = (target: PlanRow) => {
+    void (async () => {
+      const others = groups
+        .filter((group) => group.plan.id !== target.id)
+        .flatMap((group) => group.days.map((day) => ({ day, group: group.plan })));
+      if (others.length === 0) return;
+
+      const picked = await ask({
+        title: t('plan.addExistingTo', { name: target.name }),
+        searchPlaceholder: t('month.searchPlaceholder'),
+        actions: others.map(({ day, group }) => ({ label: `${labelFor(day)} · ${group.name}` })),
+      });
+      const choice = picked === null ? undefined : others[picked];
+      if (!choice) return;
+
+      const how = await ask({
+        title: labelFor(choice.day),
+        actions: [
+          { label: t('plan.copyHere', { name: target.name }) },
+          { label: t('plan.moveHere', { name: target.name }) },
+        ],
+      });
+      if (how !== 0 && how !== 1) return;
+
+      const db = await getExecutor();
+      if (how === 0) await copyPlanDayToPlan(db, newId, choice.day.id, target.id);
+      else await movePlanDayToPlan(db, choice.day.id, target.id);
+      void hapticLight();
+      await reload(month);
+    })();
+  };
 
   /** Rename or delete a whole group. */
   const openGroupOptions = (group: PlanRow) => {
@@ -865,13 +903,24 @@ export default function PlanScreen() {
                 />
               )}
 
-              <Pressable
-                onPress={() => addDay(group.plan.id)}
-                style={styles.addDayButton}
-                accessibilityRole="button"
-              >
-                <Text style={styles.addDayText}>+ {t('plan.addDay')}</Text>
-              </Pressable>
+              <View style={styles.groupActions}>
+                <Pressable
+                  onPress={() => addDay(group.plan.id)}
+                  style={[styles.addDayButton, styles.groupAction]}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.addDayText}>+ {t('plan.addDay')}</Text>
+                </Pressable>
+                {days.length > group.days.length ? (
+                  <Pressable
+                    onPress={() => addExisting(group.plan)}
+                    style={[styles.addDayButton, styles.groupAction]}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.addDayText}>⇄ {t('plan.addExisting')}</Text>
+                  </Pressable>
+                ) : null}
+              </View>
             </View>
           ))}
 
@@ -985,6 +1034,8 @@ const createStyles = (colors: ColorPalette) =>
     groupCount: TextStyle;
     groupOptions: ViewStyle;
     newGroupButton: ViewStyle;
+    groupActions: ViewStyle;
+    groupAction: ViewStyle;
     cancelCreate: ViewStyle;
     cancelCreateText: TextStyle;
     pressed: ViewStyle;
@@ -1195,6 +1246,8 @@ const createStyles = (colors: ColorPalette) =>
       justifyContent: 'center',
     },
     newGroupButton: { marginTop: spacing.md, borderColor: colors.accent },
+    groupActions: { flexDirection: 'row', gap: spacing.sm },
+    groupAction: { flex: 1 },
     cancelCreate: { marginTop: spacing.sm, padding: spacing.sm, alignItems: 'center' },
     cancelCreateText: { color: colors.textMuted, fontSize: fontSize.sm },
     pressed: { opacity: 0.7 },

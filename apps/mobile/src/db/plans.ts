@@ -293,9 +293,14 @@ export async function removePlanDay(
     [at, at, planDayId],
   );
 
+  await closeDayGaps(db, day.plan_id);
+}
+
+/** Renumber a plan's live days 1..N in their current order, in two passes — see removePlanDay. */
+async function closeDayGaps(db: SqlExecutor, planId: string): Promise<void> {
   const remaining = await db.all<{ id: string }>(
     `SELECT id FROM plan_days WHERE plan_id = ? AND deleted_at IS NULL ORDER BY day_index`,
-    [day.plan_id],
+    [planId],
   );
 
   const PARK = 100000;
@@ -305,6 +310,79 @@ export async function removePlanDay(
   for (const [offset, row] of remaining.entries()) {
     await db.run(`UPDATE plan_days SET day_index = ? WHERE id = ?`, [offset + 1, row.id]);
   }
+}
+
+/**
+ * Move a workout into another plan, at the end of it.
+ *
+ * The same row moves rather than a copy being made, so everything pointing at it comes along:
+ * the calendar days it is scheduled on, and the sessions trained from it.
+ */
+export async function movePlanDayToPlan(
+  db: SqlExecutor,
+  planDayId: string,
+  targetPlanId: string,
+  clock: Clock = defaultClock,
+): Promise<void> {
+  const day = await db.get<PlanDayRow>(
+    `SELECT * FROM plan_days WHERE id = ? AND deleted_at IS NULL`,
+    [planDayId],
+  );
+  if (!day || day.plan_id === targetPlanId) return;
+  const row = await db.get<{ next: number }>(
+    `SELECT COALESCE(MAX(day_index), 0) + 1 AS next FROM plan_days
+      WHERE plan_id = ? AND deleted_at IS NULL`,
+    [targetPlanId],
+  );
+  await db.run(`UPDATE plan_days SET plan_id = ?, day_index = ?, updated_at = ? WHERE id = ?`, [
+    targetPlanId,
+    row?.next ?? 1,
+    clock(),
+    planDayId,
+  ]);
+  await closeDayGaps(db, day.plan_id);
+}
+
+/**
+ * Copy a workout — its name, timing and every exercise with its targets — to the end of a plan.
+ * The copy is its own workout from then on: editing one leaves the other alone.
+ */
+export async function copyPlanDayToPlan(
+  db: SqlExecutor,
+  newId: IdFactory,
+  planDayId: string,
+  targetPlanId: string,
+  clock: Clock = defaultClock,
+): Promise<string | null> {
+  const day = await db.get<PlanDayRow>(
+    `SELECT * FROM plan_days WHERE id = ? AND deleted_at IS NULL`,
+    [planDayId],
+  );
+  if (!day) return null;
+  const at = clock();
+  const copyId = await addPlanDay(db, newId, targetPlanId, day.name, () => at);
+  await setPlanDayTiming(
+    db,
+    copyId,
+    day.work_seconds ? { workSeconds: day.work_seconds, restSeconds: day.rest_seconds ?? 0 } : null,
+    () => at,
+  );
+  const prescriptions = await db.all<PlanDayExerciseRow>(
+    `SELECT * FROM plan_day_exercises WHERE plan_day_id = ? AND deleted_at IS NULL
+      ORDER BY order_index`,
+    [planDayId],
+  );
+  for (const p of prescriptions) {
+    await db.run(
+      `INSERT INTO plan_day_exercises
+         (id, plan_day_id, exercise_key, order_index, target_sets, target_reps_min,
+          target_reps_max, notes, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [newId(), copyId, p.exercise_key, p.order_index, p.target_sets, p.target_reps_min,
+        p.target_reps_max, p.notes, at],
+    );
+  }
+  return copyId;
 }
 
 export async function listPlanDays(db: SqlExecutor, planId: string): Promise<PlanDayRow[]> {

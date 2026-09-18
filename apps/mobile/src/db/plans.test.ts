@@ -13,6 +13,7 @@ import {
   activatePlan,
   addPlanDay,
   addPlanDayExercise,
+  copyPlanDayToPlan,
   createPlan,
   deletePlan,
   duplicatePlanWeek,
@@ -25,6 +26,7 @@ import {
   listPlanDayStatus,
   listPlanDays,
   listPlans,
+  movePlanDayToPlan,
   removePlanDay,
   removePlanDayExercise,
   reorderPlanDay,
@@ -729,5 +731,47 @@ describe('what the plan screen shows for each day', () => {
 
     const [row] = await listPlanDayStatus(db, USER, plan);
     expect(row?.exercise_keys).toBe('Overhead Press');
+  });
+});
+
+describe('adding an existing workout to another group', () => {
+  async function twoGroups() {
+    const gym = await createPlan(db, USER, newId, 'חדר כושר', clock);
+    const home = await createPlan(db, USER, newId, 'בית', clock);
+    const push = await addPlanDay(db, newId, gym, 'דחיפה', clock);
+    const pull = await addPlanDay(db, newId, gym, 'משיכה', clock);
+    await addPlanDay(db, newId, home, 'בטן', clock);
+    await addPlanDayExercise(db, newId, push, 'Barbell Bench Press', { targetSets: 4, targetRepsMin: 6, targetRepsMax: 8 }, clock);
+    await addPlanDayExercise(db, newId, push, 'Dip', { targetSets: 3 }, clock);
+    await setPlanDayTiming(db, push, { workSeconds: 50, restSeconds: 10 }, clock);
+    return { gym, home, push, pull };
+  }
+
+  it('moves the workout itself to the end of the other group and closes the gap it left', async () => {
+    const { gym, home, push, pull } = await twoGroups();
+    await movePlanDayToPlan(db, push, home, clock);
+
+    expect((await listPlanDays(db, home)).map((d) => [d.name, d.day_index])).toEqual([
+      ['בטן', 1],
+      ['דחיפה', 2],
+    ]);
+    // Same row, so its calendar days and history come with it.
+    expect((await listPlanDays(db, home))[1]?.id).toBe(push);
+    expect((await listPlanDays(db, gym)).map((d) => [d.id, d.day_index])).toEqual([[pull, 1]]);
+  });
+
+  it('copies a workout with its exercises, targets and timing, leaving the original in place', async () => {
+    const { gym, home, push } = await twoGroups();
+    const copy = await copyPlanDayToPlan(db, newId, push, home, clock);
+
+    expect(copy).not.toBe(push);
+    const copied = (await listPlanDays(db, home)).find((d) => d.id === copy);
+    expect(copied).toMatchObject({ name: 'דחיפה', day_index: 2, work_seconds: 50, rest_seconds: 10 });
+    const exercises = await listPlanDayExercises(db, copy!);
+    expect(exercises.map((e) => [e.exercise_key, e.target_sets])).toEqual([
+      ['Barbell Bench Press', 4],
+      ['Dip', 3],
+    ]);
+    expect(await listPlanDays(db, gym)).toHaveLength(2);
   });
 });
