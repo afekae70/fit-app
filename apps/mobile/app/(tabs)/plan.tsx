@@ -21,6 +21,7 @@
 
 import { EXERCISE_SEED } from '@fit/shared/catalog';
 import { router, useFocusEffect } from 'expo-router';
+import * as SecureStore from 'expo-secure-store';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -117,6 +118,9 @@ const KEY_SEPARATOR = '\u001f';
  */
 const HUES = ['accent', 'info', 'warning', 'protein', 'carbs', 'fat'] as const;
 
+/** Which groups are open, remembered between visits — ids joined by commas. */
+const OPEN_GROUPS_KEY = 'plan-open-groups';
+
 /** "3 days ago" in whole days — precise enough for deciding what to train, and language-free. */
 function daysSince(iso: string, nowMs: number): number {
   return Math.max(0, Math.floor((nowMs - new Date(iso).getTime()) / 86_400_000));
@@ -138,6 +142,27 @@ export default function PlanScreen() {
   const [nameDraft, setNameDraft] = useState('');
   const [creating, setCreating] = useState(false);
   const [renaming, setRenaming] = useState<{ id: string; draft: string } | null>(null);
+
+  /*
+   * Groups start closed — a title and a count — and a tap on the title opens one. Several
+   * groups of several workouts each is a long page, and the calendar above is what the screen
+   * is mostly for. Which ones are open is remembered, so a group being worked on stays open.
+   */
+  const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(new Set());
+  useEffect(() => {
+    void SecureStore.getItemAsync(OPEN_GROUPS_KEY)
+      .then((raw) => setOpenGroups(new Set((raw ?? '').split(',').filter(Boolean))))
+      .catch(() => undefined);
+  }, []);
+  const setGroupOpen = useCallback((planId: string, open: boolean) => {
+    setOpenGroups((current) => {
+      const next = new Set(current);
+      if (open) next.add(planId);
+      else next.delete(planId);
+      void SecureStore.setItemAsync(OPEN_GROUPS_KEY, [...next].join(',')).catch(() => undefined);
+      return next;
+    });
+  }, []);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -394,7 +419,8 @@ export default function PlanScreen() {
     if (!name) return;
     void (async () => {
       const db = await getExecutor();
-      await createPlan(db, userId, newId, name);
+      const planId = await createPlan(db, userId, newId, name);
+      setGroupOpen(planId, true);
       setNameDraft('');
       setCreating(false);
       await reload(month);
@@ -482,6 +508,7 @@ export default function PlanScreen() {
       const db = await getExecutor();
       if (how === 0) await copyPlanDayToPlan(db, newId, choice.day.id, target.id);
       else await movePlanDayToPlan(db, choice.day.id, target.id);
+      setGroupOpen(target.id, true);
       void hapticLight();
       await reload(month);
     })();
@@ -897,12 +924,26 @@ export default function PlanScreen() {
                 </View>
               ) : (
                 <View style={styles.groupHeader}>
-                  <Text style={styles.planName} numberOfLines={1}>
-                    {group.plan.name}
-                  </Text>
-                  <Text style={styles.groupCount}>
-                    {t('plan.workoutCount', { count: group.days.length })}
-                  </Text>
+                  <Pressable
+                    onPress={() => {
+                      void hapticLight();
+                      setGroupOpen(group.plan.id, !openGroups.has(group.plan.id));
+                    }}
+                    style={({ pressed }) => [styles.groupToggle, pressed && styles.pressed]}
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: openGroups.has(group.plan.id) }}
+                    hitSlop={6}
+                  >
+                    <Text style={styles.chevron}>
+                      {openGroups.has(group.plan.id) ? '▾' : rtl ? '◂' : '▸'}
+                    </Text>
+                    <Text style={styles.planName} numberOfLines={1}>
+                      {group.plan.name}
+                    </Text>
+                    <Text style={styles.groupCount}>
+                      {t('plan.workoutCount', { count: group.days.length })}
+                    </Text>
+                  </Pressable>
                   <Pressable
                     onPress={() => openGroupOptions(group.plan)}
                     hitSlop={8}
@@ -915,7 +956,7 @@ export default function PlanScreen() {
                 </View>
               )}
 
-              {group.days.length === 0 ? (
+              {!openGroups.has(group.plan.id) ? null : group.days.length === 0 ? (
                 <Text style={styles.emptyDayHint}>{t('plan.noDaysHint')}</Text>
               ) : (
                 <DragReorderList
@@ -928,6 +969,7 @@ export default function PlanScreen() {
                 />
               )}
 
+              {openGroups.has(group.plan.id) ? (
               <View style={styles.groupActions}>
                 <Pressable
                   onPress={() => addDay(group.plan.id)}
@@ -946,6 +988,7 @@ export default function PlanScreen() {
                   </Pressable>
                 ) : null}
               </View>
+              ) : null}
             </View>
           ))}
 
@@ -1061,6 +1104,8 @@ const createStyles = (colors: ColorPalette) =>
     groupOptions: ViewStyle;
     newGroupButton: ViewStyle;
     groupActions: ViewStyle;
+    groupToggle: ViewStyle;
+    chevron: TextStyle;
     groupAction: ViewStyle;
     cancelCreate: ViewStyle;
     cancelCreateText: TextStyle;
@@ -1273,6 +1318,14 @@ const createStyles = (colors: ColorPalette) =>
     },
     newGroupButton: { marginTop: spacing.md, borderColor: colors.accent },
     groupActions: { flexDirection: 'row', gap: spacing.sm },
+    groupToggle: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      paddingVertical: spacing.sm,
+    },
+    chevron: { color: colors.textMuted, fontSize: fontSize.md, width: 16, textAlign: 'center' },
     groupAction: { flex: 1 },
     cancelCreate: { marginTop: spacing.sm, padding: spacing.sm, alignItems: 'center' },
     cancelCreateText: { color: colors.textMuted, fontSize: fontSize.sm },
