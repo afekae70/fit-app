@@ -346,6 +346,10 @@ export const en = {
     estimatedOneRm: 'Estimated 1RM',
   },
   profileScreen: {
+    photo: 'Profile picture',
+    changePhoto: 'Choose another picture',
+    removePhoto: 'Remove picture',
+    photoFailed: 'Could not save the picture. Please try again.',
     trainsPerWeek: 'Trains {{count}}× a week',
     statWorkouts: 'Workouts',
     statStreak: 'Week streak',

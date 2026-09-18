@@ -16,8 +16,8 @@
       }
     },
     "android": {
-      "//blockedPermissions": "expo-audio's library manifest declares the microphone permission for recording, which this app never does. Blocked so a beep does not add a microphone entry to the app's permissions.",
-      "blockedPermissions": ["android.permission.RECORD_AUDIO"],
+      "//blockedPermissions": "expo-audio's library manifest declares the microphone permission for recording, which this app never does. Blocked so a beep does not add a microphone entry to the app's permissions. The camera likewise: expo-image-picker declares it for taking photos, and the profile picture only ever comes from the gallery, through Android's photo picker, which needs no permission.",
+      "blockedPermissions": ["android.permission.RECORD_AUDIO", "android.permission.CAMERA"],
       "package": "com.afeka.fitapp",
       "adaptiveIcon": {
         "backgroundColor": "#FBFBFC",

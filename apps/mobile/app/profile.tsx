@@ -12,15 +12,17 @@
 
 import { router } from 'expo-router';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CaretLeft, CaretRight } from 'phosphor-react-native';
 import {
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
+  type ImageStyle,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
@@ -29,6 +31,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { I18nManager } from 'react-native';
 
 import { useAuth } from '../src/auth/AuthProvider.js';
+import { useActionSheet } from '../src/components/ActionSheetProvider.js';
+import { loadAvatar, pickAvatar, removeAvatar } from '../src/profile/avatar.js';
 import { useCurrentUserId } from '../src/auth/CurrentUserProvider.js';
 import { useUnit } from '../src/UnitsProvider.js';
 import { formatBodyWeight, weightUnitKey } from '../src/units.js';
@@ -52,6 +56,39 @@ export default function ProfileScreen() {
 
   const [totals, setTotals] = useState({ workouts: 0, streakWeeks: 0, prs: 0 });
   const [weightKg, setWeightKg] = useState<number | null>(null);
+  const [avatarUri, setAvatarUri] = useState<string | null>(null);
+  const { ask, notify } = useActionSheet();
+
+  useEffect(() => {
+    void loadAvatar(userId).then(setAvatarUri);
+  }, [userId]);
+
+  /** Tap the picture: choose one, or with one already set, replace or remove it. */
+  const changeAvatar = () => {
+    void (async () => {
+      if (avatarUri) {
+        const choice = await ask({
+          title: t('profileScreen.photo'),
+          actions: [
+            { label: t('profileScreen.changePhoto') },
+            { label: t('profileScreen.removePhoto'), destructive: true },
+          ],
+        });
+        if (choice === 1) {
+          await removeAvatar(userId);
+          setAvatarUri(null);
+          return;
+        }
+        if (choice !== 0) return;
+      }
+      try {
+        const uri = await pickAvatar(userId);
+        if (uri) setAvatarUri(uri);
+      } catch {
+        await notify({ message: t('profileScreen.photoFailed') });
+      }
+    })();
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -89,9 +126,22 @@ export default function ProfileScreen() {
       ]}
     >
       <View style={styles.identity}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{initialsFor(email)}</Text>
-        </View>
+        <Pressable
+          onPress={changeAvatar}
+          accessibilityRole="button"
+          accessibilityLabel={t('profileScreen.photo')}
+          style={({ pressed }) => [styles.avatar, pressed && styles.rowPressed]}
+        >
+          {avatarUri ? (
+            <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
+          ) : (
+            <Text style={styles.avatarText}>{initialsFor(email)}</Text>
+          )}
+          {/* A small camera badge, so the picture reads as something that can be changed. */}
+          <View style={styles.avatarBadge}>
+            <Text style={styles.avatarBadgeGlyph}>📷</Text>
+          </View>
+        </Pressable>
         <Text style={styles.name}>{name}</Text>
         <Text style={styles.subtitle}>
           {t('profileScreen.trainsPerWeek', { count: WEEKLY_TARGET })}
@@ -164,6 +214,9 @@ const createStyles = (colors: ColorPalette) =>
     identity: ViewStyle;
     avatar: ViewStyle;
     avatarText: TextStyle;
+    avatarImage: ImageStyle;
+    avatarBadge: ViewStyle;
+    avatarBadgeGlyph: TextStyle;
     name: TextStyle;
     subtitle: TextStyle;
     statRow: ViewStyle;
@@ -183,8 +236,8 @@ const createStyles = (colors: ColorPalette) =>
 
     identity: { alignItems: 'center', gap: 8 },
     avatar: {
-      width: 60,
-      height: 60,
+      width: 88,
+      height: 88,
       borderRadius: radius.pill,
       borderWidth: 1,
       borderColor: colors.accent,
@@ -192,7 +245,22 @@ const createStyles = (colors: ColorPalette) =>
       alignItems: 'center',
       justifyContent: 'center',
     },
-    avatarText: { color: colors.accent, fontSize: 20, fontWeight: '500' },
+    avatarText: { color: colors.accent, fontSize: 26, fontWeight: '500' },
+    avatarImage: { width: '100%', height: '100%', borderRadius: radius.pill },
+    avatarBadge: {
+      position: 'absolute',
+      bottom: -2,
+      end: -2,
+      width: 28,
+      height: 28,
+      borderRadius: radius.pill,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    avatarBadgeGlyph: { fontSize: 13 },
     name: { color: colors.text, fontSize: 20, fontWeight: '500' },
     subtitle: { color: colors.textMuted, fontSize: 13 },
 

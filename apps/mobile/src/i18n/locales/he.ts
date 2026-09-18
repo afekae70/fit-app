@@ -339,6 +339,10 @@ export const he = {
     estimatedOneRm: '1RM משוער',
   },
   profileScreen: {
+    photo: 'תמונת פרופיל',
+    changePhoto: 'בחר תמונה אחרת',
+    removePhoto: 'הסר תמונה',
+    photoFailed: 'לא הצלחנו לשמור את התמונה. נסה שוב.',
     trainsPerWeek: 'מתאמן {{count}} פעמים בשבוע',
     statWorkouts: 'אימונים',
     statStreak: 'שבועות רצף',
