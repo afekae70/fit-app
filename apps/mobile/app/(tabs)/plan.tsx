@@ -21,9 +21,10 @@
 
 import { EXERCISE_SEED } from '@fit/shared/catalog';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
+  Keyboard,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -39,6 +40,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
 import { DragReorderList, type DragHandleProps } from '../../src/components/DragReorderList.js';
 import { useActionSheet } from '../../src/components/ActionSheetProvider.js';
+import { KeyboardSafe } from '../../src/components/KeyboardSafe.js';
 import { FadeSlideIn } from '../../src/components/motion.js';
 import {
   Banner,
@@ -365,6 +367,28 @@ export default function PlanScreen() {
     scrollRef.current?.scrollTo({ y: scrollY.current, animated: false });
   }, []);
 
+  /*
+   * Keep the field being typed in above the keyboard.
+   *
+   * The group name and the rename field sit low on a long page, and on current Android the
+   * keyboard is drawn over the app rather than shrinking it. `KeyboardSafe` gives the page room
+   * to scroll; this then scrolls just far enough that the focused field clears the keyboard.
+   */
+  useEffect(() => {
+    const shown = Keyboard.addListener('keyboardDidShow', (event) => {
+      const field = TextInput.State.currentlyFocusedInput();
+      if (!field) return;
+      const keyboardTop = event.endCoordinates.screenY;
+      field.measureInWindow((_x, y, _width, height) => {
+        const overlap = y + height + spacing.lg - keyboardTop;
+        if (overlap <= 0) return;
+        scrollY.current += overlap;
+        scrollRef.current?.scrollTo({ y: scrollY.current, animated: true });
+      });
+    });
+    return () => shown.remove();
+  }, []);
+
   const create = () => {
     const name = nameDraft.trim();
     if (!name) return;
@@ -664,6 +688,7 @@ export default function PlanScreen() {
   );
 
   return (
+    <KeyboardSafe>
     <ScrollView
       ref={scrollRef}
       scrollEnabled={!dragging}
@@ -966,6 +991,7 @@ export default function PlanScreen() {
         </>
       )}
     </ScrollView>
+    </KeyboardSafe>
   );
 }
 
