@@ -206,6 +206,8 @@ export const he = {
     setLabel: 'חדר',
   },
   workout: {
+    stripReorderHint: 'לחיצה ארוכה וגרירה ימינה או שמאלה משנה את סדר התרגילים',
+    stripDropHint: 'גרור ימינה או שמאלה ושחרר במקום החדש',
     finishShort: 'סיום',
     swapShort: 'החלף',
     musclesShort: 'שרירים',

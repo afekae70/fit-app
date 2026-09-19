@@ -100,6 +100,7 @@ import {
 } from '../../src/db/workouts.js';
 import { hapticLight, hapticSuccess } from '../../src/haptics.js';
 import { setWorkoutActive } from '../../src/workout/activeWorkout.js';
+import { stationMove } from '../../src/workout/stripReorder.js';
 import { useTheme } from '../../src/ThemeProvider.js';
 import { fontSize, radius, spacing, type ColorPalette } from '../../src/theme.js';
 
@@ -1036,6 +1037,36 @@ export default function WorkoutsScreen() {
     Animated.spring(slideX, { toValue: 0, useNativeDriver: true, friction: 9 }).start();
   }, [activeStation, focus, slideX, windowWidth]);
 
+  /**
+   * A picture dragged along the strip to a new place. The session is reordered, and the screen
+   * stays on the exercise that was in front of you — wherever it has now moved to — rather than
+   * on whatever slid into its old slot.
+   */
+  const reorderStation = useCallback(
+    (from: number, to: number) => {
+      const move = stationMove(groups, from, to);
+      if (!move || !sessionId) return;
+      const stayOn =
+        activeStation === from
+          ? to
+          : from < activeStation && activeStation <= to
+            ? activeStation - 1
+            : to <= activeStation && activeStation < from
+              ? activeStation + 1
+              : activeStation;
+      void (async () => {
+        const db = await getExecutor();
+        await reorderSessionExercise(db, sessionId, exercises[move.fromIndex]!.id, move.toIndex);
+        await reload(sessionId);
+        // Same exercise, new slot: no slide, since nothing on the card changes.
+        shownStation.current = stayOn;
+        wasStationDone.current = groups[activeStation]?.every((i) => exerciseDone[i]) ?? false;
+        setStationIndex(stayOn);
+      })();
+    },
+    [groups, sessionId, activeStation, exercises, reload, exerciseDone],
+  );
+
   const setFocusMode = useCallback((next: boolean) => {
     void hapticLight();
     setFocus(next);
@@ -1370,10 +1401,12 @@ export default function WorkoutsScreen() {
                     })
                     .join(' + '),
                   done: group.every((i) => exerciseDone[i]),
+                  movable: group.length === 1,
                 };
               })}
               active={activeStation}
               onSelect={goToStation}
+              onReorder={reorderStation}
             />
 
             {/* The whole station, which for a superset is both exercises: they are performed

@@ -213,6 +213,8 @@ export const en = {
     setLabel: 'Gym',
   },
   workout: {
+    stripReorderHint: 'Hold and drag left or right to change the order',
+    stripDropHint: 'Drag left or right and let go in the new place',
     finishShort: 'Finish',
     swapShort: 'Swap',
     musclesShort: 'Muscles',
