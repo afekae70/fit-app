@@ -118,6 +118,14 @@ export interface ExercisePanelProps {
    * answer to "is this the machine in front of me" — worth the width there, wasted in a list.
    */
   visualLayout?: 'thumb' | 'banner';
+  /** A quiet line under the name — the equipment and the muscle, in the reader's language. */
+  subtitle?: string;
+  /** Swap this exercise for another. Shown as its own button in the banner layout. */
+  onSwap?: () => void;
+  /** Show which muscles this works. */
+  onShowMuscles?: () => void;
+  /** Take the last set off — the other half of "+ set". Omitted when there is none to take. */
+  onRemoveSet?: () => void;
 }
 
 export function ExercisePanel({
@@ -140,6 +148,10 @@ export function ExercisePanel({
   canAddWarmup = false,
   visual,
   visualLayout = 'thumb',
+  subtitle,
+  onSwap,
+  onShowMuscles,
+  onRemoveSet,
 }: ExercisePanelProps) {
   const { t } = useTranslation();
   const { colors } = useTheme();
@@ -176,68 +188,100 @@ export function ExercisePanel({
   // Working sets numbered as if the warm-ups were not there — the same count the volume and the
   // charts already use, so the label agrees with the arithmetic rather than the array index.
   const labels = useMemo(() => labelSets(sets), [sets]);
+  const banner = visualLayout === 'banner';
 
   return (
     <View style={s.card}>
-      {visual && visualLayout === 'banner' ? <View style={s.visualBanner}>{visual}</View> : null}
+      {banner ? (
+        <>
+          {visual ? <View style={s.hero}>{visual}</View> : null}
 
-      <View style={s.header}>
-        {visual && visualLayout === 'thumb' ? <View style={s.visualThumb}>{visual}</View> : null}
-        <View style={s.headerText}>
-          <Text style={s.name}>{name}</Text>
-          {previousLabel ? (
-            <Text style={s.previous} numberOfLines={1}>
-              {t('workout.lastTime')}: {previousLabel}
-            </Text>
-          ) : (
-            // Said plainly rather than left blank: an empty line here reads as data that failed
-            // to load, when in fact this is simply the first time.
-            <Text style={s.previous}>{t('workout.firstTime')}</Text>
-          )}
+          <View style={s.titleBlock}>
+            <View style={s.titleRow}>
+              <Text style={s.bannerName}>{name}</Text>
+              {targetLabel ? (
+                <View style={s.targetPill}>
+                  <Text style={s.targetText}>{targetLabel}</Text>
+                </View>
+              ) : null}
+            </View>
+            {subtitle ? <Text style={s.subtitle}>{subtitle}</Text> : null}
+          </View>
+
+          {/* The things one does to an exercise mid-workout, each a named button rather than an
+              entry in a menu — the menu keeps only what is rarely needed. */}
+          <View style={s.chips}>
+            {onSwap ? <Chip label={`⇄ ${t('workout.swapShort')}`} onPress={onSwap} /> : null}
+            {onShowMuscles ? (
+              <Chip label={`◎ ${t('workout.musclesShort')}`} onPress={onShowMuscles} />
+            ) : null}
+            {onAddWarmup && canAddWarmup ? (
+              <Chip label={`↗ ${t('workout.warmupChip')}`} onPress={onAddWarmup} />
+            ) : null}
+            {onOptions ? (
+              <Chip label="⋯" onPress={onOptions} accessibilityLabel={t('workout.exerciseOptions')} />
+            ) : null}
+          </View>
+        </>
+      ) : (
+        <View style={s.header}>
+          {visual && visualLayout === 'thumb' ? <View style={s.visualThumb}>{visual}</View> : null}
+          <View style={s.headerText}>
+            <Text style={s.name}>{name}</Text>
+            {previousLabel ? (
+              <Text style={s.previous} numberOfLines={1}>
+                {t('workout.lastTime')}: {previousLabel}
+              </Text>
+            ) : (
+              // Said plainly rather than left blank: an empty line here reads as data that failed
+              // to load, when in fact this is simply the first time.
+              <Text style={s.previous}>{t('workout.firstTime')}</Text>
+            )}
+          </View>
+          {targetLabel ? (
+            <View style={s.targetPill}>
+              <Text style={s.targetText}>{targetLabel}</Text>
+            </View>
+          ) : null}
+
+          {onOptions ? (
+            <Pressable
+              onPress={onOptions}
+              accessibilityRole="button"
+              accessibilityLabel={t('workout.exerciseOptions')}
+              hitSlop={6}
+              style={({ pressed }) => [s.options, pressed && s.pressed]}
+            >
+              <Text style={s.optionsGlyph}>⋯</Text>
+            </Pressable>
+          ) : null}
+
+          {/* In the header rather than beside the sets: this moves the whole exercise, and sitting
+              it next to a set's controls would read as moving that one row. */}
+          {dragHandle ? (
+            <View
+              {...dragHandle.handlers}
+              style={[s.handle, dragHandle.active && s.handleActive]}
+              accessibilityRole="adjustable"
+              accessibilityLabel={t('workout.dragExercise')}
+              /* Dragging is unusable through a screen reader, so the same move is offered as two
+                 named actions. Without this the feature would be sighted-only. */
+              accessibilityActions={[
+                ...(dragHandle.canMoveUp ? [{ name: 'moveUp', label: t('plan.moveExerciseUp') }] : []),
+                ...(dragHandle.canMoveDown
+                  ? [{ name: 'moveDown', label: t('plan.moveExerciseDown') }]
+                  : []),
+              ]}
+              onAccessibilityAction={(event) => {
+                if (event.nativeEvent.actionName === 'moveUp') dragHandle.moveUp();
+                if (event.nativeEvent.actionName === 'moveDown') dragHandle.moveDown();
+              }}
+            >
+              <Text style={[s.handleGlyph, dragHandle.active && s.handleGlyphActive]}>⠿</Text>
+            </View>
+          ) : null}
         </View>
-        {targetLabel ? (
-          <View style={s.targetPill}>
-            <Text style={s.targetText}>{targetLabel}</Text>
-          </View>
-        ) : null}
-
-        {onOptions ? (
-          <Pressable
-            onPress={onOptions}
-            accessibilityRole="button"
-            accessibilityLabel={t('workout.exerciseOptions')}
-            hitSlop={6}
-            style={({ pressed }) => [s.options, pressed && s.pressed]}
-          >
-            <Text style={s.optionsGlyph}>⋯</Text>
-          </Pressable>
-        ) : null}
-
-        {/* In the header rather than beside the sets: this moves the whole exercise, and sitting
-            it next to a set's controls would read as moving that one row. */}
-        {dragHandle ? (
-          <View
-            {...dragHandle.handlers}
-            style={[s.handle, dragHandle.active && s.handleActive]}
-            accessibilityRole="adjustable"
-            accessibilityLabel={t('workout.dragExercise')}
-            /* Dragging is unusable through a screen reader, so the same move is offered as two
-               named actions. Without this the feature would be sighted-only. */
-            accessibilityActions={[
-              ...(dragHandle.canMoveUp ? [{ name: 'moveUp', label: t('plan.moveExerciseUp') }] : []),
-              ...(dragHandle.canMoveDown
-                ? [{ name: 'moveDown', label: t('plan.moveExerciseDown') }]
-                : []),
-            ]}
-            onAccessibilityAction={(event) => {
-              if (event.nativeEvent.actionName === 'moveUp') dragHandle.moveUp();
-              if (event.nativeEvent.actionName === 'moveDown') dragHandle.moveDown();
-            }}
-          >
-            <Text style={[s.handleGlyph, dragHandle.active && s.handleGlyphActive]}>⠿</Text>
-          </View>
-        ) : null}
-      </View>
+      )}
 
       {plateHint ? (
         <Text style={s.plateHint}>
@@ -287,6 +331,12 @@ export function ExercisePanel({
         </Pressable>
       ) : null}
 
+      <View style={s.table}>
+      {banner ? (
+        <Text style={s.tablePrevious} numberOfLines={1}>
+          {previousLabel ? `${t('workout.lastTime')} · ${previousLabel}` : t('workout.firstTime')}
+        </Text>
+      ) : null}
       <View style={s.columns}>
         <Text style={[s.columnLabel, s.columnIndex]}>#</Text>
         <Text style={[s.columnLabel, s.columnField]}>{t('workout.weight')}</Text>
@@ -316,31 +366,42 @@ export function ExercisePanel({
         ))}
       </View>
 
+      {/* Take one off, put one on — the pair the sets are adjusted with, side by side under them. */}
       <View style={s.footer}>
+        <Pressable
+          onPress={onRemoveSet}
+          disabled={!onRemoveSet}
+          accessibilityRole="button"
+          accessibilityLabel={t('workout.removeLastSet')}
+          style={({ pressed }) => [s.setButton, !onRemoveSet && s.setButtonOff, pressed && s.pressed]}
+        >
+          <Text style={s.setButtonText}>− {t('workout.setShort')}</Text>
+        </Pressable>
         <Pressable
           onPress={onAddSet}
           accessibilityRole="button"
-          style={({ pressed }) => [s.addSet, pressed && s.pressed]}
+          accessibilityLabel={t('workout.addSet')}
+          style={({ pressed }) => [s.setButton, s.setButtonAdd, pressed && s.pressed]}
         >
-          <Text style={s.addSetText}>+ {t('workout.addSet')}</Text>
+          <Text style={[s.setButtonText, s.setButtonAddText]}>+ {t('workout.setShort')}</Text>
         </Pressable>
-        {onAddWarmup && canAddWarmup ? (
-          <Pressable
-            onPress={onAddWarmup}
-            accessibilityRole="button"
-            style={({ pressed }) => [s.addSet, pressed && s.pressed]}
-          >
-            <Text style={s.addSetText}>+ {t('workout.addWarmup')}</Text>
-          </Pressable>
-        ) : null}
-        {/* Only once something has been lifted. A live "0 kg" beside an untouched card is a score
-            nobody asked for. */}
-        {volume > 0 ? (
-          <Text style={s.volume}>
-            {formatVolume(volume, unit)} {t(`common.${weightUnitKey(unit)}`)} {t('workout.volume')}
-          </Text>
-        ) : null}
       </View>
+      </View>
+
+      {/* In the list there are no chips, so the warm-up keeps a quiet line of its own. */}
+      {!banner && onAddWarmup && canAddWarmup ? (
+        <Pressable onPress={onAddWarmup} accessibilityRole="button" style={s.warmupLink}>
+          <Text style={s.warmupLinkText}>+ {t('workout.addWarmup')}</Text>
+        </Pressable>
+      ) : null}
+
+      {/* Only once something has been lifted. A live "0 kg" beside an untouched card is a score
+          nobody asked for. */}
+      {volume > 0 ? (
+        <Text style={s.volume}>
+          {formatVolume(volume, unit)} {t(`common.${weightUnitKey(unit)}`)} {t('workout.volume')}
+        </Text>
+      ) : null}
 
       {/* The link, drawn leaving the bottom of the card toward the next one. Says which two
           exercises are joined, which a badge inside one card could not. */}
@@ -352,6 +413,31 @@ export function ExercisePanel({
         </View>
       ) : null}
     </View>
+  );
+}
+
+/** One of the buttons under the exercise's name. */
+function Chip({
+  label,
+  onPress,
+  accessibilityLabel,
+}: {
+  label: string;
+  onPress: () => void;
+  accessibilityLabel?: string;
+}) {
+  const { colors } = useTheme();
+  const s = useMemo(() => createStyles(colors), [colors]);
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      hitSlop={4}
+      style={({ pressed }) => [s.chip, pressed && s.pressed]}
+    >
+      <Text style={s.chipText}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -414,8 +500,23 @@ const createStyles = (colors: ColorPalette) =>
     columnCheck: ViewStyle;
     rows: ViewStyle;
     footer: ViewStyle;
-    addSet: ViewStyle;
-    addSetText: TextStyle;
+    hero: ViewStyle;
+    titleBlock: ViewStyle;
+    titleRow: ViewStyle;
+    bannerName: TextStyle;
+    subtitle: TextStyle;
+    chips: ViewStyle;
+    chip: ViewStyle;
+    chipText: TextStyle;
+    table: ViewStyle;
+    tablePrevious: TextStyle;
+    setButton: ViewStyle;
+    setButtonOff: ViewStyle;
+    setButtonAdd: ViewStyle;
+    setButtonText: TextStyle;
+    setButtonAddText: TextStyle;
+    warmupLink: ViewStyle;
+    warmupLinkText: TextStyle;
     pressed: ViewStyle;
     volume: TextStyle;
   }>({
@@ -516,17 +617,69 @@ const createStyles = (colors: ColorPalette) =>
 
     rows: { gap: 6 },
 
-    footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-    addSet: {
-      minHeight: 40,
-      justifyContent: 'center',
+    footer: { flexDirection: 'row', gap: 8, marginTop: 4 },
+
+    // The picture leads in focus mode: it is the fastest answer to "is this the machine".
+    hero: { borderRadius: radius.lg, overflow: 'hidden' },
+    titleBlock: { gap: 4 },
+    titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+    bannerName: {
+      color: colors.text,
+      fontSize: 20,
+      fontWeight: '700',
+      textAlign: 'auto',
+      flexShrink: 1,
+    },
+    subtitle: { color: colors.textMuted, fontSize: 13, textAlign: 'auto' },
+    chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    chip: {
+      minHeight: 34,
       paddingHorizontal: 14,
+      justifyContent: 'center',
+      borderRadius: radius.pill,
+      backgroundColor: colors.surfaceRaised,
+      borderWidth: 1,
+      borderColor: colors.borderSubtle,
+    },
+    chipText: { color: colors.textSecondary, fontSize: 13, fontWeight: '500' },
+
+    // The sets sit in a panel of their own, a shade off the card — the part of the screen that
+    // is filled in, set apart from the part that is read.
+    table: {
+      gap: 8,
+      padding: 10,
+      borderRadius: radius.md,
+      backgroundColor: colors.surfaceRaised,
+      borderWidth: 1,
+      borderColor: colors.borderSubtle,
+    },
+    tablePrevious: {
+      color: colors.textFaint,
+      fontSize: 12,
+      textAlign: 'auto',
+      fontVariant: ['tabular-nums'],
+    },
+    setButton: {
+      flex: 1,
+      minHeight: 42,
+      alignItems: 'center',
+      justifyContent: 'center',
       borderRadius: radius.sm,
       borderWidth: 1,
-      borderStyle: 'dashed',
-      borderColor: colors.borderStrong,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
     },
-    addSetText: { color: colors.textSecondary, fontSize: 13 },
+    setButtonOff: { opacity: 0.4 },
+    setButtonAdd: { borderColor: colors.accentBorder, backgroundColor: colors.accentSoft },
+    setButtonText: { color: colors.textSecondary, fontSize: 14, fontWeight: '600' },
+    setButtonAddText: { color: colors.accent },
+    warmupLink: { alignSelf: 'flex-start', paddingVertical: 4 },
+    warmupLinkText: { color: colors.textSecondary, fontSize: 13 },
     pressed: { opacity: 0.6 },
-    volume: { color: colors.textFaint, fontSize: 12, fontVariant: ['tabular-nums'] },
+    volume: {
+      color: colors.textFaint,
+      fontSize: 12,
+      fontVariant: ['tabular-nums'],
+      textAlign: 'center',
+    },
   });

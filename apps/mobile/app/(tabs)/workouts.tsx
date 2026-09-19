@@ -18,7 +18,7 @@ import {
   warmupRamp,
   type ProgressionAdvice,
 } from '@fit/shared/calculations';
-import { EXERCISE_SEED, type ExerciseSeed } from '@fit/shared/catalog';
+import { EQUIPMENT_SEED, EXERCISE_SEED, type ExerciseSeed } from '@fit/shared/catalog';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -48,6 +48,7 @@ import { DragReorderList, type DragHandleProps } from '../../src/components/Drag
 import { KeyboardSafe } from '../../src/components/KeyboardSafe.js';
 import { ExerciseVisual } from '../../src/components/ExerciseVisual.js';
 import { ExercisePanel } from '../../src/components/workout/ExercisePanel.js';
+import { ExerciseStrip } from '../../src/components/workout/ExerciseStrip.js';
 import { IntervalRunner } from '../../src/components/workout/IntervalRunner.js';
 import { EXTEND_SECONDS, RestBanner } from '../../src/components/workout/RestBanner.js';
 import { WorkoutHeader } from '../../src/components/workout/WorkoutHeader.js';
@@ -127,7 +128,7 @@ const FOCUS_KEY = 'workout-focus-mode';
 const RPE_CHOICES = [6, 7, 8, 9, 10] as const;
 
 export default function WorkoutsScreen() {
-  const { confirm, ask } = useActionSheet();
+  const { confirm, ask, notify } = useActionSheet();
   const { t, i18n } = useTranslation();
   const isHebrew = i18n.language === 'he';
   const insets = useSafeAreaInsets();
@@ -499,6 +500,49 @@ export default function WorkoutsScreen() {
       })();
     },
     [sessionId, reload],
+  );
+
+  /**
+   * The "− set" button: take the last set off.
+   *
+   * A set not yet done goes at once — it was only a plan. A done one is a record of work, so it
+   * is asked about first rather than lost to a stray tap.
+   */
+  const removeLastSet = useCallback(
+    (exercise: SessionExerciseWithSets) => {
+      const last = exercise.sets[exercise.sets.length - 1];
+      if (!last) return;
+      void (async () => {
+        if (last.done_at !== null) {
+          const ok = await confirm({
+            message: t('workout.confirmRemoveDoneSet'),
+            confirmLabel: t('workout.removeSet'),
+          });
+          if (!ok) return;
+        }
+        void hapticLight();
+        deleteSet(last.id);
+      })();
+    },
+    [confirm, t, deleteSet],
+  );
+
+  /** Which muscles an exercise works, and on what — the "muscles" button. */
+  const showMuscles = useCallback(
+    (seed: ExerciseSeed) => {
+      const equipment = EQUIPMENT_SEED.find((item) => item.slug === seed.equipmentSlug);
+      const lines = [
+        `${t('workout.primaryMuscle')}: ${t(`muscle.${seed.primaryMuscle}`)}`,
+        seed.secondaryMuscles && seed.secondaryMuscles.length > 0
+          ? `${t('workout.secondaryMuscles')}: ${seed.secondaryMuscles
+              .map((muscle) => t(`muscle.${muscle}`))
+              .join(', ')}`
+          : null,
+        equipment ? `${t('workout.equipment')}: ${isHebrew ? equipment.nameHe : equipment.nameEn}` : null,
+      ].filter((line): line is string => line !== null);
+      void notify({ title: isHebrew ? seed.nameHe : seed.nameEn, message: lines.join('\n') });
+    },
+    [notify, t, isHebrew],
   );
 
   const patchSet = useCallback(
@@ -1070,6 +1114,17 @@ export default function WorkoutsScreen() {
    * of eighty lines of props is two cards that drift apart, and the one nobody is looking at is
    * the one that rots.
    */
+  /** "Machine · Back", under the exercise's name. */
+  const subtitleFor = (seed: ExerciseSeed) => {
+    const equipment = EQUIPMENT_SEED.find((item) => item.slug === seed.equipmentSlug);
+    return [
+      equipment ? (isHebrew ? equipment.nameHe : equipment.nameEn) : null,
+      t(`muscle.${seed.primaryMuscle}`),
+    ]
+      .filter(Boolean)
+      .join(' · ');
+  };
+
   const renderExercise = (exercise: SessionExerciseWithSets, dragHandle?: DragHandleProps) => {
             const seed = EXERCISE_BY_KEY.get(exercise.exercise_key);
             if (!seed) return null;
@@ -1128,12 +1183,21 @@ export default function WorkoutsScreen() {
                   if (set) toggleDone(set.id, set.done_at === null);
                 }}
                 onAddSet={() => addSet(exercise.id)}
+                onRemoveSet={exercise.sets.length > 0 ? () => removeLastSet(exercise) : undefined}
+                onSwap={() =>
+                  router.push({
+                    pathname: '/exercise-picker',
+                    params: { sessionId, swapExerciseId: exercise.id },
+                  })
+                }
+                onShowMuscles={() => showMuscles(seed)}
+                subtitle={subtitleFor(seed)}
                 onOptions={() => openExerciseOptions(exercise.id, seed.nameHe)}
                 dragHandle={dragHandle}
                 // Big in focus mode, where it is the fastest way to confirm the machine in
                 // front of you is the one on the screen; a thumbnail in the list, where the
                 // question is only which card is which.
-                visual={<ExerciseVisual exercise={seed} height={focus ? 150 : 52} />}
+                visual={<ExerciseVisual exercise={seed} height={focus ? 210 : 52} />}
                 visualLayout={focus ? 'banner' : 'thumb'}
                 onBarbell={seed.equipmentSlug === 'barbell'}
                 onAddWarmup={() => addWarmup(exercise.id, seed.equipmentSlug === 'barbell')}
@@ -1163,51 +1227,54 @@ export default function WorkoutsScreen() {
       {/* Where this is happening. Shown as a quiet chip rather than a field: it changes what the
           numbers are compared against, which is worth surfacing, but it is not something to fill
           in before lifting. */}
-      <Pressable
-        onPress={openGymPicker}
-        accessibilityRole="button"
-        style={({ pressed }) => [styles.gymChip, pressed && { opacity: 0.7 }]}
-      >
-        <Text style={styles.gymChipText}>
-          {t('gyms.setLabel')} · {gyms.find((g) => g.id === gymId)?.name ?? t('gyms.none')}
-        </Text>
-      </Pressable>
+      {/* Where, and how the exercises are shown, on one quiet line: both change how the screen
+          behaves, neither is something to look at while lifting. Focus is the default — during a
+          workout the question is what to do now, and eight cards of which seven are not it is an
+          answer the reader has to search for. */}
+      <View style={styles.controlsRow}>
+        <Pressable
+          onPress={openGymPicker}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.gymChip, pressed && { opacity: 0.7 }]}
+        >
+          <Text style={styles.gymChipText} numberOfLines={1}>
+            📍 {gyms.find((g) => g.id === gymId)?.name ?? t('gyms.none')}
+          </Text>
+        </Pressable>
 
-      {/* One station at a time, or the whole list. Focus is the default: during a workout the
-          question is what to do now, and eight cards of which seven are not it is an answer the
-          reader has to search for. The list stays one tap away for planning and reordering. */}
-      {timing ? null : (
-      <View style={styles.modeRow}>
-        <Pressable
-          onPress={() => setFocusMode(true)}
-          accessibilityRole="button"
-          accessibilityState={{ selected: focus }}
-          style={({ pressed }) => [
-            styles.modeChip,
-            focus && styles.modeChipOn,
-            pressed && styles.pressed,
-          ]}
-        >
-          <Text style={[styles.modeText, focus && styles.modeTextOn]}>
-            {t('workout.focusMode')}
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={() => setFocusMode(false)}
-          accessibilityRole="button"
-          accessibilityState={{ selected: !focus }}
-          style={({ pressed }) => [
-            styles.modeChip,
-            !focus && styles.modeChipOn,
-            pressed && styles.pressed,
-          ]}
-        >
-          <Text style={[styles.modeText, !focus && styles.modeTextOn]}>
-            {t('workout.listMode')}
-          </Text>
-        </Pressable>
+        {timing ? null : (
+          <View style={styles.modeRow}>
+            <Pressable
+              onPress={() => setFocusMode(true)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: focus }}
+              style={({ pressed }) => [
+                styles.modeChip,
+                focus && styles.modeChipOn,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={[styles.modeText, focus && styles.modeTextOn]}>
+                {t('workout.focusMode')}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setFocusMode(false)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: !focus }}
+              style={({ pressed }) => [
+                styles.modeChip,
+                !focus && styles.modeChipOn,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={[styles.modeText, !focus && styles.modeTextOn]}>
+                {t('workout.listMode')}
+              </Text>
+            </Pressable>
+          </View>
+        )}
       </View>
-      )}
 
       <PrToast data={prToast} onDone={() => setPrToast(null)} />
 
@@ -1279,11 +1346,35 @@ export default function WorkoutsScreen() {
           />
         ) : focus ? (
           <>
+            {/* Every exercise as a small picture: where you are, what is done, and a tap to go
+                anywhere. It replaced the ‹ › bar that could only step one at a time. */}
+            <ExerciseStrip
+              stations={groups.map((group, index) => {
+                const members = group
+                  .map((i) => exercises[i])
+                  .filter((e): e is SessionExerciseWithSets => e !== undefined);
+                const first = members[0];
+                return {
+                  key: first?.id ?? String(index),
+                  seed: first ? EXERCISE_BY_KEY.get(first.exercise_key) : undefined,
+                  label: members
+                    .map((e) => {
+                      const seed = EXERCISE_BY_KEY.get(e.exercise_key);
+                      return seed ? (isHebrew ? seed.nameHe : seed.nameEn) : e.exercise_key;
+                    })
+                    .join(' + '),
+                  done: group.every((i) => exerciseDone[i]),
+                };
+              })}
+              active={activeStation}
+              onSelect={goToStation}
+            />
+
             {/* The whole station, which for a superset is both exercises: they are performed
                 together with no rest between them, and showing one of them alone would be the
                 screen arguing with the training. */}
             <Animated.View
-              style={{ transform: [{ translateX: slideX }], gap: spacing.md }}
+              style={{ transform: [{ translateX: slideX }], gap: spacing.md, marginTop: spacing.md }}
               {...swipeStation.panHandlers}
             >
               {(groups[activeStation] ?? []).map((index) => {
@@ -1294,49 +1385,14 @@ export default function WorkoutsScreen() {
               })}
             </Animated.View>
 
-            <View style={styles.stationNav}>
-              <Pressable
-                onPress={() => goToStation(activeStation - 1)}
-                disabled={activeStation === 0}
-                accessibilityRole="button"
-                accessibilityLabel={t('workout.prevExercise')}
-                style={({ pressed }) => [
-                  styles.stationButton,
-                  activeStation === 0 && styles.stationButtonOff,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Text style={styles.stationGlyph}>‹</Text>
-              </Pressable>
-
-              <View style={styles.stationMiddle}>
-                <Text style={styles.stationCount}>
-                  {t('workout.stationOf', { current: activeStation + 1, total: groups.length })}
-                </Text>
-                {/* What is coming, so moving on is a decision rather than a surprise. */}
-                {upNextName ? (
-                  <Text style={styles.stationNext} numberOfLines={1}>
-                    {t('workout.upNext')}: {upNextName}
-                  </Text>
-                ) : autoStation === null ? (
-                  <Text style={styles.stationNext}>{t('workout.everythingDone')}</Text>
-                ) : null}
-              </View>
-
-              <Pressable
-                onPress={() => goToStation(activeStation + 1)}
-                disabled={activeStation >= groups.length - 1}
-                accessibilityRole="button"
-                accessibilityLabel={t('workout.nextExercise')}
-                style={({ pressed }) => [
-                  styles.stationButton,
-                  activeStation >= groups.length - 1 && styles.stationButtonOff,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Text style={styles.stationGlyph}>›</Text>
-              </Pressable>
-            </View>
+            {/* What is coming, so moving on is a decision rather than a surprise. */}
+            {upNextName ? (
+              <Text style={styles.stationNext} numberOfLines={1}>
+                {t('workout.upNext')}: {upNextName}
+              </Text>
+            ) : autoStation === null ? (
+              <Text style={styles.stationNext}>{t('workout.everythingDone')}</Text>
+            ) : null}
           </>
         ) : (
           <DragReorderList
@@ -1376,6 +1432,7 @@ export default function WorkoutsScreen() {
 const createStyles = (colors: ColorPalette) =>
   StyleSheet.create<{
     screen: ViewStyle;
+    controlsRow: ViewStyle;
     gymChip: ViewStyle;
     gymChipText: TextStyle;
     modeRow: ViewStyle;
@@ -1404,9 +1461,16 @@ const createStyles = (colors: ColorPalette) =>
     addExerciseText: TextStyle;
   }>({
   screen: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: spacing.lg },
+  controlsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+    marginBottom: spacing.md,
+  },
   gymChip: {
-    alignSelf: 'flex-start',
-    marginTop: spacing.xs,
+    flexShrink: 1,
     paddingVertical: 4,
     paddingHorizontal: spacing.sm,
     borderRadius: radius.pill,
@@ -1415,7 +1479,7 @@ const createStyles = (colors: ColorPalette) =>
     borderColor: colors.borderSubtle,
   },
   gymChipText: { color: colors.textMuted, fontSize: 11, textAlign: 'auto' },
-  modeRow: { flexDirection: 'row', gap: 6, marginTop: spacing.xs },
+  modeRow: { flexDirection: 'row', gap: 6 },
   modeChip: {
     paddingVertical: 4,
     paddingHorizontal: spacing.md,
@@ -1452,7 +1516,12 @@ const createStyles = (colors: ColorPalette) =>
     fontSize: fontSize.xs,
     fontVariant: ['tabular-nums'],
   },
-  stationNext: { color: colors.textFaint, fontSize: 11, marginTop: 2, textAlign: 'center' },
+  stationNext: {
+    color: colors.textFaint,
+    fontSize: 12,
+    marginTop: spacing.md,
+    textAlign: 'center',
+  },
   pressed: { opacity: 0.7 },
   topBar: {
     flexDirection: 'row',
