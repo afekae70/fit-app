@@ -47,8 +47,10 @@ export interface StripStation {
 }
 
 const SIZE = 60;
-const GAP = 10;
-const SLOT = SIZE + GAP;
+/** Each picture sits in a column a little wider than itself, so the name under it has room. */
+const ITEM = 78;
+const GAP = 6;
+const SLOT = ITEM + GAP;
 /** How close to either end of the strip the finger has to be before it starts to scroll. */
 const EDGE = 44;
 const SCROLL_STEP = 12;
@@ -91,7 +93,7 @@ export function ExerciseStrip({
   // Keep the current exercise in view, centred where the row allows it.
   useEffect(() => {
     if (drag) return;
-    const x = active * SLOT - (width - SIZE) / 2;
+    const x = active * SLOT - (width - ITEM) / 2;
     scroll.current?.scrollTo({ x: Math.max(0, x), animated: true });
   }, [active, width, drag]);
 
@@ -195,6 +197,7 @@ export function ExerciseStrip({
               <Animated.View
                 key={station.key}
                 style={[
+                  s.column,
                   carried
                     ? { transform: [{ translateX: dragX }, { scale: 1.1 }], zIndex: 10, elevation: 6 }
                     : { transform: [{ translateX: shiftFor(index) }] },
@@ -229,6 +232,11 @@ export function ExerciseStrip({
                     </View>
                   ) : null}
                 </Pressable>
+                {/* Every exercise named except the one in front of you — its name is on the card
+                    and on the line below, and leaving it out makes the current one stand apart. */}
+                <Text style={[s.name, station.done && s.nameDone]} numberOfLines={2}>
+                  {current ? '' : station.label}
+                </Text>
               </Animated.View>
             );
           })}
@@ -248,6 +256,9 @@ export function ExerciseStrip({
 const createStyles = (colors: ColorPalette) =>
   StyleSheet.create<{
     wrap: ViewStyle;
+    column: ViewStyle;
+    name: TextStyle;
+    nameDone: TextStyle;
     ltr: ViewStyle;
     row: ViewStyle;
     thumb: ViewStyle;
@@ -262,6 +273,15 @@ const createStyles = (colors: ColorPalette) =>
     pressed: ViewStyle;
   }>({
     wrap: { gap: 6 },
+    column: { width: ITEM, alignItems: 'center', gap: 4 },
+    name: {
+      color: colors.textSecondary,
+      fontSize: 10,
+      lineHeight: 13,
+      height: 26,
+      textAlign: 'center',
+    },
+    nameDone: { color: colors.textFaint },
     ltr: { direction: 'ltr' },
     row: { gap: GAP, paddingVertical: 6, paddingHorizontal: 4 },
     thumb: {
