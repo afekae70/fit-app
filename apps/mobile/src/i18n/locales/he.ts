@@ -206,6 +206,7 @@ export const he = {
     setLabel: 'חדר',
   },
   workout: {
+    finishShort: 'סיום',
     swapShort: 'החלף',
     musclesShort: 'שרירים',
     warmupChip: 'חימום',

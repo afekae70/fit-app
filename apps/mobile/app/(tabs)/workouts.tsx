@@ -99,6 +99,7 @@ import {
   type SetInput,
 } from '../../src/db/workouts.js';
 import { hapticLight, hapticSuccess } from '../../src/haptics.js';
+import { setWorkoutActive } from '../../src/workout/activeWorkout.js';
 import { useTheme } from '../../src/ThemeProvider.js';
 import { fontSize, radius, spacing, type ColorPalette } from '../../src/theme.js';
 
@@ -142,6 +143,10 @@ export default function WorkoutsScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [sessionId, setSessionId] = useState<string | null>(null);
+  // Tell the tab swipe a workout is open, so sideways belongs to the exercises until it ends.
+  useEffect(() => {
+    setWorkoutActive(sessionId !== null);
+  }, [sessionId]);
   const [startedAt, setStartedAt] = useState<string | null>(null);
   const [exercises, setExercises] = useState<SessionExerciseWithSets[]>([]);
   /** Set when this session came from a timed plan day; the screen is then a countdown, not cards. */
@@ -1217,6 +1222,7 @@ export default function WorkoutsScreen() {
         totalSets={totals.sets}
         startedAt={startedAt ?? new Date().toISOString()}
         progress={totals.sets === 0 ? 0 : totals.done / totals.sets}
+        onFinish={() => setSummaryOpen(true)}
       />
 
       {/* An unplanned, unnamed workout has no other session of its kind, so "last time" and the
@@ -1413,17 +1419,8 @@ export default function WorkoutsScreen() {
           <Text style={styles.addExerciseText}>+ {t('workout.addExercise')}</Text>
         </Pressable>
 
-        {/* Finishing lives at the end of the sets, not under the header. It is the last thing
-            you do, and at the top it sat directly under the progress bar where a mis-tap ends
-            the workout. Scrolled rather than pinned: RestBanner owns the bottom of the screen
-            while resting, and two bars competing for that strip is worse than one scroll. */}
-        <Pressable
-          onPress={() => setSummaryOpen(true)}
-          style={styles.finishButton}
-          accessibilityRole="button"
-        >
-          <Text style={styles.finishButtonText}>{t('workout.finishButton')}</Text>
-        </Pressable>
+        {/* Finishing is in the header now, top right. A tap there only opens the summary —
+            the workout ends when that is confirmed — so a mis-tap costs nothing. */}
       </ScrollView>
     </KeyboardSafe>
   );

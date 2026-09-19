@@ -1,9 +1,10 @@
 /**
  * The sticky header of the active workout: name, set count, elapsed time, and a progress track.
  *
- * **Read-only, deliberately.** The handoff puts every tappable thing below the middle of the
- * screen, because this is operated one-handed mid-set. Nothing up here is a target, so nothing up
- * here can be hit by accident while reaching for a stepper.
+ * One control up here: Finish, on the leading side, away from the sets. It used to sit at the
+ * bottom of the page, under every exercise — a scroll away in the full list, and easy to miss in
+ * focus mode. At the top it is always where the eye starts, and far from anything a thumb is
+ * reaching for mid-set.
  *
  * The elapsed clock is derived from `startedAt`, never accumulated. A workout survives the phone
  * being locked, an incoming call, and the app being evicted and restored — a counter would lose
@@ -13,7 +14,15 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Animated, StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
+import {
+  Animated,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type TextStyle,
+  type ViewStyle,
+} from 'react-native';
 
 import { useTheme } from '../../ThemeProvider.js';
 import { type ColorPalette } from '../../theme.js';
@@ -26,9 +35,18 @@ export interface WorkoutHeaderProps {
   startedAt: string;
   /** 0–1. */
   progress: number;
+  /** Open the finish sheet. */
+  onFinish?: () => void;
 }
 
-export function WorkoutHeader({ name, doneSets, totalSets, startedAt, progress }: WorkoutHeaderProps) {
+export function WorkoutHeader({
+  name,
+  doneSets,
+  totalSets,
+  startedAt,
+  progress,
+  onFinish,
+}: WorkoutHeaderProps) {
   const { t } = useTranslation();
   const { colors } = useTheme();
   const s = useMemo(() => createStyles(colors), [colors]);
@@ -49,6 +67,16 @@ export function WorkoutHeader({ name, doneSets, totalSets, startedAt, progress }
   return (
     <View style={s.header}>
       <View style={s.row}>
+        {onFinish ? (
+          <Pressable
+            onPress={onFinish}
+            accessibilityRole="button"
+            hitSlop={6}
+            style={({ pressed }) => [s.finish, pressed && s.pressed]}
+          >
+            <Text style={s.finishText}>{t('workout.finishShort')}</Text>
+          </Pressable>
+        ) : null}
         <View style={s.titleBlock}>
           <Text style={s.name} numberOfLines={1}>
             {name}
@@ -113,7 +141,19 @@ const createStyles = (colors: ColorPalette) =>
     timeLabel: TextStyle;
     track: ViewStyle;
     fill: ViewStyle;
+    finish: ViewStyle;
+    finishText: TextStyle;
+    pressed: ViewStyle;
   }>({
+    finish: {
+      alignSelf: 'center',
+      paddingVertical: 8,
+      paddingHorizontal: 16,
+      borderRadius: 999,
+      backgroundColor: colors.accent,
+    },
+    finishText: { color: colors.bg, fontSize: 14, fontWeight: '700' },
+    pressed: { opacity: 0.7 },
     header: {
       paddingHorizontal: 20,
       paddingBottom: 10,

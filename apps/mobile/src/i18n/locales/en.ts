@@ -213,6 +213,7 @@ export const en = {
     setLabel: 'Gym',
   },
   workout: {
+    finishShort: 'Finish',
     swapShort: 'Swap',
     musclesShort: 'Muscles',
     warmupChip: 'Warm-up',

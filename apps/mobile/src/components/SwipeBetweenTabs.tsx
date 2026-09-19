@@ -23,6 +23,14 @@
  * Dragging from left to right moves forward — היום → אימון → תוכנית → התקדמות — and back the other
  * way returns. See `tabSwipe.ts`, where the rule lives and is tested.
  *
+ * ## Not during a workout
+ *
+ * While a workout is open, sideways belongs to the exercises: the card swipes between them, and a
+ * drag that missed it by a finger's width must not throw the whole screen onto another tab. The
+ * flag comes from the workout screen as it opens and closes a session, and is read from the
+ * database whenever the tab changes, so it is right even when the app reopens mid-workout onto a
+ * different tab.
+ *
  * ## The two edges
  *
  * A drag that begins within a finger's width of either edge belongs to Android, not to the app:
@@ -33,10 +41,14 @@
  */
 
 import { usePathname, router, type Href } from 'expo-router';
-import { useRef, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { PanResponder, StyleSheet, View } from 'react-native';
 
+import { useCurrentUserId } from '../auth/CurrentUserProvider.js';
+import { getExecutor } from '../db/provider.js';
+import { getActiveSession } from '../db/workouts.js';
 import { hapticLight } from '../haptics.js';
+import { isWorkoutActive, setWorkoutActive } from '../workout/activeWorkout.js';
 import { tabAfterSwipe } from './tabSwipe.js';
 
 /** The tabs in bar order. Index 0 is the first tab, whichever side the language puts it on. */
@@ -47,6 +59,19 @@ const DIRECTION_RATIO = 2;
 
 export function SwipeBetweenTabs({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const userId = useCurrentUserId();
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const db = await getExecutor();
+      const open = await getActiveSession(db, userId);
+      if (!cancelled) setWorkoutActive(open !== null);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname, userId]);
 
   // The responder is built once; the current tab reaches it through a ref rather than the
   // closure it was created in, which would answer with whatever tab was open at startup.
@@ -59,7 +84,9 @@ export function SwipeBetweenTabs({ children }: { children: ReactNode }) {
   const responder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_event, gesture) =>
-        Math.abs(gesture.dx) > 24 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * DIRECTION_RATIO,
+        !isWorkoutActive() &&
+        Math.abs(gesture.dx) > 24 &&
+        Math.abs(gesture.dx) > Math.abs(gesture.dy) * DIRECTION_RATIO,
       onPanResponderRelease: (_event, gesture) => {
         const target = tabAfterSwipe(gesture.dx, index.current, TABS.length);
         const next = target === null ? undefined : TABS[target];
