@@ -14,12 +14,14 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Barbell, CalendarBlank, ForkKnife, Scales, Sparkle } from 'phosphor-react-native';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '../../src/auth/AuthProvider.js';
 import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
 import { loadAvatar } from '../../src/profile/avatar.js';
+import { QuickActions } from '../../src/components/home/QuickActions.js';
 import {
   GreetingRow,
   NutritionCard,
@@ -251,6 +253,46 @@ export default function TodayScreen() {
               onPickPlan={() => router.push('/(tabs)/plan')}
             />
           )}
+
+          {/* The five places worth reaching in one tap, under the training block: what to do
+              today comes first, and these are what follows it. */}
+          <FadeSlideIn index={3}>
+            <QuickActions
+              actions={[
+                {
+                  key: 'workout',
+                  label: t('tabs.workout'),
+                  Glyph: Barbell,
+                  onPress: startWorkout,
+                  primary: true,
+                },
+                {
+                  key: 'plan',
+                  label: t('tabs.plan'),
+                  Glyph: CalendarBlank,
+                  onPress: () => router.push('/(tabs)/plan'),
+                },
+                {
+                  key: 'nutrition',
+                  label: t('profileScreen.nutrition'),
+                  Glyph: ForkKnife,
+                  onPress: () => router.push('/nutrition'),
+                },
+                {
+                  key: 'metrics',
+                  label: t('profileScreen.metrics'),
+                  Glyph: Scales,
+                  onPress: () => router.push('/metrics'),
+                },
+                {
+                  key: 'coach',
+                  label: t('profileScreen.coach'),
+                  Glyph: Sparkle,
+                  onPress: () => router.push('/coach'),
+                },
+              ]}
+            />
+          </FadeSlideIn>
 
           {/*
             Below the training block, and outside the `data.workout` branch on purpose: a rest day

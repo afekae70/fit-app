@@ -29,7 +29,9 @@ import {
   AccessibilityInfo,
   Animated,
   Easing,
+  Text,
   type StyleProp,
+  type TextStyle,
   type ViewStyle,
 } from 'react-native';
 
@@ -129,4 +131,47 @@ export function FadeSlideIn({ children, index = 0, delay = 0, style }: FadeSlide
       {children}
     </Animated.View>
   );
+}
+
+/**
+ * A number that counts up to its value the first time it is shown.
+ *
+ * Only on the way in, and only over `duration.normal` — a number that animates every time it
+ * changes would re-roll the week's volume every time a set is ticked, which is a slot machine
+ * rather than a summary. Subsequent changes simply appear.
+ *
+ * It has to be JS-driven: React Native can animate a transform natively, but not the text inside
+ * a node, so the value is read on each frame and written to state. Cheap at three numbers on a
+ * screen; not something to put in a list.
+ */
+export function CountUp({
+  value,
+  decimals = 0,
+  style,
+}: {
+  value: number;
+  decimals?: number;
+  style?: StyleProp<TextStyle>;
+}) {
+  const [shown, setShown] = useState(value);
+  const progress = useRef(new Animated.Value(0)).current;
+  const ran = useRef(false);
+
+  useEffect(() => {
+    if (ran.current) {
+      setShown(value);
+      return;
+    }
+    ran.current = true;
+    const id = progress.addListener(({ value: fraction }) => setShown(value * fraction));
+    Animated.timing(progress, {
+      toValue: 1,
+      duration: duration.normal,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start(() => setShown(value));
+    return () => progress.removeListener(id);
+  }, [value, progress]);
+
+  return <Text style={style}>{shown.toFixed(decimals)}</Text>;
 }
