@@ -12,20 +12,13 @@
  * afterwards.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Animated,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-  type TextStyle,
-  type ViewStyle,
-} from 'react-native';
+import { Pressable, StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
 
+import { ProgressRing } from '../ProgressRing.js';
 import { useTheme } from '../../ThemeProvider.js';
-import { type ColorPalette } from '../../theme.js';
+import { radius, shadow, type ColorPalette } from '../../theme.js';
 
 export interface WorkoutHeaderProps {
   name: string;
@@ -52,17 +45,6 @@ export function WorkoutHeader({
   const s = useMemo(() => createStyles(colors), [colors]);
 
   const elapsed = useElapsed(startedAt);
-  const width = useRef(new Animated.Value(progress)).current;
-
-  useEffect(() => {
-    Animated.timing(width, {
-      toValue: progress,
-      duration: 300,
-      // The handoff's curve for the fill. It arrives quickly and settles, which is what makes
-      // ticking a set feel acknowledged rather than merely recorded.
-      useNativeDriver: false,
-    }).start();
-  }, [progress, width]);
 
   return (
     <View style={s.header}>
@@ -81,27 +63,18 @@ export function WorkoutHeader({
           <Text style={s.name} numberOfLines={1}>
             {name}
           </Text>
-          <Text style={s.count}>{t('workout.setsProgress', { done: doneSets, total: totalSets })}</Text>
-        </View>
-        <View style={s.timeBlock}>
           <Text style={s.time}>{elapsed}</Text>
           <Text style={s.timeLabel}>{t('workout.elapsed')}</Text>
         </View>
-      </View>
 
-      <View style={s.track}>
-        <Animated.View
-          style={[
-            s.fill,
-            {
-              width: width.interpolate({
-                inputRange: [0, 1],
-                outputRange: ['0%', '100%'],
-                extrapolate: 'clamp',
-              }),
-            },
-          ]}
-        />
+        {/* The sets as a ring rather than a bar under the header: it holds its own number, and
+            it reads from the distance a phone is held at between sets. */}
+        <ProgressRing fraction={progress} size={62} thickness={7}>
+          <Text style={s.ringValue}>
+            {doneSets}
+            <Text style={s.ringTotal}>/{totalSets}</Text>
+          </Text>
+        </ProgressRing>
       </View>
     </View>
   );
@@ -136,46 +109,53 @@ const createStyles = (colors: ColorPalette) =>
     titleBlock: ViewStyle;
     name: TextStyle;
     count: TextStyle;
-    timeBlock: ViewStyle;
     time: TextStyle;
     timeLabel: TextStyle;
-    track: ViewStyle;
-    fill: ViewStyle;
+    ringValue: TextStyle;
+    ringTotal: TextStyle;
     finish: ViewStyle;
     finishText: TextStyle;
     pressed: ViewStyle;
   }>({
     finish: {
       alignSelf: 'center',
-      paddingVertical: 8,
+      paddingVertical: 9,
       paddingHorizontal: 16,
-      borderRadius: 999,
+      borderRadius: radius.pill,
       backgroundColor: colors.accent,
+      ...shadow(colors.shadow).card,
     },
+    ringValue: {
+      color: colors.text,
+      fontSize: 17,
+      fontWeight: '700',
+      fontVariant: ['tabular-nums'],
+    },
+    ringTotal: { color: colors.textFaint, fontSize: 11, fontWeight: '500' },
     finishText: { color: colors.bg, fontSize: 14, fontWeight: '700' },
     pressed: { opacity: 0.7 },
+    // A card of its own rather than a strip welded to the top of the page, like everything
+    // else on this screen now.
     header: {
-      paddingHorizontal: 20,
-      paddingBottom: 10,
-      gap: 10,
-      backgroundColor: colors.bg,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.borderSubtle,
+      marginHorizontal: 4,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+      borderRadius: radius.xl,
+      backgroundColor: colors.surface,
+      ...shadow(colors.shadow).card,
     },
-    row: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 },
-    titleBlock: { flex: 1, gap: 2 },
+    row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    titleBlock: { flex: 1, gap: 1 },
     name: { color: colors.text, fontSize: 18, fontWeight: '500', textAlign: 'auto' },
     count: { color: colors.textFaint, fontSize: 12, textAlign: 'auto', fontVariant: ['tabular-nums'] },
-    timeBlock: { alignItems: 'flex-end' },
     time: {
       color: colors.text,
-      fontSize: 26,
+      fontSize: 24,
       fontWeight: '500',
       letterSpacing: -0.5,
       fontVariant: ['tabular-nums'],
     },
     timeLabel: { color: colors.textFaint, fontSize: 11 },
 
-    track: { height: 4, borderRadius: 2, backgroundColor: colors.surfaceRaised, overflow: 'hidden' },
-    fill: { height: 4, borderRadius: 2, backgroundColor: colors.accent },
+
   });

@@ -753,15 +753,21 @@ const createStyles = (colors: ColorPalette) =>
       // Matched to the home screen's call to action: the larger card radius, and tall enough
       // that a primary action is unmistakably one. A button that is smaller and rounder than
       // the one on the previous screen is the same seam a tighter card is.
-      borderRadius: radius.lg,
-      minHeight: 52,
+      borderRadius: radius.pill,
+      minHeight: 54,
       paddingVertical: spacing.md,
       paddingHorizontal: spacing.lg,
       alignItems: 'center',
       justifyContent: 'center',
       borderWidth: 1,
     },
-    buttonPrimary: { backgroundColor: colors.accentSoft, borderColor: colors.accentBorder },
+    // Filled, and the one filled thing on its screen. A primary action that looks like every
+    // other outlined control is a primary action nobody finds.
+    buttonPrimary: {
+      backgroundColor: colors.accent,
+      borderColor: colors.accent,
+      ...shadow(colors.shadow).card,
+    },
     buttonSecondary: { backgroundColor: colors.surfaceRaised, borderColor: colors.borderStrong },
     buttonGhost: { backgroundColor: 'transparent', borderColor: colors.border },
     buttonDanger: { backgroundColor: 'transparent', borderColor: 'transparent' },
@@ -774,7 +780,7 @@ const createStyles = (colors: ColorPalette) =>
      */
     buttonDisabled: { opacity: 0.45 },
     buttonLabel: { fontSize: 17, fontWeight: fontWeight.medium },
-    buttonLabelPrimary: { color: colors.accent },
+    buttonLabelPrimary: { color: colors.bg, fontWeight: fontWeight.bold },
     buttonLabelSecondary: { color: colors.text },
     buttonLabelGhost: { color: colors.textSecondary },
     buttonLabelDanger: { color: colors.danger, fontWeight: fontWeight.medium },

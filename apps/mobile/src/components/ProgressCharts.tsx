@@ -44,13 +44,16 @@ export function WeeklyVolumeChart({ weeks }: { weeks: readonly WeeklyVolume[] })
           const ratio = week.volumeKg / peak;
           return (
             <View key={week.weekStart} style={styles.barSlot}>
+              {/* The track is the full height of the chart, so a light week reads as a small
+                  part of something rather than as a lonely stub in white space. */}
+              <View style={styles.barTrack} />
               <View
                 style={[
                   styles.bar,
-                  // A trained week always keeps a visible stub: a 2px sliver still reads as
+                  // A trained week always keeps a visible stub: a 3px sliver still reads as
                   // "trained, lightly", where a zero-height bar is indistinguishable from a
                   // week off — which is the one thing this chart must never blur.
-                  { height: week.volumeKg > 0 ? Math.max(3, ratio * CHART_HEIGHT) : 0 },
+                  { height: week.volumeKg > 0 ? Math.max(6, ratio * CHART_HEIGHT) : 0 },
                 ]}
               />
             </View>
@@ -174,6 +177,7 @@ const createStyles = (colors: ColorPalette) =>
   StyleSheet.create<{
     bars: ViewStyle;
     barSlot: ViewStyle;
+    barTrack: ViewStyle;
     bar: ViewStyle;
     axis: ViewStyle;
     axisLabel: TextStyle;
@@ -190,9 +194,14 @@ const createStyles = (colors: ColorPalette) =>
     prValue: TextStyle;
     prUnit: TextStyle;
   }>({
-    bars: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.xs },
+    bars: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm },
     barSlot: { flex: 1, justifyContent: 'flex-end' },
-    bar: { borderRadius: radius.sm, backgroundColor: colors.accent },
+    barTrack: {
+      ...StyleSheet.absoluteFillObject,
+      borderRadius: radius.pill,
+      backgroundColor: colors.surfaceRaised,
+    },
+    bar: { borderRadius: radius.pill, backgroundColor: colors.accent },
     axis: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -205,10 +214,10 @@ const createStyles = (colors: ColorPalette) =>
     // way in both languages, or "last week" would move sides with the UI language.
     grid: { flexDirection: 'row', gap: 3 },
     gridCol: { flex: 1, gap: 3 },
-    cell: { width: '100%', aspectRatio: 1, borderRadius: 2 },
+    cell: { width: '100%', aspectRatio: 1, borderRadius: 5 },
     cellPeak: { borderWidth: 1, borderColor: colors.text },
     legend: { flexDirection: 'row', gap: 3, flex: 1, justifyContent: 'center' },
-    legendCell: { width: 10, height: 10, borderRadius: 2 },
+    legendCell: { width: 10, height: 10, borderRadius: 3 },
     prRow: {
       flexDirection: 'row',
       alignItems: 'center',
