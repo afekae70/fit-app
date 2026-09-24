@@ -12,12 +12,14 @@
  */
 
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useAuth } from '../../src/auth/AuthProvider.js';
 import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
+import { loadAvatar } from '../../src/profile/avatar.js';
 import {
   GreetingRow,
   NutritionCard,
@@ -73,6 +75,14 @@ export default function TodayScreen() {
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
   const userId = useCurrentUserId();
+  const { session } = useAuth();
+  // The reader's own name and face at the top of their own screen — the picture from the profile
+  // page, the name from the address they signed in with.
+  const displayName = (session?.user.email ?? '').split('@')[0] ?? '';
+  const [avatarUri, setAvatarUri] = useState<string | null>(null);
+  useEffect(() => {
+    void loadAvatar(userId).then(setAvatarUri);
+  }, [userId]);
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -154,6 +164,9 @@ export default function TodayScreen() {
       <GreetingRow
         greeting={t(greetingKey(new Date()))}
         date={formatDate(new Date(), i18n.language)}
+        name={displayName}
+        avatarUri={avatarUri}
+        onOpenProfile={() => router.push('/profile')}
       />
 
       {failed ? (

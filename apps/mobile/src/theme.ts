@@ -1,9 +1,14 @@
 /**
- * Design tokens — the Nocturne design system.
+ * Design tokens — Aurora.
  *
- * Ported from the `FitApp.dc.html` prototype and the `styles.css` of its bundled Nocturne
- * design system. The ground is a deep indigo (`#161826`) and the accent a blurple (`#9184d9`),
- * replacing the earlier near-black-and-mint scheme.
+ * A daylight scheme: a soft periwinkle ground, white cards that lift off it with a wide, faint
+ * shadow, and one confident blue for anything live or actionable. The night palette is the same
+ * scheme after dark — the same accent, the same rhythm — rather than a different design.
+ *
+ * Cards lift by shadow here rather than by outline. On a coloured ground a white card is already
+ * a clear step, and six outlined boxes down a screen read as a grid competing with its contents;
+ * `shadow` below carries that weight instead, and borders are kept for the few things that are
+ * genuinely edges.
  *
  * Nocturne expresses its derived colours as `color-mix(in srgb, X n%, transparent)` layered over
  * the ground. React Native has no `color-mix` and no alpha compositing against an implicit
@@ -46,95 +51,99 @@ export interface ColorPalette {
   protein: string;
   carbs: string;
   fat: string;
+  /**
+   * The two warm tiles. A screen of one hue is a screen where nothing stands out, and these are
+   * where a number is allowed to sit on colour — calories burned, time spent — without borrowing
+   * the accent, which means "live or actionable" and nothing else.
+   */
+  tileSun: string;
+  tileCoral: string;
+  /** What a shadow is cast in. Tinted toward the ground rather than pure black. */
+  shadow: string;
 }
 
 export const darkColors: ColorPalette = {
-  /* Surfaces — Nocturne's ground, card, and the neutral ramp above them. */
-  bg: '#161826', // --color-bg
-  surface: '#232532', // --color-surface
-  surfaceRaised: '#292B31', // --color-neutral-900, the prototype's --surface2
-  surfaceHigh: '#3F424D', // --color-neutral-800
+  /* Surfaces — a blue-black ground, with the card a clear step above it. */
+  bg: '#101526',
+  surface: '#1A2137',
+  surfaceRaised: '#222B45',
+  surfaceHigh: '#2E3A5C',
 
-  /* Borders — the divider token and the prototype's --line2, each flattened over --color-bg. */
-  border: '#383946', // text 16% over bg
-  borderStrong: '#4D4E5A', // text 26% over bg
-  // For a card edge rather than a divider. #232532 on #161826 is already a visible step, so an
-  // outline at full `border` strength draws a box around something that did not need one — the
-  // effect across a screen of six cards is a grid of boxes competing with their own contents.
-  // This is barely above the surface it sits on: enough to catch a corner, not enough to read
-  // as a line.
-  borderSubtle: '#2C2E3D', // text 7% over surface
+  /* Borders — kept quiet; depth is the shadow's job, not an outline's. */
+  border: '#2C3552',
+  borderStrong: '#3E4A6C',
+  borderSubtle: '#232B43',
 
-  /* Text — the ramp read downward from --color-text. */
-  text: '#E9E9ED', // --color-text
-  textSecondary: '#B2B6CA', // --color-neutral-400
-  textMuted: '#9397AB', // --color-neutral-500, the prototype's --dim
-  textFaint: '#75798C', // --color-neutral-600, the prototype's --faint
+  /* Text — the ramp read downward from the brightest. */
+  text: '#EAEEFB',
+  textSecondary: '#BAC3DE',
+  textMuted: '#8E99BA',
+  textFaint: '#6B769A',
 
-  /* Accent — the blurple, plus its soft fill and border flattened over bg. */
-  accent: '#9184D9', // --color-accent
-  accentSoft: '#27273F', // accent 14% over bg
-  accentBorder: '#4D4977', // accent 45% over bg
-  // --color-accent-400. Used for the numerals inside a completed set: they sit on accentSoft,
-  // where the base accent is close enough in tone to read as dimmed rather than confirmed.
-  accentLift: '#B5ABFC',
+  /* Accent — the same blue as daylight, lifted to hold its own on a dark ground. */
+  accent: '#7D9BFF',
+  accentSoft: '#1E2949',
+  accentBorder: '#3A4D82',
+  accentLift: '#A9BEFF',
 
-  /* Status — only `danger` has a Nocturne token; the rest are tuned to sit beside it rather
-     than carried over, since a saturated amber or sky blue reads as foreign on this ground. */
-  warning: '#D9A86A',
-  warningSoft: '#2D2830',
-  danger: '#D98A8F', // the prototype's --danger
-  dangerSoft: '#2D2633',
-  info: '#A7A1DB', // --color-accent-2
-  infoSoft: '#27283C',
+  /* Status */
+  warning: '#E0B45F',
+  warningSoft: '#33301F',
+  danger: '#E88A90',
+  dangerSoft: '#3A2530',
+  info: '#6FB3E8',
+  infoSoft: '#17293A',
 
-  /* Macro colours — three hues held at the palette's own muted chroma so the row reads as one
-     family. Kept clear of `warning` and `info`, which they would otherwise collide with. */
-  protein: '#8FA9E8',
-  carbs: '#D9C48A',
-  fat: '#D98AC0',
+  /* Macro colours — one family, clear of the accent and of each other. */
+  protein: '#7D9BFF',
+  carbs: '#E0B45F',
+  fat: '#E58ABF',
+
+  tileSun: '#3B351F',
+  tileCoral: '#3B2A2A',
+  shadow: '#000000',
 };
 
 export const lightColors: ColorPalette = {
-  /* Surfaces — Nocturne's light theme reads the neutral ramp from the top: the ground is a step
-     down from the card, so cards still lift without needing shadows. */
-  bg: '#E4E7F5', // --color-neutral-200
-  surface: '#F3F5FE', // --color-neutral-100
-  surfaceRaised: '#CFD3E5', // --color-neutral-300
-  surfaceHigh: '#B2B6CA', // --color-neutral-400
+  /* Surfaces — a periwinkle ground with white cards on it, which is the whole look. */
+  bg: '#E9EDF9',
+  surface: '#FFFFFF',
+  surfaceRaised: '#F2F5FE',
+  surfaceHigh: '#E1E8FA',
 
-  /* Borders — neutral-900 at 12% and 26% over this palette's own ground. */
-  border: '#CDD0DD',
-  borderStrong: '#B3B6C2',
-  borderSubtle: '#E5E8F4', // the same idea inverted: a hair darker than the card surface
+  /* Borders — a hair, for the few things that are genuinely edges. */
+  border: '#DBE2F3',
+  borderStrong: '#C2CBE6',
+  borderSubtle: '#EDF1FB',
 
-  /* Text — the same ramp read upward. */
-  text: '#292B31', // --color-neutral-900
-  textSecondary: '#3F424D', // --color-neutral-800
-  textMuted: '#595D6C', // --color-neutral-700
-  textFaint: '#75798C', // --color-neutral-600
+  /* Text — deep navy rather than black, so it belongs to the same family as the ground. */
+  text: '#18213A',
+  textSecondary: '#3A4666',
+  textMuted: '#6E7A9B',
+  textFaint: '#98A2BE',
 
-  /* Accent — the darker rung, because #9184D9 on a near-white ground fails text contrast. */
-  accent: '#5D5294', // --color-accent-700
-  accentSoft: '#D4D5E9', // accent-700 12% over bg
-  accentBorder: '#AEABCE', // accent-700 40% over bg
-  // Inverted, as the whole light ramp is: on a pale accentSoft the lift has to be darker than
-  // the accent, not lighter, or the completed numerals disappear instead of standing out.
-  accentLift: '#453C73',
+  /* Accent */
+  accent: '#4C6FE7',
+  accentSoft: '#E5EBFD',
+  accentBorder: '#BCCAF8',
+  accentLift: '#2F51C4',
 
-  /* Status — each pulled darker for contrast, and each soft fill hand-tuned rather than mixed:
-     a straight mix over this indigo ground turns every tint the same mauve. */
-  warning: '#8A6A2F',
-  warningSoft: '#EDE7D8',
-  danger: '#A24B50', // the prototype's light --danger
-  dangerSoft: '#EDDADC',
-  info: '#5C5783', // --color-accent-2-700
-  infoSoft: '#DDDCE9',
+  /* Status */
+  warning: '#B07C1C',
+  warningSoft: '#FBEFC9',
+  danger: '#C8484E',
+  dangerSoft: '#FBDEDF',
+  info: '#2F7FC4',
+  infoSoft: '#DCEBF9',
 
   /* Macro colours */
-  protein: '#47548F',
-  carbs: '#8A6A2F',
-  fat: '#8F4F74',
+  protein: '#4C6FE7',
+  carbs: '#C09524',
+  fat: '#BE6295',
+
+  tileSun: '#F7E9B8',
+  tileCoral: '#F9DECC',
+  shadow: '#1B2A57',
 };
 
 /** Default export for the rare theme-agnostic case. Components should use `useTheme()`. */
@@ -157,12 +166,45 @@ export const spacing = {
  * use, and 8 is exactly what the prototype gives them; `lg` drops 16 → 14 to match its cards.
  */
 export const radius = {
-  sm: 8, // --radius-md in Nocturne: buttons, inputs, small chips
-  md: 12,
-  lg: 14, // --radius-lg: cards
-  xl: 20,
+  sm: 10, // buttons, inputs, small chips
+  md: 14,
+  lg: 20, // cards
+  xl: 28, // the big cards: the hero, the tiles
   pill: 999,
 } as const;
+
+/**
+ * Depth.
+ *
+ * Three steps and no more: a card resting on the ground, something floating over it (the tab
+ * bar, a sheet), and the one card on a screen that is the thing to press. Written as a whole
+ * style object per step because iOS wants four properties and Android wants one — spreading a
+ * named step keeps every surface at the same height as the others at that step.
+ */
+export const shadow = (color: string) =>
+  ({
+    card: {
+      shadowColor: color,
+      shadowOpacity: 0.08,
+      shadowRadius: 18,
+      shadowOffset: { width: 0, height: 8 },
+      elevation: 3,
+    },
+    floating: {
+      shadowColor: color,
+      shadowOpacity: 0.14,
+      shadowRadius: 24,
+      shadowOffset: { width: 0, height: 10 },
+      elevation: 10,
+    },
+    hero: {
+      shadowColor: color,
+      shadowOpacity: 0.16,
+      shadowRadius: 26,
+      shadowOffset: { width: 0, height: 12 },
+      elevation: 6,
+    },
+  }) as const;
 
 export const fontSize = {
   xxs: 11,

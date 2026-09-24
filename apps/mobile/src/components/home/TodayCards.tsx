@@ -12,6 +12,7 @@
  * the day strip is chronological in the data and RTL layout reverses it on screen by itself.
  */
 
+import { Image } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { useMemo } from 'react';
@@ -22,6 +23,7 @@ import {
   Text,
   View,
   type TextStyle,
+  type ImageStyle,
   type ViewStyle,
 } from 'react-native';
 
@@ -33,7 +35,7 @@ import {
   type WeekSummary, type MonthWeeks } from '../../db/home.js';
 import type { TargetsResult } from '../../db/metrics.js';
 import { useTheme } from '../../ThemeProvider.js';
-import { radius, type ColorPalette } from '../../theme.js';
+import { radius, shadow, type ColorPalette } from '../../theme.js';
 import { useUnit } from '../../UnitsProvider.js';
 import { formatBodyWeight, kgToDisplay, weightUnitKey } from '../../units.js';
 import { WeightSparkline } from '../WeightSparkline.js';
@@ -51,17 +53,54 @@ const DAY_INITIALS = ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'] as const;
  * and the mark and name that briefly stood in the bubble's place are in the masthead above,
  * where every other screen has them too.
  */
-export function GreetingRow({ greeting, date }: { greeting: string; date: string }) {
+export function GreetingRow({
+  greeting,
+  date,
+  name,
+  avatarUri,
+  onOpenProfile,
+}: {
+  greeting: string;
+  date: string;
+  /** Who is being greeted. Empty before anyone has signed in. */
+  name?: string;
+  /** The profile picture, when one has been chosen; initials otherwise. */
+  avatarUri?: string | null;
+  onOpenProfile?: () => void;
+}) {
   const { colors } = useTheme();
   const s = useMemo(() => createStyles(colors), [colors]);
+  const initials = (name ?? '').trim().slice(0, 2).toUpperCase();
 
   return (
     <View style={s.greetingRow}>
+      <Pressable
+        onPress={onOpenProfile}
+        disabled={!onOpenProfile}
+        accessibilityRole={onOpenProfile ? 'button' : undefined}
+        style={({ pressed }) => [s.avatar, pressed && s.pressedSoft]}
+      >
+        {avatarUri ? (
+          <Image source={{ uri: avatarUri }} style={s.avatarImage} />
+        ) : (
+          <Text style={s.avatarText}>{initials || '·'}</Text>
+        )}
+      </Pressable>
+
       <View style={s.greetingText}>
         <Text style={s.greeting}>{greeting}</Text>
-        <Text style={s.date}>{date}</Text>
+        {name ? (
+          <Text style={s.greetingName} numberOfLines={1}>
+            {name}
+          </Text>
+        ) : null}
       </View>
 
+      <View style={s.datePill}>
+        <Text style={s.date} numberOfLines={1}>
+          {date}
+        </Text>
+      </View>
     </View>
   );
 }
@@ -478,6 +517,12 @@ function MacroBar({
 const createStyles = (colors: ColorPalette) =>
   StyleSheet.create<{
     greetingRow: ViewStyle;
+    greetingName: TextStyle;
+    avatar: ViewStyle;
+    avatarImage: ImageStyle;
+    avatarText: TextStyle;
+    datePill: ViewStyle;
+    pressedSoft: ViewStyle;
     greetingText: ViewStyle;
     greeting: TextStyle;
     date: TextStyle;
@@ -544,21 +589,40 @@ const createStyles = (colors: ColorPalette) =>
     macroFill: ViewStyle;
   }>({
     /* greeting ------------------------------------------------------------ */
-    greetingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-    greetingText: { flex: 1, gap: 2 },
+    greetingRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    greetingText: { flex: 1, gap: 1 },
+    greetingName: { color: colors.text, fontSize: 17, fontWeight: '700', textAlign: 'auto' },
+    avatar: {
+      width: 46,
+      height: 46,
+      borderRadius: radius.pill,
+      backgroundColor: colors.accentSoft,
+      alignItems: 'center',
+      justifyContent: 'center',
+      overflow: 'hidden',
+    },
+    avatarImage: { width: 46, height: 46 },
+    avatarText: { color: colors.accent, fontSize: 16, fontWeight: '700' },
+    datePill: {
+      paddingVertical: 6,
+      paddingHorizontal: 12,
+      borderRadius: radius.pill,
+      backgroundColor: colors.surface,
+      ...shadow(colors.shadow).card,
+    },
+    pressedSoft: { opacity: 0.75 },
     greeting: { color: colors.textMuted, fontSize: 13, lineHeight: 16, textAlign: 'auto' },
     date: { color: colors.text, fontSize: 24, fontWeight: '500', letterSpacing: -0.5, textAlign: 'auto' },
 
 
     /* today's workout ----------------------------------------------------- */
     todayCard: {
-      borderWidth: 1,
-      borderColor: colors.accentBorder,
       backgroundColor: colors.surface,
-      borderRadius: radius.lg,
+      borderRadius: radius.xl,
       padding: 20,
       gap: 16,
       overflow: 'hidden',
+      ...shadow(colors.shadow).hero,
     },
     todayHeader: { flexDirection: 'row', alignItems: 'stretch', justifyContent: 'space-between', gap: 12 },
     todayHeaderText: { flex: 1, gap: 4 },
@@ -662,10 +726,9 @@ const createStyles = (colors: ColorPalette) =>
     doneSecondary: { marginTop: 8, paddingVertical: 8, alignItems: 'center' },
     doneSecondaryText: { color: colors.textFaint, fontSize: 13 },
     restCard: {
-      borderWidth: 1,
-      borderColor: colors.borderSubtle,
       backgroundColor: colors.surface,
-      borderRadius: radius.lg,
+      borderRadius: radius.xl,
+      ...shadow(colors.shadow).card,
       paddingVertical: 28,
       paddingHorizontal: 20,
       alignItems: 'center',

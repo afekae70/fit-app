@@ -34,6 +34,7 @@ import {
   fontWeight,
   lineHeight,
   radius,
+  shadow,
   spacing,
   type ColorPalette,
 } from '../theme.js';
@@ -636,8 +637,8 @@ const createStyles = (colors: ColorPalette) =>
     card: {
       backgroundColor: colors.surface,
       borderRadius: radius.lg,
-      borderWidth: 1,
-      borderColor: colors.borderSubtle,
+      // Depth by shadow, not by outline — see the note on `shadow` in theme.ts.
+      ...shadow(colors.shadow).card,
       // 20 across and 18 down, from the handoff, rather than a uniform spacing token. Cards
       // elsewhere in the app already use these, and matching them is the whole point: a card
       // that is four pixels tighter than the one on the previous screen is what makes an app
