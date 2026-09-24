@@ -35,6 +35,7 @@ import {
   type WeekSummary, type MonthWeeks } from '../../db/home.js';
 import type { TargetsResult } from '../../db/metrics.js';
 import { CountUp } from '../motion.js';
+import { ProgressRing } from '../ProgressRing.js';
 import { useTheme } from '../../ThemeProvider.js';
 import { radius, shadow, type ColorPalette } from '../../theme.js';
 import { useUnit } from '../../UnitsProvider.js';
@@ -247,22 +248,40 @@ export function StreakCard({
 
   return (
     <View style={s.card}>
-      <View style={s.streakHeader}>
-        <Text style={s.streakTitle}>
-          {t('home.monthWeeks', {
-            month: monthName,
-            done: monthWeeks.completed,
-            total: monthWeeks.weeks,
-          })}
-        </Text>
-        <Text style={s.streakCount}>
-          {t('home.streakThisWeek', {
-            done: monthWeeks.thisWeek.trained,
-            target: monthWeeks.thisWeek.target,
-          })}
-        </Text>
-      </View>
-
+      <View style={s.streakHeader}>
+        {/* The week as a ring: how much of the target is behind you, in one glance. */}
+        <ProgressRing
+          fraction={
+            monthWeeks.thisWeek.target > 0
+              ? monthWeeks.thisWeek.trained / monthWeeks.thisWeek.target
+              : 0
+          }
+          size={78}
+          thickness={9}
+        >
+          <Text style={s.ringValue}>
+            {monthWeeks.thisWeek.trained}
+            <Text style={s.ringTarget}>/{monthWeeks.thisWeek.target}</Text>
+          </Text>
+        </ProgressRing>
+
+        <View style={s.streakHeaderText}>
+          <Text style={s.streakCount}>
+            {t('home.streakThisWeek', {
+              done: monthWeeks.thisWeek.trained,
+              target: monthWeeks.thisWeek.target,
+            })}
+          </Text>
+          <Text style={s.streakTitle}>
+            {t('home.monthWeeks', {
+              month: monthName,
+              done: monthWeeks.completed,
+              total: monthWeeks.weeks,
+            })}
+          </Text>
+        </View>
+      </View>
+
       <View style={s.strip}>
         {days.map((day) => {
           const weekday = DAY_INITIALS[new Date(`${day.date}T00:00:00`).getDay()];
@@ -537,6 +556,9 @@ const createStyles = (colors: ColorPalette) =>
     dayTrackToday: ViewStyle;
     dayFill: ViewStyle;
     dayLabelToday: TextStyle;
+    streakHeaderText: ViewStyle;
+    ringValue: TextStyle;
+    ringTarget: TextStyle;
     statValueRow: ViewStyle;
     statSun: ViewStyle;
     statCoral: ViewStyle;
@@ -795,7 +817,10 @@ const createStyles = (colors: ColorPalette) =>
       textAlign: 'center',
       maxWidth: 300,
     },
-    streakHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 },
+    streakHeader: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+    streakHeaderText: { flex: 1, gap: 4 },
+    ringValue: { color: colors.text, fontSize: 22, fontWeight: '700', fontVariant: ['tabular-nums'] },
+    ringTarget: { color: colors.textFaint, fontSize: 13, fontWeight: '500' },
     streakTitle: { color: colors.text, fontSize: 15, fontWeight: '500', textAlign: 'auto' },
     streakCount: { color: colors.textFaint, fontSize: 12, textAlign: 'auto' },
 

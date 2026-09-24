@@ -42,7 +42,7 @@ import {
 } from '../units.js';
 import { WEIGHT_STEP_KG, WEIGHT_STEP_LB } from '../workout/derived.js';
 import { valueOrClearToCommit } from '../workout/typedEntry.js';
-import { duration, fontSize, radius, spacing, type ColorPalette } from '../theme.js';
+import { duration, fontSize, radius, shadow, spacing, type ColorPalette } from '../theme.js';
 
 export interface PreviousSet {
   set_index: number;
@@ -571,9 +571,8 @@ const createStyles = (colors: ColorPalette) =>
   }>({
   card: {
     backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
+    borderRadius: radius.xl,
+    ...shadow(colors.shadow).card,
     padding: spacing.md,
     marginBottom: spacing.md,
   },

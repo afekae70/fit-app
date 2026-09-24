@@ -21,7 +21,7 @@ import { StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-na
 
 import type { SetRow } from '../../db/workouts.js';
 import { useTheme } from '../../ThemeProvider.js';
-import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../../theme.js';
+import { fontSize, fontWeight, radius, shadow, spacing, type ColorPalette } from '../../theme.js';
 import { useUnit } from '../../UnitsProvider.js';
 import {
   distanceUnitKey,
@@ -150,9 +150,8 @@ const createStyles = (colors: ColorPalette) =>
   }>({
     card: {
       backgroundColor: colors.surface,
-      borderRadius: radius.lg,
-      borderWidth: 1,
-      borderColor: colors.borderSubtle,
+      borderRadius: radius.xl,
+      ...shadow(colors.shadow).card,
       padding: 14,
       gap: 12,
     },

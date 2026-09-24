@@ -23,7 +23,7 @@ import {
 
 import type { PlanDayTiming } from '../../db/plans.js';
 import { useTheme } from '../../ThemeProvider.js';
-import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../../theme.js';
+import { fontSize, fontWeight, radius, shadow, spacing, type ColorPalette } from '../../theme.js';
 import { formatRemaining } from '../../workout/derived.js';
 import {
   buildPhases,
@@ -158,9 +158,8 @@ const createStyles = (colors: ColorPalette) =>
   }>({
     card: {
       backgroundColor: colors.surface,
-      borderRadius: radius.lg,
-      borderWidth: 1,
-      borderColor: colors.borderSubtle,
+      borderRadius: radius.xl,
+      ...shadow(colors.shadow).card,
       padding: spacing.md,
       gap: spacing.sm,
       marginTop: spacing.md,

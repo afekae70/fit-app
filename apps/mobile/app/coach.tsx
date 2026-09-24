@@ -43,7 +43,7 @@ import { activatePlan, addPlanDay, addPlanDayExercise, createPlan } from '../src
 import { getExecutor, newId } from '../src/db/provider.js';
 import { KeyboardSafe } from '../src/components/KeyboardSafe.js';
 import { useTheme } from '../src/ThemeProvider.js';
-import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../src/theme.js';
+import { fontSize, fontWeight, radius, shadow, spacing, type ColorPalette } from '../src/theme.js';
 
 /** Placeholder shown from send() until the first token, tool call, or error arrives. */
 interface PendingBubble {
@@ -489,10 +489,9 @@ const createStyles = (colors: ColorPalette) =>
   },
   suggestion: {
     padding: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
     backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    ...shadow(colors.shadow).card,
   },
   suggestionText: { color: colors.textSecondary, fontSize: fontSize.sm, textAlign: 'auto' },
   composer: {

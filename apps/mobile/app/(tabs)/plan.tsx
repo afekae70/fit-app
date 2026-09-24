@@ -88,7 +88,7 @@ import { syncWorkoutReminders } from '../../src/reminders/sync.js';
 import { hapticLight } from '../../src/haptics.js';
 import { isRtlLanguage, type Language } from '../../src/i18n/index.js';
 import { useTheme } from '../../src/ThemeProvider.js';
-import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../../src/theme.js';
+import { fontSize, fontWeight, radius, shadow, spacing, type ColorPalette } from '../../src/theme.js';
 
 type DayStatus = {
   id: string;
@@ -1175,9 +1175,8 @@ const createStyles = (colors: ColorPalette) =>
     },
     dayCard: {
       backgroundColor: colors.surface,
-      borderRadius: radius.lg,
-      borderWidth: 1,
-      borderColor: colors.borderSubtle,
+      borderRadius: radius.xl,
+      ...shadow(colors.shadow).card,
       // The workout's colour as the card's leading edge — the same colour it wears on the
       // calendar above, so the list is the grid's key rather than a second thing to learn.
       borderStartWidth: 4,

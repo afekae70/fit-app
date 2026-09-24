@@ -23,7 +23,7 @@ import { formatPlates, OLYMPIC_BAR, OLYMPIC_BAR_LB, platesPerSide } from '@fit/s
 import { useUnit } from '../../UnitsProvider.js';
 import { formatVolume, kgToDisplay, weightUnitKey } from '../../units.js';
 import type { ProgressionAdvice } from '@fit/shared/calculations';
-import { radius, type ColorPalette } from '../../theme.js';
+import { radius, shadow, type ColorPalette } from '../../theme.js';
 import type { DragHandleProps } from '../DragReorderList.js';
 import { SetRow } from './SetRow.js';
 
@@ -523,10 +523,9 @@ const createStyles = (colors: ColorPalette) =>
     visualBanner: { alignSelf: 'stretch' },
     visualThumb: { width: 56 },
     card: {
-      borderWidth: 1,
-      borderColor: colors.borderSubtle,
       backgroundColor: colors.surface,
-      borderRadius: radius.lg,
+      borderRadius: radius.xl,
+      ...shadow(colors.shadow).card,
       padding: 14,
       gap: 12,
     },

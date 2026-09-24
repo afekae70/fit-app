@@ -41,7 +41,7 @@ import { getLatestWeight } from '../src/db/metrics.js';
 import { getWorkoutStreak } from '../src/db/workouts.js';
 import { personalRecords } from '../src/db/progression.js';
 import { useTheme } from '../src/ThemeProvider.js';
-import { radius, type ColorPalette } from '../src/theme.js';
+import { radius, shadow, type ColorPalette } from '../src/theme.js';
 
 const WEEKLY_TARGET = 4;
 
@@ -267,10 +267,9 @@ const createStyles = (colors: ColorPalette) =>
     statRow: { flexDirection: 'row', gap: 10 },
     statCard: {
       flex: 1,
-      borderWidth: 1,
-      borderColor: colors.borderSubtle,
       backgroundColor: colors.surface,
-      borderRadius: radius.lg,
+      borderRadius: radius.xl,
+      ...shadow(colors.shadow).card,
       paddingVertical: 14,
       paddingHorizontal: 12,
       gap: 4,
@@ -285,10 +284,9 @@ const createStyles = (colors: ColorPalette) =>
     statLabel: { color: colors.textFaint, fontSize: 11, textAlign: 'auto' },
 
     group: {
-      borderWidth: 1,
-      borderColor: colors.borderSubtle,
       backgroundColor: colors.surface,
-      borderRadius: radius.lg,
+      borderRadius: radius.xl,
+      ...shadow(colors.shadow).card,
       overflow: 'hidden',
     },
     row: {

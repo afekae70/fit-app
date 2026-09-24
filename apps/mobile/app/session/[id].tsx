@@ -64,7 +64,7 @@ import {
   type WorkoutSessionRow,
 } from '../../src/db/workouts.js';
 import { useTheme } from '../../src/ThemeProvider.js';
-import { fontSize, radius, spacing, type ColorPalette } from '../../src/theme.js';
+import { fontSize, radius, shadow, spacing, type ColorPalette } from '../../src/theme.js';
 
 const EXERCISE_BY_KEY = new Map<string, ExerciseSeed>(
   EXERCISE_SEED.map((exercise) => [exercise.nameEn, exercise]),
@@ -511,10 +511,9 @@ const createStyles = (colors: ColorPalette) =>
   action: {
     flex: 1,
     paddingVertical: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
     backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    ...shadow(colors.shadow).card,
     alignItems: 'center',
   },
   actionPrimary: { borderColor: colors.accent, backgroundColor: colors.accentSoft },

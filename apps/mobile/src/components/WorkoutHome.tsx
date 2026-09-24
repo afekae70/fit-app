@@ -29,7 +29,7 @@ import { HISTORY_PERIODS, type HistoryPeriod } from '../workout/historyPeriod.js
 import { useTheme } from '../ThemeProvider.js';
 import { useUnit } from '../UnitsProvider.js';
 import { formatVolume, weightUnitKey } from '../units.js';
-import { fontSize, radius, spacing, type ColorPalette } from '../theme.js';
+import { fontSize, radius, shadow, spacing, type ColorPalette } from '../theme.js';
 import { EmptyState, ScreenHeader } from './ui.js';
 
 export interface WorkoutHomeProps {
@@ -229,9 +229,8 @@ const createStyles = (colors: ColorPalette) =>
   pressed: { opacity: 0.7 },
   historyRow: {
     backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
+    ...shadow(colors.shadow).card,
     padding: spacing.md,
     marginTop: spacing.sm,
   },

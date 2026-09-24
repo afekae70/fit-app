@@ -24,7 +24,7 @@ import { Pressable, StyleSheet, Text, View, type TextStyle, type ViewStyle } fro
 
 import { hapticMedium, hapticSuccess } from '../../haptics.js';
 import { useTheme } from '../../ThemeProvider.js';
-import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../../theme.js';
+import { fontSize, fontWeight, radius, shadow, spacing, type ColorPalette } from '../../theme.js';
 import { formatRemaining } from '../../workout/derived.js';
 import {
   advance,
@@ -367,9 +367,8 @@ const createStyles = (colors: ColorPalette) =>
   }>({
     card: {
       backgroundColor: colors.surface,
-      borderRadius: radius.lg,
-      borderWidth: 1,
-      borderColor: colors.borderSubtle,
+      borderRadius: radius.xl,
+      ...shadow(colors.shadow).card,
       padding: spacing.lg,
       gap: spacing.md,
       marginTop: spacing.md,
