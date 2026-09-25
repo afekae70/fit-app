@@ -32,8 +32,11 @@ import { useActionSheet } from './ActionSheetProvider.js';
  *
  * Nothing here is a tab, with one exception added at the top when it applies: the way home. The
  * screens in this list are pushed over the tabs, and from one of them the bar is out of reach —
- * so the menu that got you there is also the way back. On the home screen itself it is left out,
- * because an entry that goes where you already are is an entry that does nothing.
+ * so the menu that got you there is also the way back.
+ *
+ * Whichever screen is open is left out of the list, home included. An entry that goes where you
+ * already are does nothing, and a list where one line is inert is a list every line of which has
+ * to be doubted.
  */
 const DESTINATIONS: readonly { route: Href; label: string }[] = [
   { route: '/profile', label: 'menu.profile' },
@@ -56,8 +59,9 @@ export function MenuButton({ pushToEnd = false }: { pushToEnd?: boolean }) {
 
   const open = () => {
     void (async () => {
-      const destinations =
-        pathname === HOME ? DESTINATIONS : [{ route: HOME, label: 'menu.home' }, ...DESTINATIONS];
+      const destinations = [{ route: HOME, label: 'menu.home' }, ...DESTINATIONS].filter(
+        (entry) => entry.route !== pathname,
+      );
 
       const choice = await ask({
         title: t('menu.title'),
@@ -66,9 +70,6 @@ export function MenuButton({ pushToEnd = false }: { pushToEnd?: boolean }) {
       const target = choice === null ? null : destinations[choice];
       if (!target) return;
 
-      // Going to where you already are would push a second copy onto the stack, and the only
-      // sign of it would be a back button that has to be pressed twice to leave.
-      if (target.route === pathname) return;
       // The tabs are navigated to, not pushed: pushing the home tab would stack it on top of
       // the screen you came from instead of returning to it.
       if (target.route === HOME) router.navigate(HOME);
