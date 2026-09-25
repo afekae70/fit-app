@@ -1,9 +1,10 @@
 /**
  * Design tokens — Aurora.
  *
- * A daylight scheme: a soft periwinkle ground, white cards that lift off it with a wide, faint
- * shadow, and one confident blue for anything live or actionable. The night palette is the same
- * scheme after dark — the same accent, the same rhythm — rather than a different design.
+ * Taken from the app's own logo: the violet of the figure, the pink it fades into, and the pale
+ * lavender it sits on. A daylight scheme — a lavender ground, white cards that lift off it with a
+ * wide, faint shadow, and the violet reserved for anything live or actionable. The night palette
+ * is the same scheme after dark, the same accent and the same rhythm, rather than a second design.
  *
  * Cards lift by shadow here rather than by outline. On a coloured ground a white card is already
  * a clear step, and six outlined boxes down a screen read as a grid competing with its contents;
@@ -63,87 +64,87 @@ export interface ColorPalette {
 }
 
 export const darkColors: ColorPalette = {
-  /* Surfaces — a blue-black ground, with the card a clear step above it. */
-  bg: '#101526',
-  surface: '#1A2137',
-  surfaceRaised: '#222B45',
-  surfaceHigh: '#2E3A5C',
+  /* Surfaces — a violet-black ground, with the card a clear step above it. */
+  bg: '#161226',
+  surface: '#201A38',
+  surfaceRaised: '#2A2246',
+  surfaceHigh: '#382E5C',
 
   /* Borders — kept quiet; depth is the shadow's job, not an outline's. */
-  border: '#2C3552',
-  borderStrong: '#3E4A6C',
-  borderSubtle: '#232B43',
+  border: '#332B52',
+  borderStrong: '#4A3F72',
+  borderSubtle: '#282145',
 
   /* Text — the ramp read downward from the brightest. */
-  text: '#EAEEFB',
-  textSecondary: '#BAC3DE',
-  textMuted: '#8E99BA',
-  textFaint: '#6B769A',
+  text: '#EEEAFB',
+  textSecondary: '#C6BDE4',
+  textMuted: '#9A8FBE',
+  textFaint: '#776C99',
 
-  /* Accent — the same blue as daylight, lifted to hold its own on a dark ground. */
-  accent: '#7D9BFF',
-  accentSoft: '#1E2949',
-  accentBorder: '#3A4D82',
-  accentLift: '#A9BEFF',
+  /* Accent — the logo's violet, lifted to hold its own on a dark ground. */
+  accent: '#A78BFA',
+  accentSoft: '#2A2150',
+  accentBorder: '#4B3E87',
+  accentLift: '#C7B4FF',
 
-  /* Status */
+  /* Status — `info` is the pink the logo fades into, which keeps the pair on brand. */
   warning: '#E0B45F',
   warningSoft: '#33301F',
   danger: '#E88A90',
   dangerSoft: '#3A2530',
-  info: '#6FB3E8',
-  infoSoft: '#17293A',
+  info: '#DD93CE',
+  infoSoft: '#33213A',
 
   /* Macro colours — one family, clear of the accent and of each other. */
-  protein: '#7D9BFF',
+  protein: '#A78BFA',
   carbs: '#E0B45F',
-  fat: '#E58ABF',
+  fat: '#DD93CE',
 
-  tileSun: '#3B351F',
-  tileCoral: '#3B2A2A',
+  tileSun: '#3B331F',
+  tileCoral: '#3A2442',
   shadow: '#000000',
 };
 
 export const lightColors: ColorPalette = {
-  /* Surfaces — a periwinkle ground with white cards on it, which is the whole look. */
-  bg: '#E9EDF9',
+  /* Surfaces — the lavender the logo sits on, with white cards on it. */
+  bg: '#EFEBFA',
   surface: '#FFFFFF',
-  surfaceRaised: '#F2F5FE',
-  surfaceHigh: '#E1E8FA',
+  surfaceRaised: '#F6F3FE',
+  surfaceHigh: '#E6DFFA',
 
   /* Borders — a hair, for the few things that are genuinely edges. */
-  border: '#DBE2F3',
-  borderStrong: '#C2CBE6',
-  borderSubtle: '#EDF1FB',
+  border: '#E3DCF5',
+  borderStrong: '#CCC2EA',
+  borderSubtle: '#F0ECFB',
 
-  /* Text — deep navy rather than black, so it belongs to the same family as the ground. */
-  text: '#18213A',
-  textSecondary: '#3A4666',
-  textMuted: '#6E7A9B',
-  textFaint: '#98A2BE',
+  /* Text — deep violet-navy rather than black, so it belongs to the same family as the ground. */
+  text: '#241C3D',
+  textSecondary: '#473A6B',
+  textMuted: '#7A6E9B',
+  textFaint: '#A79BC4',
 
-  /* Accent */
-  accent: '#4C6FE7',
-  accentSoft: '#E5EBFD',
-  accentBorder: '#BCCAF8',
-  accentLift: '#2F51C4',
+  /* Accent — the logo's violet, one rung darker so white type on it holds contrast. */
+  accent: '#7C5CD6',
+  accentSoft: '#EDE7FB',
+  accentBorder: '#C9B8F2',
+  accentLift: '#5B3FB0',
 
   /* Status */
   warning: '#B07C1C',
   warningSoft: '#FBEFC9',
   danger: '#C8484E',
   dangerSoft: '#FBDEDF',
-  info: '#2F7FC4',
-  infoSoft: '#DCEBF9',
+  info: '#B4559E',
+  infoSoft: '#F8E6F4',
 
   /* Macro colours */
-  protein: '#4C6FE7',
+  protein: '#7C5CD6',
   carbs: '#C09524',
-  fat: '#BE6295',
+  fat: '#B4559E',
 
   tileSun: '#F7E9B8',
-  tileCoral: '#F9DECC',
-  shadow: '#1B2A57',
+  tileCoral: '#F4DDF1',
+  shadow: '#2A1B57',
 };
 
 /** Default export for the rare theme-agnostic case. Components should use `useTheme()`. */
