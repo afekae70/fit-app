@@ -17,12 +17,15 @@
  *
  * The app icon used to sit beside the name. It is drawn to be read at launcher size against a
  * home screen, and shrunk into a row above the app's own content it read as a sticker rather
- * than a mark. The name alone carries the same thing without competing with the screen.
+ * than a mark. The name alone carries the same thing without competing with the screen — in the
+ * brand's own violet, over a wash of it that fades out before the page begins, which is as much
+ * of the logo as belongs above someone's training.
  */
 
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTheme } from '../ThemeProvider.js';
@@ -37,6 +40,14 @@ export function BrandBar() {
 
   return (
     <View style={[s.bar, { paddingTop: insets.top + spacing.sm }]}>
+      {/* The wash, not a fill: the bar keeps the page's own ground underneath it and only
+          carries a breath of the accent at the very top of the screen. */}
+      <LinearGradient
+        colors={[colors.accentSoft, colors.bg]}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
+
       <Text style={s.name}>{t('common.appName')}</Text>
 
       {/* Last, so it is drawn on top. The name above stretches the full width of the row, and
@@ -59,7 +70,7 @@ const createStyles = (colors: ColorPalette) =>
       // A hairline, because the page now scrolls underneath rather than carrying this along with
       // it: without a line, text arriving from below reaches the name and the two read as one.
       borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: colors.borderSubtle,
+      borderBottomColor: colors.accentBorder,
     },
     /* Out of the flow, so the brand below is centred on the screen and not on what is left of
        it. Pinned vertically to the row's own bottom half, which is where the content sits once
@@ -71,7 +82,7 @@ const createStyles = (colors: ColorPalette) =>
       justifyContent: 'center',
     },
     name: {
-      color: colors.text,
+      color: colors.accent,
       fontSize: fontSize.xl,
       fontWeight: fontWeight.bold,
       textAlign: 'center',
