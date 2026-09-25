@@ -29,8 +29,11 @@ import { useActionSheet } from './ActionSheetProvider.js';
  *
  * Ordered by how close each one is to training: the profile and the coach shape what the plan
  * says, measurements and gyms are recorded alongside it, and backup and settings are maintenance.
- * Nothing here is a tab — a menu that repeats the bar underneath it teaches people to ignore
- * both.
+ *
+ * Nothing here is a tab, with one exception added at the top when it applies: the way home. The
+ * screens in this list are pushed over the tabs, and from one of them the bar is out of reach —
+ * so the menu that got you there is also the way back. On the home screen itself it is left out,
+ * because an entry that goes where you already are is an entry that does nothing.
  */
 const DESTINATIONS: readonly { route: Href; label: string }[] = [
   { route: '/profile', label: 'menu.profile' },
@@ -42,6 +45,9 @@ const DESTINATIONS: readonly { route: Href; label: string }[] = [
   { route: '/settings', label: 'menu.settings' },
 ];
 
+/** The home tab's own path, as `usePathname` reports it. */
+const HOME: Href = '/';
+
 export function MenuButton({ pushToEnd = false }: { pushToEnd?: boolean }) {
   const { t } = useTranslation();
   const { ask } = useActionSheet();
@@ -50,17 +56,23 @@ export function MenuButton({ pushToEnd = false }: { pushToEnd?: boolean }) {
 
   const open = () => {
     void (async () => {
+      const destinations =
+        pathname === HOME ? DESTINATIONS : [{ route: HOME, label: 'menu.home' }, ...DESTINATIONS];
+
       const choice = await ask({
         title: t('menu.title'),
-        actions: DESTINATIONS.map((entry) => ({ label: t(entry.label) })),
+        actions: destinations.map((entry) => ({ label: t(entry.label) })),
       });
-      const target = choice === null ? null : DESTINATIONS[choice];
+      const target = choice === null ? null : destinations[choice];
       if (!target) return;
 
       // Going to where you already are would push a second copy onto the stack, and the only
       // sign of it would be a back button that has to be pressed twice to leave.
       if (target.route === pathname) return;
-      router.push(target.route);
+      // The tabs are navigated to, not pushed: pushing the home tab would stack it on top of
+      // the screen you came from instead of returning to it.
+      if (target.route === HOME) router.navigate(HOME);
+      else router.push(target.route);
     })();
   };
 

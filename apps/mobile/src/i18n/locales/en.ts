@@ -34,6 +34,7 @@ export const en = {
     sets: 'sets',
   },
   menu: {
+    home: 'Home',
     title: 'Menu',
     open: 'Open menu',
     profile: 'Profile',

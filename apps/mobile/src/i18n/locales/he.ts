@@ -28,6 +28,7 @@ export const he = {
     sets: 'סטים',
   },
   menu: {
+    home: 'מסך הבית',
     title: 'תפריט',
     open: 'פתח תפריט',
     profile: 'פרופיל',
