@@ -681,6 +681,15 @@ export const en = {
     bleOff: 'Bluetooth is off. Turn it on and try again.',
     blePermission: 'Bluetooth permission is required to scan.',
   },
+  cardio: {
+    start: 'Start',
+    pause: 'Pause',
+    resume: 'Resume',
+    finish: 'Finish',
+    finished: 'Finished',
+    pace: 'pace per {{unit}}',
+    speed: '{{unit}} per hour',
+  },
   interval: {
     roundOf: 'round {{current}} of {{total}}',
     rounds: 'Rounds',

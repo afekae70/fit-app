@@ -1218,6 +1218,7 @@ export default function WorkoutsScreen() {
                 }}
                 // A walk or a ride: how long and how far, where the weights would be.
                 cardio={seed.loadType === 'cardio'}
+                cardioKey={exercise.id}
                 onChangeDuration={(i, seconds) => {
                   const set = exercise.sets[i];
                   if (set) patchSet(set.id, { durationSeconds: seconds });

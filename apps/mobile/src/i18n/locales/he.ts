@@ -674,6 +674,15 @@ export const he = {
     bleOff: 'הבלוטות׳ כבוי. הפעל אותו ונסה שוב.',
     blePermission: 'נדרשת הרשאת בלוטות׳ כדי לסרוק.',
   },
+  cardio: {
+    start: 'התחל',
+    pause: 'עצור',
+    resume: 'המשך',
+    finish: 'סיים',
+    finished: 'הסתיים',
+    pace: 'קצב לכל {{unit}}',
+    speed: '{{unit}} לשעה',
+  },
   interval: {
     roundOf: 'סיבוב {{current}} מתוך {{total}}',
     rounds: 'סיבובים',

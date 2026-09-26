@@ -25,6 +25,7 @@ import { formatVolume, kgToDisplay, metresToDisplay, weightUnitKey } from '../..
 import type { ProgressionAdvice } from '@fit/shared/calculations';
 import { radius, shadow, type ColorPalette } from '../../theme.js';
 import type { DragHandleProps } from '../DragReorderList.js';
+import { CardioSession } from './CardioSession.js';
 import { SetRow } from './SetRow.js';
 
 export interface PreviousSet {
@@ -137,6 +138,8 @@ export interface ExercisePanelProps {
   cardio?: boolean;
   onChangeDuration?: (setIndex: number, seconds: number) => void;
   onChangeDistance?: (setIndex: number, metres: number) => void;
+  /** Cardio: this exercise's own key, so a run in progress survives the app being closed. */
+  cardioKey?: string;
 }
 
 export function ExercisePanel({
@@ -166,6 +169,7 @@ export function ExercisePanel({
   cardio = false,
   onChangeDuration,
   onChangeDistance,
+  cardioKey,
 }: ExercisePanelProps) {
   const { t } = useTranslation();
   const { colors } = useTheme();
@@ -346,71 +350,87 @@ export function ExercisePanel({
         </Pressable>
       ) : null}
 
-      <View style={s.table}>
-      {banner ? (
-        <Text style={s.tablePrevious} numberOfLines={1}>
-          {previousLabel ? `${t('workout.lastTime')} · ${previousLabel}` : t('workout.firstTime')}
-        </Text>
-      ) : null}
-      <View style={s.columns}>
-        <Text style={[s.columnLabel, s.columnIndex]}>#</Text>
-        <Text style={[s.columnLabel, s.columnField]}>
-          {cardio ? t('workout.duration') : t('workout.weight')}
-        </Text>
-        <Text style={[s.columnLabel, s.columnField]}>
-          {cardio ? t('workout.distance') : t('workout.reps')}
-        </Text>
-        <View style={s.columnCheck} />
-      </View>
+      {/* A walk or a ride is one continuous effort, not a list of sets: a clock, a distance,
+          and the pace the two of them make. */}
+      {cardio ? (
+        <CardioSession
+          storageKey={cardioKey ?? name}
+          durationSeconds={sets[0]?.durationSeconds ?? null}
+          distanceM={sets[0]?.distanceM ?? null}
+          done={sets[0]?.done ?? false}
+          onChangeDuration={(seconds) => onChangeDuration?.(0, seconds)}
+          onChangeDistance={(metres) => onChangeDistance?.(0, metres)}
+          onToggleDone={() => onToggle(0)}
+        />
+      ) : (
+        <>
+        <View style={s.table}>
+        {banner ? (
+          <Text style={s.tablePrevious} numberOfLines={1}>
+            {previousLabel ? `${t('workout.lastTime')} · ${previousLabel}` : t('workout.firstTime')}
+          </Text>
+        ) : null}
+        <View style={s.columns}>
+          <Text style={[s.columnLabel, s.columnIndex]}>#</Text>
+          <Text style={[s.columnLabel, s.columnField]}>
+            {cardio ? t('workout.duration') : t('workout.weight')}
+          </Text>
+          <Text style={[s.columnLabel, s.columnField]}>
+            {cardio ? t('workout.distance') : t('workout.reps')}
+          </Text>
+          <View style={s.columnCheck} />
+        </View>
 
-      <View style={s.rows}>
-        {sets.map((set, index) => (
-          <SetRow
-            // Index as key: these rows have no stable id of their own here, and the list only ever
-            // grows at the end — appending never reorders what is above it.
-            key={index}
-            index={labels[index]?.ordinal ?? index + 1}
-            isWarmup={labels[index]?.kind === 'warmup'}
-            isDrop={labels[index]?.kind === 'drop'}
-            rpe={set.rpe}
-            toFailure={set.toFailure}
-            onOptions={onSetOptions ? () => onSetOptions(index) : undefined}
-            weightKg={set.weightKg}
-            reps={set.reps}
-            done={set.done}
-            fields={cardio ? 'cardio' : 'weights'}
-            durationSeconds={set.durationSeconds ?? null}
-            distanceM={set.distanceM ?? null}
-            onChangeWeight={(next) => onChangeWeight(index, next)}
-            onChangeReps={(next) => onChangeReps(index, next)}
-            onChangeDuration={(seconds) => onChangeDuration?.(index, seconds)}
-            onChangeDistance={(metres) => onChangeDistance?.(index, metres)}
-            onToggle={() => onToggle(index)}
-          />
-        ))}
-      </View>
+        <View style={s.rows}>
+          {sets.map((set, index) => (
+            <SetRow
+              // Index as key: these rows have no stable id of their own here, and the list only ever
+              // grows at the end — appending never reorders what is above it.
+              key={index}
+              index={labels[index]?.ordinal ?? index + 1}
+              isWarmup={labels[index]?.kind === 'warmup'}
+              isDrop={labels[index]?.kind === 'drop'}
+              rpe={set.rpe}
+              toFailure={set.toFailure}
+              onOptions={onSetOptions ? () => onSetOptions(index) : undefined}
+              weightKg={set.weightKg}
+              reps={set.reps}
+              done={set.done}
+              fields={cardio ? 'cardio' : 'weights'}
+              durationSeconds={set.durationSeconds ?? null}
+              distanceM={set.distanceM ?? null}
+              onChangeWeight={(next) => onChangeWeight(index, next)}
+              onChangeReps={(next) => onChangeReps(index, next)}
+              onChangeDuration={(seconds) => onChangeDuration?.(index, seconds)}
+              onChangeDistance={(metres) => onChangeDistance?.(index, metres)}
+              onToggle={() => onToggle(index)}
+            />
+          ))}
+        </View>
 
-      {/* Take one off, put one on — the pair the sets are adjusted with, side by side under them. */}
-      <View style={s.footer}>
-        <Pressable
-          onPress={onRemoveSet}
-          disabled={!onRemoveSet}
-          accessibilityRole="button"
-          accessibilityLabel={t('workout.removeLastSet')}
-          style={({ pressed }) => [s.setButton, !onRemoveSet && s.setButtonOff, pressed && s.pressed]}
-        >
-          <Text style={s.setButtonText}>− {t('workout.setShort')}</Text>
-        </Pressable>
-        <Pressable
-          onPress={onAddSet}
-          accessibilityRole="button"
-          accessibilityLabel={t('workout.addSet')}
-          style={({ pressed }) => [s.setButton, s.setButtonAdd, pressed && s.pressed]}
-        >
-          <Text style={[s.setButtonText, s.setButtonAddText]}>+ {t('workout.setShort')}</Text>
-        </Pressable>
-      </View>
-      </View>
+        {/* Take one off, put one on — the pair the sets are adjusted with, side by side under them. */}
+        <View style={s.footer}>
+          <Pressable
+            onPress={onRemoveSet}
+            disabled={!onRemoveSet}
+            accessibilityRole="button"
+            accessibilityLabel={t('workout.removeLastSet')}
+            style={({ pressed }) => [s.setButton, !onRemoveSet && s.setButtonOff, pressed && s.pressed]}
+          >
+            <Text style={s.setButtonText}>− {t('workout.setShort')}</Text>
+          </Pressable>
+          <Pressable
+            onPress={onAddSet}
+            accessibilityRole="button"
+            accessibilityLabel={t('workout.addSet')}
+            style={({ pressed }) => [s.setButton, s.setButtonAdd, pressed && s.pressed]}
+          >
+            <Text style={[s.setButtonText, s.setButtonAddText]}>+ {t('workout.setShort')}</Text>
+          </Pressable>
+        </View>
+        </View>
+        </>
+      )}
 
       {/* In the list there are no chips, so the warm-up keeps a quiet line of its own. */}
       {!banner && onAddWarmup && canAddWarmup ? (
