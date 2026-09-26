@@ -682,6 +682,7 @@ export const en = {
     blePermission: 'Bluetooth permission is required to scan.',
   },
   cardio: {
+    calories: 'calories (estimate)',
     start: 'Start',
     pause: 'Pause',
     resume: 'Resume',

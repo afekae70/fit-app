@@ -140,6 +140,9 @@ export interface ExercisePanelProps {
   onChangeDistance?: (setIndex: number, metres: number) => void;
   /** Cardio: this exercise's own key, so a run in progress survives the app being closed. */
   cardioKey?: string;
+  /** Cardio: the catalogue key and the latest weigh-in, for the calorie estimate. */
+  exerciseKey?: string;
+  bodyWeightKg?: number | null;
 }
 
 export function ExercisePanel({
@@ -170,6 +173,8 @@ export function ExercisePanel({
   onChangeDuration,
   onChangeDistance,
   cardioKey,
+  exerciseKey,
+  bodyWeightKg = null,
 }: ExercisePanelProps) {
   const { t } = useTranslation();
   const { colors } = useTheme();
@@ -355,6 +360,8 @@ export function ExercisePanel({
       {cardio ? (
         <CardioSession
           storageKey={cardioKey ?? name}
+          exerciseKey={exerciseKey ?? name}
+          bodyWeightKg={bodyWeightKg}
           durationSeconds={sets[0]?.durationSeconds ?? null}
           distanceM={sets[0]?.distanceM ?? null}
           done={sets[0]?.done ?? false}

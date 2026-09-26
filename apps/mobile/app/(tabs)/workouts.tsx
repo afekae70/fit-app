@@ -68,6 +68,7 @@ import {
   type HistoryPeriod,
 } from '../../src/workout/historyPeriod.js';
 import { getPlanDay, listPlanDayExercises, timingOf, type PlanDayTiming } from '../../src/db/plans.js';
+import { getLatestWeight } from '../../src/db/metrics.js';
 import { getExecutor, newId } from '../../src/db/provider.js';
 import { checkHealthAvailability, importForSession, requestHealthPermissions } from '../../src/health/reader.js';
 import { isExerciseStalling } from '../../src/db/progression.js';
@@ -164,6 +165,7 @@ export default function WorkoutsScreen() {
   const [typed, setTyped] = useState(true);
   const [gyms, setGyms] = useState<LocationRow[]>([]);
   const [gymId, setGymId] = useState<string | null>(null);
+  const [bodyWeightKg, setBodyWeightKg] = useState<number | null>(null);
   const [previous, setPrevious] = useState<Record<string, PreviousSet[] | null>>(
     {},
   );
@@ -225,6 +227,8 @@ export default function WorkoutsScreen() {
     setTyped(hasType(type));
     setGymId(type?.locationId ?? null);
     setGyms(await listLocations(db, userId));
+    // The latest weigh-in, which is half of the calorie estimate on a cardio effort.
+    setBodyWeightKg((await getLatestWeight(db, userId))?.weight_kg ?? null);
 
     const nextPrevious: Record<string, PreviousSet[] | null> = {};
     const nextStalling: Record<string, boolean> = {};
@@ -1219,6 +1223,8 @@ export default function WorkoutsScreen() {
                 // A walk or a ride: how long and how far, where the weights would be.
                 cardio={seed.loadType === 'cardio'}
                 cardioKey={exercise.id}
+                exerciseKey={exercise.exercise_key}
+                bodyWeightKg={bodyWeightKg}
                 onChangeDuration={(i, seconds) => {
                   const set = exercise.sets[i];
                   if (set) patchSet(set.id, { durationSeconds: seconds });

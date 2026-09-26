@@ -34,6 +34,7 @@ import { useTheme } from '../../ThemeProvider.js';
 import { useUnit } from '../../UnitsProvider.js';
 import { radius, type ColorPalette } from '../../theme.js';
 import { displayDistanceToMetres, distanceUnitKey, metresToDisplay } from '../../units.js';
+import { caloriesBurned, cardioKind, cardioMet } from '../../workout/calories.js';
 import {
   elapsedSeconds,
   formatDuration,
@@ -51,6 +52,10 @@ const KEEP_AWAKE_TAG = 'cardio-session';
 export interface CardioSessionProps {
   /** This exercise's own key, so a run in progress is found again after a restart. */
   storageKey: string;
+  /** The catalogue key, which decides how hard this kind of movement is. */
+  exerciseKey: string;
+  /** The latest weigh-in, which is half of any calorie estimate. Null, and none is shown. */
+  bodyWeightKg?: number | null;
   durationSeconds: number | null;
   distanceM: number | null;
   done: boolean;
@@ -62,6 +67,8 @@ export interface CardioSessionProps {
 
 export function CardioSession({
   storageKey,
+  exerciseKey,
+  bodyWeightKg = null,
   durationSeconds,
   distanceM,
   done,
@@ -123,6 +130,19 @@ export function CardioSession({
   const pace = pacePerUnit(seconds, distance);
   const speed = speedPerHour(seconds, distance);
   const unitLabel = t(`common.${distanceUnitKey(unit)}`);
+
+  /*
+   * Calories, estimated from how hard this kind of movement is at this speed and what the
+   * person weighs. Speed in km/h whatever the reader's units: the physiology is metric, and
+   * converting here keeps the estimate the same number for the same effort.
+   */
+  const speedKmh =
+    speed === null ? null : unit === 'imperial' ? Math.round(speed * 1.609 * 10) / 10 : speed;
+  const calories = caloriesBurned(
+    cardioMet(cardioKind(exerciseKey), speedKmh),
+    bodyWeightKg,
+    seconds,
+  );
 
   /** Saving the clock into the set is what makes the effort a record rather than a display. */
   const save = (next: CardioRun) => {
@@ -231,7 +251,7 @@ export function CardioSession({
 
       {/* What the two numbers say together. Shown only once both exist, because a pace computed
           from a distance nobody has entered yet is a number pretending to be a measurement. */}
-      {pace || speed ? (
+      {pace || speed || calories ? (
         <View style={s.stats}>
           {pace ? (
             <View style={s.stat}>
@@ -243,6 +263,13 @@ export function CardioSession({
             <View style={s.stat}>
               <Text style={s.statValue}>{speed}</Text>
               <Text style={s.statLabel}>{t('cardio.speed', { unit: unitLabel })}</Text>
+            </View>
+          ) : null}
+          {/* Called an estimate, because without a heart rate that is what it is. */}
+          {calories ? (
+            <View style={s.stat}>
+              <Text style={s.statValue}>{calories}</Text>
+              <Text style={s.statLabel}>{t('cardio.calories')}</Text>
             </View>
           ) : null}
         </View>

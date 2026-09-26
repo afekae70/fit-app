@@ -675,6 +675,7 @@ export const he = {
     blePermission: 'נדרשת הרשאת בלוטות׳ כדי לסרוק.',
   },
   cardio: {
+    calories: 'קלוריות (הערכה)',
     start: 'התחל',
     pause: 'עצור',
     resume: 'המשך',
