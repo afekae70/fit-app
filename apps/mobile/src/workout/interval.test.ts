@@ -10,6 +10,7 @@ import {
   pause,
   remainingSeconds,
   resume,
+  roundOfPhase,
   skip,
   startIntervals,
 } from './interval.js';
@@ -293,5 +294,27 @@ describe('announcing the next exercise', () => {
   it('stays quiet while paused', () => {
     const paused = pause(inRest(), T0 + s(56));
     expect(announcementDue(phases, paused, T0 + s(56), null)).toBeNull();
+  });
+});
+
+describe('which round a phase belongs to', () => {
+  // Two exercises, two rounds: work0 rest1 work1 rest0 work0 rest1 work1
+  const phases = buildPhases(2, 40, 10, 2);
+
+  it('counts from one and follows the list round again', () => {
+    expect(phases.map((_, i) => roundOfPhase(phases, i, 2))).toEqual([1, 1, 1, 2, 2, 2, 2]);
+  });
+
+  it('puts a rest with the round it leads into', () => {
+    // The rest at index 3 comes after the last exercise of round one.
+    expect(phases[3]?.kind).toBe('rest');
+    expect(roundOfPhase(phases, 3, 2)).toBe(2);
+  });
+
+  it('answers one for a single round, and for nonsense', () => {
+    const single = buildPhases(3, 30, 10);
+    expect(single.every((_, i) => roundOfPhase(single, i, 3) === 1)).toBe(true);
+    expect(roundOfPhase(single, 99, 3)).toBe(1);
+    expect(roundOfPhase(single, 0, 0)).toBe(1);
   });
 });

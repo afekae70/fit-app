@@ -682,6 +682,7 @@ export const en = {
     blePermission: 'Bluetooth permission is required to scan.',
   },
   interval: {
+    roundOf: 'round {{current}} of {{total}}',
     rounds: 'Rounds',
     roundCount_one: '1 round',
     roundCount_other: '{{count}} rounds',

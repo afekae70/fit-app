@@ -48,8 +48,9 @@ export function TimingCard({
   const { colors } = useTheme();
   const s = useMemo(() => createStyles(colors), [colors]);
 
+  // Every round, not one of them: the number under the steppers is how long the workout takes.
   const total = timing
-    ? buildPhases(exerciseCount, timing.workSeconds, timing.restSeconds).reduce(
+    ? buildPhases(exerciseCount, timing.workSeconds, timing.restSeconds, timing.rounds).reduce(
         (sum, phase) => sum + phase.seconds,
         0,
       )

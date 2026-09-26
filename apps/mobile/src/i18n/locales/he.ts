@@ -675,6 +675,7 @@ export const he = {
     blePermission: 'נדרשת הרשאת בלוטות׳ כדי לסרוק.',
   },
   interval: {
+    roundOf: 'סיבוב {{current}} מתוך {{total}}',
     rounds: 'סיבובים',
     roundCount_one: 'סיבוב אחד',
     roundCount_other: '{{count}} סיבובים',

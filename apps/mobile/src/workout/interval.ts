@@ -77,6 +77,25 @@ export function buildPhases(
 }
 
 /**
+ * Which time through the list a phase belongs to, counting from 1.
+ *
+ * Counted from the work phases before it rather than tracked as state: the phases are the list
+ * repeated, so how many have been reached is the round. A rest belongs to the round it leads
+ * into, which is what someone standing there waiting is about to do.
+ */
+export function roundOfPhase(
+  phases: readonly Phase[],
+  phaseIndex: number,
+  exerciseCount: number,
+): number {
+  if (exerciseCount <= 0) return 1;
+  const phase = phases[phaseIndex];
+  if (!phase) return 1;
+  const workBefore = phases.slice(0, phaseIndex).filter((p) => p.kind === 'work').length;
+  return Math.floor(workBefore / exerciseCount) + 1;
+}
+
+/**
  * Begin at an exercise's work phase.
  *
  * Not always the first: a workout interrupted by a phone call or a closed app is resumed from

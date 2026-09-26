@@ -30,6 +30,7 @@ import {
   advance,
   announcementDue,
   buildPhases,
+  roundOfPhase,
   countdownCue,
   isFinished,
   pause,
@@ -275,6 +276,7 @@ export function IntervalRunner({
   /* ---------------------------------------------------------------- running or paused */
 
   const phase = phases[state.phase]!;
+  const currentRound = roundOfPhase(phases, state.phase, exercises.length);
   const isWork = phase.kind === 'work';
   const exercise = exercises[phase.exercise];
   const left = remainingSeconds(state, now);
@@ -292,6 +294,11 @@ export function IntervalRunner({
         </Text>
         <Text style={s.position}>
           {t('interval.exerciseOf', { current: phase.exercise + 1, total: exercises.length })}
+          {/* Which time through, when there is more than one — otherwise the same exercise
+              coming round again reads as the timer having lost its place. */}
+          {rounds > 1
+            ? ` · ${t('interval.roundOf', { current: currentRound, total: rounds })}`
+            : ''}
         </Text>
       </View>
 
