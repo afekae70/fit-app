@@ -646,15 +646,15 @@ describe('timed workouts', () => {
     const plan = await createPlan(db, USER, newId, 'Core', clock);
     const abs = await addPlanDay(db, newId, plan, 'Abs');
 
-    await setPlanDayTiming(db, abs, { workSeconds: 50, restSeconds: 10 }, clock);
+    await setPlanDayTiming(db, abs, { workSeconds: 50, restSeconds: 10, rounds: 1 }, clock);
 
-    expect(timingOf((await getPlanDay(db, abs))!)).toEqual({ workSeconds: 50, restSeconds: 10 });
+    expect(timingOf((await getPlanDay(db, abs))!)).toEqual({ workSeconds: 50, restSeconds: 10, rounds: 1 });
   });
 
   it('turns back into an ordinary workout, clearing both values', async () => {
     const plan = await createPlan(db, USER, newId, 'Core', clock);
     const abs = await addPlanDay(db, newId, plan, 'Abs');
-    await setPlanDayTiming(db, abs, { workSeconds: 50, restSeconds: 10 }, clock);
+    await setPlanDayTiming(db, abs, { workSeconds: 50, restSeconds: 10, rounds: 1 }, clock);
 
     await setPlanDayTiming(db, abs, null, clock);
 
@@ -666,29 +666,29 @@ describe('timed workouts', () => {
   it('keeps a rest of zero as zero rather than as no timing', async () => {
     const plan = await createPlan(db, USER, newId, 'Core', clock);
     const abs = await addPlanDay(db, newId, plan, 'Abs');
-    await setPlanDayTiming(db, abs, { workSeconds: 30, restSeconds: 0 }, clock);
-    expect(timingOf((await getPlanDay(db, abs))!)).toEqual({ workSeconds: 30, restSeconds: 0 });
+    await setPlanDayTiming(db, abs, { workSeconds: 30, restSeconds: 0, rounds: 1 }, clock);
+    expect(timingOf((await getPlanDay(db, abs))!)).toEqual({ workSeconds: 30, restSeconds: 0, rounds: 1 });
   });
 
   it('only touches the day it was given', async () => {
     const plan = await createPlan(db, USER, newId, 'Split', clock);
     const abs = await addPlanDay(db, newId, plan, 'Abs');
     const legs = await addPlanDay(db, newId, plan, 'Legs');
-    await setPlanDayTiming(db, abs, { workSeconds: 50, restSeconds: 10 }, clock);
+    await setPlanDayTiming(db, abs, { workSeconds: 50, restSeconds: 10, rounds: 1 }, clock);
     expect(timingOf((await getPlanDay(db, legs))!)).toBeNull();
   });
 
   it('survives duplicating the week', async () => {
     const plan = await createPlan(db, USER, newId, 'Core', clock);
     const abs = await addPlanDay(db, newId, plan, 'Abs');
-    await setPlanDayTiming(db, abs, { workSeconds: 45, restSeconds: 15 }, clock);
+    await setPlanDayTiming(db, abs, { workSeconds: 45, restSeconds: 15, rounds: 1 }, clock);
 
     await duplicatePlanWeek(db, newId, plan);
 
     const days = await listPlanDays(db, plan);
     expect(days.map((d) => timingOf(d))).toEqual([
-      { workSeconds: 45, restSeconds: 15 },
-      { workSeconds: 45, restSeconds: 15 },
+      { workSeconds: 45, restSeconds: 15, rounds: 1 },
+      { workSeconds: 45, restSeconds: 15, rounds: 1 },
     ]);
   });
 });
@@ -701,7 +701,7 @@ describe('what the plan screen shows for each day', () => {
     await addPlanDayExercise(db, newId, push, 'Overhead Press', { targetSets: 3 });
     const abs = await addPlanDay(db, newId, plan, 'Abs');
     await addPlanDayExercise(db, newId, abs, 'Plank');
-    await setPlanDayTiming(db, abs, { workSeconds: 50, restSeconds: 10 }, clock);
+    await setPlanDayTiming(db, abs, { workSeconds: 50, restSeconds: 10, rounds: 1 }, clock);
 
     const [pushStatusRow, absStatusRow] = await listPlanDayStatus(db, USER, plan);
 
@@ -743,7 +743,7 @@ describe('adding an existing workout to another group', () => {
     await addPlanDay(db, newId, home, 'בטן', clock);
     await addPlanDayExercise(db, newId, push, 'Barbell Bench Press', { targetSets: 4, targetRepsMin: 6, targetRepsMax: 8 }, clock);
     await addPlanDayExercise(db, newId, push, 'Dip', { targetSets: 3 }, clock);
-    await setPlanDayTiming(db, push, { workSeconds: 50, restSeconds: 10 }, clock);
+    await setPlanDayTiming(db, push, { workSeconds: 50, restSeconds: 10, rounds: 1 }, clock);
     return { gym, home, push, pull };
   }
 
@@ -773,5 +773,25 @@ describe('adding an existing workout to another group', () => {
       ['Dip', 3],
     ]);
     expect(await listPlanDays(db, gym)).toHaveLength(2);
+  });
+});
+
+describe('rounds of a timed workout', () => {
+  it('stores how many times through the list, and reads it back', async () => {
+    const planId = await createPlan(db, USER, newId, 'מחזורים', clock);
+    const dayId = await addPlanDay(db, newId, planId, 'בטן', clock);
+    await setPlanDayTiming(db, dayId, { workSeconds: 40, restSeconds: 15, rounds: 3 }, clock);
+
+    const day = await getPlanDay(db, dayId);
+    expect(timingOf(day!)).toEqual({ workSeconds: 40, restSeconds: 15, rounds: 3 });
+  });
+
+  it('treats a day written before rounds existed as one round', async () => {
+    const planId = await createPlan(db, USER, newId, 'ישן', clock);
+    const dayId = await addPlanDay(db, newId, planId, 'בטן', clock);
+    await db.run(`UPDATE plan_days SET work_seconds = 50, rest_seconds = 10 WHERE id = ?`, [dayId]);
+
+    const day = await getPlanDay(db, dayId);
+    expect(timingOf(day!)?.rounds).toBe(1);
   });
 });

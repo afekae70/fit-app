@@ -40,23 +40,37 @@ export const DEFAULT_WORK_SECONDS = 50;
 export const DEFAULT_REST_SECONDS = 10;
 
 /**
- * Work, rest, work, rest … work. No rest after the last exercise: the workout is over, and a
- * ten-second countdown to nothing would be the timer inventing a phase.
+ * Work, rest, work, rest … work. No rest after the last exercise of the last round: the workout
+ * is over, and a ten-second countdown to nothing would be the timer inventing a phase.
  *
  * A rest of zero is allowed and means straight into the next exercise — a genuine format
  * (a circuit done back to back), not an error.
+ *
+ * `rounds` runs the whole list again from the top, which is how a circuit is actually trained:
+ * ten exercises three times through, not thirty exercises. The rest between the last exercise of
+ * one round and the first of the next is a rest like any other — a round boundary is not a
+ * reason to stand still longer, and the sets it logs are the same sets.
  */
 export function buildPhases(
   exerciseCount: number,
   workSeconds: number,
   restSeconds: number,
+  rounds = 1,
 ): Phase[] {
   const phases: Phase[] = [];
-  for (let exercise = 0; exercise < exerciseCount; exercise += 1) {
-    phases.push({ kind: 'work', exercise, seconds: workSeconds });
-    const isLast = exercise === exerciseCount - 1;
-    if (!isLast && restSeconds > 0) {
-      phases.push({ kind: 'rest', exercise: exercise + 1, seconds: restSeconds });
+  const total = Math.max(1, Math.floor(rounds));
+  for (let round = 0; round < total; round += 1) {
+    for (let exercise = 0; exercise < exerciseCount; exercise += 1) {
+      phases.push({ kind: 'work', exercise, seconds: workSeconds });
+      const isLastOfRound = exercise === exerciseCount - 1;
+      const isLastOverall = isLastOfRound && round === total - 1;
+      if (!isLastOverall && restSeconds > 0) {
+        phases.push({
+          kind: 'rest',
+          exercise: isLastOfRound ? 0 : exercise + 1,
+          seconds: restSeconds,
+        });
+      }
     }
   }
   return phases;

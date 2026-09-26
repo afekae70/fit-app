@@ -21,7 +21,7 @@ import type { UnitPreference } from '@fit/shared';
 import { formatPlates, OLYMPIC_BAR, OLYMPIC_BAR_LB, platesPerSide } from '@fit/shared/calculations';
 
 import { useUnit } from '../../UnitsProvider.js';
-import { formatVolume, kgToDisplay, weightUnitKey } from '../../units.js';
+import { formatVolume, kgToDisplay, metresToDisplay, weightUnitKey } from '../../units.js';
 import type { ProgressionAdvice } from '@fit/shared/calculations';
 import { radius, shadow, type ColorPalette } from '../../theme.js';
 import type { DragHandleProps } from '../DragReorderList.js';
@@ -30,6 +30,8 @@ import { SetRow } from './SetRow.js';
 export interface PreviousSet {
   weightKg: number | null;
   reps: number | null;
+  durationSeconds?: number | null;
+  distanceM?: number | null;
 }
 
 export interface ExerciseTarget {
@@ -126,6 +128,15 @@ export interface ExercisePanelProps {
   onShowMuscles?: () => void;
   /** Take the last set off — the other half of "+ set". Omitted when there is none to take. */
   onRemoveSet?: () => void;
+  /**
+   * Cardio: the sets hold minutes and distance rather than weight and reps.
+   *
+   * A walk or a ride is measured in how long and how far, and a row of weight fields for one is
+   * a row nobody can fill in truthfully.
+   */
+  cardio?: boolean;
+  onChangeDuration?: (setIndex: number, seconds: number) => void;
+  onChangeDistance?: (setIndex: number, metres: number) => void;
 }
 
 export function ExercisePanel({
@@ -152,6 +163,9 @@ export function ExercisePanel({
   onSwap,
   onShowMuscles,
   onRemoveSet,
+  cardio = false,
+  onChangeDuration,
+  onChangeDistance,
 }: ExercisePanelProps) {
   const { t } = useTranslation();
   const { colors } = useTheme();
@@ -183,7 +197,8 @@ export function ExercisePanel({
     return plates && load.remainder === 0 ? { bar: bar.kg, plates } : null;
   }, [onBarbell, sets, unit]);
   const targetLabel = target ? formatTarget(target, t) : null;
-  const previousLabel = previous && previous.length > 0 ? formatPrevious(previous, unit) : null;
+  const previousLabel =
+    previous && previous.length > 0 ? formatPrevious(previous, unit, cardio) : null;
 
   // Working sets numbered as if the warm-ups were not there — the same count the volume and the
   // charts already use, so the label agrees with the arithmetic rather than the array index.
@@ -339,8 +354,12 @@ export function ExercisePanel({
       ) : null}
       <View style={s.columns}>
         <Text style={[s.columnLabel, s.columnIndex]}>#</Text>
-        <Text style={[s.columnLabel, s.columnField]}>{t('workout.weight')}</Text>
-        <Text style={[s.columnLabel, s.columnField]}>{t('workout.reps')}</Text>
+        <Text style={[s.columnLabel, s.columnField]}>
+          {cardio ? t('workout.duration') : t('workout.weight')}
+        </Text>
+        <Text style={[s.columnLabel, s.columnField]}>
+          {cardio ? t('workout.distance') : t('workout.reps')}
+        </Text>
         <View style={s.columnCheck} />
       </View>
 
@@ -359,8 +378,13 @@ export function ExercisePanel({
             weightKg={set.weightKg}
             reps={set.reps}
             done={set.done}
+            fields={cardio ? 'cardio' : 'weights'}
+            durationSeconds={set.durationSeconds ?? null}
+            distanceM={set.distanceM ?? null}
             onChangeWeight={(next) => onChangeWeight(index, next)}
             onChangeReps={(next) => onChangeReps(index, next)}
+            onChangeDuration={(seconds) => onChangeDuration?.(index, seconds)}
+            onChangeDistance={(metres) => onChangeDistance?.(index, metres)}
             onToggle={() => onToggle(index)}
           />
         ))}
@@ -455,8 +479,28 @@ function formatTarget(target: ExerciseTarget, t: (key: string) => string): strin
   return reps ? `${t('workout.target')} ${sets} × ${reps}` : `${t('workout.target')} ${sets}`;
 }
 
-/** `82.5×8 · 82.5×7 · 80×7` — every set of the last session, in order, in the reader's units. */
-function formatPrevious(previous: readonly PreviousSet[], unit: UnitPreference): string {
+/**
+ * `82.5×8 · 82.5×7 · 80×7` — every set of the last session, in order, in the reader's units.
+ * For cardio it is what that training is instead: `32 min · 4.1 km`.
+ */
+function formatPrevious(
+  previous: readonly PreviousSet[],
+  unit: UnitPreference,
+  cardio: boolean,
+): string {
+  if (cardio) {
+    return previous
+      .map((p) =>
+        [
+          p.durationSeconds ? `${Math.round(p.durationSeconds / 60)}′` : null,
+          p.distanceM ? `${metresToDisplay(p.distanceM, unit)}` : null,
+        ]
+          .filter(Boolean)
+          .join(' · '),
+      )
+      .filter((entry) => entry !== '')
+      .join(' | ');
+  }
   return previous
     .map((p) =>
       p.weightKg === null

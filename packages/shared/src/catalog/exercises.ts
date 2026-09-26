@@ -34,7 +34,14 @@ export type LoadType =
   | 'bodyweight'
   | 'bodyweight_plus'
   | 'time'
-  | 'distance';
+  | 'distance'
+  /**
+   * Time and distance together, which is what a walk or a ride outdoors actually is: an hour
+   * covering seven kilometres says something neither number says alone. `time` and `distance`
+   * each keep one of them and are right for a plank and for a carry; this is for the training
+   * where both are the point.
+   */
+  | 'cardio';
 
 export interface ExerciseSeed {
   nameEn: string;
@@ -242,11 +249,17 @@ export const EXERCISE_SEED: readonly ExerciseSeed[] = [
   { nameEn: 'Side Plank (Other Side)', nameHe: 'פלאנק לצד השני', primaryMuscle: 'obliques', movementPattern: 'core', equipmentSlug: 'none', loadType: 'time', isUnilateral: true },
 
   /* ------------------------------------------------------------------------ cardio */
-  { nameEn: 'Treadmill Run', nameHe: 'ריצה על הליכון', primaryMuscle: 'cardio', movementPattern: 'cardio', equipmentSlug: 'treadmill', loadType: 'distance' },
-  { nameEn: 'Outdoor Run', nameHe: 'ריצה בחוץ', primaryMuscle: 'cardio', movementPattern: 'cardio', equipmentSlug: 'none', loadType: 'distance' },
-  { nameEn: 'Ruck March', nameHe: 'מסע עם משקל', primaryMuscle: 'cardio', secondaryMuscles: ['core', 'quads'], movementPattern: 'cardio', equipmentSlug: 'none', loadType: 'distance' },
-  { nameEn: 'Stationary Bike', nameHe: 'אופני כושר', primaryMuscle: 'cardio', movementPattern: 'cardio', equipmentSlug: 'stationary_bike', loadType: 'time' },
-  { nameEn: 'Rowing Machine', nameHe: 'מכונת חתירה', primaryMuscle: 'cardio', secondaryMuscles: ['mid_back'], movementPattern: 'cardio', equipmentSlug: 'rowing_machine', loadType: 'distance' },
+  { nameEn: 'Treadmill Run', nameHe: 'ריצה על הליכון', primaryMuscle: 'cardio', movementPattern: 'cardio', equipmentSlug: 'treadmill', loadType: 'cardio' },
+  { nameEn: 'Outdoor Run', nameHe: 'ריצה בחוץ', primaryMuscle: 'cardio', movementPattern: 'cardio', equipmentSlug: 'none', loadType: 'cardio' },
+  { nameEn: 'Walk', nameHe: 'הליכה', primaryMuscle: 'cardio', movementPattern: 'cardio', equipmentSlug: 'none', loadType: 'cardio' },
+  { nameEn: 'Treadmill Walk', nameHe: 'הליכה על הליכון', primaryMuscle: 'cardio', movementPattern: 'cardio', equipmentSlug: 'treadmill', loadType: 'cardio' },
+  { nameEn: 'Incline Walk', nameHe: 'הליכה בשיפוע', primaryMuscle: 'cardio', secondaryMuscles: ['glutes', 'calves'], movementPattern: 'cardio', equipmentSlug: 'treadmill', loadType: 'cardio' },
+  { nameEn: 'Outdoor Cycling', nameHe: 'רכיבת אופניים בחוץ', primaryMuscle: 'cardio', secondaryMuscles: ['quads'], movementPattern: 'cardio', equipmentSlug: 'none', loadType: 'cardio' },
+  { nameEn: 'Hike', nameHe: 'טיול רגלי', primaryMuscle: 'cardio', secondaryMuscles: ['quads', 'calves'], movementPattern: 'cardio', equipmentSlug: 'none', loadType: 'cardio' },
+  { nameEn: 'Swim', nameHe: 'שחייה', primaryMuscle: 'cardio', secondaryMuscles: ['lats', 'front_delts'], movementPattern: 'cardio', equipmentSlug: 'none', loadType: 'cardio' },
+  { nameEn: 'Ruck March', nameHe: 'מסע עם משקל', primaryMuscle: 'cardio', secondaryMuscles: ['core', 'quads'], movementPattern: 'cardio', equipmentSlug: 'none', loadType: 'cardio' },
+  { nameEn: 'Stationary Bike', nameHe: 'אופני כושר', primaryMuscle: 'cardio', movementPattern: 'cardio', equipmentSlug: 'stationary_bike', loadType: 'cardio' },
+  { nameEn: 'Rowing Machine', nameHe: 'מכונת חתירה', primaryMuscle: 'cardio', secondaryMuscles: ['mid_back'], movementPattern: 'cardio', equipmentSlug: 'rowing_machine', loadType: 'cardio' },
   { nameEn: 'Assault Bike', nameHe: 'אופני אוויר', primaryMuscle: 'cardio', movementPattern: 'cardio', equipmentSlug: 'assault_bike', loadType: 'time' },
   { nameEn: 'Jump Rope', nameHe: 'חבל קפיצה', primaryMuscle: 'cardio', secondaryMuscles: ['calves'], movementPattern: 'cardio', equipmentSlug: 'jump_rope', loadType: 'time' },
   { nameEn: 'Burpee', nameHe: 'ברפי', primaryMuscle: 'cardio', secondaryMuscles: ['chest', 'quads', 'core'], movementPattern: 'cardio', equipmentSlug: 'none', loadType: 'bodyweight_plus' },

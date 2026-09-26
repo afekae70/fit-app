@@ -63,12 +63,15 @@ export function IntervalRunner({
   exercises,
   workSeconds,
   restSeconds,
+  rounds = 1,
   firstUnfinished,
   onWorkDone,
 }: {
   exercises: readonly IntervalExercise[];
   workSeconds: number;
   restSeconds: number;
+  /** Times through the whole list. One unless the workout says otherwise. */
+  rounds?: number;
   /** Where to begin — the first exercise with nothing logged, so a resumed workout skips the done ones. */
   firstUnfinished: number;
   /** An exercise's work phase ran out: log it. */
@@ -79,8 +82,8 @@ export function IntervalRunner({
   const s = useMemo(() => createStyles(colors), [colors]);
 
   const phases = useMemo(
-    () => buildPhases(exercises.length, workSeconds, restSeconds),
-    [exercises.length, workSeconds, restSeconds],
+    () => buildPhases(exercises.length, workSeconds, restSeconds, rounds),
+    [exercises.length, workSeconds, restSeconds, rounds],
   );
 
   const [state, setState] = useState<IntervalState | null>(null);

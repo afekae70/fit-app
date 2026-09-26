@@ -43,6 +43,32 @@ describe('building the phases', () => {
     expect(buildPhases(3, 30, 0).every((phase) => phase.kind === 'work')).toBe(true);
   });
 
+  it('runs the whole list again for a second round, resting across the seam', () => {
+    const phases = buildPhases(2, 40, 10, 2);
+    expect(phases.map((p) => `${p.kind}${p.exercise}`)).toEqual([
+      'work0',
+      'rest1',
+      'work1',
+      'rest0',
+      'work0',
+      'rest1',
+      'work1',
+    ]);
+  });
+
+  it('still ends on work, however many rounds', () => {
+    for (const rounds of [1, 3, 5]) {
+      const phases = buildPhases(3, 30, 15, rounds);
+      expect(phases[phases.length - 1]?.kind).toBe('work');
+      expect(phases.filter((p) => p.kind === 'work')).toHaveLength(3 * rounds);
+    }
+  });
+
+  it('treats a nonsense round count as one round', () => {
+    expect(buildPhases(2, 30, 0, 0)).toHaveLength(2);
+    expect(buildPhases(2, 30, 0, -4)).toHaveLength(2);
+  });
+
   it('has nothing to run with no exercises', () => {
     expect(buildPhases(0, 50, 10)).toEqual([]);
   });

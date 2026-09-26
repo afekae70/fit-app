@@ -1179,11 +1179,15 @@ export default function WorkoutsScreen() {
                   rpe: set.rpe,
                   toFailure: set.to_failure === 1,
                   isDrop: set.is_drop === 1,
+                  durationSeconds: set.duration_seconds,
+                  distanceM: set.distance_m,
                 }))}
                 previous={
                   previous[exercise.exercise_key]?.map((p) => ({
                     weightKg: p.weight_kg,
                     reps: p.reps,
+                    durationSeconds: p.duration_seconds,
+                    distanceM: p.distance_m,
                   })) ?? null
                 }
                 target={
@@ -1211,6 +1215,16 @@ export default function WorkoutsScreen() {
                 onChangeReps={(i, next) => {
                   const set = exercise.sets[i];
                   if (set) patchSet(set.id, { reps: next });
+                }}
+                // A walk or a ride: how long and how far, where the weights would be.
+                cardio={seed.loadType === 'cardio'}
+                onChangeDuration={(i, seconds) => {
+                  const set = exercise.sets[i];
+                  if (set) patchSet(set.id, { durationSeconds: seconds });
+                }}
+                onChangeDistance={(i, metres) => {
+                  const set = exercise.sets[i];
+                  if (set) patchSet(set.id, { distanceM: metres });
                 }}
                 onToggle={(i) => {
                   const set = exercise.sets[i];
@@ -1376,6 +1390,7 @@ export default function WorkoutsScreen() {
             })}
             workSeconds={timing.workSeconds}
             restSeconds={timing.restSeconds}
+            rounds={timing.rounds}
             // After everything is logged, Start means another round from the top rather than
             // repeating only the last exercise.
             firstUnfinished={Math.max(0, exerciseDone.indexOf(false))}

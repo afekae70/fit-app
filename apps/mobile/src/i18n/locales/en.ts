@@ -214,6 +214,7 @@ export const en = {
     setLabel: 'Gym',
   },
   workout: {
+    minutesShort: 'min',
     stripReorderHint: 'Hold and drag left or right to change the order',
     stripDropHint: 'Drag left or right and let go in the new place',
     finishShort: 'Finish',
@@ -681,6 +682,9 @@ export const en = {
     blePermission: 'Bluetooth permission is required to scan.',
   },
   interval: {
+    rounds: 'Rounds',
+    roundCount_one: '1 round',
+    roundCount_other: '{{count}} rounds',
     voiceHint:
       'The next exercise is announced in English because the phone’s speech engine has no Hebrew voice. For Hebrew, in the phone’s settings: General management → Text-to-speech output → Preferred engine → Google.',
     title: 'Timed workout',

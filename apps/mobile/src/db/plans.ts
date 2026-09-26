@@ -38,18 +38,28 @@ export interface PlanDayRow {
   /** Set only for a timed workout; null for an ordinary sets-and-reps day. */
   work_seconds?: number | null;
   rest_seconds?: number | null;
+  /** How many times through the list. Null means once. */
+  rounds?: number | null;
 }
 
 /** How a timed workout runs. Null on the day means it is not one. */
 export interface PlanDayTiming {
   workSeconds: number;
   restSeconds: number;
+  /** Times through the whole list of exercises, at least 1. */
+  rounds: number;
 }
 
 /** A day's timing, or null when it is an ordinary workout. */
-export function timingOf(day: Pick<PlanDayRow, 'work_seconds' | 'rest_seconds'>): PlanDayTiming | null {
+export function timingOf(
+  day: Pick<PlanDayRow, 'work_seconds' | 'rest_seconds' | 'rounds'>,
+): PlanDayTiming | null {
   if (day.work_seconds === null || day.work_seconds === undefined || day.work_seconds <= 0) return null;
-  return { workSeconds: day.work_seconds, restSeconds: Math.max(0, day.rest_seconds ?? 0) };
+  return {
+    workSeconds: day.work_seconds,
+    restSeconds: Math.max(0, day.rest_seconds ?? 0),
+    rounds: Math.max(1, day.rounds ?? 1),
+  };
 }
 
 export interface PlanDayExerciseRow {
@@ -256,8 +266,14 @@ export async function setPlanDayTiming(
   clock: Clock = defaultClock,
 ): Promise<void> {
   await db.run(
-    `UPDATE plan_days SET work_seconds = ?, rest_seconds = ?, updated_at = ? WHERE id = ?`,
-    [timing?.workSeconds ?? null, timing ? Math.max(0, timing.restSeconds) : null, clock(), planDayId],
+    `UPDATE plan_days SET work_seconds = ?, rest_seconds = ?, rounds = ?, updated_at = ? WHERE id = ?`,
+    [
+      timing?.workSeconds ?? null,
+      timing ? Math.max(0, timing.restSeconds) : null,
+      timing ? Math.max(1, Math.floor(timing.rounds)) : null,
+      clock(),
+      planDayId,
+    ],
   );
 }
 
@@ -364,7 +380,7 @@ export async function copyPlanDayToPlan(
   await setPlanDayTiming(
     db,
     copyId,
-    day.work_seconds ? { workSeconds: day.work_seconds, restSeconds: day.rest_seconds ?? 0 } : null,
+    timingOf(day),
     () => at,
   );
   const prescriptions = await db.all<PlanDayExerciseRow>(
@@ -866,9 +882,18 @@ export async function duplicatePlanWeek(
     // Timing travels with the day. Duplicating a week of circuits and getting back a week of
     // ordinary workouts would lose the one thing that made those days what they were.
     await db.run(
-      `INSERT INTO plan_days (id, plan_id, day_index, name, work_seconds, rest_seconds, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [copyId, planId, offset + i + 1, day.name, day.work_seconds ?? null, day.rest_seconds ?? null, at],
+      `INSERT INTO plan_days (id, plan_id, day_index, name, work_seconds, rest_seconds, rounds, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        copyId,
+        planId,
+        offset + i + 1,
+        day.name,
+        day.work_seconds ?? null,
+        day.rest_seconds ?? null,
+        day.rounds ?? null,
+        at,
+      ],
     );
 
     const prescriptions = await db.all<PlanDayExerciseRow>(

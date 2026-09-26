@@ -207,6 +207,7 @@ export const he = {
     setLabel: 'חדר',
   },
   workout: {
+    minutesShort: 'דק׳',
     stripReorderHint: 'לחיצה ארוכה וגרירה ימינה או שמאלה משנה את סדר התרגילים',
     stripDropHint: 'גרור ימינה או שמאלה ושחרר במקום החדש',
     finishShort: 'סיום',
@@ -674,6 +675,9 @@ export const he = {
     blePermission: 'נדרשת הרשאת בלוטות׳ כדי לסרוק.',
   },
   interval: {
+    rounds: 'סיבובים',
+    roundCount_one: 'סיבוב אחד',
+    roundCount_other: '{{count}} סיבובים',
     voiceHint:
       'ההודעה על התרגיל הבא תושמע באנגלית: במנוע הדיבור של הטלפון אין קול עברי. לעברית — בהגדרות הטלפון: General management ← Text-to-speech output ← Preferred engine ← Google.',
     title: 'אימון לפי זמן',

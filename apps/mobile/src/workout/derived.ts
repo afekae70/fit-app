@@ -39,6 +39,10 @@ export interface DerivedSet {
   toFailure: boolean;
   /** Continues the set above it, lighter and with no rest between them. */
   isDrop: boolean;
+  /** How long it took, for training measured in time rather than in reps. */
+  durationSeconds?: number | null;
+  /** How far it went, in metres, for training measured in distance. */
+  distanceM?: number | null;
 }
 
 export interface DerivedExercise {

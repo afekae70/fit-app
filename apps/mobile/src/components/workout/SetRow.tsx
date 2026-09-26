@@ -38,7 +38,14 @@ import { parseTyped, valueToCommit } from '../../workout/typedEntry.js';
 import { hapticLight, hapticSuccess } from '../../haptics.js';
 import { useTheme } from '../../ThemeProvider.js';
 import { useUnit } from '../../UnitsProvider.js';
-import { displayWeightToKg, kgToDisplay, weightUnitKey } from '../../units.js';
+import {
+  displayDistanceToMetres,
+  displayWeightToKg,
+  distanceUnitKey,
+  kgToDisplay,
+  metresToDisplay,
+  weightUnitKey,
+} from '../../units.js';
 import { duration, radius, type ColorPalette } from '../../theme.js';
 
 /** The handoff's timings. The tint settles before the glyph finishes popping, which is the point. */
@@ -55,6 +62,20 @@ export interface SetRowProps {
   onChangeWeight: (next: number) => void;
   onChangeReps: (next: number) => void;
   onToggle: () => void;
+  /**
+   * What the two fields hold.
+   *
+   * `weights` is the row this component was built for. `cardio` is a walk or a ride: minutes and
+   * distance, which is what that training is, and neither weight nor reps says anything about
+   * it. The row keeps its shape either way — two fields, a number in each, steppers on both
+   * sides — because the thumb using it is the same thumb.
+   */
+  fields?: 'weights' | 'cardio';
+  /** Cardio only: how long, in seconds, and how far, in metres. */
+  durationSeconds?: number | null;
+  distanceM?: number | null;
+  onChangeDuration?: (seconds: number) => void;
+  onChangeDistance?: (metres: number) => void;
   /**
    * A ramp toward the work rather than the work itself — excluded from volume, personal records
    * and the progression charts.
@@ -88,6 +109,11 @@ export function SetRow({
   onChangeWeight,
   onChangeReps,
   onToggle,
+  fields = 'weights',
+  durationSeconds = null,
+  distanceM = null,
+  onChangeDuration,
+  onChangeDistance,
   isWarmup = false,
   rpe = null,
   toFailure = false,
@@ -153,7 +179,23 @@ export function SetRow({
   const typedWeight = useRef<string | null>(null);
   const typedReps = useRef<string | null>(null);
 
+  const distanceDisplay = distanceM === null ? 0 : metresToDisplay(distanceM, unit);
+
   const flushTyped = () => {
+    if (fields === 'cardio') {
+      // The same two refs, holding minutes and distance here — see the fields above.
+      const minutes = valueToCommit(typedWeight.current, durationSeconds ?? null, (value) =>
+        Math.max(0, Math.round(value * 60)),
+      );
+      const distance = valueToCommit(typedReps.current, distanceM ?? null, (value) =>
+        displayDistanceToMetres(Math.max(0, value), unit),
+      );
+      typedWeight.current = null;
+      typedReps.current = null;
+      if (minutes !== null) onChangeDuration?.(minutes);
+      if (distance !== null) onChangeDistance?.(distance);
+      return;
+    }
     const weight = valueToCommit(typedWeight.current, weightKg, (value) =>
       displayWeightToKg(value, unit),
     );
@@ -208,6 +250,79 @@ export function SetRow({
         </Text>
       </Pressable>
 
+      {fields === 'cardio' ? (
+        <>
+      {/* Minutes, because nobody logs a walk in seconds; stored as seconds all the same. */}
+      <Animated.View style={[s.field, fieldStyle]}>
+        <Stepper
+          label="−"
+          onPress={() => onChangeDuration?.(Math.max(0, (durationSeconds ?? 0) - 60))}
+        />
+        <View style={s.value}>
+          <TextInput
+            key={`d-${durationSeconds ?? 'empty'}`}
+            defaultValue={durationSeconds === null ? '' : String(Math.round(durationSeconds / 60))}
+            onChangeText={(text) => {
+              typedWeight.current = text;
+            }}
+            onEndEditing={(e) => {
+              typedWeight.current = null;
+              const typed = parseTyped(e.nativeEvent.text);
+              if (typed === null) return;
+              onChangeDuration?.(Math.max(0, Math.round(typed * 60)));
+            }}
+            keyboardType="number-pad"
+            inputMode="numeric"
+            selectTextOnFocus
+            placeholder="—"
+            placeholderTextColor={colors.textFaint}
+            style={[s.numeral, s.numeralInput, { color: numeralColor }]}
+          />
+          <Text style={s.unit}>{t('workout.minutesShort')}</Text>
+        </View>
+        <Stepper label="+" onPress={() => onChangeDuration?.((durationSeconds ?? 0) + 60)} />
+      </Animated.View>
+
+      <Animated.View style={[s.field, fieldStyle]}>
+        <Stepper
+          label="−"
+          onPress={() =>
+            onChangeDistance?.(
+              Math.max(0, displayDistanceToMetres(Math.max(0, distanceDisplay - 0.5), unit)),
+            )
+          }
+        />
+        <View style={s.value}>
+          <TextInput
+            key={`k-${distanceM ?? 'empty'}-${unit}`}
+            defaultValue={distanceM === null ? '' : String(distanceDisplay)}
+            onChangeText={(text) => {
+              typedReps.current = text;
+            }}
+            onEndEditing={(e) => {
+              typedReps.current = null;
+              const typed = parseTyped(e.nativeEvent.text);
+              if (typed === null) return;
+              onChangeDistance?.(displayDistanceToMetres(Math.max(0, typed), unit));
+            }}
+            keyboardType="numeric"
+            inputMode="decimal"
+            selectTextOnFocus
+            placeholder="—"
+            placeholderTextColor={colors.textFaint}
+            style={[s.numeral, s.numeralInput, { color: numeralColor }]}
+          />
+          <Text style={s.unit}>{t(`common.${distanceUnitKey(unit)}`)}</Text>
+        </View>
+        <Stepper
+          label="+"
+          onPress={() => onChangeDistance?.(displayDistanceToMetres(distanceDisplay + 0.5, unit))}
+        />
+      </Animated.View>
+
+        </>
+      ) : (
+        <>
       <Animated.View style={[s.field, fieldStyle]}>
         <Stepper label="−" onPress={() => onChangeWeight(stepWeight(weightKg, -1, unit))} />
         <View style={s.value}>
@@ -267,6 +382,9 @@ export function SetRow({
         </View>
         <Stepper label="+" onPress={() => onChangeReps(stepReps(reps, 1))} />
       </Animated.View>
+
+        </>
+      )}
 
       <Pressable
         onPress={handleToggle}

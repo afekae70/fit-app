@@ -26,7 +26,7 @@
  * TEXT (lexicographically sortable, which is what the history queries rely on).
  */
 
-export const SCHEMA_VERSION = 16;
+export const SCHEMA_VERSION = 17;
 
 /**
  * Incremental migrations, keyed by the version they upgrade TO.
@@ -319,6 +319,12 @@ CREATE INDEX IF NOT EXISTS locations_user_idx ON locations (user_id);
       ON scheduled_days (user_id, scheduled_on);
     COMMIT;
   `,
+
+  // How many times a timed workout runs its list. NULL means once, which is what every timed
+  // day written before today does — the same reasoning as the timing columns above.
+  17: `
+    ALTER TABLE plan_days ADD COLUMN rounds INTEGER;
+  `,
 };
 
 export const CREATE_SCHEMA_SQL = `
@@ -528,6 +534,9 @@ CREATE TABLE IF NOT EXISTS plan_days (
   -- the same way workout_sessions.location_id is not, so no server migration is needed for it.
   work_seconds INTEGER,
   rest_seconds INTEGER,
+  -- How many times through the list. NULL or 1 is once; a circuit trained three times through
+  -- is 3, and it logs three sets of each exercise rather than three copies of the day.
+  rounds INTEGER,
   updated_at TEXT,
   deleted_at TEXT,
   remote_updated_at TEXT,

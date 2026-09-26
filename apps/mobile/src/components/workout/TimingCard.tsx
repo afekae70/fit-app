@@ -107,7 +107,13 @@ export function TimingCard({
           value={timing !== null}
           onValueChange={(on) =>
             onChange(
-              on ? { workSeconds: DEFAULT_WORK_SECONDS, restSeconds: DEFAULT_REST_SECONDS } : null,
+              on
+                ? {
+                    workSeconds: DEFAULT_WORK_SECONDS,
+                    restSeconds: DEFAULT_REST_SECONDS,
+                    rounds: 1,
+                  }
+                : null,
             )
           }
           trackColor={{ false: colors.surfaceRaised, true: colors.accent }}
@@ -122,6 +128,38 @@ export function TimingCard({
         <>
           {stepper('work', timing.workSeconds)}
           {stepper('rest', timing.restSeconds)}
+
+          {/* How many times through the list. A circuit is trained by repeating the whole thing,
+              and each pass logs another set of every exercise in it. */}
+          <View style={s.stepperRow}>
+            <Text style={s.stepperLabel}>{t('interval.rounds')}</Text>
+            <View style={s.stepper}>
+              <Pressable
+                onPress={() => onChange({ ...timing, rounds: Math.max(1, timing.rounds - 1) })}
+                disabled={timing.rounds <= 1}
+                accessibilityRole="button"
+                accessibilityLabel={`${t('interval.rounds')} ${t('interval.less')}`}
+                hitSlop={6}
+                style={({ pressed }) => [
+                  s.stepButton,
+                  timing.rounds <= 1 && s.stepButtonOff,
+                  pressed && s.pressed,
+                ]}
+              >
+                <Text style={s.stepGlyph}>−</Text>
+              </Pressable>
+              <Text style={s.value}>{t('interval.roundCount', { count: timing.rounds })}</Text>
+              <Pressable
+                onPress={() => onChange({ ...timing, rounds: Math.min(20, timing.rounds + 1) })}
+                accessibilityRole="button"
+                accessibilityLabel={`${t('interval.rounds')} ${t('interval.more')}`}
+                hitSlop={6}
+                style={({ pressed }) => [s.stepButton, pressed && s.pressed]}
+              >
+                <Text style={s.stepGlyph}>+</Text>
+              </Pressable>
+            </View>
+          </View>
           {exerciseCount > 0 ? (
             <Text style={s.total}>
               {t('interval.summary', {
