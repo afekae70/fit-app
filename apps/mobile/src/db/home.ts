@@ -447,10 +447,21 @@ export async function monthWeeks(db: SqlExecutor, userId: string, now = new Date
           AND ${TRAINED}`,
       [userId, start, end],
     );
+    /*
+     * How many workouts the week asks for.
+     *
+     * Counted through the workouts themselves, not from the calendar rows alone. A row whose
+     * workout has since been deleted is a leftover, not a session anybody can do, and counting
+     * it made the week ask for one more than it holds — "6 of 7" on a week with six workouts in
+     * it. Distinct, too: the same workout written twice onto one date is one thing to do.
+     */
     const planned = await db.get<{ n: number }>(
-      `SELECT COUNT(*) AS n FROM scheduled_days
-        WHERE user_id = ? AND deleted_at IS NULL AND plan_day_id IS NOT NULL
-          AND scheduled_on BETWEEN ? AND ?`,
+      `SELECT COUNT(DISTINCT sd.scheduled_on || '|' || sd.plan_day_id) AS n
+         FROM scheduled_days sd
+         JOIN plan_days pd ON pd.id = sd.plan_day_id AND pd.deleted_at IS NULL
+         JOIN plans p ON p.id = pd.plan_id AND p.deleted_at IS NULL AND p.user_id = sd.user_id
+        WHERE sd.user_id = ? AND sd.deleted_at IS NULL AND sd.plan_day_id IS NOT NULL
+          AND sd.scheduled_on BETWEEN ? AND ?`,
       [userId, start, end],
     );
     const target = (planned?.n ?? 0) > 0 ? (planned?.n ?? 0) : DEFAULT_WEEKLY_TARGET;

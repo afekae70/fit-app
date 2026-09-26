@@ -759,6 +759,36 @@ describe('full weeks this month', () => {
     expect(tally.thisWeek).toMatchObject({ trained: 2, target: 2, complete: true });
   });
 
+  it('does not ask for a workout that has since been deleted from the plan', async () => {
+    // The "6 of 7" bug: the calendar row outlives the workout it points at, and the week went on
+    // asking for one more session than it actually held.
+    const [push, pull] = await seedPlan([
+      { name: 'דחיפה', exercises: [['Barbell Bench Press', 3]] },
+      { name: 'משיכה', exercises: [['Barbell Row', 3]] },
+    ]);
+    await setScheduledDay(db, USER, () => id('sd'), '2026-09-07', push!);
+    await setScheduledDay(db, USER, () => id('sd'), '2026-09-09', pull!);
+    await db.run(`UPDATE plan_days SET deleted_at = '2026-09-08T00:00:00' WHERE id = ?`, [pull!]);
+    await trainOn('2026-09-07T07:00:00', push);
+
+    const tally = await monthWeeks(db, USER, new Date('2026-09-10T12:00:00'));
+    expect(tally.thisWeek).toMatchObject({ trained: 1, target: 1, complete: true });
+  });
+
+  it('asks once for the same workout written twice onto one date', async () => {
+    const [push] = await seedPlan([{ name: 'דחיפה', exercises: [['Barbell Bench Press', 3]] }]);
+    await setScheduledDay(db, USER, () => id('sd'), '2026-09-07', push!);
+    // A duplicate row for the same date and workout — the kind an interrupted edit can leave.
+    await db.run(
+      `INSERT INTO scheduled_days (id, user_id, scheduled_on, plan_day_id, position, updated_at)
+         VALUES (?, ?, '2026-09-07', ?, 1, '2026-09-06T00:00:00')`,
+      [id('sd'), USER, push!],
+    );
+
+    const tally = await monthWeeks(db, USER, new Date('2026-09-10T12:00:00'));
+    expect(tally.thisWeek.target).toBe(1);
+  });
+
   it('does not count a week with a planned workout still missing', async () => {
     const [push, pull] = await seedPlan([
       { name: 'דחיפה', exercises: [['Barbell Bench Press', 3]] },
