@@ -11,6 +11,7 @@ import * as SecureStore from 'expo-secure-store';
 import type { SqlExecutor } from '../db/executor.js';
 import { getTodayWorkout } from '../db/home.js';
 import { addDays, getRange, localDate } from '../db/schedule.js';
+import { getActiveSession } from '../db/workouts.js';
 import { replaceDatedReminders } from '../notifications.js';
 import {
   parseReminderSettings,
@@ -71,11 +72,18 @@ export async function syncWorkoutReminders(
     names: (ids ?? []).map((id) => names.get(id)).filter((name): name is string => Boolean(name)),
   }));
 
-  // Today's reminder is dropped once today's planned workouts are all done — the same "done"
-  // the home card uses, so the two never disagree about whether today still has training in it.
+  /*
+   * Today's reminder is dropped once today's planned workouts are all done — the same "done" the
+   * home card uses, so the two never disagree about whether today still has training in it.
+   *
+   * And while a workout is open: being told to train during the third set is the kind of
+   * notification that teaches people to turn notifications off. Starting a workout re-lays the
+   * reminders, so today's is withdrawn as the first set begins.
+   */
   const skip = new Set<string>();
   const todayPlanned = days.find((day) => day.date === today)?.names.length ?? 0;
   if (todayPlanned > 0 && (await getTodayWorkout(db, userId, now)) === null) skip.add(today);
+  if ((await getActiveSession(db, userId)) !== null) skip.add(today);
 
   const reminders = remindersToSchedule(days, settings, now, skip).map((reminder) => ({
     id: reminder.id,

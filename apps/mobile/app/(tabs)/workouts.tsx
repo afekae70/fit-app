@@ -101,6 +101,8 @@ import {
 } from '../../src/db/workouts.js';
 import { hapticLight, hapticSuccess } from '../../src/haptics.js';
 import { setWorkoutActive } from '../../src/workout/activeWorkout.js';
+import { createLatestOnly } from '../../src/workout/latestOnly.js';
+import { syncWorkoutReminders } from '../../src/reminders/sync.js';
 import { stationMove } from '../../src/workout/stripReorder.js';
 import { useTheme } from '../../src/ThemeProvider.js';
 import { fontSize, radius, spacing, type ColorPalette } from '../../src/theme.js';
@@ -148,7 +150,16 @@ export default function WorkoutsScreen() {
   // Tell the tab swipe a workout is open, so sideways belongs to the exercises until it ends.
   useEffect(() => {
     setWorkoutActive(sessionId !== null);
-  }, [sessionId]);
+    // And re-lay the reminders: today's is withdrawn while a workout is open, and comes back if
+    // the session is abandoned rather than finished.
+    void (async () => {
+      const db = await getExecutor();
+      await syncWorkoutReminders(db, userId, {
+        title: t('settings.workoutReminderNotification'),
+        channel: t('settings.workoutReminderTitle'),
+      });
+    })();
+  }, [sessionId, userId, t]);
   const [startedAt, setStartedAt] = useState<string | null>(null);
   const [exercises, setExercises] = useState<SessionExerciseWithSets[]>([]);
   /** Set when this session came from a timed plan day; the screen is then a countdown, not cards. */
@@ -166,6 +177,19 @@ export default function WorkoutsScreen() {
   const [gyms, setGyms] = useState<LocationRow[]>([]);
   const [gymId, setGymId] = useState<string | null>(null);
   const [bodyWeightKg, setBodyWeightKg] = useState<number | null>(null);
+
+  /*
+   * The sets as they are right now, for the handlers below.
+   *
+   * A row was drawn from one snapshot and tapped a second later, by which time a reload may have
+   * moved on — a warm-up ramp inserted above it, a set added. The id under the finger is the
+   * right one; whether it is currently ticked is a question for the live copy, not for the
+   * snapshot the row was painted from.
+   */
+  const liveExercises = useRef<SessionExerciseWithSets[]>([]);
+  liveExercises.current = exercises;
+  const liveSet = (setId: string) =>
+    liveExercises.current.flatMap((e) => e.sets).find((set) => set.id === setId) ?? null;
   const [previous, setPrevious] = useState<Record<string, PreviousSet[] | null>>(
     {},
   );
@@ -210,10 +234,20 @@ export default function WorkoutsScreen() {
     void reloadHome().finally(() => setHomeRefreshing(false));
   }, [reloadHome]);
 
+  /*
+   * Reloads overlap constantly — a tick, a typed number saving, the tab regaining focus — and
+   * each is a chain of awaits. Until this, nothing made them land in the order they started, so
+   * an older snapshot could arrive last and put the screen back the way it was: tick the second
+   * set, watch the first one lose its tick. The data was never wrong; the picture was.
+   */
+  const latestReload = useRef(createLatestOnly()).current;
+
   /** Reload the session from SQLite — the database is the source of truth, not component state. */
   const reload = useCallback(async (id: string) => {
+    const ticket = latestReload.begin();
     const db = await getExecutor();
     const { session, exercises: loaded } = await getSessionDetail(db, id);
+    if (!latestReload.isCurrent(ticket)) return loaded;
     setExercises(loaded);
     setStartedAt(session?.started_at ?? null);
     setSessionName(session?.name ?? null);
@@ -245,6 +279,7 @@ export default function WorkoutsScreen() {
         type,
       );
     }
+    if (!latestReload.isCurrent(ticket)) return loaded;
     setPrevious(nextPrevious);
     setStalling(nextStalling);
 
@@ -265,9 +300,10 @@ export default function WorkoutsScreen() {
         };
       }
     }
+    if (!latestReload.isCurrent(ticket)) return loaded;
     setTargets(nextTargets);
     return loaded;
-  }, [userId]);
+  }, [userId, latestReload]);
 
   /*
    * On focus, pick up whatever happened while this tab was in the background.
@@ -1234,10 +1270,14 @@ export default function WorkoutsScreen() {
                   if (set) patchSet(set.id, { distanceM: metres });
                 }}
                 onToggle={(i) => {
-                  const set = exercise.sets[i];
+                  const tapped = exercise.sets[i];
+                  if (!tapped) return;
                   // The panel exposes a toggle; the repository wants the state to move to. The
-                  // flip happens here so the card never has to know the current value twice.
-                  if (set) toggleDone(set.id, set.done_at === null);
+                  // flip happens here so the card never has to know the current value twice —
+                  // and it is read from the live copy, so a tap never argues with a reload that
+                  // landed between the row being drawn and the finger arriving.
+                  const current = liveSet(tapped.id) ?? tapped;
+                  toggleDone(tapped.id, current.done_at === null);
                 }}
                 onAddSet={() => addSet(exercise.id)}
                 onRemoveSet={exercise.sets.length > 0 ? () => removeLastSet(exercise) : undefined}
