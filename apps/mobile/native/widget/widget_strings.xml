@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The widget's own strings.
+
+  Native resources, not the app's i18n bundle: the launcher renders this without running any
+  JavaScript, so it cannot ask i18next for anything. Hebrew, because that is what the phone this
+  is built for shows — the snapshot the app writes carries the workout's own name in whatever
+  language it was given.
+
+  Merge these into android/app/src/main/res/values/strings.xml.
+-->
+<resources>
+    <string name="widget_rest_title">אין אימון היום</string>
+    <string name="widget_rest_detail">יום מנוחה — או שעוד לא נקבע אימון בלוח</string>
+    <string name="widget_start">התחל אימון</string>
+    <string name="widget_open">פתח את האפליקציה</string>
+    <string name="widget_label">האימון של היום</string>
+</resources>
