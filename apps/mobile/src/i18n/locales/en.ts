@@ -8,6 +8,7 @@
 
 export const en = {
   common: {
+    slogan: 'Train. Track. Progress.',
     noMatches: 'Nothing by that name',
     appName: 'NovaFit',
     save: 'Save',

@@ -49,6 +49,7 @@ export function SplashOverlay() {
   const name = useRef(new Animated.Value(0)).current;
   const spin = useRef(new Animated.Value(0)).current;
   const breathe = useRef(new Animated.Value(0)).current;
+  const slogan = useRef(new Animated.Value(0)).current;
   const leaving = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
@@ -58,6 +59,13 @@ export function SplashOverlay() {
       Animated.timing(name, {
         toValue: 1,
         duration: 320,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      // The slogan last and slower: it is the line that is read rather than recognised.
+      Animated.timing(slogan, {
+        toValue: 1,
+        duration: 420,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }),
@@ -111,7 +119,7 @@ export function SplashOverlay() {
       turning.stop();
       breathing.stop();
     };
-  }, [logo, name, spin, breathe, leaving]);
+  }, [logo, name, spin, breathe, slogan, leaving]);
 
   if (gone) return null;
 
@@ -191,7 +199,22 @@ export function SplashOverlay() {
           {t('common.appName')}
         </Animated.Text>
 
-        <Animated.View style={{ opacity: name }}>
+        <Animated.Text
+          style={[
+            styles.slogan,
+            {
+              color: colors.textMuted,
+              opacity: slogan,
+              transform: [
+                { translateY: slogan.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) },
+              ],
+            },
+          ]}
+        >
+          {t('common.slogan')}
+        </Animated.Text>
+
+        <Animated.View style={{ opacity: slogan }}>
           <Dots color={colors.accentBorder} />
         </Animated.View>
       </View>
@@ -248,11 +271,12 @@ const styles = StyleSheet.create<{
   ring: ViewStyle;
   logo: ImageStyle;
   name: TextStyle;
+  slogan: TextStyle;
   dots: ViewStyle;
   dot: ViewStyle;
 }>({
   fill: { alignItems: 'center', justifyContent: 'center', zIndex: 100 },
-  centre: { alignItems: 'center', gap: 18 },
+  centre: { alignItems: 'center', gap: 16 },
   markWrap: { width: 168, height: 168, alignItems: 'center', justifyContent: 'center' },
   ring: {
     ...StyleSheet.absoluteFillObject,
@@ -261,6 +285,7 @@ const styles = StyleSheet.create<{
   },
   logo: { width: 120, height: 120, borderRadius: radius.pill },
   name: { fontSize: 30, fontWeight: '700', letterSpacing: 0.5 },
+  slogan: { fontSize: 14, letterSpacing: 0.3, marginTop: -8, textAlign: 'center' },
   dots: { flexDirection: 'row', gap: 8 },
   dot: { width: 8, height: 8, borderRadius: 4 },
 });
