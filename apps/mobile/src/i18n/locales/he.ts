@@ -209,6 +209,17 @@ export const he = {
     manage: 'נהל חדרי כושר',
     setLabel: 'חדר',
   },
+  record: {
+    emptyTitle: 'עוד לא ביצעת את התרגיל הזה',
+    emptyHint: 'אחרי אימון ראשון עם התרגיל יופיעו כאן הביצועים שלך',
+    best: 'שיא משוער',
+    heaviestSet: 'הסט הכבד ביותר',
+    sessions: 'אימונים',
+    trend: 'מגמה',
+    trendHint: 'השיא המשוער בכל אימון, מהישן לחדש',
+    sessionList: 'כל האימונים',
+    topSet: 'הסט הטוב',
+  },
   workout: {
     finishedLine: 'כל הכבוד! סיימת את האימון',
     minutesShort: 'דק׳',

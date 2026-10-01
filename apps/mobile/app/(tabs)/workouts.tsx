@@ -1391,6 +1391,12 @@ export default function WorkoutsScreen() {
                   })
                 }
                 onShowMuscles={() => showMuscles(seed)}
+                onOpenRecord={() =>
+                  router.push({
+                    pathname: '/exercise/[key]',
+                    params: { key: exercise.exercise_key },
+                  })
+                }
                 subtitle={subtitleFor(seed)}
                 onOptions={() => openExerciseOptions(exercise.id, seed.nameHe)}
                 dragHandle={dragHandle}

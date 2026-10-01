@@ -216,6 +216,17 @@ export const en = {
     manage: 'Manage gyms',
     setLabel: 'Gym',
   },
+  record: {
+    emptyTitle: 'You have not done this exercise yet',
+    emptyHint: 'After the first workout with it, your performance shows up here',
+    best: 'Estimated best',
+    heaviestSet: 'Heaviest set',
+    sessions: 'Workouts',
+    trend: 'Trend',
+    trendHint: 'The estimated best of each workout, oldest to newest',
+    sessionList: 'Every workout',
+    topSet: 'Top set',
+  },
   workout: {
     finishedLine: 'Well done — workout complete',
     minutesShort: 'min',

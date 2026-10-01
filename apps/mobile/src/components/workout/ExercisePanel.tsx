@@ -150,6 +150,13 @@ export interface ExercisePanelProps {
    * names what it is editing, which a row cannot do for itself.
    */
   onEditValue?: (setIndex: number, field: 'first' | 'second') => void;
+  /**
+   * Open this exercise's own record — every session of it, and the trend.
+   *
+   * On the name, because that is where someone looks when the question is "am I getting
+   * stronger at this", and because a name is a large target that competes with nothing.
+   */
+  onOpenRecord?: () => void;
 }
 
 export function ExercisePanel({
@@ -183,6 +190,7 @@ export function ExercisePanel({
   exerciseKey,
   bodyWeightKg = null,
   onEditValue,
+  onOpenRecord,
 }: ExercisePanelProps) {
   const { t } = useTranslation();
   const { colors } = useTheme();
@@ -230,7 +238,17 @@ export function ExercisePanel({
 
           <View style={s.titleBlock}>
             <View style={s.titleRow}>
-              <Text style={s.bannerName}>{name}</Text>
+              <Pressable
+                onPress={onOpenRecord}
+                disabled={!onOpenRecord}
+                accessibilityRole={onOpenRecord ? 'button' : undefined}
+                style={({ pressed }) => [s.nameTap, pressed && s.pressed]}
+              >
+                <Text style={s.bannerName}>
+                  {name}
+                  {onOpenRecord ? <Text style={s.nameHint}> ›</Text> : null}
+                </Text>
+              </Pressable>
               {targetLabel ? (
                 <View style={s.targetPill}>
                   <Text style={s.targetText}>{targetLabel}</Text>
@@ -584,6 +602,8 @@ const createStyles = (colors: ColorPalette) =>
     titleBlock: ViewStyle;
     titleRow: ViewStyle;
     bannerName: TextStyle;
+    nameTap: ViewStyle;
+    nameHint: TextStyle;
     subtitle: TextStyle;
     chips: ViewStyle;
     chip: ViewStyle;
@@ -710,6 +730,8 @@ const createStyles = (colors: ColorPalette) =>
       flexShrink: 1,
     },
     subtitle: { color: colors.textMuted, fontSize: 13, textAlign: 'auto' },
+    nameTap: { flexShrink: 1 },
+    nameHint: { color: colors.accent, fontSize: 18 },
     chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
     chip: {
       minHeight: 34,
