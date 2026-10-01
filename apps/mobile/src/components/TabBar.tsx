@@ -12,18 +12,24 @@
  * The slide is native-driven (translateX only) and the glyph swap is not animated at all: colour
  * cannot go through the native driver, and mixing the two drivers on one node is a crash rather
  * than a warning — see SegmentButton in ui.tsx.
+ *
+ * ## Where the tabs actually are
+ *
+ * Measured, not calculated. The first version worked out each slot from the bar's width and then
+ * flipped the direction on `I18nManager.isRTL` — and that flag is false in this app even in
+ * Hebrew, because the layout is mirrored with Yoga's `direction` instead (see the root layout).
+ * So the pill sat under the last tab and slid off the screen. Each tab reports its own frame on
+ * layout, and the pill goes to the frame of the chosen one, whichever way the row runs.
  */
 
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
-  I18nManager,
   Pressable,
   StyleSheet,
   Text,
   View,
-  useWindowDimensions,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
@@ -49,39 +55,26 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const { colors } = useTheme();
   const s = useMemo(() => createStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
 
-  const count = Math.max(1, state.routes.length);
-  const slotWidth = (width - SIDE_MARGIN * 2) / count;
-  const travel = useRef(new Animated.Value(state.index)).current;
+  /** Each tab's frame within the bar, as the layout actually placed it. */
+  const [slots, setSlots] = useState<{ x: number; width: number }[]>([]);
+  const current = slots[state.index];
+
+  const travel = useRef(new Animated.Value(0)).current;
+  const pillWidth = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    if (!current) return;
     Animated.spring(travel, {
-      toValue: state.index,
+      toValue: current.x,
       useNativeDriver: true,
       friction: 9,
       tension: 70,
     }).start();
-  }, [state.index, travel]);
-
-  /*
-   * Where the pill sits.
-   *
-   * In Hebrew the row is laid out right to left, so tab 0 is on the right and the pill has to
-   * travel the other way — `scaleX: -1` on the track mirrors the whole motion rather than making
-   * every offset below know which language it is in. The tabs themselves are not mirrored: the
-   * layout has already done that.
-   */
-  /*
-   * `I18nManager.isRTL` rather than the active language: this is the layout's own direction, and
-   * the two disagree until the app is reopened after a language switch — the pill has to travel
-   * the way the row is actually laid out.
-   */
-  const rtl = I18nManager.isRTL;
-  const offset = travel.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, slotWidth],
-  });
+    // Width cannot go through the native driver, and it only changes when the bar is laid out —
+    // which is not while anything is sliding, so the two never animate on one node at once.
+    pillWidth.setValue(current.width);
+  }, [current, travel, pillWidth]);
 
   return (
     <View
@@ -93,21 +86,14 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
         },
       ]}
     >
-      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      {/* Left and translateX are physical, and so is the `x` each tab reported — the pair agree
+          whichever way the row was laid out. */}
+      {current ? (
         <Animated.View
-          style={[
-            s.pill,
-            {
-              width: slotWidth - 12,
-              // Physical sides on purpose: the pill is positioned against the row the layout
-              // actually produced, and travels away from whichever side the first tab is on.
-              left: rtl ? undefined : 6,
-              right: rtl ? 6 : undefined,
-              transform: [{ translateX: rtl ? Animated.multiply(offset, -1) : offset }],
-            },
-          ]}
+          pointerEvents="none"
+          style={[s.pill, { width: pillWidth, transform: [{ translateX: travel }] }]}
         />
-      </View>
+      ) : null}
 
       {state.routes.map((route, index) => {
         const { options } = descriptors[route.key]!;
@@ -133,6 +119,16 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
             accessibilityRole="button"
             accessibilityState={{ selected: focused }}
             accessibilityLabel={options.tabBarAccessibilityLabel ?? label}
+            onLayout={(event) => {
+              const { x, width: tabWidth } = event.nativeEvent.layout;
+              setSlots((previous) => {
+                const next = [...previous];
+                const slot = { x: x + 4, width: Math.max(0, tabWidth - 8) };
+                if (next[index]?.x === slot.x && next[index]?.width === slot.width) return previous;
+                next[index] = slot;
+                return next;
+              });
+            }}
             style={s.tab}
           >
             <Glyph
@@ -170,6 +166,7 @@ const createStyles = (colors: ColorPalette) =>
     },
     pill: {
       position: 'absolute',
+      left: 0,
       top: 6,
       bottom: 6,
       borderRadius: radius.pill,

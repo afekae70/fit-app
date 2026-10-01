@@ -317,7 +317,9 @@ export default function SessionDetailScreen() {
         ]}
         keyboardShouldPersistTaps="handled"
       >
-        <ScreenHeader title={t('history.sessionTitle')} />
+        {/* The workout's own name, which is what distinguishes this page from every other
+            page of its kind — "האימון" says only which screen you are on. */}
+        <ScreenHeader title={session.name?.trim() || t('history.sessionTitle')} />
 
         {/* The workout at a glance: what it was called, when, and what it came to. The name is
             the heading rather than a field in a box — it is read far more often than it is
