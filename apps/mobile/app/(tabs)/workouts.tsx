@@ -92,7 +92,6 @@ import {
   removeExerciseFromSession,
   deleteSession,
   removeSet,
-  repeatSession,
   reorderSessionExercise,
   startSession,
   swapSessionExercise,
@@ -235,29 +234,13 @@ export default function WorkoutsScreen() {
         const held = history.find((session) => session.id === id);
         const choice = await ask({
           title: held?.name?.trim() || t('history.unnamed'),
-          actions: [
-            { label: t('history.repeat') },
-            { label: t('history.edit') },
-            { label: t('history.delete'), destructive: true },
-          ],
+          actions: [{ label: t('history.edit') }, { label: t('history.delete'), destructive: true }],
         });
         if (choice === 0) {
-          // A new open session built from this one. Only one can be open at a time, so a
-          // workout already in progress is said out loud rather than quietly stranded.
-          const db = await getExecutor();
-          if (await getActiveSession(db, userId)) {
-            await notify({ message: t('history.activeWarning') });
-            return;
-          }
-          const created = await repeatSession(db, userId, newId, id);
-          if (created) await reloadHome();
-          return;
-        }
-        if (choice === 1) {
           router.push({ pathname: '/session/[id]', params: { id, mode: 'edit' } });
           return;
         }
-        if (choice !== 2) return;
+        if (choice !== 1) return;
         const ok = await confirm({
           message: t('history.confirmDelete'),
           confirmLabel: t('history.delete'),
@@ -268,7 +251,7 @@ export default function WorkoutsScreen() {
         await reloadHome();
       })();
     },
-    [ask, confirm, notify, t, userId, reloadHome, history],
+    [ask, confirm, t, userId, reloadHome, history],
   );
 
   const handleHomeRefresh = useCallback(() => {
