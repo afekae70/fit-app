@@ -2,7 +2,7 @@
 
 export const he = {
   common: {
-    slogan: 'תתאמן. תעקוב. תתקדם.',
+    slogan: 'התמדה היא שם המשחק',
     noMatches: 'לא נמצא דבר בשם הזה',
     appName: 'NovaFit',
     save: 'שמור',

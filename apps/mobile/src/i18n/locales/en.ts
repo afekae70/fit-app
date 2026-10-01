@@ -8,7 +8,7 @@
 
 export const en = {
   common: {
-    slogan: 'Train. Track. Progress.',
+    slogan: 'Consistency is the name of the game',
     noMatches: 'Nothing by that name',
     appName: 'NovaFit',
     save: 'Save',

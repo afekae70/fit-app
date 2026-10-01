@@ -35,9 +35,15 @@ import appIcon from '../../assets/icon.png';
 import { useTheme } from '../ThemeProvider.js';
 import { radius } from '../theme.js';
 
-/** How long the entrance is given before it is allowed to leave. */
-const MINIMUM_MS = 1500;
-const FADE_MS = 420;
+/**
+ * How long the entrance is given before it is allowed to leave.
+ *
+ * Long enough to read the line at the bottom of it, which is the whole reason there is a line:
+ * the logo and the name are recognised in a glance, the slogan has to be read. Nothing waits on
+ * this — the app underneath is already live, and a tap during it lands wherever it would have.
+ */
+const MINIMUM_MS = 2600;
+const FADE_MS = 520;
 
 export function SplashOverlay() {
   const { t } = useTranslation();
