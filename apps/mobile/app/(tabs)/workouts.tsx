@@ -39,7 +39,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
 import { useActionSheet } from '../../src/components/ActionSheetProvider.js';
 import type { ExerciseTarget, PreviousSet } from '../../src/components/ExerciseCard.js';
-import { FinishSummary } from '../../src/components/FinishSummary.js';
+import { FinishedBurst } from '../../src/components/workout/FinishedBurst.js';
 import { requestBackup } from '../../src/backup/AutoBackup.js';
 import * as SecureStore from 'expo-secure-store';
 
@@ -70,7 +70,6 @@ import {
 import { getPlanDay, listPlanDayExercises, timingOf, type PlanDayTiming } from '../../src/db/plans.js';
 import { getLatestWeight } from '../../src/db/metrics.js';
 import { getExecutor, newId } from '../../src/db/provider.js';
-import { checkHealthAvailability, importForSession, requestHealthPermissions } from '../../src/health/reader.js';
 import { isExerciseStalling } from '../../src/db/progression.js';
 import { listLocations, setSessionLocation, type LocationRow } from '../../src/db/locations.js';
 import { getSessionType, hasType } from '../../src/db/sessionType.js';
@@ -91,7 +90,6 @@ import {
   removeExerciseFromSession,
   removeSet,
   reorderSessionExercise,
-  renameSession,
   startSession,
   swapSessionExercise,
   updateSet,
@@ -110,17 +108,6 @@ import { fontSize, radius, spacing, type ColorPalette } from '../../src/theme.js
 const EXERCISE_BY_KEY = new Map<string, ExerciseSeed>(
   EXERCISE_SEED.map((exercise) => [exercise.nameEn, exercise]),
 );
-
-/**
- * Whole minutes elapsed. Reported once, at the end.
- *
- * The screen deliberately does NOT show a running clock: a timer ticking through every set
- * pressures the user to cut rest short, which is the opposite of useful. Total duration is
- * genuinely interesting afterwards, so it surfaces in the finish summary instead.
- */
-function elapsedMinutes(startedAt: string, endMs: number): number {
-  return Math.max(0, Math.round((endMs - new Date(startedAt).getTime()) / 60000));
-}
 
 /**
  * The ratings worth offering. Ten choices in a sheet is a list nobody reads; 6-10 is the span
@@ -164,8 +151,7 @@ export default function WorkoutsScreen() {
   const [exercises, setExercises] = useState<SessionExerciseWithSets[]>([]);
   /** Set when this session came from a timed plan day; the screen is then a countdown, not cards. */
   const [timing, setTiming] = useState<PlanDayTiming | null>(null);
-  const [watchAvailable, setWatchAvailable] = useState(false);
-  const [watchDuration, setWatchDuration] = useState<number | null>(null);
+
   const [targets, setTargets] = useState<Record<string, ExerciseTarget>>({});
   // Keyed by exercise key, like `previous`. Recomputed on reload rather than per render: it is
   // several queries deep and the answer only changes when a session is finished.
@@ -194,7 +180,8 @@ export default function WorkoutsScreen() {
     {},
   );
   const [loading, setLoading] = useState(true);
-  const [summaryOpen, setSummaryOpen] = useState(false);
+  /** True from the tap on Finish until the trophy has played out. */
+  const [finishing, setFinishing] = useState(false);
   const [sessionName, setSessionName] = useState<string | null>(null);
   const [historyPeriod, setHistoryPeriod] = useState<HistoryPeriod>(DEFAULT_HISTORY_PERIOD);
   const [history, setHistory] = useState<SessionSummaryRow[]>([]);
@@ -422,47 +409,31 @@ export default function WorkoutsScreen() {
     await reloadHome();
   }, [reloadHome]);
 
-  // Whether the watch can be read at all. Checked once on mount: it depends on the build and on
-  // Health Connect being installed, neither of which changes while the app is open.
-  useEffect(() => {
-    void (async () => {
-      setWatchAvailable((await checkHealthAvailability()).available);
-    })();
-  }, []);
-
   /**
-   * Pull duration and heart rate from the watch for the session being finished.
+   * Finish, and save without asking.
    *
-   * Only the duration is adopted, and only as a display value in the summary — the watch is a
-   * better clock than the app (it was started at the first rep, not when the screen was opened),
-   * but it is not authoritative about what was lifted. Nothing here touches a `sets` row.
+   * There used to be a sheet here: save or cancel, a name, an effort rating. Nobody cancels a
+   * workout they just did, and both the name and the rating can be set afterwards from the
+   * session itself — three questions between the last set and the feeling of having finished.
+   * The session is written here, and `FinishedBurst` plays over it while the screen moves on.
    */
-  const importFromWatch = useCallback(() => {
-    if (!startedAt) return;
-    void (async () => {
-      await requestHealthPermissions();
-      const imported = await importForSession({
-        startedAt,
-        endedAt: new Date().toISOString(),
-      });
-      setWatchDuration(imported?.durationMinutes ?? null);
-    })();
-  }, [startedAt]);
-
-  /** Confirm through the summary sheet — the name is captured in the same step. */
-  const confirmFinish = (name: string | null, sessionRpe: number | null) => {
-    if (!sessionId) return;
+  const finishNow = () => {
+    if (!sessionId || finishing) return;
+    setFinishing(true);
     void (async () => {
       const db = await getExecutor();
-      if (name !== null) await renameSession(db, userId, sessionId, name);
-      await finishSession(db, userId, sessionId, { sessionRpe });
-      setSummaryOpen(false);
-      await closeOut();
-      // The moment worth protecting: new data exists that did not a minute ago. Awaited after
-      // the save and the navigation, so a slow write never delays either.
+      await finishSession(db, userId, sessionId, { sessionRpe: null });
+      void hapticSuccess();
+      // The moment worth protecting: new data exists that did not a minute ago.
       void requestBackup(userId, { afterWorkout: true });
     })();
   };
+
+  /** The trophy has had its couple of seconds; leave the session behind. */
+  const finishDone = useCallback(() => {
+    setFinishing(false);
+    void closeOut();
+  }, [closeOut]);
 
   const addSet = useCallback(
     (sessionExerciseId: string) => {
@@ -1314,7 +1285,7 @@ export default function WorkoutsScreen() {
         totalSets={totals.sets}
         startedAt={startedAt ?? new Date().toISOString()}
         progress={totals.sets === 0 ? 0 : totals.done / totals.sets}
-        onFinish={() => setSummaryOpen(true)}
+        onFinish={finishNow}
       />
 
       {/* An unplanned, unnamed workout has no other session of its kind, so "last time" and the
@@ -1394,22 +1365,8 @@ export default function WorkoutsScreen() {
         onComplete={() => setRest(null)}
       />
 
-      <FinishSummary
-        visible={summaryOpen}
-        // The watch's duration wins when imported: it was started at the first rep rather than
-        // whenever this screen happened to be opened.
-        durationMinutes={
-          watchDuration ?? (startedAt ? elapsedMinutes(startedAt, Date.now()) : 0)
-        }
-        exerciseCount={exercises.length}
-        setCount={totals.sets}
-        volumeKg={totals.volume}
-        initialName={sessionName}
-        watchAvailable={watchAvailable}
-        onImportFromWatch={importFromWatch}
-        onConfirm={confirmFinish}
-        onCancel={() => setSummaryOpen(false)}
-      />
+      {/* Finishing saves straight away; this is the whole of the ceremony. */}
+      {finishing ? <FinishedBurst onDone={finishDone} /> : null}
 
       <ScrollView
         ref={scrollRef}
