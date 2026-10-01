@@ -23,6 +23,7 @@ import { AuthProvider } from '../src/auth/AuthProvider.js';
 import { AnimatedGradientBackground } from '../src/components/AnimatedGradientBackground.js';
 import { BrandBar } from '../src/components/BrandBar.js';
 import { ErrorBoundary } from '../src/components/ErrorBoundary.js';
+import { SplashOverlay } from '../src/components/SplashOverlay.js';
 import { initI18n, isRtlLanguage, loadStoredLanguage, type Language } from '../src/i18n/index.js';
 import { AutoBackup } from '../src/backup/AutoBackup.js';
 import { ActionSheetProvider } from '../src/components/ActionSheetProvider.js';
@@ -71,6 +72,9 @@ function RootLayoutInner() {
     <View style={{ flex: 1, direction }}>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       <AnimatedGradientBackground />
+      {/* Over everything, including the gate: the entrance should play while the app signs in
+          and opens the database, not after. It lifts off by itself when it is done. */}
+      <SplashOverlay />
       <AppGate>
         {/* Inside AppGate: it needs a signed-in user to know whose data to write, and there is
             nothing worth backing up before then. */}

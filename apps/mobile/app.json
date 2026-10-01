@@ -5,6 +5,8 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
+    "//splash": "The lavender the logo sits on, so the native launch frame does not flash white before the app can draw its own entrance (see SplashOverlay).",
+    "splash": { "image": "./assets/splash-icon.png", "resizeMode": "contain", "backgroundColor": "#EFEBFA" },
     "userInterfaceStyle": "automatic",
     "scheme": "fitapp",
     "ios": {
