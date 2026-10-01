@@ -8,6 +8,8 @@
 
 export const en = {
   common: {
+    clear: 'Clear',
+    delete: 'Delete digit',
     slogan: 'Consistency is the name of the game',
     noMatches: 'Nothing by that name',
     appName: 'NovaFit',

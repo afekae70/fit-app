@@ -10,6 +10,12 @@
  * the rest timer opening. Only the first is this component's business; the other two follow from
  * `onToggle` and belong to the screen.
  *
+ * ## Typing
+ *
+ * A tap on a number opens the app's own pad rather than the system keyboard — see
+ * `numberPad.ts` for why: the keyboard swallowed the first keystroke of every entry and covered
+ * the row it was filling in. The row only says what was tapped; the screen owns the pad.
+ *
  * ## Two animation drivers, deliberately on two nodes
  *
  * Mixing `useNativeDriver: true` and `false` on one `Animated.Value` is a hard crash in React
@@ -33,14 +39,12 @@ import {
 } from 'react-native';
 
 import { stepReps, stepWeight } from '../../workout/derived.js';
-import { parseTyped } from '../../workout/typedEntry.js';
-import { NumberEntry, type NumberEntryHandle } from './NumberEntry.js';
+
 import { hapticLight, hapticSuccess } from '../../haptics.js';
 import { useTheme } from '../../ThemeProvider.js';
 import { useUnit } from '../../UnitsProvider.js';
 import {
   displayDistanceToMetres,
-  displayWeightToKg,
   distanceUnitKey,
   kgToDisplay,
   metresToDisplay,
@@ -76,6 +80,13 @@ export interface SetRowProps {
   distanceM?: number | null;
   onChangeDuration?: (seconds: number) => void;
   onChangeDistance?: (metres: number) => void;
+  /**
+   * Edit one of this row's two numbers with the app's number pad.
+   *
+   * `field` says which, so the screen can name it in the pad's title — "חזה · סט 2 · ק״ג" is
+   * what makes a pad over the bottom of the screen as clear as the row it came from.
+   */
+  onEdit?: (field: 'first' | 'second') => void;
   /**
    * A ramp toward the work rather than the work itself — excluded from volume, personal records
    * and the progression charts.
@@ -114,6 +125,7 @@ export function SetRow({
   distanceM = null,
   onChangeDuration,
   onChangeDistance,
+  onEdit,
   isWarmup = false,
   rpe = null,
   toFailure = false,
@@ -174,26 +186,12 @@ export function SetRow({
    * this row before the edit can end at all. The reps typed into every last set were lost to
    * that. So the row asks each field for what is pending — before the tick, and on unmount.
    */
-  const first = useRef<NumberEntryHandle | null>(null);
-  const second = useRef<NumberEntryHandle | null>(null);
+
 
   const distanceDisplay = distanceM === null ? 0 : metresToDisplay(distanceM, unit);
 
-  const flushTyped = () => {
-    first.current?.flush();
-    second.current?.flush();
-  };
-
-  // The latest flush, for the unmount below — the cleanup would otherwise hold the props of the
-  // first render.
-  const flushRef = useRef(flushTyped);
-  flushRef.current = flushTyped;
-  useEffect(() => () => flushRef.current(), []);
-
   const handleToggle = () => {
     void (done ? hapticLight() : hapticSuccess());
-    // Saved first, so the set is ticked with the numbers actually typed into it.
-    flushTyped();
     onToggle();
   };
 
@@ -237,15 +235,16 @@ export function SetRow({
           onPress={() => onChangeDuration?.(Math.max(0, (durationSeconds ?? 0) - 60))}
         />
         <View style={s.value}>
-          <NumberEntry
-            ref={first}
-            value={durationSeconds === null ? null : Math.round(durationSeconds / 60)}
-            format={(shown) => String(shown)}
-            parse={parseTyped}
-            onCommit={(typed) => onChangeDuration?.(Math.max(0, Math.round(typed * 60)))}
-            placeholderTextColor={colors.textFaint}
-            style={[s.numeral, s.numeralInput, { color: numeralColor }]}
-          />
+          <Pressable
+            onPress={() => onEdit?.('first')}
+            disabled={!onEdit}
+            accessibilityRole="button"
+            style={s.valueTap}
+          >
+            <Text style={[s.numeral, { color: numeralColor }]}>
+              {formatEntry(durationSeconds === null ? null : Math.round(durationSeconds / 60))}
+            </Text>
+          </Pressable>
           <Text style={s.unit}>{t('workout.minutesShort')}</Text>
         </View>
         <Stepper label="+" onPress={() => onChangeDuration?.((durationSeconds ?? 0) + 60)} />
@@ -261,16 +260,16 @@ export function SetRow({
           }
         />
         <View style={s.value}>
-          <NumberEntry
-            ref={second}
-            value={distanceM === null ? null : distanceDisplay}
-            format={(shown) => String(shown)}
-            parse={parseTyped}
-            onCommit={(typed) => onChangeDistance?.(displayDistanceToMetres(Math.max(0, typed), unit))}
-            decimals
-            placeholderTextColor={colors.textFaint}
-            style={[s.numeral, s.numeralInput, { color: numeralColor }]}
-          />
+          <Pressable
+            onPress={() => onEdit?.('second')}
+            disabled={!onEdit}
+            accessibilityRole="button"
+            style={s.valueTap}
+          >
+            <Text style={[s.numeral, { color: numeralColor }]}>
+              {formatEntry(distanceM === null ? null : distanceDisplay)}
+            </Text>
+          </Pressable>
           <Text style={s.unit}>{t(`common.${distanceUnitKey(unit)}`)}</Text>
         </View>
         <Stepper
@@ -289,16 +288,16 @@ export function SetRow({
               two plates away is a lot of taps — and a number you cannot type into reads as a
               display rather than a field. Uncontrolled and re-keyed on the committed value, so
               typing is never fought mid-entry. */}
-          <NumberEntry
-            ref={first}
-            value={weightKg === null ? null : kgToDisplay(weightKg, unit)}
-            format={(shown) => String(shown)}
-            parse={parseTyped}
-            onCommit={(typed) => onChangeWeight(displayWeightToKg(typed, unit))}
-            decimals
-            placeholderTextColor={colors.textFaint}
-            style={[s.numeral, s.numeralInput, { color: numeralColor }]}
-          />
+          <Pressable
+            onPress={() => onEdit?.('first')}
+            disabled={!onEdit}
+            accessibilityRole="button"
+            style={s.valueTap}
+          >
+            <Text style={[s.numeral, { color: numeralColor }]}>
+              {formatEntry(weightKg === null ? null : kgToDisplay(weightKg, unit))}
+            </Text>
+          </Pressable>
           <Text style={s.unit}>{t(`common.${weightUnitKey(unit)}`)}</Text>
         </View>
         <Stepper label="+" onPress={() => onChangeWeight(stepWeight(weightKg, 1, unit))} />
@@ -307,15 +306,16 @@ export function SetRow({
       <Animated.View style={[s.field, fieldStyle]}>
         <Stepper label="−" onPress={() => onChangeReps(stepReps(reps, -1))} />
         <View style={s.value}>
-          <NumberEntry
-            ref={second}
-            value={reps}
-            format={(shown) => String(shown)}
-            parse={parseTyped}
-            onCommit={(typed) => onChangeReps(Math.round(typed))}
-            placeholderTextColor={colors.textFaint}
-            style={[s.numeral, s.numeralInput, { color: numeralColor }]}
-          />
+          <Pressable
+            onPress={() => onEdit?.('second')}
+            disabled={!onEdit}
+            accessibilityRole="button"
+            style={s.valueTap}
+          >
+            <Text style={[s.numeral, { color: numeralColor }]}>
+              {formatEntry(reps)}
+            </Text>
+          </Pressable>
           {/* The slot the weight field spends on its unit, which the reps field never used.
               `@8` is how a rating is written on paper, and it costs the row no new space. */}
           {rpe !== null ? <Text style={s.rpe}>@{rpe}</Text> : null}
@@ -391,6 +391,7 @@ const createStyles = (colors: ColorPalette) =>
     field: ViewStyle;
     value: ViewStyle;
     numeral: TextStyle;
+    valueTap: ViewStyle;
     numeralInput: TextStyle;
     unit: TextStyle;
     stepper: ViewStyle;
@@ -449,6 +450,9 @@ const createStyles = (colors: ColorPalette) =>
     value: { flex: 1, flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center', gap: 2 },
     // Tabular so the row does not shift as the number ticks between 8 and 10.
     numeral: { fontSize: 21, fontWeight: '500', fontVariant: ['tabular-nums'] },
+    // The number is the target: a tap anywhere on it opens the pad, which is a far bigger thing
+    // to hit mid-set than the glyphs themselves.
+    valueTap: { flex: 1, height: 48, alignItems: 'center', justifyContent: 'center' },
     // A TextInput carries platform padding and a minimum height a Text does not. Zeroed so
     // swapping one for the other does not change the 48px row the handoff specifies.
     numeralInput: {
@@ -477,3 +481,8 @@ const createStyles = (colors: ColorPalette) =>
     checkGlyph: { color: colors.textFaint, fontSize: 17 },
     checkGlyphDone: { color: colors.accent },
   });
+
+/** An em dash for a number nobody has entered: the field is empty, not zero. */
+function formatEntry(value: number | null): string {
+  return value === null ? '—' : String(value);
+}

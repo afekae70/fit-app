@@ -143,6 +143,13 @@ export interface ExercisePanelProps {
   /** Cardio: the catalogue key and the latest weigh-in, for the calorie estimate. */
   exerciseKey?: string;
   bodyWeightKg?: number | null;
+  /**
+   * Edit one of a set's numbers with the app's number pad.
+   *
+   * The pad belongs to the screen rather than to a row: it covers the bottom of the display and
+   * names what it is editing, which a row cannot do for itself.
+   */
+  onEditValue?: (setIndex: number, field: 'first' | 'second') => void;
 }
 
 export function ExercisePanel({
@@ -175,6 +182,7 @@ export function ExercisePanel({
   cardioKey,
   exerciseKey,
   bodyWeightKg = null,
+  onEditValue,
 }: ExercisePanelProps) {
   const { t } = useTranslation();
   const { colors } = useTheme();
@@ -410,6 +418,7 @@ export function ExercisePanel({
               onChangeReps={(next) => onChangeReps(index, next)}
               onChangeDuration={(seconds) => onChangeDuration?.(index, seconds)}
               onChangeDistance={(metres) => onChangeDistance?.(index, metres)}
+              onEdit={onEditValue ? (field) => onEditValue(index, field) : undefined}
               onToggle={() => onToggle(index)}
             />
           ))}

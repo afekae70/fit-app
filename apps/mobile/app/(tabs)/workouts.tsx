@@ -51,6 +51,19 @@ import { KeyboardSafe } from '../../src/components/KeyboardSafe.js';
 import { ExerciseVisual } from '../../src/components/ExerciseVisual.js';
 import { ExercisePanel } from '../../src/components/workout/ExercisePanel.js';
 import { ExerciseStrip } from '../../src/components/workout/ExerciseStrip.js';
+import {
+  NumberPadSheet,
+  type NumberPadRequest,
+} from '../../src/components/workout/NumberPadSheet.js';
+import { useUnit } from '../../src/UnitsProvider.js';
+import {
+  displayDistanceToMetres,
+  displayWeightToKg,
+  distanceUnitKey,
+  kgToDisplay,
+  metresToDisplay,
+  weightUnitKey,
+} from '../../src/units.js';
 import { IntervalRunner } from '../../src/components/workout/IntervalRunner.js';
 import { EXTEND_SECONDS, RestBanner } from '../../src/components/workout/RestBanner.js';
 import { WorkoutHeader } from '../../src/components/workout/WorkoutHeader.js';
@@ -127,6 +140,7 @@ export default function WorkoutsScreen() {
   const { t, i18n } = useTranslation();
   const isHebrew = i18n.language === 'he';
   const insets = useSafeAreaInsets();
+  const unit = useUnit();
   const userId = useCurrentUserId();
   const params = useLocalSearchParams<{
     addExercise?: string;
@@ -185,6 +199,8 @@ export default function WorkoutsScreen() {
   const [loading, setLoading] = useState(true);
   /** True from the tap on Finish until the trophy has played out. */
   const [finishing, setFinishing] = useState(false);
+  /** What the number pad is currently editing, or null while it is closed. */
+  const [pad, setPad] = useState<NumberPadRequest | null>(null);
   const [sessionName, setSessionName] = useState<string | null>(null);
   const [historyPeriod, setHistoryPeriod] = useState<HistoryPeriod>(DEFAULT_HISTORY_PERIOD);
   const [history, setHistory] = useState<SessionSummaryRow[]>([]);
@@ -1301,6 +1317,61 @@ export default function WorkoutsScreen() {
                   const set = exercise.sets[i];
                   if (set) patchSet(set.id, { distanceM: metres });
                 }}
+                /*
+                 * A tap on a number opens the app's own pad. The system keyboard swallowed the
+                 * first keystroke of every entry on Android and covered the row being filled in;
+                 * the pad names what it is editing instead of competing with it.
+                 */
+                onEditValue={(i, field) => {
+                  const set = exercise.sets[i];
+                  if (!set) return;
+                  const label = `${seed.nameHe} · ${t('workout.setNumber')} ${i + 1}`;
+                  const cardio = seed.loadType === 'cardio';
+                  if (field === 'first') {
+                    setPad(
+                      cardio
+                        ? {
+                            title: `${label} · ${t('workout.duration')}`,
+                            value: set.duration_seconds === null ? null : Math.round(set.duration_seconds / 60),
+                            unit: t('workout.minutesShort'),
+                            decimals: false,
+                            onCommit: (value) =>
+                              patchSet(set.id, {
+                                durationSeconds: value === null ? null : Math.max(0, Math.round(value * 60)),
+                              }),
+                          }
+                        : {
+                            title: `${label} · ${t(`common.${weightUnitKey(unit)}`)}`,
+                            value: set.weight_kg === null ? null : kgToDisplay(set.weight_kg, unit),
+                            unit: t(`common.${weightUnitKey(unit)}`),
+                            onCommit: (value) =>
+                              patchSet(set.id, {
+                                weightKg: value === null ? null : displayWeightToKg(value, unit),
+                              }),
+                          },
+                    );
+                    return;
+                  }
+                  setPad(
+                    cardio
+                      ? {
+                          title: `${label} · ${t('workout.distance')}`,
+                          value: set.distance_m === null ? null : metresToDisplay(set.distance_m, unit),
+                          unit: t(`common.${distanceUnitKey(unit)}`),
+                          onCommit: (value) =>
+                            patchSet(set.id, {
+                              distanceM: value === null ? null : displayDistanceToMetres(value, unit),
+                            }),
+                        }
+                      : {
+                          title: `${label} · ${t('workout.reps')}`,
+                          value: set.reps,
+                          decimals: false,
+                          onCommit: (value) =>
+                            patchSet(set.id, { reps: value === null ? null : Math.round(value) }),
+                        },
+                  );
+                }}
                 onToggle={(i) => {
                   const tapped = exercise.sets[i];
                   if (!tapped) return;
@@ -1425,6 +1496,8 @@ export default function WorkoutsScreen() {
         onSkip={() => setRest(null)}
         onComplete={() => setRest(null)}
       />
+
+      <NumberPadSheet request={pad} onClose={() => setPad(null)} />
 
       {/* Finishing saves straight away; this is the whole of the ceremony. */}
       {finishing ? <FinishedBurst onDone={finishDone} /> : null}

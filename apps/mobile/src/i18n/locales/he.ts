@@ -2,6 +2,8 @@
 
 export const he = {
   common: {
+    clear: 'נקה',
+    delete: 'מחק ספרה',
     slogan: 'התמדה היא שם המשחק',
     noMatches: 'לא נמצא דבר בשם הזה',
     appName: 'NovaFit',
