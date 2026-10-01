@@ -24,11 +24,13 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { useTranslation } from 'react-i18next';
 import {
   Animated,
+  Keyboard,
   PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   useWindowDimensions,
   View,
   type TextStyle,
@@ -693,6 +695,28 @@ export default function WorkoutsScreen() {
   const scrollY = useRef(0);
   /** Where the list sits in the window — below the fixed masthead, not at the top of the screen. */
   const viewport = useRef({ top: 0, height: 0 });
+
+  /*
+   * Keep the row being typed into above the keyboard.
+   *
+   * On current Android the keyboard is drawn over the app rather than shrinking it, so a set
+   * near the bottom of the page was covered by the very keys being used on it. KeyboardSafe
+   * gives the page the room; this scrolls just far enough that the field clears the keys.
+   */
+  useEffect(() => {
+    const shown = Keyboard.addListener('keyboardDidShow', (event) => {
+      const field = TextInput.State.currentlyFocusedInput();
+      if (!field) return;
+      const keyboardTop = event.endCoordinates.screenY;
+      field.measureInWindow((_x, y, _width, height) => {
+        const overlap = y + height + spacing.xl - keyboardTop;
+        if (overlap <= 0) return;
+        scrollY.current += overlap;
+        scrollRef.current?.scrollTo({ y: scrollY.current, animated: true });
+      });
+    });
+    return () => shown.remove();
+  }, []);
 
   const autoScroll = useCallback((screenY: number) => {
     const { top, height } = viewport.current;

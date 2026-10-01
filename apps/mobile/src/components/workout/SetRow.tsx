@@ -27,14 +27,14 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
 
 import { stepReps, stepWeight } from '../../workout/derived.js';
-import { parseTyped, valueToCommit } from '../../workout/typedEntry.js';
+import { parseTyped } from '../../workout/typedEntry.js';
+import { NumberEntry, type NumberEntryHandle } from './NumberEntry.js';
 import { hapticLight, hapticSuccess } from '../../haptics.js';
 import { useTheme } from '../../ThemeProvider.js';
 import { useUnit } from '../../UnitsProvider.js';
@@ -169,45 +169,23 @@ export function SetRow({
   const numeralColor = done ? colors.accentLift : colors.text;
 
   /*
-   * What has been typed into the two fields and not saved yet.
-   *
    * The fields save when an edit ends, and an edit does not reliably end: tapping the tick right
    * after typing leaves the keyboard up, and ticking an exercise's last set in focus mode removes
    * this row before the edit can end at all. The reps typed into every last set were lost to
-   * that. So the row saves what is pending itself — before the tick, and when it unmounts.
+   * that. So the row asks each field for what is pending — before the tick, and on unmount.
    */
-  const typedWeight = useRef<string | null>(null);
-  const typedReps = useRef<string | null>(null);
+  const first = useRef<NumberEntryHandle | null>(null);
+  const second = useRef<NumberEntryHandle | null>(null);
 
   const distanceDisplay = distanceM === null ? 0 : metresToDisplay(distanceM, unit);
 
   const flushTyped = () => {
-    if (fields === 'cardio') {
-      // The same two refs, holding minutes and distance here — see the fields above.
-      const minutes = valueToCommit(typedWeight.current, durationSeconds ?? null, (value) =>
-        Math.max(0, Math.round(value * 60)),
-      );
-      const distance = valueToCommit(typedReps.current, distanceM ?? null, (value) =>
-        displayDistanceToMetres(Math.max(0, value), unit),
-      );
-      typedWeight.current = null;
-      typedReps.current = null;
-      if (minutes !== null) onChangeDuration?.(minutes);
-      if (distance !== null) onChangeDistance?.(distance);
-      return;
-    }
-    const weight = valueToCommit(typedWeight.current, weightKg, (value) =>
-      displayWeightToKg(value, unit),
-    );
-    const repsValue = valueToCommit(typedReps.current, reps, Math.round);
-    typedWeight.current = null;
-    typedReps.current = null;
-    if (weight !== null) onChangeWeight(weight);
-    if (repsValue !== null) onChangeReps(repsValue);
+    first.current?.flush();
+    second.current?.flush();
   };
 
   // The latest flush, for the unmount below — the cleanup would otherwise hold the props of the
-  // first render and compare what was typed against values long since changed.
+  // first render.
   const flushRef = useRef(flushTyped);
   flushRef.current = flushTyped;
   useEffect(() => () => flushRef.current(), []);
@@ -259,22 +237,12 @@ export function SetRow({
           onPress={() => onChangeDuration?.(Math.max(0, (durationSeconds ?? 0) - 60))}
         />
         <View style={s.value}>
-          <TextInput
-            key={`d-${durationSeconds ?? 'empty'}`}
-            defaultValue={durationSeconds === null ? '' : String(Math.round(durationSeconds / 60))}
-            onChangeText={(text) => {
-              typedWeight.current = text;
-            }}
-            onEndEditing={(e) => {
-              typedWeight.current = null;
-              const typed = parseTyped(e.nativeEvent.text);
-              if (typed === null) return;
-              onChangeDuration?.(Math.max(0, Math.round(typed * 60)));
-            }}
-            keyboardType="number-pad"
-            inputMode="numeric"
-            selectTextOnFocus
-            placeholder="—"
+          <NumberEntry
+            ref={first}
+            value={durationSeconds === null ? null : Math.round(durationSeconds / 60)}
+            format={(shown) => String(shown)}
+            parse={parseTyped}
+            onCommit={(typed) => onChangeDuration?.(Math.max(0, Math.round(typed * 60)))}
             placeholderTextColor={colors.textFaint}
             style={[s.numeral, s.numeralInput, { color: numeralColor }]}
           />
@@ -293,22 +261,13 @@ export function SetRow({
           }
         />
         <View style={s.value}>
-          <TextInput
-            key={`k-${distanceM ?? 'empty'}-${unit}`}
-            defaultValue={distanceM === null ? '' : String(distanceDisplay)}
-            onChangeText={(text) => {
-              typedReps.current = text;
-            }}
-            onEndEditing={(e) => {
-              typedReps.current = null;
-              const typed = parseTyped(e.nativeEvent.text);
-              if (typed === null) return;
-              onChangeDistance?.(displayDistanceToMetres(Math.max(0, typed), unit));
-            }}
-            keyboardType="numeric"
-            inputMode="decimal"
-            selectTextOnFocus
-            placeholder="—"
+          <NumberEntry
+            ref={second}
+            value={distanceM === null ? null : distanceDisplay}
+            format={(shown) => String(shown)}
+            parse={parseTyped}
+            onCommit={(typed) => onChangeDistance?.(displayDistanceToMetres(Math.max(0, typed), unit))}
+            decimals
             placeholderTextColor={colors.textFaint}
             style={[s.numeral, s.numeralInput, { color: numeralColor }]}
           />
@@ -330,22 +289,13 @@ export function SetRow({
               two plates away is a lot of taps — and a number you cannot type into reads as a
               display rather than a field. Uncontrolled and re-keyed on the committed value, so
               typing is never fought mid-entry. */}
-          <TextInput
-            key={`w-${weightKg ?? 'empty'}-${unit}`}
-            defaultValue={weightKg === null ? '' : String(kgToDisplay(weightKg, unit))}
-            onChangeText={(text) => {
-              typedWeight.current = text;
-            }}
-            onEndEditing={(e) => {
-              typedWeight.current = null;
-              const typed = parseTyped(e.nativeEvent.text);
-              if (typed === null) return;
-              onChangeWeight(displayWeightToKg(typed, unit));
-            }}
-            keyboardType="numeric"
-            inputMode="decimal"
-            selectTextOnFocus
-            placeholder="—"
+          <NumberEntry
+            ref={first}
+            value={weightKg === null ? null : kgToDisplay(weightKg, unit)}
+            format={(shown) => String(shown)}
+            parse={parseTyped}
+            onCommit={(typed) => onChangeWeight(displayWeightToKg(typed, unit))}
+            decimals
             placeholderTextColor={colors.textFaint}
             style={[s.numeral, s.numeralInput, { color: numeralColor }]}
           />
@@ -357,22 +307,12 @@ export function SetRow({
       <Animated.View style={[s.field, fieldStyle]}>
         <Stepper label="−" onPress={() => onChangeReps(stepReps(reps, -1))} />
         <View style={s.value}>
-          <TextInput
-            key={`r-${reps ?? 'empty'}`}
-            defaultValue={reps === null ? '' : String(reps)}
-            onChangeText={(text) => {
-              typedReps.current = text;
-            }}
-            onEndEditing={(e) => {
-              typedReps.current = null;
-              const typed = parseTyped(e.nativeEvent.text);
-              if (typed === null) return;
-              onChangeReps(Math.round(typed));
-            }}
-            keyboardType="number-pad"
-            inputMode="numeric"
-            selectTextOnFocus
-            placeholder="—"
+          <NumberEntry
+            ref={second}
+            value={reps}
+            format={(shown) => String(shown)}
+            parse={parseTyped}
+            onCommit={(typed) => onChangeReps(Math.round(typed))}
             placeholderTextColor={colors.textFaint}
             style={[s.numeral, s.numeralInput, { color: numeralColor }]}
           />
