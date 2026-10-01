@@ -19,6 +19,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+
+import { ProgressRing } from './ProgressRing.js';
 import {
   Animated,
   Easing,
@@ -187,6 +189,9 @@ export function FinishSummary({
         <View style={styles.sheet}>
           <View style={styles.grabber} />
 
+          {/* The ring sweeps to full as the sheet opens: the workout's own progress ring,
+              finished. The trophy lands inside it. */}
+          <ProgressRing fraction={1} size={116} thickness={8} style={styles.ring}>
           <Animated.Text
             style={[
               styles.trophy,
@@ -205,6 +210,7 @@ export function FinishSummary({
           >
             🏆
           </Animated.Text>
+          </ProgressRing>
           <Text style={styles.title}>{t('workout.summaryTitle')}</Text>
 
           <View key={openKey} style={styles.tiles}>
@@ -305,6 +311,7 @@ const createStyles = (colors: ColorPalette) =>
     backdrop: ViewStyle;
     sheet: ViewStyle;
     grabber: ViewStyle;
+    ring: ViewStyle;
     trophy: TextStyle;
     title: TextStyle;
     tiles: ViewStyle;
@@ -341,7 +348,8 @@ const createStyles = (colors: ColorPalette) =>
     alignSelf: 'center',
     marginBottom: spacing.lg,
   },
-  trophy: { fontSize: 44, textAlign: 'center', marginBottom: spacing.xs },
+  ring: { alignSelf: 'center', marginBottom: spacing.sm },
+  trophy: { fontSize: 44, textAlign: 'center' },
   title: {
     color: colors.text,
     fontSize: fontSize.xl,

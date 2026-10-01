@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Barbell, CalendarBlank, ChartBar, House, type Icon } from 'phosphor-react-native';
 
 import { SwipeBetweenTabs } from '../../src/components/SwipeBetweenTabs.js';
+import { TabBar } from '../../src/components/TabBar.js';
 import { useTheme } from '../../src/ThemeProvider.js';
 import { radius, shadow, type ColorPalette } from '../../src/theme.js';
 
@@ -109,6 +110,9 @@ export default function TabsLayout() {
   return (
     <SwipeBetweenTabs>
       <Tabs
+        // The bar is ours: one pill that travels to the chosen tab, rather than a highlight
+        // fading in behind it. See TabBar.
+        tabBar={(props) => <TabBar {...props} />}
         screenOptions={{
           headerShown: false,
           tabBarActiveTintColor: colors.accent,

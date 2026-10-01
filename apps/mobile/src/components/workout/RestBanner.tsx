@@ -15,6 +15,13 @@
  *
  * The ring is `react-native-svg`, which is what a stroke-dashoffset countdown needs. In RTL it is
  * mirrored as well as rotated, so it drains in the direction the language reads.
+ *
+ * ## The last ten seconds
+ *
+ * The ring turns amber and the whole banner breathes, once a second, in time with the count. It
+ * is the one thing on this screen that is about to change by itself, and someone looking at a
+ * barbell rather than at their phone should be able to catch it in the corner of an eye. Amber
+ * rather than red: rest running out is not a problem, it is the next set arriving.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -43,6 +50,8 @@ const RING_RADIUS = (RING_SIZE - RING_STROKE) / 2;
 const CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
 const FADE_MS = duration.normal;
+/** When the ring changes colour and the banner starts to pulse. */
+const WARNING_SECONDS = 10;
 /** What "+30" adds. Named because it appears in the label and the handler and must not drift. */
 export const EXTEND_SECONDS = 30;
 
@@ -71,6 +80,7 @@ export function RestBanner({
   const s = useMemo(() => createStyles(colors), [colors]);
 
   const [remaining, setRemaining] = useState(() => remainingFrom(deadline));
+  const pulse = useRef(new Animated.Value(0)).current;
   const fade = useRef(new Animated.Value(deadline === null ? 0 : 1)).current;
 
   // A ref, not state: `onComplete` must fire exactly once per rest, and a re-render between the
@@ -108,12 +118,43 @@ export function RestBanner({
     }).start();
   }, [deadline, fade]);
 
+  /*
+   * One pulse per second through the last ten, and nothing before them.
+   *
+   * Driven off the remaining seconds rather than a loop, so the beat lands on the tick rather
+   * than drifting against it — the number changing and the banner swelling are the same event.
+   */
+  const ending = deadline !== null && remaining > 0 && remaining <= WARNING_SECONDS;
+  useEffect(() => {
+    if (!ending) {
+      pulse.setValue(0);
+      return;
+    }
+    pulse.setValue(0);
+    Animated.sequence([
+      Animated.timing(pulse, { toValue: 1, duration: 180, useNativeDriver: true }),
+      Animated.timing(pulse, { toValue: 0, duration: 420, useNativeDriver: true }),
+    ]).start();
+  }, [ending, remaining, pulse]);
+
   if (deadline === null) return null;
 
   const offset = restRingOffset(remaining, totalSeconds, CIRCUMFERENCE);
+  const ringColor = ending ? colors.warning : colors.accent;
 
   return (
-    <Animated.View style={[s.banner, { opacity: fade }]}>
+    <Animated.View
+      style={[
+        s.banner,
+        ending && s.bannerEnding,
+        {
+          opacity: fade,
+          transform: [
+            { scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.025] }) },
+          ],
+        },
+      ]}
+    >
       <View style={s.ring}>
         {/* Rotated so the stroke starts at twelve o'clock, and mirrored under RTL so it empties
             the way the text reads. Non-directional glyphs elsewhere deliberately do not mirror;
@@ -137,7 +178,7 @@ export function RestBanner({
             cx={RING_SIZE / 2}
             cy={RING_SIZE / 2}
             r={RING_RADIUS}
-            stroke={colors.accent}
+            stroke={ringColor}
             strokeWidth={RING_STROKE}
             fill="none"
             strokeLinecap="round"
@@ -146,7 +187,9 @@ export function RestBanner({
           />
         </Svg>
         <View style={s.ringLabel} pointerEvents="none">
-          <Text style={s.ringText}>{formatRemaining(remaining)}</Text>
+          <Text style={[s.ringText, ending && { color: colors.warning }]}>
+            {formatRemaining(remaining)}
+          </Text>
         </View>
       </View>
 
@@ -192,6 +235,7 @@ function remainingFrom(deadline: number | null): number {
 const createStyles = (colors: ColorPalette) =>
   StyleSheet.create<{
     banner: ViewStyle;
+    bannerEnding: ViewStyle;
     ring: ViewStyle;
     ringLabel: ViewStyle;
     ringText: TextStyle;
@@ -213,6 +257,7 @@ const createStyles = (colors: ColorPalette) =>
       borderTopWidth: 1,
       borderTopColor: colors.accent,
     },
+    bannerEnding: { borderColor: colors.warning },
 
     ring: { width: RING_SIZE, height: RING_SIZE, alignItems: 'center', justifyContent: 'center' },
     ringLabel: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
