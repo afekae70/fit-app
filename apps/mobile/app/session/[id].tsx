@@ -51,14 +51,12 @@ import {
   addExerciseToSession,
   addSetCopyingPrevious,
   deleteSession,
-  getActiveSession,
   getPreviousSessionSets,
   getSessionDetail,
   markSetDone,
   removeExerciseFromSession,
   removeSet,
   renameSession,
-  repeatSession,
   updateSet,
   type SessionExerciseWithSets,
   type WorkoutSessionRow,
@@ -74,7 +72,7 @@ const EXERCISE_BY_KEY = new Map<string, ExerciseSeed>(
 const RPE_CHOICES = [6, 7, 8, 9, 10] as const;
 
 export default function SessionDetailScreen() {
-  const { confirm, notify, ask } = useActionSheet();
+  const { confirm, ask } = useActionSheet();
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
   const { id, addExercise, mode } = useLocalSearchParams<{
@@ -254,24 +252,6 @@ export default function SessionDetailScreen() {
     await load();
   };
 
-  const repeat = () => {
-    if (!id) return;
-    void (async () => {
-      const db = await getExecutor();
-
-      // Repeating creates a new OPEN session, and only one can be active at a time —
-      // silently starting a second would strand whichever was already in progress.
-      const active = await getActiveSession(db, userId);
-      if (active) {
-        await notify({ message: t('history.activeWarning') });
-        return;
-      }
-
-      const created = await repeatSession(db, userId, newId, id);
-      if (created) router.replace('/(tabs)/workouts');
-    })();
-  };
-
   const remove = () => {
     if (!id) return;
     void (async () => {
@@ -381,34 +361,26 @@ export default function SessionDetailScreen() {
           ) : null}
         </Card>
 
-        {/* Side by side, and the same height: repeating and correcting are both things done to a
-            finished workout, and neither is the headline the two stacked blocks made them. */}
-        <View style={styles.actions}>
-          {!editing ? (
+        {/* Only the edit toggle, and only when this was opened to be edited. Repeating lives
+            in the history row's own menu now: it starts a new workout rather than changing this
+            one, which made it the odd button out on a page about what already happened. */}
+        {canEdit ? (
+          <View style={styles.actions}>
             <Pressable
-              onPress={repeat}
-              style={({ pressed }) => [styles.action, styles.actionPrimary, pressed && styles.pressed]}
+              onPress={() => setEditing((current) => !current)}
+              style={({ pressed }) => [
+                styles.action,
+                editing && styles.actionPrimary,
+                pressed && styles.pressed,
+              ]}
               accessibilityRole="button"
             >
-              <Text style={styles.actionPrimaryText}>↻ {t('history.repeat')}</Text>
+              <Text style={[styles.actionText, editing && styles.actionPrimaryText]}>
+                {editing ? `✓ ${t('history.editDone')}` : `✎ ${t('history.edit')}`}
+              </Text>
             </Pressable>
-          ) : null}
-          {canEdit ? (
-          <Pressable
-            onPress={() => setEditing((current) => !current)}
-            style={({ pressed }) => [
-              styles.action,
-              editing && styles.actionPrimary,
-              pressed && styles.pressed,
-            ]}
-            accessibilityRole="button"
-          >
-            <Text style={[styles.actionText, editing && styles.actionPrimaryText]}>
-              {editing ? `✓ ${t('history.editDone')}` : `✎ ${t('history.edit')}`}
-            </Text>
-          </Pressable>
-          ) : null}
-        </View>
+          </View>
+        ) : null}
 
         <SectionTitle>{t('history.exercises')}</SectionTitle>
 
