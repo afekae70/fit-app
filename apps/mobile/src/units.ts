@@ -49,7 +49,18 @@ function round2(value: number): number {
 /* -------------------------------------------------------------------------- */
 
 export function kgToDisplay(kg: number, unit: UnitPreference): number {
-  return round1(unit === 'imperial' ? kg / KG_PER_LB : kg);
+  /*
+   * Kilograms are shown exactly as they were entered, to the hundredth.
+   *
+   * They used to be rounded to a tenth, on the reasoning that plates come in half-kilo steps —
+   * true of the plates, false of the bar: micro plates, a loaded dumbbell and the fixed weights
+   * on a machine all land on quarters, and someone who typed 13.75 was shown 13.8 and told,
+   * wrongly, that the app had not kept what they wrote. It had; only the display rounded.
+   *
+   * Pounds stay at a tenth. They are a conversion rather than a number anybody typed, and 100 kg
+   * reading as 220.46 lb looks like a measurement error instead of a unit change.
+   */
+  return unit === 'imperial' ? round1(kg / KG_PER_LB) : round2(kg);
 }
 
 /**

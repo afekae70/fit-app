@@ -34,6 +34,12 @@ describe('weight', () => {
     expect(displayWeightToKg(82.5, 'metric')).toBe(82.5);
   });
 
+  it('keeps a typed quarter-kilo rather than rounding it away', () => {
+    // 13.75 kg is a real dumbbell, and showing it as 13.8 read as the app having lost the number.
+    expect(kgToDisplay(13.75, 'metric')).toBe(13.75);
+    expect(kgToDisplay(2.25, 'metric')).toBe(2.25);
+  });
+
   it('converts to pounds at the defined ratio', () => {
     expect(kgToDisplay(100, 'imperial')).toBe(220.5);
     expect(kgToDisplay(0, 'imperial')).toBe(0);
@@ -48,9 +54,9 @@ describe('weight', () => {
     expect(displayWeightToKg(220.5, 'imperial')).toBeCloseTo(100.0172, 3);
   });
 
-  it('rounds display to one decimal, never more', () => {
+  it('keeps kilograms to the hundredth and pounds to the tenth', () => {
     expect(String(kgToDisplay(100, 'imperial'))).toBe('220.5');
-    expect(String(kgToDisplay(83.33333, 'metric'))).toBe('83.3');
+    expect(String(kgToDisplay(83.33333, 'metric'))).toBe('83.33');
   });
 
   it('names the right unit key', () => {
@@ -146,10 +152,11 @@ describe('bodyweight precision', () => {
     expect(formatBodyWeight(74.18, 'metric')).toBe('74.18');
   });
 
-  it('leaves lifted weights at one decimal', () => {
-    // Two decimals on a bar would render a round 100 kg as 220.46 lb, which reads as a
-    // measurement error rather than a conversion — and plates come in half-kilo steps anyway.
-    expect(kgToDisplay(74.18, 'metric')).toBe(74.2);
+  it('shows a lifted weight exactly as it was typed, and pounds to the tenth', () => {
+    // Quarters are real on a bar — micro plates, fixed dumbbells, machine stacks — so a typed
+    // 13.75 must come back as 13.75. Pounds are a conversion rather than a typed number, and a
+    // round 100 kg rendering as 220.46 lb reads as a measurement error.
+    expect(kgToDisplay(74.18, 'metric')).toBe(74.18);
     expect(kgToDisplay(100, 'imperial')).toBe(220.5);
   });
 
@@ -175,7 +182,8 @@ describe('bodyweight precision', () => {
     expect(isEditedWeight(74.18, 74.2, 'metric', 'body')).toBe(true);
   });
 
-  it('defaults to lift precision when no kind is given', () => {
-    expect(isEditedWeight(74.18, 74.2, 'metric')).toBe(false);
+  it('defaults to lift precision, which now keeps hundredths too', () => {
+    expect(isEditedWeight(74.18, 74.18, 'metric')).toBe(false);
+    expect(isEditedWeight(74.18, 74.2, 'metric')).toBe(true);
   });
 });

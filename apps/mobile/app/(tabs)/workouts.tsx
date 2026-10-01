@@ -228,8 +228,11 @@ export default function WorkoutsScreen() {
   const openSessionOptions = useCallback(
     (id: string) => {
       void (async () => {
+        // Headed by the workout's own name: a menu that says only "the workout" is a menu you
+        // have to remember which row you held.
+        const held = history.find((session) => session.id === id);
         const choice = await ask({
-          title: t('history.sessionTitle'),
+          title: held?.name?.trim() || t('history.unnamed'),
           actions: [
             { label: t('history.repeat') },
             { label: t('history.edit') },
@@ -263,7 +266,7 @@ export default function WorkoutsScreen() {
         await reloadHome();
       })();
     },
-    [ask, confirm, notify, t, userId, reloadHome],
+    [ask, confirm, notify, t, userId, reloadHome, history],
   );
 
   const handleHomeRefresh = useCallback(() => {
