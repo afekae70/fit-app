@@ -88,6 +88,7 @@ import {
   listSessionSummaries,
   markSetDone,
   removeExerciseFromSession,
+  deleteSession,
   removeSet,
   reorderSessionExercise,
   startSession,
@@ -216,6 +217,38 @@ export default function WorkoutsScreen() {
   }, [userId, historyPeriod]);
 
   const [homeRefreshing, setHomeRefreshing] = useState(false);
+  /**
+   * Hold a past workout: edit it, or delete it.
+   *
+   * Tapping one opens it to be read. Both of the things that change it live here, behind a
+   * deliberate press — a list of finished sessions is scrolled far more often than it is edited,
+   * and a delete that can be reached by a mis-tap on a scroll is a delete that will happen.
+   */
+  const openSessionOptions = useCallback(
+    (id: string) => {
+      void (async () => {
+        const choice = await ask({
+          title: t('history.sessionTitle'),
+          actions: [{ label: t('history.edit') }, { label: t('history.delete'), destructive: true }],
+        });
+        if (choice === 0) {
+          router.push({ pathname: '/session/[id]', params: { id, mode: 'edit' } });
+          return;
+        }
+        if (choice !== 1) return;
+        const ok = await confirm({
+          message: t('history.confirmDelete'),
+          confirmLabel: t('history.delete'),
+        });
+        if (!ok) return;
+        const db = await getExecutor();
+        await deleteSession(db, userId, id);
+        await reloadHome();
+      })();
+    },
+    [ask, confirm, t, userId, reloadHome],
+  );
+
   const handleHomeRefresh = useCallback(() => {
     setHomeRefreshing(true);
     void reloadHome().finally(() => setHomeRefreshing(false));
@@ -1144,6 +1177,7 @@ export default function WorkoutsScreen() {
         onChangePeriod={setHistoryPeriod}
         onStartEmpty={() => void begin()}
         onOpenSession={(id) => router.push({ pathname: '/session/[id]', params: { id } })}
+        onSessionOptions={openSessionOptions}
         contentPadding={{
           paddingTop: spacing.lg,
           paddingBottom: insets.bottom + spacing.xxl,

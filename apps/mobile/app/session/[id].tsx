@@ -77,7 +77,13 @@ export default function SessionDetailScreen() {
   const { confirm, notify, ask } = useActionSheet();
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
-  const { id, addExercise } = useLocalSearchParams<{ id: string; addExercise?: string }>();
+  const { id, addExercise, mode } = useLocalSearchParams<{
+    id: string;
+    addExercise?: string;
+    /** `edit` arrives from the history menu; anything else opens the workout to be read. */
+    mode?: string;
+  }>();
+  const canEdit = mode === 'edit';
   const isHebrew = i18n.language === 'he';
   const userId = useCurrentUserId();
   const unit = useUnit();
@@ -89,6 +95,7 @@ export default function SessionDetailScreen() {
   const [previous, setPrevious] = useState<Record<string, PreviousSet[] | null>>({});
   const [nameDraft, setNameDraft] = useState('');
   const [loading, setLoading] = useState(true);
+  // Opened to be read unless the history menu said otherwise — see `canEdit`.
   const [editing, setEditing] = useState(false);
 
   /**
@@ -336,15 +343,19 @@ export default function SessionDetailScreen() {
             the heading rather than a field in a box — it is read far more often than it is
             changed, and tapping it is still enough to change it. */}
         <Card>
-          <TextInput
-            value={nameDraft}
-            onChangeText={setNameDraft}
-            onEndEditing={() => void saveName()}
-            placeholder={t('history.namePlaceholder')}
-            placeholderTextColor={colors.textMuted}
-            style={styles.nameInput}
-            returnKeyType="done"
-          />
+          {canEdit ? (
+            <TextInput
+              value={nameDraft}
+              onChangeText={setNameDraft}
+              onEndEditing={() => void saveName()}
+              placeholder={t('history.namePlaceholder')}
+              placeholderTextColor={colors.textMuted}
+              style={styles.nameInput}
+              returnKeyType="done"
+            />
+          ) : (
+            <Text style={styles.nameInput}>{nameDraft || t('history.unnamed')}</Text>
+          )}
           <Text style={styles.when}>{when}</Text>
 
           <View style={styles.tiles}>
@@ -382,6 +393,7 @@ export default function SessionDetailScreen() {
               <Text style={styles.actionPrimaryText}>↻ {t('history.repeat')}</Text>
             </Pressable>
           ) : null}
+          {canEdit ? (
           <Pressable
             onPress={() => setEditing((current) => !current)}
             style={({ pressed }) => [
@@ -395,6 +407,7 @@ export default function SessionDetailScreen() {
               {editing ? `✓ ${t('history.editDone')}` : `✎ ${t('history.edit')}`}
             </Text>
           </Pressable>
+          ) : null}
         </View>
 
         <SectionTitle>{t('history.exercises')}</SectionTitle>
@@ -445,9 +458,13 @@ export default function SessionDetailScreen() {
           </Pressable>
         ) : null}
 
-        <Pressable onPress={remove} style={styles.deleteButton} accessibilityRole="button">
-          <Text style={styles.deleteButtonText}>{t('history.delete')}</Text>
-        </Pressable>
+        {/* Deleting lives in the history list's own menu, where the workout is a row to hold
+            rather than a page you are already reading. */}
+        {canEdit ? (
+          <Pressable onPress={remove} style={styles.deleteButton} accessibilityRole="button">
+            <Text style={styles.deleteButtonText}>{t('history.delete')}</Text>
+          </Pressable>
+        ) : null}
       </ScrollView>
     </KeyboardSafe>
   );

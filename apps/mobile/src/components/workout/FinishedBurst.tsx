@@ -13,6 +13,7 @@
  */
 
 import { useEffect, useMemo, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Animated, Easing, StyleSheet, Text, type TextStyle, type ViewStyle } from 'react-native';
 
 import { ProgressRing } from '../ProgressRing.js';
@@ -24,6 +25,7 @@ const HOLD_MS = 1900;
 const OUT_MS = 380;
 
 export function FinishedBurst({ onDone }: { onDone: () => void }) {
+  const { t } = useTranslation();
   const { colors } = useTheme();
   const s = useMemo(() => createStyles(colors), [colors]);
 
@@ -66,12 +68,27 @@ export function FinishedBurst({ onDone }: { onDone: () => void }) {
           <Text style={s.trophy}>🏆</Text>
         </ProgressRing>
       </Animated.View>
+
+      {/* Said out loud. The trophy is the feeling; the line is what actually happened. */}
+      <Animated.Text
+        style={[
+          s.line,
+          {
+            opacity: enter,
+            transform: [
+              { translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) },
+            ],
+          },
+        ]}
+      >
+        {t('workout.finishedLine')}
+      </Animated.Text>
     </Animated.View>
   );
 }
 
 const createStyles = (colors: ColorPalette) =>
-  StyleSheet.create<{ backdrop: ViewStyle; badge: ViewStyle; trophy: TextStyle }>({
+  StyleSheet.create<{ backdrop: ViewStyle; badge: ViewStyle; trophy: TextStyle; line: TextStyle }>({
     // Dimmed rather than opaque: the workout stays visible behind it, which is what makes this
     // read as the end of that session rather than as another screen.
     backdrop: {
@@ -88,4 +105,12 @@ const createStyles = (colors: ColorPalette) =>
       ...shadow(colors.shadow).hero,
     },
     trophy: { fontSize: 54 },
+    line: {
+      marginTop: 18,
+      color: colors.text,
+      fontSize: 20,
+      fontWeight: '700',
+      textAlign: 'center',
+      paddingHorizontal: 32,
+    },
   });

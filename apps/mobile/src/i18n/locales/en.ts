@@ -215,6 +215,7 @@ export const en = {
     setLabel: 'Gym',
   },
   workout: {
+    finishedLine: 'Well done — workout complete',
     minutesShort: 'min',
     stripReorderHint: 'Hold and drag left or right to change the order',
     stripDropHint: 'Drag left or right and let go in the new place',

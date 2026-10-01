@@ -208,6 +208,7 @@ export const he = {
     setLabel: 'חדר',
   },
   workout: {
+    finishedLine: 'כל הכבוד! סיימת את האימון',
     minutesShort: 'דק׳',
     stripReorderHint: 'לחיצה ארוכה וגרירה ימינה או שמאלה משנה את סדר התרגילים',
     stripDropHint: 'גרור ימינה או שמאלה ושחרר במקום החדש',

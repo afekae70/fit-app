@@ -38,6 +38,14 @@ export interface WorkoutHomeProps {
   onChangePeriod: (period: HistoryPeriod) => void;
   onStartEmpty: () => void;
   onOpenSession: (sessionId: string) => void;
+  /**
+   * Hold a workout for what can be done to it — edited, or deleted.
+   *
+   * A tap opens it to be read, and reading is what a finished workout is mostly for; the two
+   * things that change it are one press further in, where they cannot be hit by accident while
+   * scrolling a list of them.
+   */
+  onSessionOptions?: (sessionId: string) => void;
   contentPadding: { paddingTop: number; paddingBottom: number };
   refreshing: boolean;
   onRefresh: () => void;
@@ -67,6 +75,7 @@ export function WorkoutHome({
   onChangePeriod,
   onStartEmpty,
   onOpenSession,
+  onSessionOptions,
   contentPadding,
   refreshing,
   onRefresh,
@@ -139,6 +148,10 @@ export function WorkoutHome({
               <Pressable
                 key={session.id}
                 onPress={() => onOpenSession(session.id)}
+                onLongPress={
+                  onSessionOptions ? () => onSessionOptions(session.id) : undefined
+                }
+                delayLongPress={320}
                 style={styles.historyRow}
                 accessibilityRole="button"
               >
