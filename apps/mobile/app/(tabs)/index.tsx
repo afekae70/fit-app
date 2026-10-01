@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../src/auth/AuthProvider.js';
 import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
 import { loadAvatar } from '../../src/profile/avatar.js';
+import { writeWidgetSnapshot } from '../../src/widget/snapshot.js';
 import { QuickActions } from '../../src/components/home/QuickActions.js';
 import {
   GreetingRow,
@@ -106,6 +107,22 @@ export default function TodayScreen() {
       ]);
       setData({ workout, strip, summary, monthWeeks: weeks, nutrition, restDay, trained });
       setFailed(false);
+
+      // Leave the home-screen widget something to show. Not awaited: a launcher label must never
+      // hold up the screen it was read from.
+      writeWidgetSnapshot(
+        workout
+          ? {
+              title: workout.dayName,
+              detail: t('home.workoutMeta', {
+                exercises: workout.exerciseCount,
+                sets: workout.setCount,
+                minutes: workout.estimatedMinutes,
+              }),
+              action: t('home.startWorkout'),
+            }
+          : null,
+      );
       // After a workout this drops today's reminder; on launch it extends the month ahead.
       void syncWorkoutReminders(db, userId, {
         title: t('settings.workoutReminderNotification'),
