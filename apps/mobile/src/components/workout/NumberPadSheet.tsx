@@ -30,11 +30,12 @@ export interface NumberPadRequest {
   onCommit: (value: number | null) => void;
 }
 
+/** Backspace is not among them: it sits at the top right, beside the number it deletes from. */
 const KEYS: PadKey[][] = [
   ['1', '2', '3'],
   ['4', '5', '6'],
   ['7', '8', '9'],
-  ['.', '0', 'back'],
+  ['.', '0', 'clear'],
 ];
 
 export function NumberPadSheet({
@@ -65,21 +66,45 @@ export function NumberPadSheet({
     setText((current) => pressKey(current, key, { decimals }));
   };
 
-  const done = () => {
+  /*
+   * Leaving the pad is what saves.
+   *
+   * There was a Done key, and it was a key that did nothing the act of closing could not: nobody
+   * types a number and then means for it not to be kept. Tapping outside, pressing back, or
+   * reaching for the next set all commit what is on the display.
+   */
+  const dismiss = () => {
     request.onCommit(padValue(text));
     onClose();
   };
 
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
-      {/* Outside the sheet closes it without saving — the same bargain every sheet in the app
-          makes, and the reason the number is committed by a key rather than by dismissing. */}
-      <Pressable style={s.backdrop} onPress={onClose} accessibilityRole="button" />
+    <Modal visible transparent animationType="slide" onRequestClose={dismiss} statusBarTranslucent>
+      {/* Tapping outside keeps what was typed, like every other field in the app: an edit ends
+          when you look away from it. */}
+      <Pressable
+        style={s.backdrop}
+        onPress={dismiss}
+        accessibilityRole="button"
+        accessibilityLabel={t('common.done')}
+      />
 
       <View style={[s.sheet, { paddingBottom: Math.max(insets.bottom, 12) + 8 }]}>
         <Text style={s.title} numberOfLines={1}>
           {request.title}
         </Text>
+
+        {/* Top right, physically: it belongs with the number it takes a digit off, and that is
+            the corner a right-handed thumb reaches without crossing the keys. */}
+        <Pressable
+          onPress={() => press('back')}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.delete')}
+          hitSlop={8}
+          style={({ pressed }) => [s.backspace, pressed && s.keyPressed]}
+        >
+          <Text style={s.backspaceGlyph}>⌫</Text>
+        </Pressable>
 
         <View style={s.valueRow}>
           <Text style={s.value}>{text === '' ? '—' : text}</Text>
@@ -97,14 +122,14 @@ export function NumberPadSheet({
                     onPress={() => press(key)}
                     disabled={disabled}
                     accessibilityRole="button"
-                    accessibilityLabel={key === 'back' ? t('common.delete') : key}
+                    accessibilityLabel={key === 'clear' ? t('common.clear') : key}
                     style={({ pressed }) => [
                       s.key,
                       disabled && s.keyOff,
                       pressed && s.keyPressed,
                     ]}
                   >
-                    <Text style={s.keyText}>{key === 'back' ? '⌫' : key}</Text>
+                    <Text style={s.keyText}>{key === 'clear' ? t('common.clear') : key}</Text>
                   </Pressable>
                 );
               })}
@@ -112,22 +137,6 @@ export function NumberPadSheet({
           ))}
         </View>
 
-        <View style={s.actions}>
-          <Pressable
-            onPress={() => press('clear')}
-            accessibilityRole="button"
-            style={({ pressed }) => [s.action, pressed && s.keyPressed]}
-          >
-            <Text style={s.actionText}>{t('common.clear')}</Text>
-          </Pressable>
-          <Pressable
-            onPress={done}
-            accessibilityRole="button"
-            style={({ pressed }) => [s.action, s.actionPrimary, pressed && s.keyPressed]}
-          >
-            <Text style={[s.actionText, s.actionPrimaryText]}>{t('common.done')}</Text>
-          </Pressable>
-        </View>
       </View>
     </Modal>
   );
@@ -138,6 +147,8 @@ const createStyles = (colors: ColorPalette) =>
     backdrop: ViewStyle;
     sheet: ViewStyle;
     title: TextStyle;
+    backspace: ViewStyle;
+    backspaceGlyph: TextStyle;
     valueRow: ViewStyle;
     value: TextStyle;
     unit: TextStyle;
@@ -147,11 +158,6 @@ const createStyles = (colors: ColorPalette) =>
     keyOff: ViewStyle;
     keyPressed: ViewStyle;
     keyText: TextStyle;
-    actions: ViewStyle;
-    action: ViewStyle;
-    actionPrimary: ViewStyle;
-    actionText: TextStyle;
-    actionPrimaryText: TextStyle;
   }>({
     backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.35)' },
     sheet: {
@@ -167,7 +173,19 @@ const createStyles = (colors: ColorPalette) =>
       borderTopRightRadius: radius.xl,
       ...shadow(colors.shadow).floating,
     },
-    title: { color: colors.textMuted, fontSize: 13, textAlign: 'center' },
+    title: { color: colors.textMuted, fontSize: 13, textAlign: 'center', paddingHorizontal: 44 },
+    backspace: {
+      position: 'absolute',
+      top: 8,
+      right: 12,
+      width: 46,
+      height: 40,
+      borderRadius: radius.sm,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.surfaceRaised,
+    },
+    backspaceGlyph: { color: colors.text, fontSize: 19 },
     valueRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center', gap: 6 },
     value: {
       color: colors.text,
@@ -194,17 +212,4 @@ const createStyles = (colors: ColorPalette) =>
     keyPressed: { opacity: 0.7 },
     keyText: { color: colors.text, fontSize: 24, fontWeight: '500' },
 
-    actions: { flexDirection: 'row', gap: 8 },
-    action: {
-      flex: 1,
-      minHeight: 50,
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderRadius: radius.pill,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    actionPrimary: { backgroundColor: colors.accent, borderColor: colors.accent },
-    actionText: { color: colors.textSecondary, fontSize: 16, fontWeight: '600' },
-    actionPrimaryText: { color: colors.bg, fontWeight: '700' },
   });
