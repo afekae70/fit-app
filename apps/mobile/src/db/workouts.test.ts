@@ -27,6 +27,7 @@ import {
   getWorkoutStreak,
   listRecentExerciseKeys,
   listSessionExercises,
+  listSessionSummaries,
   listSets,
   markSetDone,
   removeExerciseFromSession,
@@ -1099,5 +1100,22 @@ describe('drop sets', () => {
 
     const indexes = (await listSets(db, ex)).map((s) => s.set_index);
     expect(indexes).toEqual([1, 2, 3, 4, 5]);
+  });
+});
+
+describe('history filtered by period', () => {
+  it('keeps only sessions at or after the cut, and all of them without one', async () => {
+    const { newId } = createFixtures();
+    const at = (iso: string) => () => iso;
+
+    const today = await startSession(db, USER, newId, {}, at(daysAgo(0)));
+    const recent = await startSession(db, USER, newId, {}, at(daysAgo(4)));
+    await startSession(db, USER, newId, {}, at(daysAgo(40)));
+
+    const week = await listSessionSummaries(db, USER, 100, daysAgo(7));
+    expect(week.map((session) => session.id)).toEqual([today, recent]);
+
+    const everything = await listSessionSummaries(db, USER, 100);
+    expect(everything).toHaveLength(3);
   });
 });

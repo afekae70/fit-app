@@ -27,15 +27,25 @@
  *
  * ## Where the tabs actually are
  *
- * Measured, not calculated. The first version worked out each slot from the bar's width and then
- * flipped the direction on `I18nManager.isRTL` — and that flag is false in this app even in
- * Hebrew, because the layout is mirrored with Yoga's `direction` instead (see the root layout).
- * So the pill sat under the last tab and slid off the screen. Each tab reports its own frame on
- * layout, and the pill goes to the frame of the chosen one, whichever way the row runs.
+ * Measured on the screen itself, with `measureInWindow`, and that detail is the whole of this
+ * component's history of bugs.
+ *
+ * The first version computed each slot from the bar's width and flipped the direction on
+ * `I18nManager.isRTL` — a flag this app leaves false even in Hebrew, because the layout is
+ * mirrored with Yoga's `direction` instead. The pill sat under the last tab and slid off screen.
+ *
+ * The second asked each tab for its `onLayout` frame. Under a mirrored layout that `x` is
+ * measured from the row's own start edge, which in Hebrew is the right — while `translateX` moves
+ * from the left, as it always does. The two disagreed, so the pill landed under Home while
+ * Progress was open: the mirror image of the right answer.
+ *
+ * `measureInWindow` reports true screen coordinates, which no layout direction can reinterpret.
+ * Each tab's offset is its own page position minus the bar's, and both sides of that subtraction
+ * speak the same language.
  */
 
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Pressable,
@@ -69,9 +79,38 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const s = useMemo(() => createStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
 
-  /** Each tab's frame within the bar, as the layout actually placed it. */
+  /** Each tab's frame within the bar, in screen coordinates — see the note above. */
   const [slots, setSlots] = useState<{ x: number; width: number }[]>([]);
   const current = slots[state.index];
+
+  const barRef = useRef<View | null>(null);
+  const tabRefs = useRef<(View | null)[]>([]);
+
+  /**
+   * Ask the bar and every tab where they actually are.
+   *
+   * Run from each tab's `onLayout`, which fires on mount, on rotation, and whenever a label
+   * changes width — and every run measures all of them, because one tab growing moves its
+   * neighbours and a single measurement would leave the rest stale.
+   */
+  const measureTabs = useCallback(() => {
+    barRef.current?.measureInWindow((barX) => {
+      const measured: { x: number; width: number }[] = [];
+      let pending = tabRefs.current.length;
+      if (pending === 0) return;
+      tabRefs.current.forEach((node, index) => {
+        if (!node) {
+          pending -= 1;
+          return;
+        }
+        node.measureInWindow((tabX, _y, tabWidth) => {
+          measured[index] = { x: tabX - barX + 4, width: Math.max(0, tabWidth - 8) };
+          pending -= 1;
+          if (pending === 0) setSlots(measured);
+        });
+      });
+    });
+  }, []);
 
   const travel = useRef(new Animated.Value(0)).current;
   const pillWidth = useRef(new Animated.Value(0)).current;
@@ -91,6 +130,8 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
 
   return (
     <View
+      ref={barRef}
+      onLayout={measureTabs}
       style={[
         s.bar,
         {
@@ -140,16 +181,10 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
             accessibilityRole="button"
             accessibilityState={{ selected: focused }}
             accessibilityLabel={options.tabBarAccessibilityLabel ?? label}
-            onLayout={(event) => {
-              const { x, width: tabWidth } = event.nativeEvent.layout;
-              setSlots((previous) => {
-                const next = [...previous];
-                const slot = { x: x + 4, width: Math.max(0, tabWidth - 8) };
-                if (next[index]?.x === slot.x && next[index]?.width === slot.width) return previous;
-                next[index] = slot;
-                return next;
-              });
+            ref={(node) => {
+              tabRefs.current[index] = node;
             }}
+            onLayout={() => measureTabs()}
             style={s.tab}
           >
             <Glyph

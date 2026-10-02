@@ -251,6 +251,19 @@ export default function WorkoutsScreen() {
     setHistory(await listSessionSummaries(db, userId, 2000, start?.toISOString()));
   }, [userId, historyPeriod]);
 
+  /*
+   * Re-read the history when the period changes.
+   *
+   * It used to ride on the focus effect, which re-runs when its callback changes and so happened
+   * to cover this — except that effect returns immediately while a session is open, and it is
+   * doing a different job: adopting a workout started elsewhere. Choosing "last week" and seeing
+   * last year is the kind of bug that comes of a side effect being somebody else's.
+   */
+  useEffect(() => {
+    if (sessionId) return;
+    void reloadHome();
+  }, [historyPeriod, sessionId, reloadHome]);
+
   const [homeRefreshing, setHomeRefreshing] = useState(false);
   /**
    * Hold a past workout: edit it, or delete it.
