@@ -2,6 +2,10 @@
 <!--
   How the launcher offers and refreshes the widget.
 
+  Two cells by one: the smallest shape that still fits the workout's name and a button, and the
+  one most people have room for. It resizes both ways from there, and the layout holds at every
+  size because the lines simply truncate.
+
   `updatePeriodMillis` is half an hour, which is the floor Android honours anyway — and enough
   for a label about today. Both a preview layout and a preview image are given: launchers that
   understand the first render the widget itself in the picker, and the rest fall back to the app's
@@ -9,10 +13,12 @@
   launcher to update it after writing a new snapshot.
 -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
-    android:minWidth="180dp"
-    android:minHeight="110dp"
-    android:targetCellWidth="3"
-    android:targetCellHeight="2"
+    android:minWidth="110dp"
+    android:minHeight="58dp"
+    android:targetCellWidth="2"
+    android:targetCellHeight="1"
+    android:minResizeWidth="110dp"
+    android:minResizeHeight="58dp"
     android:updatePeriodMillis="1800000"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
