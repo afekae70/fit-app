@@ -696,6 +696,16 @@ export const he = {
    * reaches Samsung Health. The name stays in English because that is what it is called on the
    * phone, in every language.
    */
+  /**
+   * The home-screen widgets. Everything else they draw is a native string, because the launcher
+   * renders them with none of this app running - these two are written into the snapshot file by
+   * the app itself, so they can follow the language the app is in.
+   */
+  widget: {
+    weekCaption: 'אימונים השבוע',
+    weekStreak_one: 'רצף של יום',
+    weekStreak_other: 'רצף של {{count}} ימים',
+  },
   health: {
     title: 'סנכרון עם Health Connect',
     hint: 'אימון שמסתיים נשלח ל-Health Connect, ומשם הוא מופיע ב-Samsung Health ובכל אפליקציה אחרת שקוראת ממנו.',

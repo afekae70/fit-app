@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A ring for the picker only.
+
+  The real one is a bitmap drawn by WeekWidgetProvider, with the week's own fraction in it. The
+  launcher draws the preview from the layout alone, with no app running and therefore no bitmap, so
+  this stands in: the accent ring at the thickness the drawn one uses, and nothing in the middle.
+
+  `innerRadiusRatio` and `thicknessRatio` are fractions of the width — 3 means a third. useLevel
+  must be false or a shape ring draws nothing at all until something sets its level, which is a
+  blank preview for a reason nobody finds twice.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="ring"
+    android:innerRadiusRatio="2.6"
+    android:thicknessRatio="9"
+    android:useLevel="false">
+    <solid android:color="@color/widget_accent" />
+</shape>

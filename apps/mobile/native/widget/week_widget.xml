@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The week widget's face: the ring, and two lines beside it.
+
+  The ring is an ImageView because RemoteViews cannot draw an arc — WeekWidgetProvider hands it a
+  finished bitmap. The `src` here is only for the picker: the launcher renders this layout as the
+  preview with no app running to supply a bitmap, and without a placeholder the preview is a card
+  with a hole in it.
+
+  Nothing names a colour. They are all resources with a `values-night` twin, so the launcher draws
+  the widget light or dark exactly as the phone is.
+
+  Horizontal, and deliberately not mirrored for Hebrew: the ring is a figure, the lines are a
+  caption, and the pair reads as one object either way. `layout_marginStart` on the text keeps the
+  gap on the correct side if the launcher does mirror it.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/week_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:padding="10dp"
+    android:background="@drawable/today_widget_background">
+
+    <ImageView
+        android:id="@+id/week_ring"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:scaleType="fitCenter"
+        android:src="@drawable/week_widget_ring_preview"
+        android:contentDescription="@string/widget_week_caption" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="10dp"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/week_caption"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/widget_week_caption"
+            android:maxLines="2"
+            android:ellipsize="end"
+            android:textColor="@color/widget_text"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/week_streak"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/widget_week_streak_preview"
+            android:layout_marginTop="2dp"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:textColor="@color/widget_muted"
+            android:textSize="11sp" />
+    </LinearLayout>
+</LinearLayout>

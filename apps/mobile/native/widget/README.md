@@ -33,9 +33,36 @@ with it the signing config this build relies on — release APKs here are signed
 and an APK signed by a different key cannot install over the one on the phone. It would have to be
 uninstalled first, taking every workout logged on the device with it.
 
+## The second widget: the week's ring
+
+`WeekWidgetProvider.kt`, `week_widget.xml`, `week_widget_info.xml` and
+`week_widget_ring_preview.xml`, copied the same way, with their own receiver:
+
+```xml
+<receiver android:name=".widget.WeekWidgetProvider" android:exported="true"
+          android:label="@string/widget_week_label">
+  <intent-filter>
+    <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+  </intent-filter>
+  <meta-data android:name="android.appwidget.provider" android:resource="@xml/week_widget_info"/>
+</receiver>
+```
+
+It reads the same `widget.json`, under a `week` key: a percentage, the figure for the middle of the
+ring, and the two lines beside it. **The percentage is computed in the app**, in
+`src/widget/payload.ts`, where it is tested — the rule that a sixth workout in a week of five still
+draws a closed ring, and that a week with no target draws an empty one, does not belong in Kotlin
+running inside the launcher's process.
+
+**The ring is a bitmap.** `RemoteViews` can be handed a finished image but has no arc to draw, so
+the provider renders one with `Canvas` and calls `setImageViewBitmap`. The `android:src` in the
+layout is a `<shape android:shape="ring">` standing in for the picker's preview, which the launcher
+draws from the layout alone with no app running — and note `useLevel="false"` on it, without which a
+shape ring draws nothing at all.
+
 ## What it shows, and where that comes from
 
-The widget never touches the database. The app writes `widget.json` into its own files directory
+Neither widget touches the database. The app writes `widget.json` into its own files directory
 whenever the home screen loads — today's workout, how many exercises it has, and a line of what
 is in it — and the widget reads that file. A launcher process querying SQLite would be a second
 reader of a database the app keeps open, for a label that changes once a day.

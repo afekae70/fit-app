@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  How the launcher offers and refreshes the week widget.
+
+  Two cells by one, like the other one: the ring and two lines fit, and it is the shape most people
+  have room for. It resizes both ways, and the ring is a bitmap scaled to its box, so growing it
+  costs nothing.
+
+  Both a preview layout and a preview image are given: launchers that understand the first render
+  the widget itself in the picker, and the rest fall back to the app's icon rather than to nothing.
+
+  `updatePeriodMillis` is half an hour, the floor Android honours. The week only changes when a
+  workout is finished, and finishing one takes the user through the app's home screen, which is
+  what writes the file this reads.
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="110dp"
+    android:minHeight="58dp"
+    android:targetCellWidth="2"
+    android:targetCellHeight="1"
+    android:minResizeWidth="110dp"
+    android:minResizeHeight="58dp"
+    android:updatePeriodMillis="1800000"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen"
+    android:previewLayout="@layout/week_widget"
+    android:previewImage="@mipmap/ic_launcher"
+    android:description="@string/widget_week_description"
+    android:initialLayout="@layout/week_widget" />

@@ -21,7 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../src/auth/AuthProvider.js';
 import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
 import { loadAvatar } from '../../src/profile/avatar.js';
-import { writeWidgetSnapshot } from '../../src/widget/snapshot.js';
+import { weekForWidget, writeWidgetSnapshot } from '../../src/widget/snapshot.js';
 import { QuickActions } from '../../src/components/home/QuickActions.js';
 import {
   GreetingRow,
@@ -52,7 +52,7 @@ import {
 } from '../../src/db/home.js';
 import { startSessionFromPlanDay } from '../../src/db/plans.js';
 import { getExecutor, newId } from '../../src/db/provider.js';
-import { getActiveSession } from '../../src/db/workouts.js';
+import { getActiveSession, getWorkoutStreak } from '../../src/db/workouts.js';
 import { syncWorkoutReminders } from '../../src/reminders/sync.js';
 import { hapticLight } from '../../src/haptics.js';
 import { useTheme } from '../../src/ThemeProvider.js';
@@ -96,22 +96,25 @@ export default function TodayScreen() {
   const load = useCallback(async () => {
     try {
       const db = await getExecutor();
-      const [workout, strip, summary, weeks, nutrition, restDay, trained] = await Promise.all([
-        getTodayWorkout(db, userId),
-        weekStrip(db, userId),
-        weekSummary(db, userId),
-        monthWeeks(db, userId),
-        getHomeNutrition(db, userId),
-        isScheduledRestDay(db, userId),
-        getTrainedToday(db, userId),
-      ]);
+      const [workout, strip, summary, weeks, nutrition, restDay, trained, streak] =
+        await Promise.all([
+          getTodayWorkout(db, userId),
+          weekStrip(db, userId),
+          weekSummary(db, userId),
+          monthWeeks(db, userId),
+          getHomeNutrition(db, userId),
+          isScheduledRestDay(db, userId),
+          getTrainedToday(db, userId),
+          // Only the widget shows this; the strip above says the same thing in a way you can count.
+          getWorkoutStreak(db, userId),
+        ]);
       setData({ workout, strip, summary, monthWeeks: weeks, nutrition, restDay, trained });
       setFailed(false);
 
       // Leave the home-screen widget something to show. Not awaited: a launcher label must never
       // hold up the screen it was read from.
-      writeWidgetSnapshot(
-        workout
+      writeWidgetSnapshot({
+        today: workout
           ? {
               title: workout.dayName,
               detail: t('home.workoutMeta', {
@@ -122,7 +125,18 @@ export default function TodayScreen() {
               action: t('home.startWorkout'),
             }
           : null,
-      );
+        week: weekForWidget(
+          {
+            trained: weeks.thisWeek.trained,
+            target: weeks.thisWeek.target,
+            streakDays: streak.currentDays,
+          },
+          {
+            caption: t('widget.weekCaption'),
+            streak: (days) => t('widget.weekStreak', { count: days }),
+          },
+        ),
+      });
       // After a workout this drops today's reminder; on launch it extends the month ahead.
       void syncWorkoutReminders(db, userId, {
         title: t('settings.workoutReminderNotification'),

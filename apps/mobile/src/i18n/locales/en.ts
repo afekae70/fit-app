@@ -698,6 +698,11 @@ export const en = {
     bleOff: 'Bluetooth is off. Turn it on and try again.',
     blePermission: 'Bluetooth permission is required to scan.',
   },
+  widget: {
+    weekCaption: 'workouts this week',
+    weekStreak_one: 'A one-day streak',
+    weekStreak_other: 'A {{count}}-day streak',
+  },
   health: {
     title: 'Sync with Health Connect',
     hint: 'A finished workout is written to Health Connect, which is where Samsung Health and anything else reading it will find it.',

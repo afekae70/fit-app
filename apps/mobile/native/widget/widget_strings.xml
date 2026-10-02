@@ -17,4 +17,8 @@
     <string name="widget_label">האימון של היום</string>
     <string name="widget_preview_detail">האימון שמתוכנן להיום, ישר ממסך הבית</string>
     <string name="widget_description">האימון של היום, עם כפתור להתחלה</string>
+    <string name="widget_week_caption">אימונים השבוע</string>
+    <string name="widget_week_streak_preview">הרצף שלך, על מסך הבית</string>
+    <string name="widget_week_label">השבוע שלי</string>
+    <string name="widget_week_description">טבעת ההתקדמות של השבוע — אימונים שבוצעו מול היעד</string>
 </resources>
