@@ -50,7 +50,7 @@ import {
   isWeeklyReminderScheduled,
   scheduleWeeklyReminder,
 } from '../src/notifications.js';
-import { useTheme, type ColorScheme } from '../src/ThemeProvider.js';
+import { useTheme, type ThemePreference } from '../src/ThemeProvider.js';
 import { useUnits } from '../src/UnitsProvider.js';
 import { fontSize, spacing, type ColorPalette } from '../src/theme.js';
 
@@ -58,7 +58,7 @@ export default function SettingsScreen() {
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
   const { session, signOut } = useAuth();
-  const { scheme, toggleScheme, colors } = useTheme();
+  const { preference, setPreference, colors } = useTheme();
   const { unit, setUnit } = useUnits();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -185,15 +185,16 @@ export default function SettingsScreen() {
       <Card index={0}>
         <SectionTitle>{t('settings.appearance')}</SectionTitle>
 
-        <Segmented<ColorScheme>
+        {/* Following the phone leads, because a phone that goes dark at sunset should take
+            this app with it — the other two are for when someone wants it fixed. */}
+        <Segmented<ThemePreference>
           label={t('settings.theme')}
-          selected={scheme}
-          onSelect={(next) => {
-            if (next !== scheme) toggleScheme();
-          }}
+          selected={preference}
+          onSelect={setPreference}
           options={[
-            { value: 'dark', label: t('settings.themeDark') },
+            { value: 'system', label: t('settings.themeSystem') },
             { value: 'light', label: t('settings.themeLight') },
+            { value: 'dark', label: t('settings.themeDark') },
           ]}
         />
 

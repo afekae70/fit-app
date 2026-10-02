@@ -774,6 +774,7 @@ export const he = {
     later: 'מאוחר יותר',
     title: 'הגדרות',
     appearance: 'מראה',
+    themeSystem: 'לפי המכשיר',
     theme: 'ערכת נושא',
     themeDark: 'כהה',
     themeLight: 'בהיר',

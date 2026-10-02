@@ -781,6 +781,7 @@ export const en = {
     later: 'later',
     title: 'Settings',
     appearance: 'Appearance',
+    themeSystem: 'Match device',
     theme: 'Theme',
     themeDark: 'Dark',
     themeLight: 'Light',
