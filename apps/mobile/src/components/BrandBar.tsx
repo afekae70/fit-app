@@ -25,6 +25,7 @@
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -34,7 +35,7 @@ import { MenuButton } from './AppMenu.js';
 
 export function BrandBar() {
   const { t } = useTranslation();
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
   const insets = useSafeAreaInsets();
   const s = useMemo(() => createStyles(colors), [colors]);
 
@@ -42,8 +43,16 @@ export function BrandBar() {
     <View style={[s.bar, { paddingTop: insets.top + spacing.sm }]}>
       {/* The wash, not a fill: the bar keeps the page's own ground underneath it and only
           carries a breath of the accent at the very top of the screen. */}
+      {/* Frosted, like the bar at the other end of the screen, with the accent washed across
+          it — the brand's colour as light on glass rather than as a painted band. */}
+      <BlurView
+        intensity={scheme === 'dark' ? 36 : 26}
+        tint={scheme === 'dark' ? 'dark' : 'light'}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
       <LinearGradient
-        colors={[colors.accentSoft, colors.bg]}
+        colors={[colors.accentSoft, 'transparent']}
         style={StyleSheet.absoluteFill}
         pointerEvents="none"
       />
@@ -69,8 +78,9 @@ const createStyles = (colors: ColorPalette) =>
       justifyContent: 'center',
       // A hairline, because the page now scrolls underneath rather than carrying this along with
       // it: without a line, text arriving from below reaches the name and the two read as one.
+      backgroundColor: colors.glass,
       borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: colors.accentBorder,
+      borderBottomColor: colors.glassEdge,
     },
     /* Out of the flow, so the brand below is centred on the screen and not on what is left of
        it. Pinned vertically to the row's own bottom half, which is where the content sits once

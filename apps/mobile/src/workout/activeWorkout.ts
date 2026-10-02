@@ -1,3 +1,5 @@
+import { useSyncExternalStore } from 'react';
+
 /**
  * Whether a workout is open right now — shared with the parts of the app that behave differently
  * during one.
@@ -28,4 +30,15 @@ export function onWorkoutActiveChange(listener: (value: boolean) => void): () =>
   return () => {
     listeners.delete(listener);
   };
+}
+
+/**
+ * The same flag as a hook, for the parts of the chrome that look different during a workout.
+ *
+ * `useSyncExternalStore` rather than state plus an effect: the store is read during render by
+ * the background and the bars, and an effect would paint one frame of the wrong mood on every
+ * mount.
+ */
+export function useWorkoutActive(): boolean {
+  return useSyncExternalStore(onWorkoutActiveChange, isWorkoutActive, isWorkoutActive);
 }

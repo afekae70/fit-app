@@ -61,6 +61,16 @@ export interface ColorPalette {
   tileCoral: string;
   /** What a shadow is cast in. Tinted toward the ground rather than pure black. */
   shadow: string;
+  /**
+   * The wash over a frosted bar, and the hairline at its edge.
+   *
+   * A blur alone inherits the contrast of whatever is behind it, and a label over a photograph is
+   * not the same label as one over a white card. These carry the text; the blur carries the
+   * depth. Deliberately translucent — the one place in this palette where a colour is not a solid
+   * hex, because seeing through them is the entire point.
+   */
+  glass: string;
+  glassEdge: string;
 }
 
 export const darkColors: ColorPalette = {
@@ -103,6 +113,8 @@ export const darkColors: ColorPalette = {
   tileSun: '#3B331F',
   tileCoral: '#3A2442',
   shadow: '#000000',
+  glass: 'rgba(32, 26, 56, 0.62)',
+  glassEdge: 'rgba(167, 139, 250, 0.22)',
 };
 
 export const lightColors: ColorPalette = {
@@ -145,6 +157,8 @@ export const lightColors: ColorPalette = {
   tileSun: '#F7E9B8',
   tileCoral: '#F4DDF1',
   shadow: '#2A1B57',
+  glass: 'rgba(255, 255, 255, 0.66)',
+  glassEdge: 'rgba(124, 92, 214, 0.18)',
 };
 
 /** Default export for the rare theme-agnostic case. Components should use `useTheme()`. */
