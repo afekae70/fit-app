@@ -10,6 +10,13 @@
  * the rest timer opening. Only the first is this component's business; the other two follow from
  * `onToggle` and belong to the screen.
  *
+ * ## Read at arm's length
+ *
+ * The numerals are larger than the rest of the app's type and the row is taller than a list row
+ * needs to be, because this is read from a bench with the phone on the floor, not from a desk.
+ * Everything else on the row — the chip, the unit, the rating — stays small: there is exactly one
+ * thing here worth seeing from two metres away, and making its neighbours compete would undo it.
+ *
  * ## Typing
  *
  * A tap on a number opens the app's own pad rather than the system keyboard — see
@@ -404,7 +411,7 @@ const createStyles = (colors: ColorPalette) =>
     checkGlyphDone: TextStyle;
   }>({
     row: {
-      height: 48,
+      height: 56,
       flexDirection: 'row',
       alignItems: 'center',
       gap: 6,
@@ -412,7 +419,7 @@ const createStyles = (colors: ColorPalette) =>
     },
     indexChip: {
       width: 30,
-      height: 48,
+      height: 56,
       alignItems: 'center',
       justifyContent: 'center',
       borderRadius: radius.sm,
@@ -440,7 +447,7 @@ const createStyles = (colors: ColorPalette) =>
 
     field: {
       flex: 1,
-      height: 48,
+      height: 56,
       flexDirection: 'row',
       alignItems: 'center',
       borderRadius: radius.sm,
@@ -450,10 +457,10 @@ const createStyles = (colors: ColorPalette) =>
     },
     value: { flex: 1, flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center', gap: 2 },
     // Tabular so the row does not shift as the number ticks between 8 and 10.
-    numeral: { fontSize: 21, fontWeight: '500', fontVariant: ['tabular-nums'] },
+    numeral: { fontSize: 26, fontWeight: '600', fontVariant: ['tabular-nums'] },
     // The number is the target: a tap anywhere on it opens the pad, which is a far bigger thing
     // to hit mid-set than the glyphs themselves.
-    valueTap: { flex: 1, height: 48, alignItems: 'center', justifyContent: 'center' },
+    valueTap: { flex: 1, height: 56, alignItems: 'center', justifyContent: 'center' },
     // A TextInput carries platform padding and a minimum height a Text does not. Zeroed so
     // swapping one for the other does not change the 48px row the handoff specifies.
     numeralInput: {
@@ -464,13 +471,13 @@ const createStyles = (colors: ColorPalette) =>
     },
     unit: { color: colors.textFaint, fontSize: 10 },
 
-    stepper: { width: 34, height: 48, alignItems: 'center', justifyContent: 'center' },
+    stepper: { width: 34, height: 56, alignItems: 'center', justifyContent: 'center' },
     stepperPressed: { backgroundColor: colors.surfaceRaised },
     stepperText: { color: colors.textSecondary, fontSize: 18 },
 
     check: {
       width: 52,
-      height: 48,
+      height: 56,
       alignItems: 'center',
       justifyContent: 'center',
       borderRadius: radius.sm,

@@ -228,6 +228,8 @@ export const en = {
     topSet: 'Top set',
   },
   workout: {
+    breatheIn: 'Breathe in…',
+    breatheOut: 'Breathe out…',
     finishedLine: 'Well done — workout complete',
     minutesShort: 'min',
     stripReorderHint: 'Hold and drag left or right to change the order',

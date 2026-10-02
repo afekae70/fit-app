@@ -387,3 +387,30 @@ describe('swiping between exercises', () => {
     expect(swipeTarget(100, 0, 1, WIDTH)).toBeNull();
   });
 });
+
+describe('a flick counts as much as a drag', () => {
+  it('moves on a quick flick that never reached the distance threshold', () => {
+    expect(swipeTarget(-40, 1, 5, 400)).toBeNull();
+    expect(swipeTarget(-40, 1, 5, 400, -0.9)).toBe(2);
+    expect(swipeTarget(40, 1, 5, 400, 0.9)).toBe(0);
+  });
+
+  it('still refuses a tap, however fast the finger left', () => {
+    expect(swipeTarget(-4, 1, 5, 400, -2)).toBeNull();
+  });
+
+  it('follows the flick rather than the drag when they disagree', () => {
+    // Dragged left, then thrown right: the throw is the more recent intention.
+    expect(swipeTarget(-30, 2, 5, 400, 1.2)).toBe(1);
+  });
+
+  it('leaves a slow drag judged on distance alone', () => {
+    expect(swipeTarget(-100, 1, 5, 400, -0.05)).toBe(2);
+    expect(swipeTarget(-50, 1, 5, 400, -0.05)).toBeNull();
+  });
+
+  it('never runs off either end', () => {
+    expect(swipeTarget(-40, 4, 5, 400, -1)).toBeNull();
+    expect(swipeTarget(40, 0, 5, 400, 1)).toBeNull();
+  });
+});

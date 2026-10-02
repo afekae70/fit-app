@@ -221,6 +221,8 @@ export const he = {
     topSet: 'הסט הטוב',
   },
   workout: {
+    breatheIn: 'שאיפה…',
+    breatheOut: 'נשיפה…',
     finishedLine: 'כל הכבוד! סיימת את האימון',
     minutesShort: 'דק׳',
     stripReorderHint: 'לחיצה ארוכה וגרירה ימינה או שמאלה משנה את סדר התרגילים',

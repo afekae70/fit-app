@@ -16,6 +16,16 @@
  * The ring is `react-native-svg`, which is what a stroke-dashoffset countdown needs. In RTL it is
  * mirrored as well as rotated, so it drains in the direction the language reads.
  *
+ * ## Rest that does something
+ *
+ * The halo behind the ring breathes: four seconds out, six seconds back — the ratio that slows a
+ * heart rate rather than merely passing time. Between heavy sets that is the difference between
+ * ninety seconds of waiting and ninety seconds of recovering, and it costs the screen nothing:
+ * the ring was already there, and one word beneath it names which half you are in.
+ *
+ * It stands down inside the last ten seconds, where the point of the banner becomes that rest is
+ * ending — two rhythms arguing on one control is worse than either alone.
+ *
  * ## The last ten seconds
  *
  * The ring turns amber and the whole banner breathes, once a second, in time with the count. It
@@ -53,6 +63,9 @@ const CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 const FADE_MS = duration.normal;
 /** When the ring changes colour and the banner starts to pulse. */
 const WARNING_SECONDS = 10;
+/** In for four, out for six: the long exhale is the half that does the work. */
+const BREATHE_IN_MS = 4000;
+const BREATHE_OUT_MS = 6000;
 /** What "+30" adds. Named because it appears in the label and the handler and must not drift. */
 export const EXTEND_SECONDS = 30;
 
@@ -82,6 +95,8 @@ export function RestBanner({
 
   const [remaining, setRemaining] = useState(() => remainingFrom(deadline));
   const pulse = useRef(new Animated.Value(0)).current;
+  const breath = useRef(new Animated.Value(0)).current;
+  const [breathingIn, setBreathingIn] = useState(true);
   const fade = useRef(new Animated.Value(deadline === null ? 0 : 1)).current;
 
   // A ref, not state: `onComplete` must fire exactly once per rest, and a re-render between the
@@ -142,6 +157,42 @@ export function RestBanner({
     ]).start();
   }, [ending, remaining, pulse]);
 
+  // Breathe while there is rest worth breathing through; stand down for the countdown.
+  const breathing = deadline !== null && remaining > WARNING_SECONDS;
+  useEffect(() => {
+    if (!breathing) {
+      breath.setValue(0);
+      return;
+    }
+    let live = true;
+    const cycle = () => {
+      if (!live) return;
+      setBreathingIn(true);
+      Animated.timing(breath, {
+        toValue: 1,
+        duration: BREATHE_IN_MS,
+        easing: Easing.inOut(Easing.quad),
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (!finished || !live) return;
+        setBreathingIn(false);
+        Animated.timing(breath, {
+          toValue: 0,
+          duration: BREATHE_OUT_MS,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }).start(({ finished: out }) => {
+          if (out) cycle();
+        });
+      });
+    };
+    cycle();
+    return () => {
+      live = false;
+      breath.stopAnimation();
+    };
+  }, [breathing, breath]);
+
   if (deadline === null) return null;
 
   const offset = restRingOffset(remaining, totalSeconds, CIRCUMFERENCE);
@@ -161,6 +212,19 @@ export function RestBanner({
       ]}
     >
       <View style={s.ring}>
+        {/* The breath, behind the ring: it swells on the inhale and settles on the exhale. */}
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            s.halo,
+            {
+              opacity: breath.interpolate({ inputRange: [0, 1], outputRange: [0.25, 0.6] }),
+              transform: [
+                { scale: breath.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1.25] }) },
+              ],
+            },
+          ]}
+        />
         {/* Rotated so the stroke starts at twelve o'clock, and mirrored under RTL so it empties
             the way the text reads. Non-directional glyphs elsewhere deliberately do not mirror;
             a depleting arc is directional. */}
@@ -202,6 +266,11 @@ export function RestBanner({
 
       <View style={s.text}>
         <Text style={s.title}>{t('workout.rest')}</Text>
+        {breathing ? (
+          <Text style={s.breathLabel}>
+            {breathingIn ? t('workout.breatheIn') : t('workout.breatheOut')}
+          </Text>
+        ) : null}
         {nextLabel ? (
           <Text style={s.next} numberOfLines={1}>
             {t('workout.upNext')}: {nextLabel}
@@ -244,6 +313,8 @@ const createStyles = (colors: ColorPalette) =>
     banner: ViewStyle;
     bannerEnding: ViewStyle;
     ring: ViewStyle;
+    halo: ViewStyle;
+    breathLabel: TextStyle;
     ringLabel: ViewStyle;
     ringText: TextStyle;
     text: ViewStyle;
@@ -267,6 +338,14 @@ const createStyles = (colors: ColorPalette) =>
     bannerEnding: { borderColor: colors.warning },
 
     ring: { width: RING_SIZE, height: RING_SIZE, alignItems: 'center', justifyContent: 'center' },
+    halo: {
+      position: 'absolute',
+      width: RING_SIZE,
+      height: RING_SIZE,
+      borderRadius: RING_SIZE / 2,
+      backgroundColor: colors.accentSoft,
+    },
+    breathLabel: { color: colors.accent, fontSize: 11, textAlign: 'auto' },
     ringLabel: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
     ringText: {
       color: colors.accent,

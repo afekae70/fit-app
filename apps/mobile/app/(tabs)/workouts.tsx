@@ -114,12 +114,17 @@ import {
   type SetInput,
 } from '../../src/db/workouts.js';
 import { hapticLight, hapticRecord, hapticSuccess } from '../../src/haptics.js';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
+
 import { setWorkoutActive } from '../../src/workout/activeWorkout.js';
 import { createLatestOnly } from '../../src/workout/latestOnly.js';
 import { syncWorkoutReminders } from '../../src/reminders/sync.js';
 import { stationMove } from '../../src/workout/stripReorder.js';
 import { useTheme } from '../../src/ThemeProvider.js';
 import { fontSize, radius, spacing, type ColorPalette } from '../../src/theme.js';
+
+/** Held while a workout is open — see the effect that takes it. */
+const WORKOUT_AWAKE_TAG = 'workout-open';
 
 const EXERCISE_BY_KEY = new Map<string, ExerciseSeed>(
   EXERCISE_SEED.map((exercise) => [exercise.nameEn, exercise]),
@@ -154,6 +159,15 @@ export default function WorkoutsScreen() {
   // Tell the tab swipe a workout is open, so sideways belongs to the exercises until it ends.
   useEffect(() => {
     setWorkoutActive(sessionId !== null);
+    /*
+     * And keep the screen on for as long as it is.
+     *
+     * A phone that locks itself ninety seconds into a rest is a phone you unlock with chalk on
+     * your hands, and the rest timer it was showing is gone behind a lock screen. Released the
+     * moment the workout ends, and on the way out of the screen.
+     */
+    if (sessionId !== null) void activateKeepAwakeAsync(WORKOUT_AWAKE_TAG).catch(() => undefined);
+    else void deactivateKeepAwake(WORKOUT_AWAKE_TAG);
     // And re-lay the reminders: today's is withdrawn while a workout is open, and comes back if
     // the session is abandoned rather than finished.
     void (async () => {
@@ -163,6 +177,9 @@ export default function WorkoutsScreen() {
         channel: t('settings.workoutReminderTitle'),
       });
     })();
+    return () => {
+      void deactivateKeepAwake(WORKOUT_AWAKE_TAG);
+    };
   }, [sessionId, userId, t]);
   const [startedAt, setStartedAt] = useState<string | null>(null);
   const [exercises, setExercises] = useState<SessionExerciseWithSets[]>([]);
@@ -1079,7 +1096,9 @@ export default function WorkoutsScreen() {
       },
       onPanResponderRelease: (_evt, gesture) => {
         const { station, count, width, go } = swipeState.current;
-        const target = swipeTarget(gesture.dx, station, count, width);
+        // Velocity as well as distance: a thumb flick is how anyone actually pages through
+        // something, and it travels barely forty pixels.
+        const target = swipeTarget(gesture.dx, station, count, width, gesture.vx);
 
         // Nothing to move to: too short a drag, or the end of the workout.
         if (target === null) {

@@ -344,15 +344,34 @@ export function firstUnfinishedStation(
  *
  * The threshold scales with the screen but stops at 80px, so a large phone does not demand a
  * longer swipe than a thumb comfortably makes.
+ *
+ * ## A flick counts as much as a drag
+ *
+ * Distance alone made the card feel heavy: a quick flick of the thumb — the gesture everyone
+ * actually uses to page through something — travelled barely forty pixels and snapped back, so
+ * the only way through the workout was a slow, deliberate haul. Velocity is the other half of
+ * what the hand meant: past `FLICK_VELOCITY` the direction is taken at its word, however short
+ * the drag, as long as it travelled far enough not to be a tap.
  */
+/** Pixels per millisecond at which a short drag reads as a flick rather than a nudge. */
+const FLICK_VELOCITY = 0.45;
+/** Below this, nothing happened: a tap, or a finger resettling. */
+const MINIMUM_TRAVEL = 14;
+
 export function swipeTarget(
   dx: number,
   station: number,
   count: number,
   width: number,
+  /** Horizontal velocity at the moment the finger left, in pixels per millisecond. */
+  velocity = 0,
 ): number | null {
   const threshold = Math.min(80, width * 0.22);
-  if (Math.abs(dx) < threshold) return null;
-  const target = dx < 0 ? station + 1 : station - 1;
+  const flicked = Math.abs(velocity) >= FLICK_VELOCITY && Math.abs(dx) >= MINIMUM_TRAVEL;
+  // A flick and a drag can disagree about direction when a finger doubles back; the flick is
+  // the more recent intention, so it wins.
+  const direction = flicked ? velocity : dx;
+  if (!flicked && Math.abs(dx) < threshold) return null;
+  const target = direction < 0 ? station + 1 : station - 1;
   return target >= 0 && target < count ? target : null;
 }
