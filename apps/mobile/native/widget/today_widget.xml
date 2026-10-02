@@ -6,6 +6,9 @@
   shadows — so this is the palette's lavender card, its violet accent, and three lines of text.
   Anything cleverer would not render in the launcher.
 
+  Nothing here names a colour: they are all resources with a `values-night` twin, so the launcher
+  draws the widget light or dark exactly as the phone is, and swaps it when the phone does.
+
   Every line carries default text, and that is not decoration: the launcher renders this very
   layout as the widget's preview in the picker, with no app running to fill it in. Without the
   defaults the preview was a blank white card — present in the list, and invisible in it.
@@ -25,7 +28,7 @@
         android:text="@string/widget_label"
         android:maxLines="1"
         android:ellipsize="end"
-        android:textColor="#18213A"
+        android:textColor="@color/widget_text"
         android:textSize="15sp"
         android:textStyle="bold" />
 
@@ -37,7 +40,7 @@
         android:layout_marginTop="2dp"
         android:maxLines="1"
         android:ellipsize="end"
-        android:textColor="#6E7A9B"
+        android:textColor="@color/widget_muted"
         android:textSize="11sp" />
 
     <TextView
@@ -51,7 +54,7 @@
         android:paddingTop="5dp"
         android:paddingBottom="5dp"
         android:background="@drawable/today_widget_button"
-        android:textColor="#FFFFFF"
+        android:textColor="@color/widget_on_accent"
         android:textSize="12sp"
         android:textStyle="bold" />
 </LinearLayout>

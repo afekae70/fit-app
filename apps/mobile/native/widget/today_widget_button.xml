@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The accent pill the app's own primary buttons wear. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="#7C5CD6" />
+    <solid android:color="@color/widget_accent" />
     <corners android:radius="999dp" />
 </shape>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The widget's daylight colours — the app's own palette, written as native resources.
+
+  A widget cannot ask the app which scheme is on: it is drawn by the launcher, in the launcher's
+  process, with no JavaScript running. What it can do is let Android choose, which is what the
+  `values-night` copy of this file is for — the system swaps the whole set when the phone goes
+  dark, including on a schedule, with no code involved on either side.
+
+  Merge into android/app/src/main/res/values/colors.xml.
+-->
+<resources>
+    <color name="widget_surface">#FFFFFF</color>
+    <color name="widget_edge">#E3DCF5</color>
+    <color name="widget_text">#18213A</color>
+    <color name="widget_muted">#6E7A9B</color>
+    <color name="widget_accent">#7C5CD6</color>
+    <color name="widget_on_accent">#FFFFFF</color>
+</resources>

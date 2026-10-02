@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The widget after dark: the same palette's night half, from theme.ts.
+
+  Merge into android/app/src/main/res/values-night/colors.xml. Android reads this set instead of
+  the daylight one whenever the phone is in dark mode, and redraws every placed widget when that
+  changes — which is the whole mechanism by which the widget follows the device.
+-->
+<resources>
+    <color name="widget_surface">#201A38</color>
+    <color name="widget_edge">#332B52</color>
+    <color name="widget_text">#EEEAFB</color>
+    <color name="widget_muted">#9A8FBE</color>
+    <color name="widget_accent">#A78BFA</color>
+    <color name="widget_on_accent">#161226</color>
+</resources>
