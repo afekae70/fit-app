@@ -3,7 +3,9 @@
   How the launcher offers and refreshes the widget.
 
   `updatePeriodMillis` is half an hour, which is the floor Android honours anyway — and enough
-  for a label about today. It also refreshes whenever it is placed, and whenever the app asks the
+  for a label about today. Both a preview layout and a preview image are given: launchers that
+  understand the first render the widget itself in the picker, and the rest fall back to the app's
+  icon rather than to nothing at all. It also refreshes whenever it is placed, and whenever the app asks the
   launcher to update it after writing a new snapshot.
 -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
@@ -15,4 +17,6 @@
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
     android:previewLayout="@layout/today_widget"
+    android:previewImage="@mipmap/ic_launcher"
+    android:description="@string/widget_description"
     android:initialLayout="@layout/today_widget" />

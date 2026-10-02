@@ -5,6 +5,10 @@
   RemoteViews supports a small subset of the view system — no custom fonts, no gradients, no
   shadows — so this is the palette's lavender card, its violet accent, and three lines of text.
   Anything cleverer would not render in the launcher.
+
+  Every line carries default text, and that is not decoration: the launcher renders this very
+  layout as the widget's preview in the picker, with no app running to fill it in. Without the
+  defaults the preview was a blank white card — present in the list, and invisible in it.
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
@@ -18,6 +22,7 @@
         android:id="@+id/widget_title"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:text="@string/widget_label"
         android:maxLines="1"
         android:ellipsize="end"
         android:textColor="#18213A"
@@ -28,6 +33,7 @@
         android:id="@+id/widget_detail"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:text="@string/widget_preview_detail"
         android:layout_marginTop="4dp"
         android:maxLines="2"
         android:ellipsize="end"
@@ -38,6 +44,7 @@
         android:id="@+id/widget_action"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:text="@string/widget_start"
         android:layout_marginTop="10dp"
         android:paddingStart="14dp"
         android:paddingEnd="14dp"

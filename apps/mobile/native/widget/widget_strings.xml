@@ -15,4 +15,6 @@
     <string name="widget_start">התחל אימון</string>
     <string name="widget_open">פתח את האפליקציה</string>
     <string name="widget_label">האימון של היום</string>
+    <string name="widget_preview_detail">האימון שמתוכנן להיום, ישר ממסך הבית</string>
+    <string name="widget_description">האימון של היום, עם כפתור להתחלה</string>
 </resources>
