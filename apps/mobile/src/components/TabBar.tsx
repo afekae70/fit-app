@@ -1,13 +1,24 @@
 /**
- * The floating bar at the bottom, with one pill that travels to whichever tab is chosen.
+ * The floating bar at the bottom: four tabs, the chosen one wearing a filled pill.
  *
- * The default bar can only fade a highlight in behind the new tab, which says "this one now" and
- * nothing about where it came from. A pill that slides says the four screens are a row you move
- * along — which is exactly what they are, since they are also swiped between. Arriving by swipe
- * and arriving by tap now look like the same movement.
+ * ## The pill lives inside its own tab
  *
- * Built as a custom bar rather than styled into the default one because the pill has to be a
- * single node that outlives the tab change; one highlight per tab can only ever cross-fade.
+ * It used to be one pill that slid along the bar, and it was wrong twice. First it computed each
+ * slot from the bar's width and flipped direction on `I18nManager.isRTL` — a flag this app leaves
+ * false even in Hebrew, because the layout is mirrored with Yoga's `direction` instead — so it sat
+ * under the last tab and slid off screen. Then it read each tab's `onLayout` frame, whose `x` is
+ * measured from the row's own start edge: in Hebrew that is the right, while `translateX` moves
+ * from the left, so the pill landed on Home while Progress was open. Measuring in window
+ * coordinates was a third guess at the same question.
+ *
+ * So the highlight is now a child of the tab it marks. There is no coordinate left to get wrong:
+ * the pill is where its tab is, in any layout direction and at any screen width. It costs the
+ * slide — a pill that travels cannot also be four pills — and that trade is worth making for the
+ * one control whose entire job is to say, unambiguously, which of four screens you are on.
+ *
+ * It still moves: the pill springs up behind the glyph as its tab takes focus and fades as it
+ * loses it. Transform and opacity only, so it stays on the native driver; nothing here animates
+ * colour, which cannot go native and must never share a node with something that does.
  *
  * ## Glass
  *
@@ -17,35 +28,13 @@
  * contrast of whatever is behind it.
  *
  * That wash is heavy on purpose. At two thirds opacity the accent-coloured bars of the progress
- * chart read straight through the glass as a bright violet smear under one of the tabs — a mark
- * that looked like a rendering fault and moved with the page. Frosted glass hides what is behind
- * it and keeps only its light; anything less is a tinted window.
- *
- * The slide is native-driven (translateX only) and the glyph swap is not animated at all: colour
- * cannot go through the native driver, and mixing the two drivers on one node is a crash rather
- * than a warning — see SegmentButton in ui.tsx.
- *
- * ## Where the tabs actually are
- *
- * Measured on the screen itself, with `measureInWindow`, and that detail is the whole of this
- * component's history of bugs.
- *
- * The first version computed each slot from the bar's width and flipped the direction on
- * `I18nManager.isRTL` — a flag this app leaves false even in Hebrew, because the layout is
- * mirrored with Yoga's `direction` instead. The pill sat under the last tab and slid off screen.
- *
- * The second asked each tab for its `onLayout` frame. Under a mirrored layout that `x` is
- * measured from the row's own start edge, which in Hebrew is the right — while `translateX` moves
- * from the left, as it always does. The two disagreed, so the pill landed under Home while
- * Progress was open: the mirror image of the right answer.
- *
- * `measureInWindow` reports true screen coordinates, which no layout direction can reinterpret.
- * Each tab's offset is its own page position minus the bar's, and both sides of that subtraction
- * speak the same language.
+ * chart read straight through the glass as a bright violet smear — a mark that looked like a
+ * rendering fault and moved with the page. Frosted glass hides what is behind it and keeps only
+ * its light; anything less is a tinted window.
  */
 
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import {
   Animated,
   Pressable,
@@ -79,67 +68,8 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const s = useMemo(() => createStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
 
-  /** Each tab's frame within the bar, in screen coordinates — see the note above. */
-  const [slots, setSlots] = useState<{ x: number; width: number }[]>([]);
-  const current = slots[state.index];
-
-  const barRef = useRef<View | null>(null);
-  const tabRefs = useRef<(View | null)[]>([]);
-
-  /**
-   * Ask the bar and every tab where they actually are.
-   *
-   * Run from each tab's `onLayout`, which fires on mount, on rotation, and whenever a label
-   * changes width — and every run measures all of them, because one tab growing moves its
-   * neighbours and a single measurement would leave the rest stale.
-   */
-  const measureTabs = useCallback(() => {
-    barRef.current?.measureInWindow((barX) => {
-      const measured: { x: number; width: number }[] = [];
-      let pending = tabRefs.current.length;
-      if (pending === 0) return;
-      tabRefs.current.forEach((node, index) => {
-        if (!node) {
-          pending -= 1;
-          return;
-        }
-        node.measureInWindow((tabX, _y, tabWidth) => {
-          measured[index] = { x: tabX - barX + 4, width: Math.max(0, tabWidth - 8) };
-          pending -= 1;
-          if (pending === 0) setSlots(measured);
-        });
-      });
-    });
-  }, []);
-
-  const travel = useRef(new Animated.Value(0)).current;
-  const pillWidth = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    if (!current) return;
-    Animated.spring(travel, {
-      toValue: current.x,
-      useNativeDriver: true,
-      friction: 9,
-      tension: 70,
-    }).start();
-    // Width cannot go through the native driver, and it only changes when the bar is laid out —
-    // which is not while anything is sliding, so the two never animate on one node at once.
-    pillWidth.setValue(current.width);
-  }, [current, travel, pillWidth]);
-
   return (
-    <View
-      ref={barRef}
-      onLayout={measureTabs}
-      style={[
-        s.bar,
-        {
-          bottom: Math.max(insets.bottom, 10),
-          height: BAR_HEIGHT,
-        },
-      ]}
-    >
+    <View style={[s.bar, { bottom: Math.max(insets.bottom, 10), height: BAR_HEIGHT }]}>
       {/* The glass itself, clipped to the slab's own corners. */}
       <BlurView
         intensity={scheme === 'dark' ? 60 : 48}
@@ -148,19 +78,9 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
         pointerEvents="none"
       />
 
-      {/* Left and translateX are physical, and so is the `x` each tab reported — the pair agree
-          whichever way the row was laid out. */}
-      {current ? (
-        <Animated.View
-          pointerEvents="none"
-          style={[s.pill, { width: pillWidth, transform: [{ translateX: travel }] }]}
-        />
-      ) : null}
-
       {state.routes.map((route, index) => {
         const { options } = descriptors[route.key]!;
-        const label =
-          typeof options.title === 'string' ? options.title : route.name;
+        const label = typeof options.title === 'string' ? options.title : route.name;
         const focused = state.index === index;
         const Glyph = GLYPHS[route.name] ?? House;
 
@@ -181,12 +101,9 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
             accessibilityRole="button"
             accessibilityState={{ selected: focused }}
             accessibilityLabel={options.tabBarAccessibilityLabel ?? label}
-            ref={(node) => {
-              tabRefs.current[index] = node;
-            }}
-            onLayout={() => measureTabs()}
             style={s.tab}
           >
+            <Pill focused={focused} styles={s} />
             <Glyph
               size={21}
               color={focused ? colors.accent : colors.textFaint}
@@ -199,6 +116,39 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
         );
       })}
     </View>
+  );
+}
+
+/** The filled shape behind the chosen tab, springing up as it takes focus. */
+function Pill({
+  focused,
+  styles: s,
+}: {
+  focused: boolean;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  const shown = useRef(new Animated.Value(focused ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.spring(shown, {
+      toValue: focused ? 1 : 0,
+      useNativeDriver: true,
+      friction: 7,
+      tension: 90,
+    }).start();
+  }, [focused, shown]);
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        s.pill,
+        {
+          opacity: shown,
+          transform: [{ scale: shown.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }) }],
+        },
+      ]}
+    />
   );
 }
 
@@ -226,11 +176,14 @@ const createStyles = (colors: ColorPalette) =>
       ...shadow(colors.shadow).floating,
     },
     glass: { ...StyleSheet.absoluteFillObject, borderRadius: radius.pill },
+    // Inset from its own tab rather than sized in pixels: the four share the bar evenly at any
+    // width, and the pill simply takes whatever share its tab was given.
     pill: {
       position: 'absolute',
-      left: 0,
-      top: 6,
-      bottom: 6,
+      top: 5,
+      bottom: 5,
+      start: 6,
+      end: 6,
       borderRadius: radius.pill,
       backgroundColor: colors.accentSoft,
     },
