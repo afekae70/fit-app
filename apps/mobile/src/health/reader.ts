@@ -22,6 +22,11 @@ import {
   type HealthWorkout,
   type ImportedWorkoutData,
 } from './adapter.js';
+import {
+  loadHealthConnect,
+  SDK_AVAILABLE,
+  SDK_PROVIDER_UPDATE_REQUIRED,
+} from './native.js';
 
 /** The record types read. Weight is included so a Samsung scale can feed the weight tracker. */
 const READ_PERMISSIONS = [
@@ -31,36 +36,6 @@ const READ_PERMISSIONS = [
   { accessType: 'read', recordType: 'TotalCaloriesBurned' },
   { accessType: 'read', recordType: 'Weight' },
 ] as const;
-
-interface HealthConnectModule {
-  initialize(): Promise<boolean>;
-  requestPermission(permissions: readonly unknown[]): Promise<unknown[]>;
-  getGrantedPermissions(): Promise<unknown[]>;
-  getSdkStatus(): Promise<number>;
-  readRecords(
-    recordType: string,
-    options: { timeRangeFilter: { operator: string; startTime: string; endTime: string } },
-  ): Promise<{ records: unknown[] }>;
-}
-
-/**
- * Health Connect SDK status codes.
- *
- * 3 means available; 1 means unavailable on this device; 2 means the app that provides it needs
- * an update. Only 3 is usable, and the two failure codes are worth distinguishing because the
- * user's remedy differs — one is "this phone cannot", the other is "update Health Connect".
- */
-const SDK_AVAILABLE = 3;
-const SDK_PROVIDER_UPDATE_REQUIRED = 2;
-
-function loadHealthConnect(): HealthConnectModule | null {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    return require('react-native-health-connect') as HealthConnectModule;
-  } catch {
-    return null;
-  }
-}
 
 /**
  * Whether Health Connect can be used at all.

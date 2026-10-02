@@ -25,6 +25,7 @@ import type { UnitPreference } from '@fit/shared';
 import { useAuth } from '../src/auth/AuthProvider.js';
 import { useActionSheet } from '../src/components/ActionSheetProvider.js';
 import { useCurrentUserId } from '../src/auth/CurrentUserProvider.js';
+import { HealthSyncCard } from '../src/components/HealthSyncCard.js';
 import { SyncCard } from '../src/components/SyncCard.js';
 import { WorkoutReminderCard } from '../src/components/WorkoutReminderCard.js';
 import {
@@ -237,6 +238,8 @@ export default function SettingsScreen() {
       </Card>
 
       <WorkoutReminderCard userId={userId} index={1} />
+
+      <HealthSyncCard userId={userId} index={1} />
 
       <Card index={2}>
         <SectionTitle>{t('gyms.title')}</SectionTitle>

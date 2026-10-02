@@ -691,6 +691,32 @@ export const he = {
     bleOff: 'הבלוטות׳ כבוי. הפעל אותו ונסה שוב.',
     blePermission: 'נדרשת הרשאת בלוטות׳ כדי לסרוק.',
   },
+  /**
+   * Health Connect: the system health store other apps read, which is how a workout logged here
+   * reaches Samsung Health. The name stays in English because that is what it is called on the
+   * phone, in every language.
+   */
+  health: {
+    title: 'סנכרון עם Health Connect',
+    hint: 'אימון שמסתיים נשלח ל-Health Connect, ומשם הוא מופיע ב-Samsung Health ובכל אפליקציה אחרת שקוראת ממנו.',
+    connect: 'חבר ל-Health Connect',
+    connected: 'מחובר. אימון שמסתיים נשלח מעצמו.',
+    denied: 'Health Connect עוד לא אישר קבלת אימונים. אפשר לאשר את זה אצלו.',
+    unavailable: 'Health Connect לא זמין במכשיר הזה.',
+    notInstalled: 'צריך להתקין את Health Connect מחנות האפליקציות.',
+    providerUpdate: 'צריך לעדכן את Health Connect.',
+    openSettings: 'פתח את Health Connect',
+    backfill: 'שלח את האימונים מ-{{days}} הימים האחרונים',
+    backfillRunning: 'שולח…',
+    backfillDone_one: 'אימון אחד נשלח',
+    backfillDone_other: '{{count}} אימונים נשלחו',
+    backfillNone: 'לא נמצאו אימונים לשליחה',
+    backfillFailed: '{{count}} אימונים לא נשלחו',
+    workoutTitle: 'אימון',
+    notesStrength: '{{exercises}} תרגילים · {{sets}} סטים · {{volume}} ק"ג',
+    notesCardio: '{{km}} ק"מ · {{minutes}} דק׳',
+    notesSets: '{{exercises}} תרגילים · {{sets}} סטים',
+  },
   cardio: {
     calories: 'קלוריות (הערכה)',
     start: 'התחל',

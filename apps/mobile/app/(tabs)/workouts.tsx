@@ -113,6 +113,8 @@ import {
   type SessionSummaryRow,
   type SetInput,
 } from '../../src/db/workouts.js';
+import { healthExportCopy } from '../../src/health/copy.js';
+import { exportSessionToHealth } from '../../src/health/sync.js';
 import { hapticLight, hapticRecord, hapticSuccess } from '../../src/haptics.js';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 
@@ -508,6 +510,10 @@ export default function WorkoutsScreen() {
       const db = await getExecutor();
       await finishSession(db, userId, sessionId, { sessionRpe: null });
       void hapticSuccess();
+      // Out to Health Connect, and from there into Samsung Health and anything else reading it.
+      // Deliberately unawaited and allowed to fail: the workout is saved either way, and the
+      // trophy is not the place to find out that another app was not listening.
+      void exportSessionToHealth(db, userId, sessionId, healthExportCopy(t)).catch(() => undefined);
       // The moment worth protecting: new data exists that did not a minute ago.
       void requestBackup(userId, { afterWorkout: true });
     })();

@@ -15,6 +15,8 @@
  * exactly the same constraint as the BLE scale.
  */
 
+import { HEALTH_EXERCISE_TYPE } from './exerciseTypes.js';
+
 /** A workout session as Health Connect reports it. */
 export interface HealthWorkout {
   id: string;
@@ -47,11 +49,11 @@ export interface ImportedWorkoutData {
  * nonsense duration and calorie figures.
  */
 export const STRENGTH_EXERCISE_TYPES: readonly number[] = [
-  56, // STRENGTH_TRAINING
-  13, // CALISTHENICS
-  70, // WEIGHTLIFTING
-  32, // GYMNASTICS
-  36, // HIGH_INTENSITY_INTERVAL_TRAINING
+  HEALTH_EXERCISE_TYPE.STRENGTH_TRAINING,
+  HEALTH_EXERCISE_TYPE.WEIGHTLIFTING,
+  HEALTH_EXERCISE_TYPE.CALISTHENICS,
+  HEALTH_EXERCISE_TYPE.GYMNASTICS,
+  HEALTH_EXERCISE_TYPE.HIGH_INTENSITY_INTERVAL_TRAINING,
 ];
 
 export function isStrengthWorkout(workout: HealthWorkout): boolean {

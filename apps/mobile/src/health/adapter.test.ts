@@ -14,9 +14,10 @@ import {
   toImportedWorkout,
   type HealthWorkout,
 } from './adapter.js';
+import { HEALTH_EXERCISE_TYPE } from './exerciseTypes.js';
 
-const STRENGTH = 56;
-const RUNNING = 79;
+const STRENGTH = HEALTH_EXERCISE_TYPE.STRENGTH_TRAINING;
+const RUNNING = HEALTH_EXERCISE_TYPE.RUNNING;
 
 function workout(overrides: Partial<HealthWorkout> = {}): HealthWorkout {
   return {
@@ -77,11 +78,15 @@ describe('toImportedWorkout', () => {
 
 describe('isStrengthWorkout', () => {
   it('accepts strength training and weightlifting', () => {
-    expect(isStrengthWorkout(workout({ exerciseType: 56 }))).toBe(true);
-    expect(isStrengthWorkout(workout({ exerciseType: 70 }))).toBe(true);
+    expect(isStrengthWorkout(workout({ exerciseType: HEALTH_EXERCISE_TYPE.STRENGTH_TRAINING }))).toBe(
+      true,
+    );
+    expect(isStrengthWorkout(workout({ exerciseType: HEALTH_EXERCISE_TYPE.WEIGHTLIFTING }))).toBe(
+      true,
+    );
   });
 
-  it('rejects running', () => {
+  it('rejects a run, which a watch writes into the same store', () => {
     // A watch writes walks, runs and sleep into the same store. Attaching a 40-minute walk
     // to a bench-press session would produce nonsense duration and calorie figures.
     expect(isStrengthWorkout(workout({ exerciseType: RUNNING }))).toBe(false);
