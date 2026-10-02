@@ -46,7 +46,7 @@ export function BrandBar() {
       {/* Frosted, like the bar at the other end of the screen, with the accent washed across
           it — the brand's colour as light on glass rather than as a painted band. */}
       <BlurView
-        intensity={scheme === 'dark' ? 36 : 26}
+        intensity={scheme === 'dark' ? 54 : 44}
         tint={scheme === 'dark' ? 'dark' : 'light'}
         style={StyleSheet.absoluteFill}
         pointerEvents="none"

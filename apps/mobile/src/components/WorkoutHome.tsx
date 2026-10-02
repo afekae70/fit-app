@@ -51,14 +51,34 @@ export interface WorkoutHomeProps {
   onRefresh: () => void;
 }
 
-function formatDate(iso: string, withYear: boolean): string {
-  // The year only once the list can span more than one: "12 Mar" is ambiguous in a year of
-  // history and noise in a week of it.
-  return new Date(iso).toLocaleDateString(undefined, {
-    day: 'numeric',
-    month: 'short',
-    ...(withYear ? { year: 'numeric' as const } : {}),
-  });
+function Chip({ label, styles }: { label: string; styles: ReturnType<typeof createStyles> }) {
+  return (
+    <View style={styles.chip}>
+      <Text style={styles.chipText}>{label}</Text>
+    </View>
+  );
+}
+
+/** Sessions in the order they came, cut into months — newest month first, as the list is. */
+function groupByMonth(
+  history: readonly SessionSummaryRow[],
+): { month: string; label: string; sessions: SessionSummaryRow[] }[] {
+  const groups: { month: string; label: string; sessions: SessionSummaryRow[] }[] = [];
+  for (const session of history) {
+    const date = new Date(session.started_at);
+    const month = `${date.getFullYear()}-${date.getMonth()}`;
+    const last = groups[groups.length - 1];
+    if (last && last.month === month) {
+      last.sessions.push(session);
+      continue;
+    }
+    groups.push({
+      month,
+      label: date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }),
+      sessions: [session],
+    });
+  }
+  return groups;
 }
 
 function durationMinutes(startedAt: string, endedAt: string | null): number | null {
@@ -142,39 +162,78 @@ export function WorkoutHome({
             <EmptyState emoji="🗓️" title={t('history.emptyPeriod')} hint={t('history.emptyPeriodHint')} />
           )
         ) : (
-          history.map((session) => {
-            const minutes = durationMinutes(session.started_at, session.ended_at);
-            return (
-              <Pressable
-                key={session.id}
-                onPress={() => onOpenSession(session.id)}
-                onLongPress={
-                  onSessionOptions ? () => onSessionOptions(session.id) : undefined
-                }
-                delayLongPress={320}
-                style={styles.historyRow}
-                accessibilityRole="button"
-              >
-                <View style={styles.rowMain}>
-                  <Text style={styles.historyName}>
-                    {session.name ?? t('history.unnamed')}
-                  </Text>
-                  <Text style={styles.rowMeta}>
-                    {formatDate(session.started_at, period === 'halfYear' || period === 'year' || period === 'all')}
-                    {session.ended_at === null ? ` · ${t('history.inProgress')}` : ''}
-                    {minutes !== null ? ` · ${minutes} ${t('history.minutes')}` : ''}
-                  </Text>
-                  <Text style={styles.rowStats}>
-                    {session.exercise_count} {t('history.exercises')} · {session.set_count}{' '}
-                    {t('history.sets')}
-                    {session.volume_load > 0
-                      ? ` · ${formatVolume(session.volume_load, unit)} ${t(`common.${weightUnitKey(unit)}`)}`
-                      : ''}
-                  </Text>
-                </View>
-              </Pressable>
-            );
-          })
+          groupByMonth(history).map((group) => (
+            <View key={group.month} style={styles.monthGroup}>
+              {/* A month at a time: a flat list of forty workouts is a list nobody finds
+                  anything in, and the month is how people remember training. */}
+              <View style={styles.monthHeader}>
+                <Text style={styles.monthName}>{group.label}</Text>
+                <Text style={styles.monthCount}>
+                  {t('history.count', { count: group.sessions.length })}
+                </Text>
+              </View>
+
+              {group.sessions.map((session) => {
+                const minutes = durationMinutes(session.started_at, session.ended_at);
+                const open = session.ended_at === null;
+                return (
+                  <Pressable
+                    key={session.id}
+                    onPress={() => onOpenSession(session.id)}
+                    onLongPress={onSessionOptions ? () => onSessionOptions(session.id) : undefined}
+                    delayLongPress={320}
+                    accessibilityRole="button"
+                    style={({ pressed }) => [styles.card, pressed && styles.pressed]}
+                  >
+                    {/* The day, carried in its own block rather than in the sentence: a list is
+                        scanned down this column, not read across. */}
+                    <View style={[styles.day, open && styles.dayOpen]}>
+                      <Text style={[styles.dayNumber, open && styles.dayOpenText]}>
+                        {new Date(session.started_at).getDate()}
+                      </Text>
+                      <Text style={[styles.dayWeekday, open && styles.dayOpenText]}>
+                        {new Date(session.started_at).toLocaleDateString(undefined, {
+                          weekday: 'short',
+                        })}
+                      </Text>
+                    </View>
+
+                    <View style={styles.cardMain}>
+                      <Text style={styles.cardName} numberOfLines={1}>
+                        {session.name ?? t('history.unnamed')}
+                      </Text>
+
+                      <View style={styles.chips}>
+                        {open ? (
+                          <View style={[styles.chip, styles.chipLive]}>
+                            <Text style={[styles.chipText, styles.chipLiveText]}>
+                              {t('history.inProgress')}
+                            </Text>
+                          </View>
+                        ) : null}
+                        {minutes !== null ? (
+                          <Chip label={`${minutes} ${t('history.minutes')}`} styles={styles} />
+                        ) : null}
+                        <Chip
+                          label={`${session.exercise_count} ${t('history.exercises')}`}
+                          styles={styles}
+                        />
+                        <Chip label={`${session.set_count} ${t('history.sets')}`} styles={styles} />
+                        {session.volume_load > 0 ? (
+                          <Chip
+                            label={`${formatVolume(session.volume_load, unit)} ${t(
+                              `common.${weightUnitKey(unit)}`,
+                            )}`}
+                            styles={styles}
+                          />
+                        ) : null}
+                      </View>
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ))
         )}
       </View>
     </ScrollView>
@@ -196,11 +255,23 @@ const createStyles = (colors: ColorPalette) =>
     periodText: TextStyle;
     periodTextOn: TextStyle;
     pressed: ViewStyle;
-    historyRow: ViewStyle;
-    historyName: TextStyle;
-    rowMain: ViewStyle;
-    rowMeta: TextStyle;
-    rowStats: TextStyle;
+    monthGroup: ViewStyle;
+    monthHeader: ViewStyle;
+    monthName: TextStyle;
+    monthCount: TextStyle;
+    card: ViewStyle;
+    day: ViewStyle;
+    dayOpen: ViewStyle;
+    dayNumber: TextStyle;
+    dayWeekday: TextStyle;
+    dayOpenText: TextStyle;
+    cardMain: ViewStyle;
+    cardName: TextStyle;
+    chips: ViewStyle;
+    chip: ViewStyle;
+    chipText: TextStyle;
+    chipLive: ViewStyle;
+    chipLiveText: TextStyle;
   }>({
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { paddingHorizontal: spacing.lg },
@@ -240,15 +311,56 @@ const createStyles = (colors: ColorPalette) =>
   periodText: { color: colors.textMuted, fontSize: fontSize.sm },
   periodTextOn: { color: colors.accent, fontWeight: '700' },
   pressed: { opacity: 0.7 },
-  historyRow: {
+  monthGroup: { marginTop: spacing.lg },
+  monthHeader: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    marginBottom: spacing.xs,
+  },
+  monthName: { color: colors.textSecondary, fontSize: fontSize.sm, fontWeight: '700' },
+  monthCount: { color: colors.textFaint, fontSize: fontSize.xxs },
+
+  card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
     ...shadow(colors.shadow).card,
-    padding: spacing.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
     marginTop: spacing.sm,
   },
-  historyName: { color: colors.text, fontSize: fontSize.md, fontWeight: '700', textAlign: 'auto' },
-  rowMain: { flex: 1 },
-  rowMeta: { color: colors.textMuted, fontSize: fontSize.xs, marginTop: 2, textAlign: 'auto' },
-  rowStats: { color: colors.textMuted, fontSize: fontSize.xs, marginTop: 4, textAlign: 'auto' },
+  // The date as a block, the way a calendar writes it: the column the eye runs down.
+  day: {
+    width: 46,
+    paddingVertical: 6,
+    borderRadius: radius.md,
+    backgroundColor: colors.accentSoft,
+    alignItems: 'center',
+  },
+  dayOpen: { backgroundColor: colors.warningSoft },
+  dayNumber: {
+    color: colors.accent,
+    fontSize: fontSize.lg,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  dayWeekday: { color: colors.accent, fontSize: 10, textTransform: 'uppercase' },
+  dayOpenText: { color: colors.warning },
+
+  cardMain: { flex: 1, gap: 6 },
+  cardName: { color: colors.text, fontSize: fontSize.md, fontWeight: '700', textAlign: 'auto' },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  chip: {
+    paddingVertical: 3,
+    paddingHorizontal: 9,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceRaised,
+  },
+  chipText: { color: colors.textMuted, fontSize: fontSize.xxs, fontVariant: ['tabular-nums'] },
+  // A session still running is the one thing in this list that is not history yet.
+  chipLive: { backgroundColor: colors.warningSoft },
+  chipLiveText: { color: colors.warning, fontWeight: '700' },
 });

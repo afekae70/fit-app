@@ -11,12 +11,15 @@
  *
  * ## Glass
  *
- * The slab is translucent and blurred, and the page scrolls visibly underneath it. That is the
- * whole reason it floats rather than sitting in a strip of its own: a bar you can see through
- * tells you the content continues, where an opaque one says the screen ends there. The blur is
- * native (`expo-blur`); over it sits a wash of the surface colour, because a blur alone takes the
- * contrast of whatever happens to be behind it and the labels have to stay readable over both a
- * white card and a photograph.
+ * The slab is translucent and blurred, and the page passes beneath it: a bar you can see through
+ * says the content continues, where an opaque one says the screen ends there. The blur is native
+ * (`expo-blur`); over it sits a wash of the surface colour, because a blur alone inherits the
+ * contrast of whatever is behind it.
+ *
+ * That wash is heavy on purpose. At two thirds opacity the accent-coloured bars of the progress
+ * chart read straight through the glass as a bright violet smear under one of the tabs — a mark
+ * that looked like a rendering fault and moved with the page. Frosted glass hides what is behind
+ * it and keeps only its light; anything less is a tinted window.
  *
  * The slide is native-driven (translateX only) and the glyph swap is not animated at all: colour
  * cannot go through the native driver, and mixing the two drivers on one node is a crash rather
@@ -98,7 +101,7 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
     >
       {/* The glass itself, clipped to the slab's own corners. */}
       <BlurView
-        intensity={scheme === 'dark' ? 40 : 30}
+        intensity={scheme === 'dark' ? 60 : 48}
         tint={scheme === 'dark' ? 'dark' : 'light'}
         style={s.glass}
         pointerEvents="none"

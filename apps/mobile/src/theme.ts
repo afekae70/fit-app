@@ -113,7 +113,7 @@ export const darkColors: ColorPalette = {
   tileSun: '#3B331F',
   tileCoral: '#3A2442',
   shadow: '#000000',
-  glass: 'rgba(32, 26, 56, 0.62)',
+  glass: 'rgba(32, 26, 56, 0.86)',
   glassEdge: 'rgba(167, 139, 250, 0.22)',
 };
 
@@ -157,7 +157,7 @@ export const lightColors: ColorPalette = {
   tileSun: '#F7E9B8',
   tileCoral: '#F4DDF1',
   shadow: '#2A1B57',
-  glass: 'rgba(255, 255, 255, 0.66)',
+  glass: 'rgba(255, 255, 255, 0.88)',
   glassEdge: 'rgba(124, 92, 214, 0.18)',
 };
 
