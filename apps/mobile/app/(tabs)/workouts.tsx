@@ -113,7 +113,7 @@ import {
   type SessionSummaryRow,
   type SetInput,
 } from '../../src/db/workouts.js';
-import { hapticLight, hapticSuccess } from '../../src/haptics.js';
+import { hapticLight, hapticRecord, hapticSuccess } from '../../src/haptics.js';
 import { setWorkoutActive } from '../../src/workout/activeWorkout.js';
 import { createLatestOnly } from '../../src/workout/latestOnly.js';
 import { syncWorkoutReminders } from '../../src/reminders/sync.js';
@@ -649,7 +649,7 @@ export default function WorkoutsScreen() {
         if (!isPr) return;
 
         celebratedSetIds.current.add(setId);
-        hapticSuccess();
+        hapticRecord();
         const seed = EXERCISE_BY_KEY.get(exercise.exercise_key);
         setPrToast({
           exerciseLabel: seed ? (isHebrew ? seed.nameHe : seed.nameEn) : exercise.exercise_key,

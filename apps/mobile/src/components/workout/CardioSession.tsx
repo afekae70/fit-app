@@ -30,6 +30,7 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import * as SecureStore from 'expo-secure-store';
 
 import { hapticLight, hapticSuccess } from '../../haptics.js';
+import { RollingNumber } from '../RollingNumber.js';
 import { useTheme } from '../../ThemeProvider.js';
 import { useUnit } from '../../UnitsProvider.js';
 import { radius, type ColorPalette } from '../../theme.js';
@@ -154,9 +155,7 @@ export function CardioSession({
 
   return (
     <View style={s.panel}>
-      <Text style={s.clock} accessibilityLiveRegion="polite">
-        {formatDuration(seconds)}
-      </Text>
+      <RollingNumber value={formatDuration(seconds)} style={s.clock} lineHeight={54} />
       <Text style={s.clockLabel}>{t('workout.elapsed')}</Text>
 
       <View style={s.controls}>

@@ -40,7 +40,8 @@ import {
 import Svg, { Circle } from 'react-native-svg';
 
 import { formatRemaining, restRingOffset } from '../../workout/derived.js';
-import { hapticLight } from '../../haptics.js';
+import { RollingNumber } from '../RollingNumber.js';
+import { hapticCountdownTick, hapticLight, hapticRestOver } from '../../haptics.js';
 import { useTheme } from '../../ThemeProvider.js';
 import { duration, radius, type ColorPalette } from '../../theme.js';
 
@@ -97,6 +98,7 @@ export function RestBanner({
       setRemaining(left);
       if (left <= 0 && !completed.current) {
         completed.current = true;
+        hapticRestOver();
         onComplete();
       }
     };
@@ -131,6 +133,9 @@ export function RestBanner({
       return;
     }
     pulse.setValue(0);
+    // The beat is felt as well as seen through the last three seconds — by then the phone may
+    // well be face down on a bench.
+    if (remaining <= 3) hapticCountdownTick();
     Animated.sequence([
       Animated.timing(pulse, { toValue: 1, duration: 180, useNativeDriver: true }),
       Animated.timing(pulse, { toValue: 0, duration: 420, useNativeDriver: true }),
@@ -187,9 +192,11 @@ export function RestBanner({
           />
         </Svg>
         <View style={s.ringLabel} pointerEvents="none">
-          <Text style={[s.ringText, ending && { color: colors.warning }]}>
-            {formatRemaining(remaining)}
-          </Text>
+          <RollingNumber
+            value={formatRemaining(remaining)}
+            style={{ ...(s.ringText as object), ...(ending ? { color: colors.warning } : {}) }}
+            lineHeight={16}
+          />
         </View>
       </View>
 

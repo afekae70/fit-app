@@ -40,3 +40,55 @@ export function hapticMedium(): void {
 export function hapticSuccess(): void {
   safely(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
 }
+
+/* -------------------------------------------------------------------------- */
+/* A vocabulary, not a buzz                                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The rest of the app speaks in patterns rather than in single taps.
+ *
+ * One buzz for everything teaches nothing: a set logged, a record broken and a rest ending all
+ * felt identical, so the phone had to be looked at to find out which had happened. These are
+ * distinguishable in a pocket, and that is the whole point — the app is used by someone whose
+ * eyes are on a barbell.
+ *
+ * The spacing is deliberate. Below about 60ms two taps merge into one longer buzz on most
+ * Android motors, and above about 200ms they stop reading as one gesture and become two events.
+ */
+function pattern(steps: { at: number; play: () => void }[]): void {
+  for (const step of steps) {
+    if (step.at === 0) step.play();
+    else setTimeout(step.play, step.at);
+  }
+}
+
+/** A set ticked off: two taps, close together — the rhythm of a thing completed. */
+export function hapticSetDone(): void {
+  pattern([
+    { at: 0, play: hapticMedium },
+    { at: 90, play: hapticLight },
+  ]);
+}
+
+/** A personal record: three taps, rising — heard as an exclamation rather than a confirmation. */
+export function hapticRecord(): void {
+  pattern([
+    { at: 0, play: hapticLight },
+    { at: 90, play: hapticMedium },
+    { at: 190, play: hapticSuccess },
+  ]);
+}
+
+/** One of the last seconds of rest. Deliberately the lightest thing in the vocabulary. */
+export function hapticCountdownTick(): void {
+  hapticLight();
+}
+
+/** Rest is over: a firm pair, enough to feel through a pocket. */
+export function hapticRestOver(): void {
+  pattern([
+    { at: 0, play: hapticMedium },
+    { at: 120, play: hapticMedium },
+  ]);
+}

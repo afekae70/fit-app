@@ -17,6 +17,7 @@ import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
 
 import { ProgressRing } from '../ProgressRing.js';
+import { RollingNumber } from '../RollingNumber.js';
 import { useTheme } from '../../ThemeProvider.js';
 import { radius, shadow, type ColorPalette } from '../../theme.js';
 
@@ -63,7 +64,9 @@ export function WorkoutHeader({
           <Text style={s.name} numberOfLines={1}>
             {name}
           </Text>
-          <Text style={s.time}>{elapsed}</Text>
+          {/* The clock rolls: only the digit that changed moves, which is what makes a second
+              passing read as a second passing. */}
+          <RollingNumber value={elapsed} style={s.time} lineHeight={30} align="start" />
           <Text style={s.timeLabel}>{t('workout.elapsed')}</Text>
         </View>
 

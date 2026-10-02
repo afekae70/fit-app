@@ -40,7 +40,7 @@ import {
 
 import { stepReps, stepWeight } from '../../workout/derived.js';
 
-import { hapticLight, hapticSuccess } from '../../haptics.js';
+import { hapticLight, hapticSetDone } from '../../haptics.js';
 import { useTheme } from '../../ThemeProvider.js';
 import { useUnit } from '../../UnitsProvider.js';
 import {
@@ -191,7 +191,8 @@ export function SetRow({
   const distanceDisplay = distanceM === null ? 0 : metresToDisplay(distanceM, unit);
 
   const handleToggle = () => {
-    void (done ? hapticLight() : hapticSuccess());
+    // Two taps for a set logged, one for taking it back: distinguishable in a pocket.
+    void (done ? hapticLight() : hapticSetDone());
     onToggle();
   };
 
