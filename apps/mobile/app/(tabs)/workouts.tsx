@@ -116,10 +116,11 @@ import {
 } from '../../src/db/workouts.js';
 import { healthExportCopy } from '../../src/health/copy.js';
 import { exportSessionToHealth } from '../../src/health/sync.js';
-import { hapticLight, hapticRecord, hapticSuccess } from '../../src/haptics.js';
+import { hapticLight, hapticRecord, hapticSetDone, hapticSuccess } from '../../src/haptics.js';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 
 import { setWorkoutActive } from '../../src/workout/activeWorkout.js';
+import { shouldAutoComplete } from '../../src/workout/autoComplete.js';
 import { estimateMaxHeartRate, heartRateZone } from '../../src/workout/heartRate.js';
 import {
   startWatchHeartRate,
@@ -556,14 +557,14 @@ export default function WorkoutsScreen() {
     [sessionId, reload],
   );
 
-  const toggleDone = useCallback(
-    (setId: string, done: boolean) => {
-      if (done) hapticLight();
-      void (async () => {
-        const db = await getExecutor();
-        await markSetDone(db, setId, done);
-        if (sessionId) await reload(sessionId);
-      })();
+  /**
+   * Start the rest that follows a set.
+   *
+   * Its own function because a set is now ticked two ways — by the tick, and by typing the numbers
+   * that say it was done — and both have to be followed by exactly the same rest.
+   */
+  const startRestAfter = useCallback(
+    (setId: string) => {
       // How long depends on what was just lifted. Ninety seconds after everything was too little
       // after squats and nearly double what a curl needs, so it was wrong nearly always, in both
       // directions at once.
@@ -583,10 +584,24 @@ export default function WorkoutsScreen() {
           ? restAfterWarmup()
           : restSecondsFor(seed?.movementPattern);
 
-      // Only ticking starts a rest; unticking a set is a correction, not the end of a set.
-      setRest(done && seconds > 0 ? { deadline: Date.now() + seconds * 1000, total: seconds } : null);
+      setRest(seconds > 0 ? { deadline: Date.now() + seconds * 1000, total: seconds } : null);
     },
-    [sessionId, reload, exercises],
+    [exercises],
+  );
+
+  const toggleDone = useCallback(
+    (setId: string, done: boolean) => {
+      if (done) hapticLight();
+      void (async () => {
+        const db = await getExecutor();
+        await markSetDone(db, setId, done);
+        if (sessionId) await reload(sessionId);
+      })();
+      // Only ticking starts a rest; unticking a set is a correction, not the end of a set.
+      if (done) startRestAfter(setId);
+      else setRest(null);
+    },
+    [sessionId, reload, startRestAfter],
   );
 
   /**
@@ -676,10 +691,19 @@ export default function WorkoutsScreen() {
     // Typed as SetInput, not Record<string, …>. A loose index signature is what let
     // `{ weight_kg: … }` compile here while updateSet reads `weightKg` — the write was silently
     // dropped and the weight simply never changed on screen.
-    (setId: string, patch: SetInput) => {
+    //
+    // `complete` ticks the set as part of the same edit: the numbers and the tick are written one
+    // after the other and the screen reloads once, after both. Two separate writes would each
+    // reload, and a reload that lands between them is the one that used to make a tick vanish.
+    (setId: string, patch: SetInput, { complete = false }: { complete?: boolean } = {}) => {
+      if (complete) {
+        void hapticSetDone();
+        startRestAfter(setId);
+      }
       void (async () => {
         const db = await getExecutor();
         await updateSet(db, setId, patch);
+        if (complete) await markSetDone(db, setId, true);
         if (!sessionId) return;
         const loaded = await reload(sessionId);
 
@@ -714,7 +738,7 @@ export default function WorkoutsScreen() {
         });
       })();
     },
-    [sessionId, reload, userId, isHebrew],
+    [sessionId, reload, userId, isHebrew, startRestAfter],
   );
 
   /**
@@ -1402,10 +1426,23 @@ export default function WorkoutsScreen() {
                             title: `${label} · ${t(`common.${weightUnitKey(unit)}`)}`,
                             value: set.weight_kg === null ? null : kgToDisplay(set.weight_kg, unit),
                             unit: t(`common.${weightUnitKey(unit)}`),
-                            onCommit: (value) =>
-                              patchSet(set.id, {
-                                weightKg: value === null ? null : displayWeightToKg(value, unit),
-                              }),
+                            onCommit: (value) => {
+                              const weightKg = value === null ? null : displayWeightToKg(value, unit);
+                              const now = liveSet(set.id) ?? set;
+                              patchSet(
+                                set.id,
+                                { weightKg },
+                                {
+                                  complete: shouldAutoComplete({
+                                    done: now.done_at !== null,
+                                    field: 'weight',
+                                    before: { weightKg: now.weight_kg, reps: now.reps },
+                                    after: { weightKg, reps: now.reps },
+                                    loadType: seed.loadType,
+                                  }),
+                                },
+                              );
+                            },
                           },
                     );
                     return;
@@ -1425,8 +1462,26 @@ export default function WorkoutsScreen() {
                           title: `${label} · ${t('workout.reps')}`,
                           value: set.reps,
                           decimals: false,
-                          onCommit: (value) =>
-                            patchSet(set.id, { reps: value === null ? null : Math.round(value) }),
+                          // Typing the reps is, nearly always, the moment the set is over:
+                          // the weight is what you load beforehand and this is what you find
+                          // out. So this is where a set ticks itself — see autoComplete.ts.
+                          onCommit: (value) => {
+                            const reps = value === null ? null : Math.round(value);
+                            const now = liveSet(set.id) ?? set;
+                            patchSet(
+                              set.id,
+                              { reps },
+                              {
+                                complete: shouldAutoComplete({
+                                  done: now.done_at !== null,
+                                  field: 'reps',
+                                  before: { weightKg: now.weight_kg, reps: now.reps },
+                                  after: { weightKg: now.weight_kg, reps },
+                                  loadType: seed.loadType,
+                                }),
+                              },
+                            );
+                          },
                         },
                   );
                 }}
