@@ -59,6 +59,34 @@ The target phone runs Android 16, where the filter in (2) is never consulted. Wi
 Health Connect has nowhere to send someone who taps through to ask what the app wants the
 permission for.
 
+## 4. The line in `MainActivity.kt` without which the app dies
+
+`android/app/src/main/java/com/afeka/fitapp/MainActivity.kt`:
+
+```kotlin
+import dev.matinzd.healthconnect.permissions.HealthConnectPermissionDelegate
+...
+  override fun onCreate(savedInstanceState: Bundle?) {
+    setTheme(R.style.AppTheme);
+    super.onCreate(null)
+    HealthConnectPermissionDelegate.setPermissionDelegate(this)
+  }
+```
+
+Health Connect asks for permission through an `ActivityResultLauncher`, which Android requires to
+be registered on the activity before that activity is started. `react-native-health-connect`
+registers it nowhere itself — its `app.plugin.js` only adds the manifest filter in (2) — so
+without this line the very first permission request throws
+
+```
+kotlin.UninitializedPropertyAccessException: lateinit property requestPermission has not been
+initialized
+    at dev.matinzd.healthconnect.permissions.HealthConnectPermissionDelegate.launchPermissionsDialog
+```
+
+on a background dispatcher, where no `try` in JavaScript can reach it: the app simply closes the
+moment the switch is turned on. This was shipped once without it, and that is exactly what it did.
+
 ## Where the rest of it lives
 
 | Piece | File |
