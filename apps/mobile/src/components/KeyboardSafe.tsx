@@ -29,12 +29,15 @@
  * the gap, but it is read only when a keyboard event arrives, not when it changes — measuring it
  * and feeding it in is a race against the first keystroke.)
  *
- * Here the view is measured in the window — `measureInWindow`, the same coordinates the keyboard
- * reports in — and the arithmetic is `keyboardInset`, which is tested.
+ * Here the view is measured with `measureInWindow` instead — and that alone was still not right,
+ * by a second, smaller amount: it counts from under the status bar, and the keyboard reports from
+ * the top of the screen. `keyboardInset` holds both corrections and the tests for them; the top
+ * safe-area inset passed to it below is the status bar it has to put back.
  */
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Keyboard, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { keyboardInset } from '../keyboardInset.js';
 
@@ -54,6 +57,10 @@ export function KeyboardSafe({
   const frame = useRef<View>(null);
   const keyboardTop = useRef<number | null>(null);
   const [inset, setInset] = useState(0);
+  // Where `measureInWindow` starts counting from. In a ref so a change to it does not rebuild
+  // the keyboard subscription below.
+  const windowTop = useRef(0);
+  windowTop.current = useSafeAreaInsets().top;
 
   /**
    * Re-measure and re-pad.
@@ -67,7 +74,15 @@ export function KeyboardSafe({
       return;
     }
     frame.current?.measureInWindow((_x, top, _width, height) => {
-      setInset(keyboardInset({ top, height, keyboardTop: keyboardTop.current, offset }));
+      setInset(
+        keyboardInset({
+          top,
+          height,
+          keyboardTop: keyboardTop.current,
+          windowTop: windowTop.current,
+          offset,
+        }),
+      );
     });
   }, [offset]);
 

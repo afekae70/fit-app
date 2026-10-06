@@ -122,6 +122,7 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { setWorkoutActive } from '../../src/workout/activeWorkout.js';
 import { shouldAutoComplete } from '../../src/workout/autoComplete.js';
 import { scrollToReveal, type MeasureRow } from '../../src/workout/revealRow.js';
+import { toScreenY } from '../../src/keyboardInset.js';
 import { estimateMaxHeartRate, heartRateZone } from '../../src/workout/heartRate.js';
 import {
   startWatchHeartRate,
@@ -244,6 +245,10 @@ export default function WorkoutsScreen() {
   // on top of it is — what it takes to keep that row in view.
   const editingRow = useRef<MeasureRow | null>(null);
   const revealTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // `measureInWindow` counts from under the status bar and the keyboard reports from the top of
+  // the screen; this is the difference, for toScreenY. See keyboardInset.ts.
+  const windowTop = useRef(0);
+  windowTop.current = insets.top;
   const keyboardEdge = useRef<number | null>(null);
   const entryBarHeight = useRef(0);
   const [sessionName, setSessionName] = useState<string | null>(null);
@@ -801,7 +806,7 @@ export default function WorkoutsScreen() {
 
     measure((row) => {
       const by = scrollToReveal({
-        row,
+        row: { y: toScreenY(row.y, windowTop.current), height: row.height },
         keyboardTop: top,
         // Before the bar has laid out, its usual height: better a few pixels out than the row
         // left half under it.
@@ -841,7 +846,7 @@ export default function WorkoutsScreen() {
       if (!field) return;
       const keyboardTop = event.endCoordinates.screenY;
       field.measureInWindow((_x, y, _width, height) => {
-        const overlap = y + height + spacing.xl - keyboardTop;
+        const overlap = toScreenY(y, windowTop.current) + height + spacing.xl - keyboardTop;
         if (overlap <= 0) return;
         scrollY.current += overlap;
         scrollRef.current?.scrollTo({ y: scrollY.current, animated: true });

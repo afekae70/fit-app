@@ -42,6 +42,7 @@ import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
 import { DragReorderList, type DragHandleProps } from '../../src/components/DragReorderList.js';
 import { useActionSheet } from '../../src/components/ActionSheetProvider.js';
 import { KeyboardSafe } from '../../src/components/KeyboardSafe.js';
+import { toScreenY } from '../../src/keyboardInset.js';
 import { FadeSlideIn } from '../../src/components/motion.js';
 import {
   Banner,
@@ -384,13 +385,16 @@ export default function PlanScreen() {
    * keyboard is drawn over the app rather than shrinking it. `KeyboardSafe` gives the page room
    * to scroll; this then scrolls just far enough that the focused field clears the keyboard.
    */
+  // Where `measureInWindow` counts from, which is not where the keyboard does. See toScreenY.
+  const windowTop = useRef(0);
+  windowTop.current = insets.top;
   useEffect(() => {
     const shown = Keyboard.addListener('keyboardDidShow', (event) => {
       const field = TextInput.State.currentlyFocusedInput();
       if (!field) return;
       const keyboardTop = event.endCoordinates.screenY;
       field.measureInWindow((_x, y, _width, height) => {
-        const overlap = y + height + spacing.lg - keyboardTop;
+        const overlap = toScreenY(y, windowTop.current) + height + spacing.lg - keyboardTop;
         if (overlap <= 0) return;
         scrollY.current += overlap;
         scrollRef.current?.scrollTo({ y: scrollY.current, animated: true });
