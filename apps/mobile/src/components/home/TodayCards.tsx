@@ -429,7 +429,7 @@ export function WeightTrendCard({
 
           {/* Renders nothing below two points, which is why the line above has to carry the card
               on its own after a single weigh-in. */}
-          <WeightSparkline points={points} height={72} showRangePicker={false} />
+          <WeightSparkline points={points} height={104} showRangePicker={false} />
         </>
       )}
     </Pressable>
