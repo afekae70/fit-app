@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The accent pill the phone app's primary buttons wear, in its night violet. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#A78BFA" />
+    <corners android:radius="999dp" />
+</shape>

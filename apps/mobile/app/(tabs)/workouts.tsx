@@ -18,6 +18,7 @@ import {
   warmupRamp,
   type ProgressionAdvice,
 } from '@fit/shared/calculations';
+import { ageInYears } from '@fit/shared/calculations';
 import { EQUIPMENT_SEED, EXERCISE_SEED, type ExerciseSeed } from '@fit/shared/catalog';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -83,7 +84,7 @@ import {
   type HistoryPeriod,
 } from '../../src/workout/historyPeriod.js';
 import { getPlanDay, listPlanDayExercises, timingOf, type PlanDayTiming } from '../../src/db/plans.js';
-import { getLatestWeight } from '../../src/db/metrics.js';
+import { getLatestWeight, getProfile } from '../../src/db/metrics.js';
 import { getExecutor, newId } from '../../src/db/provider.js';
 import { isExerciseStalling } from '../../src/db/progression.js';
 import { listLocations, setSessionLocation, type LocationRow } from '../../src/db/locations.js';
@@ -119,6 +120,12 @@ import { hapticLight, hapticRecord, hapticSuccess } from '../../src/haptics.js';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 
 import { setWorkoutActive } from '../../src/workout/activeWorkout.js';
+import { estimateMaxHeartRate, heartRateZone } from '../../src/workout/heartRate.js';
+import {
+  startWatchHeartRate,
+  stopWatchHeartRate,
+  useLiveHeartRate,
+} from '../../src/workout/liveHeartRate.js';
 import { createLatestOnly } from '../../src/workout/latestOnly.js';
 import { syncWorkoutReminders } from '../../src/reminders/sync.js';
 import { stationMove } from '../../src/workout/stripReorder.js';
@@ -170,6 +177,10 @@ export default function WorkoutsScreen() {
      */
     if (sessionId !== null) void activateKeepAwakeAsync(WORKOUT_AWAKE_TAG).catch(() => undefined);
     else void deactivateKeepAwake(WORKOUT_AWAKE_TAG);
+    // The watch measures for exactly as long as there is a workout to measure. Asking again for a
+    // session that was already open is harmless: the watch treats a second start as the first.
+    if (sessionId !== null) startWatchHeartRate();
+    else stopWatchHeartRate();
     // And re-lay the reminders: today's is withdrawn while a workout is open, and comes back if
     // the session is abandoned rather than finished.
     void (async () => {
@@ -199,6 +210,9 @@ export default function WorkoutsScreen() {
   const [gyms, setGyms] = useState<LocationRow[]>([]);
   const [gymId, setGymId] = useState<string | null>(null);
   const [bodyWeightKg, setBodyWeightKg] = useState<number | null>(null);
+  /** From the birth date on the profile; null without one, and the heart rate then has no zone. */
+  const [maxHeartRate, setMaxHeartRate] = useState<number | null>(null);
+  const liveHeartRate = useLiveHeartRate(sessionId !== null);
 
   /*
    * The sets as they are right now, for the handlers below.
@@ -336,6 +350,12 @@ export default function WorkoutsScreen() {
     setGyms(await listLocations(db, userId));
     // The latest weigh-in, which is half of the calorie estimate on a cardio effort.
     setBodyWeightKg((await getLatestWeight(db, userId))?.weight_kg ?? null);
+    // And the age, which is what turns a heart rate into a training zone.
+    const birthDate = (await getProfile(db, userId))?.birth_date ?? null;
+    const birth = birthDate ? new Date(birthDate) : null;
+    setMaxHeartRate(
+      birth && !Number.isNaN(birth.getTime()) ? estimateMaxHeartRate(ageInYears(birth)) : null,
+    );
 
     const nextPrevious: Record<string, PreviousSet[] | null> = {};
     const nextStalling: Record<string, boolean> = {};
@@ -1462,6 +1482,11 @@ export default function WorkoutsScreen() {
         startedAt={startedAt ?? new Date().toISOString()}
         progress={totals.sets === 0 ? 0 : totals.done / totals.sets}
         onFinish={finishNow}
+        heartRate={
+          liveHeartRate
+            ? { bpm: liveHeartRate.bpm, zone: heartRateZone(liveHeartRate.bpm, maxHeartRate) }
+            : null
+        }
       />
 
       {/* An unplanned, unnamed workout has no other session of its kind, so "last time" and the

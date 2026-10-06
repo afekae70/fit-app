@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The watch face of the app: one number, centred, with a line under it and a button.
+
+  Centred and narrow because the screen is a circle — anything that reaches for a corner is
+  reaching for glass that is not there. The padding is a percentage of nothing clever, just enough
+  that the widest thing here, a three-digit heart rate, clears the bezel on the smallest watch.
+
+  The app's violet ground and its accent, as literals: this is a separate APK with none of the
+  phone app's palette in it, and four colours are not worth a theme.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#161226"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <TextView
+        android:id="@+id/bpm"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:fontFeatureSettings="tnum"
+        android:text="--"
+        android:textColor="#EEEAFB"
+        android:textSize="54sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:text="@string/waiting"
+        android:textColor="#9A8FBE"
+        android:textSize="13sp" />
+
+    <Button
+        android:id="@+id/toggle"
+        android:layout_width="wrap_content"
+        android:layout_height="40dp"
+        android:layout_marginTop="10dp"
+        android:background="@drawable/button"
+        android:minWidth="88dp"
+        android:paddingStart="18dp"
+        android:paddingEnd="18dp"
+        android:text="@string/stop"
+        android:textAllCaps="false"
+        android:textColor="#161226"
+        android:textSize="14sp"
+        android:textStyle="bold" />
+</LinearLayout>

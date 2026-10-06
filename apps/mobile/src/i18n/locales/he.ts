@@ -221,6 +221,9 @@ export const he = {
     topSet: 'הסט הטוב',
   },
   workout: {
+    heartRate: 'דופק',
+    heartRateZone: 'אזור {{zone}}',
+    heartRateLabel: 'דופק {{bpm}} פעימות לדקה',
     breatheIn: 'שאיפה…',
     breatheOut: 'נשיפה…',
     finishedLine: 'כל הכבוד! סיימת את האימון',

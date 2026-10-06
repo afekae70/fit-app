@@ -228,6 +228,9 @@ export const en = {
     topSet: 'Top set',
   },
   workout: {
+    heartRate: 'BPM',
+    heartRateZone: 'Zone {{zone}}',
+    heartRateLabel: 'Heart rate {{bpm}} beats per minute',
     breatheIn: 'Breathe in…',
     breatheOut: 'Breathe out…',
     finishedLine: 'Well done — workout complete',

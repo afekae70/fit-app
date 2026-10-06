@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The watch app's manifest.
+
+  `standalone` is false on purpose: this app is half of a pair and useless without the phone, and
+  saying so is what keeps the Play Store and the watch from offering it to anyone on its own.
+
+  BODY_SENSORS is the heart-rate sensor. The module targets Android 14, where that is still the
+  permission; at target 36 it becomes `android.permission.health.READ_HEART_RATE`, and raising the
+  target means changing both the request in MainActivity and this line together.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-feature android:name="android.hardware.type.watch" />
+
+    <uses-permission android:name="android.permission.BODY_SENSORS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <application
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:theme="@android:style/Theme.DeviceDefault">
+
+        <uses-library
+            android:name="com.google.android.wearable"
+            android:required="true" />
+
+        <meta-data
+            android:name="com.google.android.wearable.standalone"
+            android:value="false" />
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:taskAffinity="">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Type `health`, which on Android 14 is what lets it read a body sensor in the
+             background at all — and which the system checks BODY_SENSORS against at start. -->
+        <service
+            android:name=".HeartRateService"
+            android:exported="false"
+            android:foregroundServiceType="health" />
+
+        <!-- Exported because Google Play services, another app, is what delivers the phone's
+             messages to it. The path prefix keeps it to this app's own three messages. -->
+        <service
+            android:name=".PhoneListenerService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
+                <data
+                    android:host="*"
+                    android:pathPrefix="/novafit"
+                    android:scheme="wear" />
+            </intent-filter>
+        </service>
+    </application>
+</manifest>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The watch app's strings. Hebrew, like the phone widget's and for the same reason: this is native
+  UI with no i18next behind it, on the watch of the person it was built for.
+-->
+<resources>
+    <string name="app_name">NovaFit</string>
+    <string name="channel_name">מדידת דופק</string>
+    <string name="measuring">מודד דופק לאימון</string>
+    <string name="waiting">ממתין לחיישן…</string>
+    <string name="sending">נשלח לטלפון</string>
+    <string name="stopped">המדידה מופסקת</string>
+    <string name="need_permission">צריך הרשאה לחיישן הדופק</string>
+    <string name="start">התחל</string>
+    <string name="stop">עצור</string>
+</resources>
