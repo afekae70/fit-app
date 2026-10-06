@@ -121,6 +121,7 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 
 import { setWorkoutActive } from '../../src/workout/activeWorkout.js';
 import { shouldAutoComplete } from '../../src/workout/autoComplete.js';
+import { scrollToReveal, type MeasureRow } from '../../src/workout/revealRow.js';
 import { estimateMaxHeartRate, heartRateZone } from '../../src/workout/heartRate.js';
 import {
   startWatchHeartRate,
@@ -239,6 +240,12 @@ export default function WorkoutsScreen() {
   // list for a field that is not in the list.
   const entryOpen = useRef(false);
   entryOpen.current = entry !== null;
+  // How to find the row being filled in, where the keyboard's top edge is, and how tall the bar
+  // on top of it is — what it takes to keep that row in view.
+  const editingRow = useRef<MeasureRow | null>(null);
+  const revealTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const keyboardEdge = useRef<number | null>(null);
+  const entryBarHeight = useRef(0);
   const [sessionName, setSessionName] = useState<string | null>(null);
   const [historyPeriod, setHistoryPeriod] = useState<HistoryPeriod>(DEFAULT_HISTORY_PERIOD);
   const [history, setHistory] = useState<SessionSummaryRow[]>([]);
@@ -779,6 +786,32 @@ export default function WorkoutsScreen() {
   /** Where the list sits in the window — below the fixed masthead, not at the top of the screen. */
   const viewport = useRef({ top: 0, height: 0 });
 
+  /**
+   * Move the set being filled in clear of the keyboard and the bar above it.
+   *
+   * Asks the row where it is *now* and scrolls by exactly what hides it. Measuring at the moment
+   * of scrolling is what makes this safe to call more than once: a row already in view measures
+   * as clear and the list stays where it is, and a scroll that was cut short — because the list
+   * had not yet shrunk for the keyboard — is simply finished by the next call.
+   */
+  const revealEditingRow = useCallback(() => {
+    const measure = editingRow.current;
+    const top = keyboardEdge.current;
+    if (!measure || top === null) return;
+
+    measure((row) => {
+      const by = scrollToReveal({
+        row,
+        keyboardTop: top,
+        // Before the bar has laid out, its usual height: better a few pixels out than the row
+        // left half under it.
+        barHeight: entryBarHeight.current || 96,
+        margin: spacing.md,
+      });
+      if (by > 0) scrollRef.current?.scrollTo({ y: scrollY.current + by, animated: true });
+    });
+  }, []);
+
   /*
    * Keep the row being typed into above the keyboard.
    *
@@ -788,10 +821,22 @@ export default function WorkoutsScreen() {
    */
   useEffect(() => {
     const shown = Keyboard.addListener('keyboardDidShow', (event) => {
-      // The number bar docks itself above the keys. Measured here it is still at the foot of
-      // the screen — the keyboard reports in before the padding that lifts the bar is applied —
-      // and scrolling the list by that false overlap threw it a keyboard's height up the page.
-      if (entryOpen.current) return;
+      keyboardEdge.current = event.endCoordinates.screenY;
+      // The number bar docks itself above the keys, so the field being typed into needs no help.
+      // What needs moving is the row it belongs to. Deliberately not done by measuring the bar:
+      // at this moment it is still at the foot of the screen — the keyboard reports in before the
+      // padding that lifts the bar is applied — and scrolling by that false overlap once threw
+      // the list a keyboard's height up the page.
+      //
+      // Nor done right now. The list can only scroll far enough once it has shrunk to make room
+      // for the keyboard, and it shrinks a layout pass after this report: scrolling here is
+      // clamped short. The scroll view's own onLayout reveals the row at the moment it shrinks;
+      // this is the fallback for a keyboard that changed nothing about the list's size.
+      if (entryOpen.current) {
+        if (revealTimer.current) clearTimeout(revealTimer.current);
+        revealTimer.current = setTimeout(revealEditingRow, 300);
+        return;
+      }
       const field = TextInput.State.currentlyFocusedInput();
       if (!field) return;
       const keyboardTop = event.endCoordinates.screenY;
@@ -802,8 +847,15 @@ export default function WorkoutsScreen() {
         scrollRef.current?.scrollTo({ y: scrollY.current, animated: true });
       });
     });
-    return () => shown.remove();
-  }, []);
+    const hidden = Keyboard.addListener('keyboardDidHide', () => {
+      keyboardEdge.current = null;
+    });
+    return () => {
+      shown.remove();
+      hidden.remove();
+      if (revealTimer.current) clearTimeout(revealTimer.current);
+    };
+  }, [revealEditingRow]);
 
   const autoScroll = useCallback((screenY: number) => {
     const { top, height } = viewport.current;
@@ -1414,9 +1466,15 @@ export default function WorkoutsScreen() {
                  * the keys draw. See NumberEntryBar. Tapping a second number while the first is
                  * open hands the same field over, so the keyboard never drops in between.
                  */
-                onEditValue={(i, field) => {
+                onEditValue={(i, field, measure) => {
                   const set = exercise.sets[i];
                   if (!set) return;
+                  // How to find the row, for moving it clear of the keyboard. If the keys are
+                  // already up — a second number tapped while the first is open — nothing more
+                  // is going to announce them, so the row is moved now. Otherwise it is moved
+                  // when the list shrinks to make room for them.
+                  editingRow.current = measure ?? null;
+                  if (keyboardEdge.current !== null) revealEditingRow();
                   const label = `${seed.nameHe} · ${t('workout.setNumber')} ${i + 1}`;
                   const cardio = seed.loadType === 'cardio';
                   if (field === 'first') {
@@ -1652,6 +1710,9 @@ export default function WorkoutsScreen() {
           scrollRef.current?.getNativeScrollRef()?.measureInWindow((_x, top, _width, height) => {
             viewport.current = { top, height };
           });
+          // The list has just changed size — which, while a number is being typed, means the
+          // keyboard has finished taking its share. Now there is room to scroll the row into.
+          if (entryOpen.current) revealEditingRow();
         }}
       >
         {exercises.length === 0 ? (
@@ -1748,7 +1809,18 @@ export default function WorkoutsScreen() {
       {/* Last in the column on purpose. KeyboardSafe pads the bottom of this view by the height
           of the keyboard, and whatever is last sits on top of that padding — which is to say,
           directly above the keys. Not a Modal: see NumberEntryBar for why that cannot work. */}
-      {entry ? <NumberEntryBar request={entry} onClose={() => setEntry(null)} /> : null}
+      {entry ? (
+        <NumberEntryBar
+          request={entry}
+          onClose={() => {
+            setEntry(null);
+            editingRow.current = null;
+          }}
+          onLayout={(event) => {
+            entryBarHeight.current = event.nativeEvent.layout.height;
+          }}
+        />
+      ) : null}
     </KeyboardSafe>
   );
 }

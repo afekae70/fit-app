@@ -53,6 +53,7 @@ import {
   Text,
   TextInput,
   View,
+  type LayoutChangeEvent,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
@@ -91,9 +92,12 @@ const HIDE_SETTLE_MS = 120;
 export function NumberEntryBar({
   request,
   onClose,
+  onLayout,
 }: {
   request: NumberEntryRequest;
   onClose: () => void;
+  /** The bar's own size, for the screen that has to keep the row being edited clear of it. */
+  onLayout?: (event: LayoutChangeEvent) => void;
 }) {
   const { t } = useTranslation();
   const { colors } = useTheme();
@@ -183,7 +187,7 @@ export function NumberEntryBar({
   }, [commit, finish]);
 
   return (
-    <View style={s.bar}>
+    <View style={s.bar} onLayout={onLayout}>
       <Text style={s.title} numberOfLines={1}>
         {request.title}
       </Text>

@@ -25,6 +25,7 @@ import { formatVolume, kgToDisplay, metresToDisplay, weightUnitKey } from '../..
 import type { ProgressionAdvice } from '@fit/shared/calculations';
 import { radius, shadow, type ColorPalette } from '../../theme.js';
 import type { DragHandleProps } from '../DragReorderList.js';
+import type { MeasureRow } from '../../workout/revealRow.js';
 import { CardioSession } from './CardioSession.js';
 import { SetRow } from './SetRow.js';
 
@@ -149,7 +150,7 @@ export interface ExercisePanelProps {
    * The pad belongs to the screen rather than to a row: it covers the bottom of the display and
    * names what it is editing, which a row cannot do for itself.
    */
-  onEditValue?: (setIndex: number, field: 'first' | 'second') => void;
+  onEditValue?: (setIndex: number, field: 'first' | 'second', measure?: MeasureRow) => void;
   /**
    * Open this exercise's own record — every session of it, and the trend.
    *
@@ -436,7 +437,7 @@ export function ExercisePanel({
               onChangeReps={(next) => onChangeReps(index, next)}
               onChangeDuration={(seconds) => onChangeDuration?.(index, seconds)}
               onChangeDistance={(metres) => onChangeDistance?.(index, metres)}
-              onEdit={onEditValue ? (field) => onEditValue(index, field) : undefined}
+              onEdit={onEditValue ? (field, measure) => onEditValue(index, field, measure) : undefined}
               onToggle={() => onToggle(index)}
             />
           ))}

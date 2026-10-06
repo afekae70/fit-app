@@ -47,6 +47,7 @@ import {
 } from 'react-native';
 
 import { stepReps, stepWeight } from '../../workout/derived.js';
+import type { MeasureRow } from '../../workout/revealRow.js';
 
 import { hapticLight, hapticSetDone } from '../../haptics.js';
 import { useTheme } from '../../ThemeProvider.js';
@@ -94,7 +95,11 @@ export interface SetRowProps {
    * `field` says which, so the screen can name it above the keys — "חזה · סט 2 · ק״ג" is
    * what makes a pad over the bottom of the screen as clear as the row it came from.
    */
-  onEdit?: (field: 'first' | 'second') => void;
+  //
+  // `measure` lets the screen ask where this row is. The keyboard is about to rise over the
+  // bottom of the list, and the screen uses this to move the row clear of it — a number is typed
+  // against the rest of its set, not from memory of it.
+  onEdit?: (field: 'first' | 'second', measure?: MeasureRow) => void;
   /**
    * A ramp toward the work rather than the work itself — excluded from volume, personal records
    * and the progression charts.
@@ -198,6 +203,23 @@ export function SetRow({
 
   const distanceDisplay = distanceM === null ? 0 : metresToDisplay(distanceM, unit);
 
+  const rowRef = useRef<View>(null);
+
+  /**
+   * Where this row is on screen, whenever it is asked.
+   *
+   * Reads the ref at the time of the call, not at the time of the tap, so it keeps answering for
+   * as long as the row exists and goes quiet when it does not. A height of zero is a row that is
+   * no longer laid out, which is not a position worth scrolling to.
+   */
+  const measure: MeasureRow = (done) => {
+    rowRef.current?.measureInWindow((_x, y, _width, height) => {
+      if (height > 0) done({ y, height });
+    });
+  };
+
+  const edit = (field: 'first' | 'second') => onEdit?.(field, measure);
+
   const handleToggle = () => {
     // Two taps for a set logged, one for taking it back: distinguishable in a pocket.
     void (done ? hapticLight() : hapticSetDone());
@@ -205,7 +227,7 @@ export function SetRow({
   };
 
   return (
-    <Animated.View style={[s.row, rowStyle]}>
+    <Animated.View ref={rowRef} style={[s.row, rowStyle]}>
       {/* Deleting a set is a long-press on its number, not a button. The handoff's card has no
           delete control and putting one there would crowd a row built for one thumb — but the
           capability existed before this card did, and losing it silently would be worse than
@@ -245,7 +267,7 @@ export function SetRow({
         />
         <View style={s.value}>
           <Pressable
-            onPress={() => onEdit?.('first')}
+            onPress={() => edit('first')}
             disabled={!onEdit}
             accessibilityRole="button"
             style={s.valueTap}
@@ -270,7 +292,7 @@ export function SetRow({
         />
         <View style={s.value}>
           <Pressable
-            onPress={() => onEdit?.('second')}
+            onPress={() => edit('second')}
             disabled={!onEdit}
             accessibilityRole="button"
             style={s.valueTap}
@@ -298,7 +320,7 @@ export function SetRow({
               display rather than a field. Uncontrolled and re-keyed on the committed value, so
               typing is never fought mid-entry. */}
           <Pressable
-            onPress={() => onEdit?.('first')}
+            onPress={() => edit('first')}
             disabled={!onEdit}
             accessibilityRole="button"
             style={s.valueTap}
@@ -316,7 +338,7 @@ export function SetRow({
         <Stepper label="−" onPress={() => onChangeReps(stepReps(reps, -1))} />
         <View style={s.value}>
           <Pressable
-            onPress={() => onEdit?.('second')}
+            onPress={() => edit('second')}
             disabled={!onEdit}
             accessibilityRole="button"
             style={s.valueTap}
