@@ -144,7 +144,7 @@ export interface ExercisePanelProps {
   exerciseKey?: string;
   bodyWeightKg?: number | null;
   /**
-   * Edit one of a set's numbers with the app's number pad.
+   * Edit one of a set's numbers, on the keyboard.
    *
    * The pad belongs to the screen rather than to a row: it covers the bottom of the display and
    * names what it is editing, which a row cannot do for itself.

@@ -13,8 +13,10 @@
  *  - **On a row that already had both, only the reps tick it.** The weight is what you set up
  *    before lifting and the reps are what you find out afterwards: changing 60 to 62.5 is
  *    loading the bar, and ticking the set then would start the rest timer before the lift.
- *  - **Nothing changed, nothing happens.** The pad saves on the way out, so opening it and
- *    closing it again commits the number that was already there. That is a look, not an entry.
+ *  - **Typing the reps that were already there still ticks.** The row was born holding eight,
+ *    you did eight, you typed eight: that is an entry, and the most common one there is. Only
+ *    what was actually typed ever reaches this function — a field opened and left empty commits
+ *    nothing — so there is no such thing here as a number that arrived without being meant.
  *
  * Never the other way: clearing a number does not untick a set. Unticking is a correction, and a
  * correction should be something somebody did on purpose.
@@ -50,9 +52,9 @@ export function isSetComplete(set: SetNumbers, loadType: LoadType | undefined): 
 export interface AutoCompleteInput {
   /** Already ticked: there is nothing to do, and ticking twice would restart the rest. */
   done: boolean;
-  /** Which number the pad was editing. */
+  /** Which number was being typed. */
   field: 'weight' | 'reps';
-  /** The row as it was when the pad opened, and as it is with the committed value in place. */
+  /** The row as it was before the entry, and as it is with the committed value in place. */
   before: SetNumbers;
   after: SetNumbers;
   loadType: LoadType | undefined;
@@ -68,9 +70,6 @@ export function shouldAutoComplete({
 }: AutoCompleteInput): boolean {
   if (done) return false;
   if (!isSetComplete(after, loadType)) return false;
-
-  const changed = field === 'weight' ? before.weightKg !== after.weightKg : before.reps !== after.reps;
-  if (!changed) return false;
 
   // The number that was missing has gone in, whichever of the two it was.
   if (!isSetComplete(before, loadType)) return true;

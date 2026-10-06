@@ -19,9 +19,10 @@
  *
  * ## Typing
  *
- * A tap on a number opens the app's own pad rather than the system keyboard — see
- * `numberPad.ts` for why: the keyboard swallowed the first keystroke of every entry and covered
- * the row it was filling in. The row only says what was tapped; the screen owns the pad.
+ * A tap on a number is typed on the phone's own numeric keyboard — but not into this row. The
+ * field lives in a bar above the keys (`NumberEntryBar`), because a row is rebuilt by every reload
+ * and a keystroke typed into a row that is being replaced is a keystroke lost. The row only says
+ * which number was tapped; the screen owns the field.
  *
  * ## Two animation drivers, deliberately on two nodes
  *
@@ -88,9 +89,9 @@ export interface SetRowProps {
   onChangeDuration?: (seconds: number) => void;
   onChangeDistance?: (metres: number) => void;
   /**
-   * Edit one of this row's two numbers with the app's number pad.
+   * Edit one of this row's two numbers, on the keyboard.
    *
-   * `field` says which, so the screen can name it in the pad's title — "חזה · סט 2 · ק״ג" is
+   * `field` says which, so the screen can name it above the keys — "חזה · סט 2 · ק״ג" is
    * what makes a pad over the bottom of the screen as clear as the row it came from.
    */
   onEdit?: (field: 'first' | 'second') => void;
@@ -458,7 +459,7 @@ const createStyles = (colors: ColorPalette) =>
     value: { flex: 1, flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center', gap: 2 },
     // Tabular so the row does not shift as the number ticks between 8 and 10.
     numeral: { fontSize: 26, fontWeight: '600', fontVariant: ['tabular-nums'] },
-    // The number is the target: a tap anywhere on it opens the pad, which is a far bigger thing
+    // The number is the target: a tap anywhere on it opens the keyboard, a far bigger thing
     // to hit mid-set than the glyphs themselves.
     valueTap: { flex: 1, height: 56, alignItems: 'center', justifyContent: 'center' },
     // A TextInput carries platform padding and a minimum height a Text does not. Zeroed so

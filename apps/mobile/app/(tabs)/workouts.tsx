@@ -53,9 +53,9 @@ import { ExerciseVisual } from '../../src/components/ExerciseVisual.js';
 import { ExercisePanel } from '../../src/components/workout/ExercisePanel.js';
 import { ExerciseStrip } from '../../src/components/workout/ExerciseStrip.js';
 import {
-  NumberPadSheet,
-  type NumberPadRequest,
-} from '../../src/components/workout/NumberPadSheet.js';
+  NumberEntryBar,
+  type NumberEntryRequest,
+} from '../../src/components/workout/NumberEntryBar.js';
 import { useUnit } from '../../src/UnitsProvider.js';
 import {
   displayDistanceToMetres,
@@ -233,8 +233,12 @@ export default function WorkoutsScreen() {
   const [loading, setLoading] = useState(true);
   /** True from the tap on Finish until the trophy has played out. */
   const [finishing, setFinishing] = useState(false);
-  /** What the number pad is currently editing, or null while it is closed. */
-  const [pad, setPad] = useState<NumberPadRequest | null>(null);
+  /** The number being typed in the bar above the keyboard, or null while nothing is. */
+  const [entry, setEntry] = useState<NumberEntryRequest | null>(null);
+  // For the keyboard listener below, which subscribes once and must not be told to scroll the
+  // list for a field that is not in the list.
+  const entryOpen = useRef(false);
+  entryOpen.current = entry !== null;
   const [sessionName, setSessionName] = useState<string | null>(null);
   const [historyPeriod, setHistoryPeriod] = useState<HistoryPeriod>(DEFAULT_HISTORY_PERIOD);
   const [history, setHistory] = useState<SessionSummaryRow[]>([]);
@@ -784,6 +788,10 @@ export default function WorkoutsScreen() {
    */
   useEffect(() => {
     const shown = Keyboard.addListener('keyboardDidShow', (event) => {
+      // The number bar docks itself above the keys. Measured here it is still at the foot of
+      // the screen — the keyboard reports in before the padding that lifts the bar is applied —
+      // and scrolling the list by that false overlap threw it a keyboard's height up the page.
+      if (entryOpen.current) return;
       const field = TextInput.State.currentlyFocusedInput();
       if (!field) return;
       const keyboardTop = event.endCoordinates.screenY;
@@ -1400,9 +1408,11 @@ export default function WorkoutsScreen() {
                   if (set) patchSet(set.id, { distanceM: metres });
                 }}
                 /*
-                 * A tap on a number opens the app's own pad. The system keyboard swallowed the
-                 * first keystroke of every entry on Android and covered the row being filled in;
-                 * the pad names what it is editing instead of competing with it.
+                 * A tap on a number opens a field above the phone's numeric keyboard. The field
+                 * is deliberately not this row: a row is rebuilt by every reload, which is what
+                 * used to eat the first digit typed into one, and a row low in the list is where
+                 * the keys draw. See NumberEntryBar. Tapping a second number while the first is
+                 * open hands the same field over, so the keyboard never drops in between.
                  */
                 onEditValue={(i, field) => {
                   const set = exercise.sets[i];
@@ -1410,24 +1420,26 @@ export default function WorkoutsScreen() {
                   const label = `${seed.nameHe} · ${t('workout.setNumber')} ${i + 1}`;
                   const cardio = seed.loadType === 'cardio';
                   if (field === 'first') {
-                    setPad(
+                    setEntry(
                       cardio
                         ? {
+                            id: `${set.id}:duration`,
                             title: `${label} · ${t('workout.duration')}`,
                             value: set.duration_seconds === null ? null : Math.round(set.duration_seconds / 60),
                             unit: t('workout.minutesShort'),
                             decimals: false,
                             onCommit: (value) =>
                               patchSet(set.id, {
-                                durationSeconds: value === null ? null : Math.max(0, Math.round(value * 60)),
+                                durationSeconds: Math.max(0, Math.round(value * 60)),
                               }),
                           }
                         : {
+                            id: `${set.id}:weight`,
                             title: `${label} · ${t(`common.${weightUnitKey(unit)}`)}`,
                             value: set.weight_kg === null ? null : kgToDisplay(set.weight_kg, unit),
                             unit: t(`common.${weightUnitKey(unit)}`),
                             onCommit: (value) => {
-                              const weightKg = value === null ? null : displayWeightToKg(value, unit);
+                              const weightKg = displayWeightToKg(value, unit);
                               const now = liveSet(set.id) ?? set;
                               patchSet(
                                 set.id,
@@ -1447,18 +1459,20 @@ export default function WorkoutsScreen() {
                     );
                     return;
                   }
-                  setPad(
+                  setEntry(
                     cardio
                       ? {
+                          id: `${set.id}:distance`,
                           title: `${label} · ${t('workout.distance')}`,
                           value: set.distance_m === null ? null : metresToDisplay(set.distance_m, unit),
                           unit: t(`common.${distanceUnitKey(unit)}`),
                           onCommit: (value) =>
                             patchSet(set.id, {
-                              distanceM: value === null ? null : displayDistanceToMetres(value, unit),
+                              distanceM: displayDistanceToMetres(value, unit),
                             }),
                         }
                       : {
+                          id: `${set.id}:reps`,
                           title: `${label} · ${t('workout.reps')}`,
                           value: set.reps,
                           decimals: false,
@@ -1466,7 +1480,7 @@ export default function WorkoutsScreen() {
                           // the weight is what you load beforehand and this is what you find
                           // out. So this is where a set ticks itself — see autoComplete.ts.
                           onCommit: (value) => {
-                            const reps = value === null ? null : Math.round(value);
+                            const reps = Math.round(value);
                             const now = liveSet(set.id) ?? set;
                             patchSet(
                               set.id,
@@ -1621,8 +1635,6 @@ export default function WorkoutsScreen() {
         onComplete={() => setRest(null)}
       />
 
-      <NumberPadSheet request={pad} onClose={() => setPad(null)} />
-
       {/* Finishing saves straight away; this is the whole of the ceremony. */}
       {finishing ? <FinishedBurst onDone={finishDone} /> : null}
 
@@ -1732,6 +1744,11 @@ export default function WorkoutsScreen() {
         {/* Finishing is in the header now, top right. A tap there only opens the summary —
             the workout ends when that is confirmed — so a mis-tap costs nothing. */}
       </ScrollView>
+
+      {/* Last in the column on purpose. KeyboardSafe pads the bottom of this view by the height
+          of the keyboard, and whatever is last sits on top of that padding — which is to say,
+          directly above the keys. Not a Modal: see NumberEntryBar for why that cannot work. */}
+      {entry ? <NumberEntryBar request={entry} onClose={() => setEntry(null)} /> : null}
     </KeyboardSafe>
   );
 }

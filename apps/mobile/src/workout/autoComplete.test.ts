@@ -92,9 +92,16 @@ describe('shouldAutoComplete', () => {
     ).toBe(false);
   });
 
-  it('does not tick when the pad was opened and closed on the same number', () => {
+  it('ticks when the reps typed are the ones already there', () => {
+    // Planned eight, did eight, typed eight. Nothing changed and the set is still done — the
+    // field only ever commits what was typed, so this is somebody saying so.
     const same = { weightKg: 60, reps: 8 };
-    expect(shouldAutoComplete(entry({ field: 'reps', before: same, after: same }))).toBe(false);
+    expect(shouldAutoComplete(entry({ field: 'reps', before: same, after: same }))).toBe(true);
+  });
+
+  it('does not tick when the weight typed is the one already there', () => {
+    const same = { weightKg: 60, reps: 8 };
+    expect(shouldAutoComplete(entry({ field: 'weight', before: same, after: same }))).toBe(false);
   });
 
   it('does not tick a set that is already ticked', () => {
