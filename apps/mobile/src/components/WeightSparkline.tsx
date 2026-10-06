@@ -1,33 +1,46 @@
 /**
  * The weight trend, drawn as what it is: a function of time.
  *
- * One continuous curve through the readings, the area under it tinted, a scale up the side and
- * dates along the bottom. It used to be a row of separate dashes, one per weigh-in, each at its
- * own height — every value was there and nothing connected them, so a steady loss read as a
- * staircase and the eye had to draw the trend the chart was supposed to be showing.
+ * One continuous curve for the trend, a dot for every weigh-in, the area under the curve tinted,
+ * a scale up the side and dates along the bottom. It used to be a row of separate dashes, one per
+ * weigh-in, each at its own height — every value was there and nothing connected them, so a
+ * steady loss read as a staircase and the eye had to draw the trend the chart was supposed to be
+ * showing.
+ *
+ * ## Two things are plotted, because they are two different facts
+ *
+ * **The curve is the 7-day moving average**, on purpose. Daily scale weight swings 1-2 kg on
+ * water and food alone, and a raw line makes a steady loss look like noise — misreading that is
+ * the single most common way people abandon a working diet.
+ *
+ * **The dots are the weigh-ins themselves**, each at the weight the scale showed and the moment
+ * it showed it. The curve alone was not enough: an average trails what it averages, so someone
+ * who weighed 79.8 this morning found the line ending at 80.4 under a card that said 79.8, and
+ * reasonably concluded the chart had not caught up. It had — it was showing a different number
+ * and not saying so. Now the number they weighed is on the chart, the trend runs through the
+ * cloud of them, and the gap between a dot and the curve is the smoothing made visible.
+ *
+ * Both share one scale, taken across the two together: the average never reaches as high or as
+ * low as the readings it is an average of, and a plot scaled to it alone would draw the newest
+ * weigh-in off the edge.
+ *
+ * The average is always computed over the FULL history handed in, then the week/month/all switch
+ * below only changes what slice is drawn — narrowing the input first would thin out the trailing
+ * window at the edges of a short range and make the line jumpier, not smoother.
+ *
+ * Everything is placed by *date*, not by position in the list. Seven weigh-ins in a week and
+ * then one a month later are not eight evenly spaced events.
  *
  * ## No charting library, still
  *
- * The curve is `react-native-svg`, which the app already carries for the progress rings and the
+ * The drawing is `react-native-svg`, which the app already carries for the progress rings and the
  * muscle map — so this costs no new native module and no rebuild of anyone's dev client. The
  * geometry is in `chart/curve.ts`, pure and tested: a monotone cubic, chosen because it cannot
- * overshoot. A rounder spline would draw a peak above the highest weigh-in, and a weight chart
- * that invents weights is worse than one made of dashes.
+ * overshoot. A rounder spline would draw a peak above the highest point it passes through, and a
+ * weight chart that invents weights is worse than one made of dashes.
  *
  * Scrubbing is `PanResponder`, for the same reason `SwipeableRow` is: no gesture-handler
  * dependency.
- *
- * ## What is plotted
- *
- * The 7-day moving average rather than raw weigh-ins, on purpose. Daily scale weight swings 1-2
- * kg on water and food alone, and a raw line makes a steady loss look like noise — misreading
- * that is the single most common way people abandon a working diet. The average is always
- * computed over the FULL history handed in, then the week/month/all switch below only changes
- * what slice is drawn — narrowing the input first would thin out the trailing window at the edges
- * of a short range and make the line jumpier, not smoother.
- *
- * Readings are placed by *date*, not by their position in the list. Seven weigh-ins in a week and
- * then one a month later are not eight evenly spaced events.
  *
  * ## Not mirrored for Hebrew
  *
@@ -51,16 +64,28 @@ import {
 } from 'react-native';
 import Svg, { Circle, Defs, Line, LinearGradient, Path, Stop } from 'react-native-svg';
 
-import { areaPath, layoutTrend, nearestIndex, smoothPath } from '../chart/curve.js';
+import { areaPath, nearestIndex, placeTrend, smoothPath, trendDomain } from '../chart/curve.js';
 import { useTheme } from '../ThemeProvider.js';
 import { useUnit } from '../UnitsProvider.js';
 import { formatBodyWeight, weightUnitKey } from '../units.js';
 import { duration, fontSize, fontWeight, radius, spacing, type ColorPalette } from '../theme.js';
 import { Segmented } from './ui.js';
 
+interface WeightPoint {
+  date: Date;
+  weightKg: number;
+}
+
 export interface WeightSparklineProps {
-  /** Smoothed points, oldest first, full history. */
-  points: { date: Date; weightKg: number }[];
+  /** The trend: smoothed points, oldest first, full history. Drawn as the curve. */
+  points: WeightPoint[];
+  /**
+   * The weigh-ins themselves, oldest first, full history. Drawn as dots.
+   *
+   * Optional only so that a caller with nothing but a trend can still draw one. Both screens
+   * that show a weight pass it: the number someone weighed has to be findable on the chart.
+   */
+  readings?: WeightPoint[];
   height?: number;
   /**
    * Whether to offer the week/month/all switch.
@@ -81,10 +106,24 @@ const AXIS_WIDTH = 38;
 const PAD_TOP = 10;
 const PAD_BOTTOM = 8;
 const PAD_END = 10;
-const TOOLTIP_WIDTH = 92;
+const TOOLTIP_WIDTH = 96;
+
+/**
+ * How big a weigh-in's dot is.
+ *
+ * Smaller as they crowd: a month of dots can each be a dot, but half a year of them at that size
+ * is a smear with a line somewhere inside it. Past a few dozen they are there to show the spread
+ * around the trend, not to be picked out one at a time.
+ */
+function dotRadius(count: number): number {
+  if (count > 90) return 1.6;
+  if (count > 45) return 2.1;
+  return 2.8;
+}
 
 export function WeightSparkline({
   points,
+  readings,
   height = 150,
   showRangePicker = true,
 }: WeightSparklineProps) {
@@ -97,14 +136,19 @@ export function WeightSparkline({
   const [scrubIndex, setScrubIndex] = useState<number | null>(null);
   const [width, setWidth] = useState(0);
 
-  const filtered = useMemo(() => {
-    if (range === 'all') return points;
+  // One cutoff for both series, decided once. Each filtered on its own could disagree about
+  // where the plot starts, and the dots would drift off the curve they belong to.
+  const shown = useMemo(() => {
+    const all = { trend: points, weighIns: readings ?? [] };
+    if (range === 'all') return all;
+
     const cutoffMs = Date.now() - RANGE_DAYS[range] * 24 * 60 * 60 * 1000;
-    const sliced = points.filter((p) => p.date.getTime() >= cutoffMs);
+    const recent = (list: WeightPoint[]) => list.filter((p) => p.date.getTime() >= cutoffMs);
+    const trend = recent(points);
     // Falls back to the full history if the chosen range is narrower than the data actually
     // covers — picking "week" with only two logged days should not render an empty chart.
-    return sliced.length >= 2 ? sliced : points;
-  }, [points, range]);
+    return trend.length >= 2 ? { trend, weighIns: recent(all.weighIns) } : all;
+  }, [points, readings, range]);
 
   const plot = useMemo(
     () => ({
@@ -117,21 +161,31 @@ export function WeightSparkline({
   );
 
   const geometry = useMemo(() => {
-    const layout = layoutTrend(
-      filtered.map((p) => ({ time: p.date.getTime(), value: p.weightKg })),
-      plot,
-    );
+    const trend = shown.trend.map((p) => ({ time: p.date.getTime(), value: p.weightKg }));
+    const weighIns = shown.weighIns.map((p) => ({ time: p.date.getTime(), value: p.weightKg }));
+    const domain = trendDomain([trend, weighIns]);
+    if (!domain) return { curve: [], dots: [], line: '', area: '', low: 0, high: 0 };
+
+    const curve = placeTrend(trend, plot, domain);
     return {
-      ...layout,
-      line: smoothPath(layout.points),
-      area: areaPath(layout.points, plot.top + plot.height),
+      curve,
+      dots: placeTrend(weighIns, plot, domain),
+      line: smoothPath(curve),
+      area: areaPath(curve, plot.top + plot.height),
+      low: domain.low,
+      high: domain.high,
     };
-  }, [filtered, plot]);
+  }, [shown, plot]);
+
+  // What a finger picks out: a weigh-in where there are weigh-ins, since that is the number
+  // someone is looking for, and a point on the trend otherwise.
+  const scrubbable = shown.weighIns.length > 0 ? shown.weighIns : shown.trend;
+  const scrubPoints = shown.weighIns.length > 0 ? geometry.dots : geometry.curve;
 
   // PanResponder is created once; its handlers read this ref rather than closing over the
   // geometry directly, so a range switch or new data doesn't leave them acting on stale points.
   const xs = useRef<number[]>([]);
-  xs.current = geometry.points.map((p) => p.x);
+  xs.current = scrubPoints.map((p) => p.x);
 
   const panResponder = useRef(
     PanResponder.create({
@@ -150,10 +204,11 @@ export function WeightSparkline({
     }),
   ).current;
 
-  // The curve settles in when it changes — a new range, a new weigh-in — rather than snapping
+  // The chart settles in when it changes — a new range, a new weigh-in — rather than snapping
   // from one shape to another. Opacity only, on the native driver, on a node that animates
   // nothing else.
   const appear = useRef(new Animated.Value(0)).current;
+  const signature = `${geometry.line}|${geometry.dots.length}`;
   useEffect(() => {
     if (geometry.line === '') return;
     appear.setValue(0);
@@ -162,14 +217,22 @@ export function WeightSparkline({
       duration: duration.slow,
       useNativeDriver: true,
     }).start();
-  }, [appear, geometry.line]);
+    // `signature` stands for the geometry: the effect should re-run when what is drawn changes,
+    // not on every render that rebuilds an identical object.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appear, signature]);
 
   if (points.length < 2) return null;
 
   const unitLabel = t(`common.${weightUnitKey(unit)}`);
-  const last = geometry.points[geometry.points.length - 1];
-  const scrubbed = scrubIndex !== null ? filtered[scrubIndex] : undefined;
-  const scrubPoint = scrubIndex !== null ? geometry.points[scrubIndex] : undefined;
+  const scrubbed = scrubIndex !== null ? scrubbable[scrubIndex] : undefined;
+  const scrubPoint = scrubIndex !== null ? scrubPoints[scrubIndex] : undefined;
+
+  // The newest weigh-in: the one the card's big number is, and so the one that is marked.
+  // Without weigh-ins to mark, the end of the trend stands in.
+  const newest =
+    geometry.dots[geometry.dots.length - 1] ?? geometry.curve[geometry.curve.length - 1];
+  const r = dotRadius(geometry.dots.length);
 
   // Three lines across the plot, and the three numbers that label them.
   const ticks = [0, 0.5, 1].map((share) => ({
@@ -179,8 +242,8 @@ export function WeightSparkline({
 
   const dateLabel = (date: Date) =>
     date.toLocaleDateString(i18n.language, { day: 'numeric', month: 'short' });
-  const first = filtered[0];
-  const latest = filtered[filtered.length - 1];
+  const first = shown.trend[0];
+  const latest = shown.trend[shown.trend.length - 1];
 
   return (
     <View>
@@ -208,7 +271,8 @@ export function WeightSparkline({
         {...panResponder.panHandlers}
       >
         {/* The scale. Plain text over the SVG rather than SVG text: it follows the app's font
-            and the user's font size, which SVG text does neither of. */}
+            and the user's font size, which SVG text does neither of. In a layer that takes no
+            touches, so the chart itself is always what a finger lands on. */}
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           {ticks.map((tick) => (
             <Text key={tick.y} style={[styles.tick, { top: tick.y - 7 }]} numberOfLines={1}>
@@ -218,13 +282,11 @@ export function WeightSparkline({
         </View>
 
         {width > 0 ? (
-          // Nothing in here takes touches: the chart itself is the target, so a finger's
-          // position is measured against the same box the points were laid out in.
           <Animated.View style={[StyleSheet.absoluteFill, { opacity: appear }]} pointerEvents="none">
             <Svg width={width} height={height}>
               <Defs>
                 <LinearGradient id="weightFill" x1="0" y1="0" x2="0" y2="1">
-                  <Stop offset="0" stopColor={colors.accent} stopOpacity={0.3} />
+                  <Stop offset="0" stopColor={colors.accent} stopOpacity={0.26} />
                   <Stop offset="1" stopColor={colors.accent} stopOpacity={0} />
                 </LinearGradient>
               </Defs>
@@ -252,16 +314,28 @@ export function WeightSparkline({
                 strokeLinejoin="round"
               />
 
-              {/* Where the curve is now. The one point on it that matters at a glance, so it is
-                  the one that is marked — a dot on every reading would turn the line back into
-                  the row of marks it replaced. */}
-              {last && !scrubPoint ? (
+              {/* The weigh-ins, over the curve. Ringed in the card's own colour so that one
+                  sitting right on the line still reads as a separate thing from it. */}
+              {geometry.dots.map((dot, index) => (
+                <Circle
+                  key={index}
+                  cx={dot.x}
+                  cy={dot.y}
+                  r={r}
+                  fill={colors.text}
+                  stroke={colors.surface}
+                  strokeWidth={1}
+                  opacity={0.75}
+                />
+              ))}
+
+              {newest && !scrubPoint ? (
                 <>
-                  <Circle cx={last.x} cy={last.y} r={8} fill={colors.accent} opacity={0.2} />
+                  <Circle cx={newest.x} cy={newest.y} r={8} fill={colors.accent} opacity={0.22} />
                   <Circle
-                    cx={last.x}
-                    cy={last.y}
-                    r={4}
+                    cx={newest.x}
+                    cy={newest.y}
+                    r={4.5}
                     fill={colors.accent}
                     stroke={colors.surface}
                     strokeWidth={2}
@@ -316,12 +390,20 @@ export function WeightSparkline({
         ) : null}
       </View>
 
-      {/* The time axis: when the curve starts and when it ends, under its two ends. */}
+      {/* The time axis — when the plot starts and ends, under its two ends — and between them,
+          what the two kinds of mark are. A chart with two series and no key is a puzzle. */}
       <View style={styles.axis}>
         <Text style={styles.axisLabel}>{first ? dateLabel(first.date) : ''}</Text>
-        <Text style={styles.axisCaption}>
-          {t('metrics.movingAverage')} · {unitLabel}
-        </Text>
+        <View style={styles.legend}>
+          {geometry.dots.length > 0 ? (
+            <>
+              <View style={styles.legendDot} />
+              <Text style={styles.legendText}>{t('metrics.legendWeighIn')}</Text>
+            </>
+          ) : null}
+          <View style={styles.legendLine} />
+          <Text style={styles.legendText}>{t('metrics.movingAverage')}</Text>
+        </View>
         <Text style={styles.axisLabel}>{latest ? dateLabel(latest.date) : ''}</Text>
       </View>
     </View>
@@ -334,7 +416,10 @@ const createStyles = (colors: ColorPalette) =>
     tick: TextStyle;
     axis: ViewStyle;
     axisLabel: TextStyle;
-    axisCaption: TextStyle;
+    legend: ViewStyle;
+    legendDot: ViewStyle;
+    legendLine: ViewStyle;
+    legendText: TextStyle;
     tooltip: ViewStyle;
     tooltipWeight: TextStyle;
     tooltipDate: TextStyle;
@@ -364,7 +449,16 @@ const createStyles = (colors: ColorPalette) =>
       direction: 'ltr',
     },
     axisLabel: { color: colors.textMuted, fontSize: fontSize.xs },
-    axisCaption: { color: colors.textFaint, fontSize: fontSize.xs },
+    legend: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+    legendDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.text, opacity: 0.75 },
+    legendLine: {
+      width: 14,
+      height: 3,
+      borderRadius: 2,
+      backgroundColor: colors.accent,
+      marginStart: 6,
+    },
+    legendText: { color: colors.textFaint, fontSize: fontSize.xxs },
     tooltip: {
       position: 'absolute',
       top: -34,

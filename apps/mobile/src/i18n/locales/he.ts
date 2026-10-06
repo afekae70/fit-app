@@ -643,6 +643,7 @@ export const he = {
     trendStable: 'יציב',
     perWeek: 'לשבוע',
     unreliable: 'עוד מעט נתונים — צריך כשבועיים למגמה אמינה',
+    legendWeighIn: 'שקילה',
     movingAverage: 'ממוצע 7 ימים',
     noData: 'עדיין אין מדידות',
     noDataHint: 'רשום את המשקל הראשון שלך כדי להתחיל',

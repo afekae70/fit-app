@@ -13,7 +13,9 @@ import {
   curveSegments,
   layoutTrend,
   nearestIndex,
+  placeTrend,
   smoothPath,
+  trendDomain,
   type XY,
 } from './curve.js';
 
@@ -230,5 +232,63 @@ describe('layoutTrend', () => {
 
   it('has nothing to place with no readings', () => {
     expect(layoutTrend([], box).points).toEqual([]);
+  });
+});
+
+describe('two series on one plot', () => {
+  const box = { left: 40, top: 10, width: 200, height: 100 };
+  const day = 86_400_000;
+
+  // Three weigh-ins, and the average that trails them: it never gets as low as the last one.
+  const weighIns = [
+    { time: 0, value: 82 },
+    { time: day, value: 81 },
+    { time: 2 * day, value: 80 },
+  ];
+  const average = [
+    { time: 0, value: 82 },
+    { time: day, value: 81.5 },
+    { time: 2 * day, value: 81 },
+  ];
+
+  it('scales to the weigh-ins as well as the average of them', () => {
+    // The whole reason for a shared domain. Scaled to the average alone the plot would stop at
+    // 81, and the weigh-in at 80 — the one the user just did — would be drawn below the box.
+    const domain = trendDomain([average, weighIns]);
+    expect(domain).toEqual({ start: 0, end: 2 * day, low: 80, high: 82 });
+
+    const dots = placeTrend(weighIns, box, domain!);
+    for (const dot of dots) {
+      expect(dot.y).toBeGreaterThanOrEqual(box.top);
+      expect(dot.y).toBeLessThanOrEqual(box.top + box.height);
+    }
+    expect(dots[2]).toEqual({ x: 240, y: 110 });
+  });
+
+  it('puts a weigh-in and its average on the same vertical line', () => {
+    const domain = trendDomain([average, weighIns])!;
+    const dots = placeTrend(weighIns, box, domain);
+    const curve = placeTrend(average, box, domain);
+
+    expect(dots.map((p) => p.x)).toEqual(curve.map((p) => p.x));
+    // And apart vertically by what the average smoothed away: half a kilo of twenty, a quarter
+    // of the box.
+    expect(curve[1]!.y - dots[1]!.y).toBeCloseTo(-25, 9);
+  });
+
+  it('spans the earliest and latest moment of either series', () => {
+    const domain = trendDomain([
+      [{ time: 5 * day, value: 80 }],
+      [
+        { time: day, value: 81 },
+        { time: 9 * day, value: 82 },
+      ],
+    ]);
+    expect(domain?.start).toBe(day);
+    expect(domain?.end).toBe(9 * day);
+  });
+
+  it('has no domain with nothing to draw', () => {
+    expect(trendDomain([[], []])).toBeNull();
   });
 });

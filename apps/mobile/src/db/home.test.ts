@@ -589,6 +589,7 @@ describe('getHomeNutrition', () => {
     expect(withoutWeight.targets).toEqual({ ok: false, missing: 'no_weight' });
     expect(withoutWeight.latestKg).toBeNull();
     expect(withoutWeight.weightPoints).toEqual([]);
+    expect(withoutWeight.weighIns).toEqual([]);
 
     await weighIn('2026-08-05T07:00:00', 82);
     const withoutProfile = await getHomeNutrition(db, OTHER);
@@ -627,6 +628,30 @@ describe('getHomeNutrition', () => {
     const last = home.weightPoints[home.weightPoints.length - 1]!.weightKg;
     expect(last).toBeLessThan(first);
     expect(home.ratePerWeek).toBeLessThan(0);
+  });
+
+  it('hands over the weigh-ins themselves beside the average of them', async () => {
+    await completeProfile();
+    await weighIn('2026-08-01T07:00:00', 84);
+    await weighIn('2026-08-03T07:00:00', 83);
+    await weighIn('2026-08-05T07:00:00', 80);
+
+    const home = await getHomeNutrition(db, USER);
+
+    // Exactly what was weighed, oldest first: these are the dots on the chart.
+    expect(home.weighIns.map((p) => p.weightKg)).toEqual([84, 83, 80]);
+    // And one point of trend for each, at the same moment, so a dot sits above its own place
+    // on the curve.
+    expect(home.weightPoints.map((p) => p.date.getTime())).toEqual(
+      home.weighIns.map((p) => p.date.getTime()),
+    );
+
+    // The reason both are needed: the newest weigh-in is the number on the card, and the trend
+    // has not got there yet.
+    const newest = home.weighIns[home.weighIns.length - 1]!.weightKg;
+    const trendEnd = home.weightPoints[home.weightPoints.length - 1]!.weightKg;
+    expect(newest).toBe(home.latestKg);
+    expect(trendEnd).toBeGreaterThan(newest);
   });
 
   it('reports no rate when two weigh-ins are too close together to mean anything', async () => {

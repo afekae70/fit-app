@@ -365,11 +365,14 @@ export function WeightTrendCard({
   latestKg,
   ratePerWeek,
   points,
+  readings,
   onPress,
 }: {
   latestKg: number | null;
   ratePerWeek: number | null;
   points: { date: Date; weightKg: number }[];
+  /** The weigh-ins the trend is an average of — the dots, so the big number above is on the chart. */
+  readings: { date: Date; weightKg: number }[];
   onPress: () => void;
 }) {
   const { t } = useTranslation();
@@ -429,7 +432,12 @@ export function WeightTrendCard({
 
           {/* Renders nothing below two points, which is why the line above has to carry the card
               on its own after a single weigh-in. */}
-          <WeightSparkline points={points} height={104} showRangePicker={false} />
+          <WeightSparkline
+            points={points}
+            readings={readings}
+            height={104}
+            showRangePicker={false}
+          />
         </>
       )}
     </Pressable>

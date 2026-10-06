@@ -341,6 +341,7 @@ export default function TodayScreen() {
                   latestKg={data.nutrition.latestKg}
                   ratePerWeek={data.nutrition.ratePerWeek}
                   points={data.nutrition.weightPoints}
+                  readings={data.nutrition.weighIns}
                   onPress={() => router.push('/metrics')}
                 />
               </FadeSlideIn>

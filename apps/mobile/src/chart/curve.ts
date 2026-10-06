@@ -176,35 +176,45 @@ export interface PlotBox {
   height: number;
 }
 
-export interface TrendLayout {
-  /** Where each reading is drawn, in the same order it was given. */
-  points: XY[];
-  /** The values at the bottom and the top of the plot — not always the data's own extremes. */
+/** One measurement: when, and how much. */
+export interface Reading {
+  time: number;
+  value: number;
+}
+
+/** What the plot spans: the first and last moment, and the values at its bottom and top. */
+export interface TrendDomain {
+  start: number;
+  end: number;
   low: number;
   high: number;
 }
 
+function usable(readings: readonly Reading[]): Reading[] {
+  return readings.filter((r) => Number.isFinite(r.time) && Number.isFinite(r.value));
+}
+
 /**
- * Place readings in a box: left to right by time, bottom to top by value.
+ * The span that holds every series drawn on one plot.
  *
- * By *time*, not by position in the list. Seven weigh-ins in one week and then one a month later
- * are not eight evenly spaced events, and drawing them that way makes a month of nothing look
- * like a day.
+ * Taken across all of them together, because they share one scale. The trend is an average and
+ * so never reaches as high or as low as the weigh-ins it is an average *of* — scale the plot to
+ * the trend alone and the highest weigh-in is drawn off the top of it.
  *
- * A series with no spread — the same weight every time — is given a nominal band and drawn
- * through the middle of it, rather than divided by zero or pinned to an edge where it would look
- * like a floor or a ceiling.
+ * A set of readings with no spread — the same weight every time — is given a nominal band and
+ * drawn through the middle of it, rather than divided by zero or pinned to an edge where it would
+ * look like a floor or a ceiling.
  */
-export function layoutTrend(
-  readings: readonly { time: number; value: number }[],
-  box: PlotBox,
+export function trendDomain(
+  series: readonly (readonly Reading[])[],
   /** The smallest spread worth drawing as a slope, in the value's own units. */
   minimumSpread = 1,
-): TrendLayout {
-  const usable = readings.filter((r) => Number.isFinite(r.time) && Number.isFinite(r.value));
-  if (usable.length === 0) return { points: [], low: 0, high: 0 };
+): TrendDomain | null {
+  const all = series.flatMap((readings) => usable(readings));
+  if (all.length === 0) return null;
 
-  const values = usable.map((r) => r.value);
+  const times = all.map((r) => r.time);
+  const values = all.map((r) => r.value);
   let low = Math.min(...values);
   let high = Math.max(...values);
   if (high - low < minimumSpread) {
@@ -213,19 +223,51 @@ export function layoutTrend(
     high = middle + minimumSpread / 2;
   }
 
-  const start = usable[0]!.time;
-  const span = usable[usable.length - 1]!.time - start;
+  return { start: Math.min(...times), end: Math.max(...times), low, high };
+}
 
-  const points = usable.map((reading, index) => {
-    // Every reading at one instant, or a single reading: spread by order, since there is no
-    // time to spread by.
+/**
+ * Place readings in a box: left to right by time, bottom to top by value.
+ *
+ * By *time*, not by position in the list. Seven weigh-ins in one week and then one a month later
+ * are not eight evenly spaced events, and drawing them that way makes a month of nothing look
+ * like a day.
+ */
+export function placeTrend(
+  readings: readonly Reading[],
+  box: PlotBox,
+  domain: TrendDomain,
+): XY[] {
+  const kept = usable(readings);
+  const span = domain.end - domain.start;
+
+  return kept.map((reading, index) => {
+    // Everything at one instant, or a single reading: spread by order, since there is no time
+    // to spread by.
     const along =
-      span > 0 ? (reading.time - start) / span : usable.length > 1 ? index / (usable.length - 1) : 0.5;
+      span > 0 ? (reading.time - domain.start) / span : kept.length > 1 ? index / (kept.length - 1) : 0.5;
     return {
       x: box.left + along * box.width,
-      y: box.top + (1 - (reading.value - low) / (high - low)) * box.height,
+      y: box.top + (1 - (reading.value - domain.low) / (domain.high - domain.low)) * box.height,
     };
   });
+}
 
-  return { points, low, high };
+export interface TrendLayout {
+  /** Where each reading is drawn, in the same order it was given. */
+  points: XY[];
+  /** The values at the bottom and the top of the plot — not always the data's own extremes. */
+  low: number;
+  high: number;
+}
+
+/** One series on a plot of its own: its domain, and its readings placed in it. */
+export function layoutTrend(
+  readings: readonly Reading[],
+  box: PlotBox,
+  minimumSpread = 1,
+): TrendLayout {
+  const domain = trendDomain([readings], minimumSpread);
+  if (!domain) return { points: [], low: 0, high: 0 };
+  return { points: placeTrend(readings, box, domain), low: domain.low, high: domain.high };
 }

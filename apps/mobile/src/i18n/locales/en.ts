@@ -650,6 +650,7 @@ export const en = {
     trendStable: 'Stable',
     perWeek: 'per week',
     unreliable: 'Not enough data yet — a reliable trend needs about two weeks',
+    legendWeighIn: 'Weigh-in',
     movingAverage: '7-day average',
     noData: 'No measurements yet',
     noDataHint: 'Log your first weight to get started',

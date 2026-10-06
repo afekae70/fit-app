@@ -358,7 +358,7 @@ export default function MetricsScreen() {
       {smoothed.length >= 2 ? (
         <Card index={1}>
           <SectionTitle>{t('metrics.trendTitle')}</SectionTitle>
-          <WeightSparkline points={smoothed} />
+          <WeightSparkline points={smoothed} readings={points} />
 
           {rate ? (
             <>

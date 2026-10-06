@@ -578,6 +578,14 @@ export interface HomeNutrition {
    * 1-2 kg on water and food alone, and a raw line makes a steady loss look like noise.
    */
   weightPoints: { date: Date; weightKg: number }[];
+  /**
+   * The weigh-ins behind that line, oldest first, exactly as recorded.
+   *
+   * Drawn as dots over the trend. The trend is an average and trails what it averages, so
+   * without these the chart never shows the number someone actually weighed — only one near it,
+   * which reads as a chart that has not caught up.
+   */
+  weighIns: { date: Date; weightKg: number }[];
   /** The most recent weigh-in, unsmoothed — the number the user actually saw on the scale. */
   latestKg: number | null;
   /** kg per week, only when there is enough spread for the trend to mean anything. */
@@ -611,6 +619,7 @@ export async function getHomeNutrition(
   return {
     targets: computeTargets(profile, latest?.weight_kg ?? null),
     weightPoints: movingAverage(points, 7),
+    weighIns: points,
     latestKg: latest?.weight_kg ?? null,
     // An unreliable rate is reported as none at all. A confident "+0.4 kg/week" drawn from two
     // weigh-ins three days apart is worse than silence — it invites a diet change based on noise.
