@@ -15,7 +15,9 @@ import { getExecutor } from '../db/provider.js';
 import { claimLocalData } from './claimLocalData.js';
 import { getSupabaseClient } from './client.js';
 import { friendlyAuthError } from './friendlyAuthError.js';
+import { deleteAccount, type DeleteAccountOutcome } from './deleteAccount.js';
 import { secureClaimStorage } from './storage.js';
+import { removeAvatar } from '../profile/avatar.js';
 
 export interface AuthState {
   /** Undefined while the stored session is still being read; null once confirmed absent. */
@@ -25,6 +27,11 @@ export interface AuthState {
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signUp: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
+  /**
+   * Deletes the signed-in account: on the server, then everything of theirs on this device.
+   * Irreversible, so the screen that calls it asks twice. See deleteAccount.ts for the order.
+   */
+  deleteAccount: () => Promise<DeleteAccountOutcome>;
   /** Sends a "reset your password" email with a link back into the app (see auth/callback.tsx). */
   resetPassword: (email: string) => Promise<{ error: string | null }>;
   /** Sets a new password — only meaningful once a recovery session exists (see auth/reset-password.tsx). */
@@ -103,6 +110,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       signOut: async () => {
         await client?.auth.signOut();
+      },
+      deleteAccount: async () => {
+        if (!client || !session) return { status: 'not_signed_in' };
+        const db = await getExecutor();
+        return deleteAccount({
+          // Narrowed to the two things deletion uses, which keeps the module testable against
+          // a stand-in and out of the Supabase client's generics.
+          client: { rpc: (fn) => client.rpc(fn), auth: client.auth },
+          db,
+          userId: session.user.id,
+          clearDeviceState: removeAvatar,
+        });
       },
       resetPassword: async (email) => {
         if (!client) return { error: 'not_configured' };

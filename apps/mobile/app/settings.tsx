@@ -58,15 +58,59 @@ import { fontSize, spacing, type ColorPalette } from '../src/theme.js';
 export default function SettingsScreen() {
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
-  const { session, signOut } = useAuth();
+  const { session, signOut, deleteAccount } = useAuth();
   const { preference, setPreference, colors } = useTheme();
   const { unit, setUnit } = useUnits();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const router = useRouter();
-  const { notify } = useActionSheet();
+  const { notify, confirm } = useActionSheet();
+  const [deleting, setDeleting] = useState(false);
   const userId = useCurrentUserId();
   const chevron = isRtlLanguage(i18n.language as Language) ? '‹' : '›';
+
+  /**
+   * Delete the account, after asking twice.
+   *
+   * Twice because the first question is about the decision and the second is about the finger:
+   * a sheet that appears under a thumb already on its way down gets confirmed by accident, and
+   * this cannot be taken back. The second one names the account, so it is read.
+   *
+   * On success there is nothing to do here — the session is gone and the gate above this screen
+   * shows the sign-in page. On failure nothing was deleted anywhere, and the message says which
+   * kind of failure it was, because the three have different remedies.
+   */
+  const removeAccount = async () => {
+    const decided = await confirm({
+      title: t('settings.deleteAccountTitle'),
+      message: t('settings.deleteAccountBody'),
+      confirmLabel: t('settings.deleteAccountContinue'),
+    });
+    if (!decided) return;
+
+    const sure = await confirm({
+      title: t('settings.deleteAccountFinalTitle'),
+      message: t('settings.deleteAccountFinalBody', { email: session?.user.email ?? '' }),
+      confirmLabel: t('settings.deleteAccountFinalConfirm'),
+    });
+    if (!sure) return;
+
+    setDeleting(true);
+    const outcome = await deleteAccount();
+    setDeleting(false);
+    if (outcome.status === 'deleted') return;
+
+    const reasons = {
+      not_signed_in: t('settings.deleteAccountNotSignedIn'),
+      not_available: t('settings.deleteAccountNotAvailable'),
+      offline: t('settings.deleteAccountOffline'),
+      failed: t('settings.deleteAccountFailed'),
+    };
+    await notify({
+      title: t('settings.deleteAccountFailedTitle'),
+      message: reasons[outcome.status],
+    });
+  };
 
   /**
    * Hand the history to the share sheet, as text.
@@ -322,6 +366,19 @@ export default function SettingsScreen() {
           <Text style={styles.email}>{session.user.email}</Text>
           <View style={styles.signOutSpacer} />
           <Button label={t('auth.signOut')} variant="danger" onPress={() => void signOut()} />
+          {/* Quiet, and below the button it must never be mistaken for. Leaving for good is a
+              thing someone has to be able to do without writing to anyone — and it is asked
+              about twice, because nothing brings it back. */}
+          <Pressable
+            onPress={() => void removeAccount()}
+            disabled={deleting}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.deleteAccount, (pressed || deleting) && { opacity: 0.6 }]}
+          >
+            <Text style={styles.deleteAccountText}>
+              {deleting ? t('settings.deleteAccountWorking') : t('settings.deleteAccount')}
+            </Text>
+          </Pressable>
         </Card>
       ) : null}
     </ScrollView>
@@ -338,7 +395,11 @@ const createStyles = (colors: ColorPalette) =>
     linkChevron: TextStyle;
     email: TextStyle;
     signOutSpacer: ViewStyle;
+    deleteAccount: ViewStyle;
+    deleteAccountText: TextStyle;
   }>({
+    deleteAccount: { alignSelf: 'center', paddingVertical: spacing.md, marginTop: spacing.xs },
+    deleteAccountText: { color: colors.textMuted, fontSize: fontSize.sm },
     screen: { flex: 1 },
     content: { paddingHorizontal: spacing.lg },
     unitsHint: {
