@@ -1,13 +1,15 @@
 # Health Connect — the manifest half
 
-Writing a workout into Health Connect needs three things the JavaScript cannot declare for
-itself. Two of them `app.json` covers and `expo prebuild` would generate; the third it would not.
+Writing a workout into Health Connect needs four things the JavaScript cannot declare for
+itself. Two of them `app.json` and the library's own plugin cover; the other two nothing
+generated, and for a while they were applied by hand to one generated project on one computer.
 
-**Prebuild is not run here.** It regenerates `app/build.gradle` and with it the signing config
-this build relies on — release APKs are signed with the debug key, and an APK signed by a
-different key cannot install over the one on the phone without uninstalling it first, taking every
-workout logged on the device with it. So these go into the generated project by hand, the same
-way the widget does.
+**`plugins/withHealthConnectNative.js` applies them now**, whenever the Android project is
+generated — so a build made anywhere, a cloud build included, has them. That matters more here
+than for most native code: the piece in section 4 is not a feature that goes missing, it is a
+crash. The plugin throws rather than skipping when it cannot find where to make its edit, because
+a failed build is found before a user finds it. (For why prebuild was once thought unusable, and
+why that was mistaken, see native/widget/README.md.)
 
 ## 1. The write permissions
 

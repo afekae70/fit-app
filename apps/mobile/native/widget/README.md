@@ -6,8 +6,9 @@ which React Native cannot draw into. These three files are that widget, kept her
 rather than `native/android/`, since the repository ignores every path named `android/` and would
 have swallowed these too.
 
-**They are not applied by a build.** Copy them into the generated project, and add the receiver to
-the manifest, before `gradlew assembleRelease`:
+**A build applies them.** `plugins/withHomeWidgets.js` is registered in `app.json`, and whenever
+the Android project is generated — `expo prebuild`, or a cloud build, which runs it — the plugin
+copies these files into place, merges the strings and both colour sets, and declares the receivers:
 
 ```
 android/app/src/main/java/com/afeka/fitapp/widget/TodayWidgetProvider.kt
@@ -28,10 +29,20 @@ receiver marked `exported="false"` is one the system never offers in the widget 
 </receiver>
 ```
 
-**Why not a config plugin and `expo prebuild`.** Prebuild would regenerate `app/build.gradle` and
-with it the signing config this build relies on — release APKs here are signed with the debug key,
-and an APK signed by a different key cannot install over the one on the phone. It would have to be
-uninstalled first, taking every workout logged on the device with it.
+**It used to be done by hand, for a reason that turned out to be wrong.** This file once said that
+prebuild could not be used, because it would regenerate the signing config and an APK signed by a
+different key cannot install over the one on a phone. The first half is true and the second does
+not follow: the key in question is `debug.keystore` from the Expo template, and prebuild writes the
+*same file* every time. A project generated from scratch has a keystore that is byte-for-byte the
+one in the old hand-patched tree (checked: identical SHA-256, and the certificate
+`FA:C6:17:45:…:3B:9C` is the one the installed app is signed with), so its APK installs over the
+existing one and nothing is lost.
+
+The same fact is a problem of its own, and a more serious one. That keystore is not this app's —
+every Expo and React Native project gets the identical file, with the password `android`. Anyone
+can sign an APK with it, and Android will accept that APK as a legitimate update to this app,
+with access to everything the app has stored. That is tolerable on one developer's phone and not
+on anybody else's: the app needs a private signing key before it is handed to other people.
 
 ## The second widget: the week's ring
 

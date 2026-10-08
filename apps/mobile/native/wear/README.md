@@ -27,9 +27,16 @@ simply never arrive.
 
 ## Building it
 
-Like the widget, none of this is applied by a build, because the `android/` project is generated
-and `expo prebuild` is not run here (it would regenerate the signing config and force an uninstall
-— see native/widget/README.md). Into the generated project:
+There are two halves, and they are built differently.
+
+**The phone's half is part of every build.** `plugins/withHeartRateBridge.js` copies
+`heartrate/*.kt` into the app, adds the Wearable Data Layer to its dependencies and registers
+`HeartRatePackage` in `MainApplication`, whenever the Android project is generated. Nothing to do
+by hand.
+
+**The watch app is not.** It is a second application module with an APK of its own, and a phone
+build has no use for it — so it stays out of the plugin, and out of cloud builds, on purpose. To
+build it, into a generated `android/` project:
 
 | From | To |
 | --- | --- |
@@ -40,21 +47,12 @@ and `expo prebuild` is not run here (it would regenerate the signing config and 
 | `wear/button.xml`, `wear/ic_heart.xml` | `android/wear/src/main/res/drawable/` |
 | `wear/strings.xml` | `android/wear/src/main/res/values/` |
 | the phone app's `mipmap-*dpi/ic_launcher.png` | `android/wear/src/main/res/mipmap-*dpi/` |
-| `heartrate/*.kt` | `android/app/src/main/java/com/afeka/fitapp/heartrate/` |
 
-and three one-line edits:
+and one line:
 
 ```gradle
 // android/settings.gradle
 include ':wear'
-
-// android/app/build.gradle, in dependencies
-implementation("com.google.android.gms:play-services-wearable:18.2.0")
-```
-
-```kotlin
-// android/app/src/main/java/com/afeka/fitapp/MainApplication.kt, in getPackages()
-add(HeartRatePackage())
 ```
 
 Then `./gradlew :wear:assembleRelease :app:assembleRelease`. The watch APK is
