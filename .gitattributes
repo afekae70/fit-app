@@ -1,0 +1,7 @@
+# Shell scripts keep Unix line endings on every machine.
+#
+# This repository is worked on from Windows with core.autocrlf on, which rewrites text files to
+# CRLF on checkout. For almost everything that is harmless. For a shell script it is fatal: bash
+# reads the carriage return as part of each command and fails with "$'\r': command not found",
+# on the first line, in a way that names nothing useful.
+*.sh text eol=lf
