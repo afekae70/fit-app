@@ -36,10 +36,17 @@
  */
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Keyboard, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import {
+  Keyboard,
+  Platform,
+  StyleSheet,
+  View,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { keyboardInset } from '../keyboardInset.js';
+import { keyboardInset, windowTopFor } from '../keyboardInset.js';
 
 export function KeyboardSafe({
   children,
@@ -60,7 +67,7 @@ export function KeyboardSafe({
   // Where `measureInWindow` starts counting from. In a ref so a change to it does not rebuild
   // the keyboard subscription below.
   const windowTop = useRef(0);
-  windowTop.current = useSafeAreaInsets().top;
+  windowTop.current = windowTopFor(Platform.OS, useSafeAreaInsets().top);
 
   /**
    * Re-measure and re-pad.

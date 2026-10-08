@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { keyboardInset, toScreenY } from './keyboardInset.js';
+import { keyboardInset, toScreenY, windowTopFor } from './keyboardInset.js';
 
 const STATUS_BAR = 44.5;
 const KEYBOARD_TOP = 645.6;
@@ -29,6 +29,18 @@ describe('toScreenY', () => {
   it('does not let a bad inset move anything', () => {
     expect(toScreenY(100, Number.NaN)).toBe(100);
     expect(toScreenY(100, -20)).toBe(100);
+  });
+});
+
+describe('windowTopFor', () => {
+  it('is the status bar on Android, where the measurement leaves it out', () => {
+    expect(windowTopFor('android', STATUS_BAR)).toBe(STATUS_BAR);
+  });
+
+  it('is nothing on iOS, where nothing was left out', () => {
+    // An iPhone's top inset is the notch. Adding it here would open a gap that size above the
+    // keyboard — the Android bug, mirrored.
+    expect(windowTopFor('ios', 59)).toBe(0);
   });
 });
 

@@ -26,6 +26,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Keyboard,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -42,7 +43,7 @@ import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
 import { DragReorderList, type DragHandleProps } from '../../src/components/DragReorderList.js';
 import { useActionSheet } from '../../src/components/ActionSheetProvider.js';
 import { KeyboardSafe } from '../../src/components/KeyboardSafe.js';
-import { toScreenY } from '../../src/keyboardInset.js';
+import { toScreenY, windowTopFor } from '../../src/keyboardInset.js';
 import { FadeSlideIn } from '../../src/components/motion.js';
 import {
   Banner,
@@ -387,7 +388,7 @@ export default function PlanScreen() {
    */
   // Where `measureInWindow` counts from, which is not where the keyboard does. See toScreenY.
   const windowTop = useRef(0);
-  windowTop.current = insets.top;
+  windowTop.current = windowTopFor(Platform.OS, insets.top);
   useEffect(() => {
     const shown = Keyboard.addListener('keyboardDidShow', (event) => {
       const field = TextInput.State.currentlyFocusedInput();

@@ -38,6 +38,21 @@ export function toScreenY(windowY: number, windowTop: number): number {
   return windowY + (Number.isFinite(windowTop) ? Math.max(0, windowTop) : 0);
 }
 
+/**
+ * Where `measureInWindow` starts counting on a given platform.
+ *
+ * The status-bar gap described above is Android's, and specifically Fabric's: it comes from
+ * `RootViewUtil.getViewportOffset`, which has no counterpart on iOS. There, `measureInWindow`
+ * and the keyboard's `screenY` are both real screen coordinates and need no reconciling — so
+ * adding the top inset on an iPhone would be the same bug in the other direction: a notch's
+ * height of empty space above the keyboard.
+ *
+ * Pass `Platform.OS` and `useSafeAreaInsets().top`; use the result as `windowTop`.
+ */
+export function windowTopFor(platform: string, safeAreaTop: number): number {
+  return platform === 'android' ? safeAreaTop : 0;
+}
+
 export interface KeyboardInsetInput {
   /** The view's top edge as `measureInWindow` reports it — never `onLayout`. */
   top: number;

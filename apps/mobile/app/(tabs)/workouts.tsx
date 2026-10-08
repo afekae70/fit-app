@@ -27,6 +27,7 @@ import {
   Animated,
   Keyboard,
   PanResponder,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -122,7 +123,7 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { setWorkoutActive } from '../../src/workout/activeWorkout.js';
 import { shouldAutoComplete } from '../../src/workout/autoComplete.js';
 import { scrollToReveal, type MeasureRow } from '../../src/workout/revealRow.js';
-import { toScreenY } from '../../src/keyboardInset.js';
+import { toScreenY, windowTopFor } from '../../src/keyboardInset.js';
 import { estimateMaxHeartRate, heartRateZone } from '../../src/workout/heartRate.js';
 import {
   startWatchHeartRate,
@@ -248,7 +249,7 @@ export default function WorkoutsScreen() {
   // `measureInWindow` counts from under the status bar and the keyboard reports from the top of
   // the screen; this is the difference, for toScreenY. See keyboardInset.ts.
   const windowTop = useRef(0);
-  windowTop.current = insets.top;
+  windowTop.current = windowTopFor(Platform.OS, insets.top);
   const keyboardEdge = useRef<number | null>(null);
   const entryBarHeight = useRef(0);
   const [sessionName, setSessionName] = useState<string | null>(null);
