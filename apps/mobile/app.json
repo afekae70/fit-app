@@ -28,6 +28,8 @@
         "android.permission.SYSTEM_ALERT_WINDOW"
       ],
       "package": "com.afeka.fitapp",
+      "//versionCode": "Google Play accepts each number once: every bundle uploaded has to carry one higher than any before it, whether or not that upload was ever released. Raise it for each upload. It is invisible to users - what they see is `version`, above.",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#FBFBFC",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -67,6 +69,7 @@
       "./plugins/withHomeWidgets",
       "./plugins/withHeartRateBridge",
       "./plugins/withStoreManifest",
+      "./plugins/withReleaseSigning",
       [
         "expo-build-properties",
         {

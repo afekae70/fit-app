@@ -19,11 +19,13 @@ const require = createRequire(import.meta.url);
 const {
   addHealthPermissionDelegate,
   addHeartRatePackage,
+  addUploadSigning,
   addWearableDependency,
   readResourceEntries,
 } = require('./transforms.js') as {
   addHealthPermissionDelegate: (source: string) => string;
   addHeartRatePackage: (source: string) => string;
+  addUploadSigning: (source: string) => string;
   addWearableDependency: (source: string) => string;
   readResourceEntries: (xml: string, tag: string) => { name: string; value: string }[];
 };
@@ -175,6 +177,86 @@ describe('addWearableDependency', () => {
 
   it('refuses a build.gradle it does not recognise', () => {
     expect(() => addWearableDependency('dependencies {\n}\n')).toThrow(/react-android/);
+  });
+});
+
+// The signing block exactly as `expo prebuild` writes it for SDK 54.
+const SIGNING_GRADLE = `android {
+    namespace 'com.afeka.fitapp'
+    signingConfigs {
+        debug {
+            storeFile file('debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+        }
+        release {
+            // Caution! In production, you need to generate your own keystore file.
+            // see https://reactnative.dev/docs/signed-apk-android.
+            signingConfig signingConfigs.debug
+            minifyEnabled enableMinifyInReleaseBuilds
+        }
+    }
+}
+`;
+
+describe('addUploadSigning', () => {
+  const patched = addUploadSigning(SIGNING_GRADLE);
+
+  it('reads the key from a file in the home directory, not from the project', () => {
+    expect(patched).toContain(
+      `new File(System.getenv('NOVAFIT_UPLOAD_KEY') ?: "\${System.getProperty('user.home')}/.novafit/upload-key.properties")`,
+    );
+  });
+
+  it('declares the key before the block that uses it', () => {
+    // Groovy reads top to bottom: a `def` after its first use is an unknown property.
+    expect(patched.indexOf('def uploadKeyFile')).toBeLessThan(patched.indexOf('signingConfigs {'));
+  });
+
+  it('adds a release config beside the debug one', () => {
+    const configs = patched.slice(patched.indexOf('signingConfigs {'), patched.indexOf('buildTypes {'));
+    expect(configs).toContain('release {');
+    expect(configs).toContain("storeFile file(uploadKey['storeFile'])");
+    expect(configs).toContain("keyAlias uploadKey['keyAlias']");
+    // And leaves the debug config as it was.
+    expect(configs).toContain("storeFile file('debug.keystore')");
+  });
+
+  it('signs the release build with it, and only the release build', () => {
+    const buildTypes = patched.slice(patched.indexOf('buildTypes {'));
+    const debug = buildTypes.slice(buildTypes.indexOf('debug {'), buildTypes.indexOf('release {'));
+    const release = buildTypes.slice(buildTypes.indexOf('release {'));
+
+    expect(debug).toContain('signingConfig signingConfigs.debug');
+    expect(release).toContain(
+      'signingConfig uploadKeyFile.exists() ? signingConfigs.release : signingConfigs.debug',
+    );
+    // The plain debug line is gone from release: left behind, it would be the one Gradle used.
+    expect(release).not.toMatch(/signingConfig signingConfigs\.debug\s*$/m);
+  });
+
+  it('still builds on a machine with no key, by falling back', () => {
+    expect(patched).toContain('uploadKeyFile.exists() ?');
+    expect(patched).toContain('if (uploadKeyFile.exists()) {');
+  });
+
+  it('does it once however many times it runs', () => {
+    expect(addUploadSigning(patched)).toBe(patched);
+    expect(patched.match(/def uploadKeyFile/g)).toHaveLength(1);
+  });
+
+  it('refuses a build.gradle whose release build it cannot find', () => {
+    // Loading the key and then not using it would produce a Play bundle signed with the public
+    // debug keystore - with nothing in the build output to say so.
+    const noRelease = SIGNING_GRADLE.replace(/release \{[\s\S]*?\n        \}\n/, '');
+    expect(() => addUploadSigning(noRelease)).toThrow(/release build type/);
+    expect(() => addUploadSigning('android {\n}\n')).toThrow(/signingConfigs/);
   });
 });
 

@@ -135,9 +135,73 @@ function readResourceEntries(xml, tag) {
   return entries;
 }
 
+const UPLOAD_KEY_MARKER = 'uploadKeyFile';
+
+/**
+ * Sign release builds with the upload key, when there is one on this machine.
+ *
+ * The template signs release builds with `debug.keystore` — the same file, with the same
+ * password, in every Expo and React Native project. Google Play refuses a bundle signed with it,
+ * rightly: anyone could sign an "update" to the app with that key.
+ *
+ * The real key cannot be in the repository, so the build reads where it is and what unlocks it
+ * from a properties file outside it: `~/.novafit/upload-key.properties`, or wherever
+ * `NOVAFIT_UPLOAD_KEY` points. With no such file the build falls back to the debug key, so that
+ * a machine without the key can still build something to install on a phone — and the build
+ * script refuses to make a Play bundle that way.
+ *
+ * Three edits, and all three have to land or none should: a release config with no key behind
+ * it, or a key loaded and never used, both build happily and sign with the wrong thing.
+ */
+function addUploadSigning(gradle) {
+  if (gradle.includes(UPLOAD_KEY_MARKER)) return gradle;
+
+  const configs = gradle.match(/^([ \t]*)signingConfigs \{[ \t]*$/m);
+  if (!configs) {
+    throw new Error('app/build.gradle: could not find "signingConfigs {" to add the upload key to.');
+  }
+  const releaseUsesDebug =
+    /(buildTypes \{[\s\S]*?\brelease \{[\s\S]*?)signingConfig signingConfigs\.debug/;
+  if (!releaseUsesDebug.test(gradle)) {
+    throw new Error(
+      'app/build.gradle: could not find the release build type signing with the debug key. ' +
+        'Without that edit a Play bundle would still be signed with the public debug keystore.',
+    );
+  }
+
+  const i = configs[1];
+  const loader = [
+    `${i}// The upload key for Google Play. Not in the repository: this reads where it is from a`,
+    `${i}// file in the home directory. Added by plugins/withReleaseSigning.`,
+    `${i}def uploadKeyFile = new File(System.getenv('NOVAFIT_UPLOAD_KEY') ?: "\${System.getProperty('user.home')}/.novafit/upload-key.properties")`,
+    `${i}def uploadKey = new Properties()`,
+    `${i}if (uploadKeyFile.exists()) {`,
+    `${i}    uploadKeyFile.withInputStream { uploadKey.load(it) }`,
+    `${i}}`,
+  ].join('\n');
+  const release = [
+    `${i}    release {`,
+    `${i}        if (uploadKeyFile.exists()) {`,
+    `${i}            storeFile file(uploadKey['storeFile'])`,
+    `${i}            storePassword uploadKey['storePassword']`,
+    `${i}            keyAlias uploadKey['keyAlias']`,
+    `${i}            keyPassword uploadKey['keyPassword']`,
+    `${i}        }`,
+    `${i}    }`,
+  ].join('\n');
+
+  return gradle
+    .replace(configs[0], `${loader}\n${configs[0]}\n${release}`)
+    .replace(
+      releaseUsesDebug,
+      '$1signingConfig uploadKeyFile.exists() ? signingConfigs.release : signingConfigs.debug',
+    );
+}
+
 module.exports = {
   addHealthPermissionDelegate,
   addHeartRatePackage,
+  addUploadSigning,
   addWearableDependency,
   readResourceEntries,
 };
