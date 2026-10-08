@@ -12,18 +12,27 @@
       },
       "ios": {
         "simulator": false
+      },
+      "env": {
+        "EXPO_NO_METRO_WORKSPACE_ROOT": "1"
       }
     },
     "preview": {
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_NO_METRO_WORKSPACE_ROOT": "1"
       }
     },
     "production": {
       "autoIncrement": true,
       "android": {
         "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_NO_METRO_WORKSPACE_ROOT": "1"
       }
     }
   },

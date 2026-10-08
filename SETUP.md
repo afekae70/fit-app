@@ -104,30 +104,29 @@ Note that `android/local.properties` is a Java properties file, so its paths nee
 slashes. A Windows path with backslashes produces "The filename, directory name, or volume label
 syntax is incorrect", which reads like a missing SDK rather than an escaping problem.
 
-### 3. Re-apply two patches after every `prebuild --clean`
+### 3. Generate the project, then build it with the script
 
-Both live in generated files, so a clean prebuild wipes them.
-
-**Bundle the JS yourself.** Gradle's `createBundleReleaseJsAndAssets` passes `--entry-file`
-relative to `apps/mobile` while Metro resolves against the monorepo root, and the two never
-agree. Skipping the task with `-x` does not work either — downstream tasks query the skipped
-task's output provider and fail. Instead, tell Gradle release is "debuggable" purely so it stops
-bundling, in `android/app/build.gradle` inside the `react { }` block:
-
-```groovy
-debuggableVariants = ["debug", "release"]
-```
-
-then produce the bundle with an absolute entry path before each build:
+`android/` is generated and not in git. Everything that used to be applied to it by hand — the
+widgets, the Health Connect fix, the heart-rate bridge, the manifest trimming for Google Play — is
+now a config plugin under `apps/mobile/plugins/`, registered in `app.json`. So generating the
+project is all it takes:
 
 ```bash
 cd apps/mobile
-npx expo export:embed --platform android --dev false \
-  --entry-file "C:/Users/you/fit-build/node_modules/expo-router/entry.js" \
-  --bundle-output "C:/Users/you/fit-build/apps/mobile/android/app/src/main/assets/index.android.bundle" \
-  --assets-dest "C:/Users/you/fit-build/apps/mobile/android/app/src/main/res"
-cd android && ./gradlew assembleRelease
+npx expo prebuild --platform android --no-install
+scripts/build-android.sh           # an APK;  `scripts/build-android.sh bundle` for an AAB
 ```
+
+**Use the script, not `./gradlew assembleRelease` on its own.** It sets
+`EXPO_NO_METRO_WORKSPACE_ROOT=1`, without which Gradle's JavaScript bundling fails on Windows in
+this monorepo: React Native passes the entry file relative to `apps/mobile`, Expo resolves it
+against the repository root, and the two never agree. The script's header has the whole story.
+
+This replaces an older workaround, which is worth knowing about because traces of it linger: the
+release variant was declared "debuggable" in `app/build.gradle` so that Gradle would stop
+bundling, and the bundle was produced by hand with `expo export:embed` before every build. It
+worked, and it quietly shipped the bundle as plain JavaScript — parsed again at every launch —
+rather than compiled Hermes bytecode. **Do not reintroduce `debuggableVariants`.**
 
 **Never change `android.package` or `ios.bundleIdentifier` to rename the app.** The display name
 is `expo.name`; the package is where Android keeps the app's private storage. Changing it does
@@ -137,16 +136,23 @@ shipped to the old package, the two were indistinguishable on the home screen, a
 opened every day was the one that had stopped receiving updates. The identifier is invisible to
 users and tidying it is worth nothing next to that.
 
-**`expo prebuild --clean` deletes three things that are not in git** and must be restored after
-every run, or the build fails in a way that does not name them:
+**`expo prebuild --clean` deletes one thing that is not in git**, and the build fails without
+naming it:
 
 | File | Symptom if missing |
 |---|---|
 | `android/local.properties` | "SDK location not found" |
-| `android/app/debug.keystore` | New signing key, so `adb install -r` fails and reinstalling wipes the data |
-| `debuggableVariants` in `app/build.gradle` | Gradle runs its own bundle task and the entry path never resolves |
 
-Back all three up before running it.
+Copy it back after a clean prebuild.
+
+**The signing key is not one of those things, whatever an earlier version of this file said.**
+It claimed that losing `android/app/debug.keystore` meant a new signing key and a forced
+reinstall. It does not: that keystore comes from the Expo template, and prebuild writes the
+identical file every time (same SHA-256, same certificate — checked). Which is the actual
+problem with it. Every Expo and React Native project has that same file with the password
+`android`, so anyone can sign an update to this app. It is fine for a developer's own phone and
+unacceptable for anyone else's; the app must be signed with a private key before it is
+distributed. See `apps/mobile/native/widget/README.md`.
 
 **Changing the app icon.** `app.json` points at `apps/mobile/assets/`, and `expo prebuild`
 turns those files into the `mipmap-*` resources Android actually ships. Because `android/` is

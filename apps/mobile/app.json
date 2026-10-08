@@ -19,7 +19,14 @@
     },
     "android": {
       "//blockedPermissions": "expo-audio's library manifest declares the microphone permission for recording, which this app never does. Blocked so a beep does not add a microphone entry to the app's permissions. The camera likewise: expo-image-picker declares it for taking photos, and the profile picture only ever comes from the gallery, through Android's photo picker, which needs no permission.",
-      "blockedPermissions": ["android.permission.RECORD_AUDIO", "android.permission.CAMERA"],
+      "//blockedPermissions2": "And three more, for Google Play, which reads a manifest literally. FOREGROUND_SERVICE and FOREGROUND_SERVICE_MEDIA_PLAYBACK come from expo-audio, which can run lock-screen controls as a foreground service; this app plays a beep and never starts one, and Play wants every declared foreground-service type justified with a video of the feature. The services themselves are removed by plugins/withStoreManifest. SYSTEM_ALERT_WINDOW is in Expo's template manifest for the developer menu's overlay; a release build has no developer menu, and 'display over other apps' is not something to ask a stranger's phone for.",
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.CAMERA",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ],
       "package": "com.afeka.fitapp",
       "adaptiveIcon": {
         "backgroundColor": "#FBFBFC",
@@ -30,11 +37,6 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.BLUETOOTH_CONNECT",
-        "android.permission.health.READ_EXERCISE",
-        "android.permission.health.READ_HEART_RATE",
-        "android.permission.health.READ_ACTIVE_CALORIES_BURNED",
-        "android.permission.health.READ_TOTAL_CALORIES_BURNED",
-        "android.permission.health.READ_WEIGHT",
         "android.permission.health.WRITE_EXERCISE",
         "android.permission.health.WRITE_DISTANCE",
         "android.permission.health.WRITE_ACTIVE_CALORIES_BURNED",
@@ -64,6 +66,7 @@
       "./plugins/withHealthConnectNative",
       "./plugins/withHomeWidgets",
       "./plugins/withHeartRateBridge",
+      "./plugins/withStoreManifest",
       [
         "expo-build-properties",
         {
@@ -93,7 +96,7 @@
       "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImliYXBjdnhlcGJwZGxtd25wdWhzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUyNTQwOTMsImV4cCI6MjEwMDgzMDA5M30.754zHmoVekRWlJmTMYC4sipQgowzMyMKgfz1i7Qd9XQ",
       "//blePermissions": "neverForLocation is set on BLUETOOTH_SCAN so Android 12+ does not require the user to grant location just to find a scale. ACCESS_FINE_LOCATION remains declared because Android 11 and below have no BLUETOOTH_SCAN and genuinely gate BLE discovery behind location.",
       "//blePermissionsLegacy": "BLUETOOTH and BLUETOOTH_ADMIN were added by the react-native-ble-plx config plugin, not by hand. They are the pre-Android-12 equivalents of BLUETOOTH_CONNECT and BLUETOOTH_SCAN, scoped by the manifest merger to older API levels — inert on Android 12+, required below it.",
-      "//healthPermissions": "Health Connect permissions are android.permission.health.* and are granted per data type inside the Health Connect app, not by a standard runtime prompt. The READ set is for the watch import; the WRITE set is how a finished workout reaches Samsung Health and anything else that reads the store. Android 14 and up also want an activity-alias for the permissions rationale, which prebuild does not add - see native/health/README.md.",
+      "//healthPermissions": "Health Connect permissions are android.permission.health.* and are granted per data type inside the Health Connect app, not by a standard runtime prompt. Only the WRITE set is declared: it is how a finished workout reaches Samsung Health and anything else that reads the store. The five READ permissions (exercise, heart rate, active and total calories, weight) were declared for importing a watch's workout, a feature whose code exists in src/health/reader.ts and which no screen calls. Google Play requires every health permission to be justified by something the app visibly does, so they are out until that import is wired to a screen - at which point they come back here, and into READ_PERMISSIONS' request, together. Android 14 and up also want an activity-alias for the permissions rationale, which prebuild does not add - see native/health/README.md.",
       "//minSdk": "Raised from Expo SDK 54's default of 24 to 26 because androidx.health.connect:connect-client declares minSdk 26; below that the manifest merger fails the build outright. 26 is Android 8.0 (2017), and Health Connect is unavailable on anything older anyway, so this drops no device that could have used the watch integration.",
       "router": {},
       "eas": {
