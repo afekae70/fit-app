@@ -416,7 +416,7 @@ export async function swapSessionExercise(
     );
     await enqueue(db, 'set', set.id, 'delete', undefined, clock);
   }
-  await renumberSets(db, sessionExerciseId);
+  await renumberSets(db, sessionExerciseId, clock);
 
   // At least one, even when every set was already ticked: an exercise with no sets is never
   // what someone swapping to it wanted, and it matches what adding an exercise does.
@@ -516,7 +516,7 @@ export async function removeExerciseFromSession(
     `UPDATE session_exercises SET deleted_at = ?, updated_at = ?, order_index = -rowid WHERE id = ?`,
     [at, at, sessionExerciseId],
   );
-  if (row) await renumberExercises(db, row.session_id);
+  if (row) await renumberExercises(db, row.session_id, clock);
   await enqueue(db, 'session_exercise', sessionExerciseId, 'delete', undefined, clock);
 }
 
@@ -817,7 +817,7 @@ export async function removeSet(
     `UPDATE sets SET deleted_at = ?, updated_at = ?, set_index = -rowid WHERE id = ?`,
     [at, at, setId],
   );
-  await renumberSets(db, row.session_exercise_id);
+  await renumberSets(db, row.session_exercise_id, clock);
   await enqueue(db, 'set', setId, 'delete', undefined, clock);
 }
 
@@ -826,42 +826,79 @@ export async function removeSet(
  *
  * Only live rows are renumbered. Soft-deleted rows were parked at `-rowid` when they were
  * deleted, so they sit outside the positive range entirely and cannot collide.
+ *
+ * ## A row that moves is a row that changed
+ *
+ * Every row whose index shifts gets a new `updated_at`, and that is not bookkeeping. Sync sends
+ * what is newer than its cursor and nothing else, so a row renumbered without a new stamp keeps
+ * its old position on the server for good. The next set added here then takes "the next free
+ * index" — free on the phone, still occupied on the server — and the server refuses it:
+ *
+ *   duplicate key value violates unique constraint "session_exercises_session_order_unique"
+ *
+ * which is what a real phone logged, and one refused row used to stop every table syncing. Rows
+ * that keep their index are left alone, so calling this on an already tidy exercise still
+ * changes nothing and sends nothing.
  */
 export async function renumberSets(
   db: SqlExecutor,
   sessionExerciseId: string,
+  clock: Clock = defaultClock,
 ): Promise<void> {
-  const remaining = await db.all<{ id: string }>(
-    `SELECT id FROM sets WHERE session_exercise_id = ? AND deleted_at IS NULL ORDER BY set_index`,
+  const remaining = await db.all<{ id: string; position: number }>(
+    `SELECT id, set_index AS position FROM sets
+      WHERE session_exercise_id = ? AND deleted_at IS NULL ORDER BY set_index`,
     [sessionExerciseId],
   );
-  if (remaining.length === 0) return;
+  if (remaining.every((row, i) => row.position === i + 1)) return;
 
+  const at = clock();
   const OFFSET = 100000;
   await db.run(
     `UPDATE sets SET set_index = set_index + ? WHERE session_exercise_id = ? AND deleted_at IS NULL`,
     [OFFSET, sessionExerciseId],
   );
   for (const [i, r] of remaining.entries()) {
-    await db.run(`UPDATE sets SET set_index = ? WHERE id = ?`, [i + 1, r.id]);
+    if (r.position === i + 1) {
+      await db.run(`UPDATE sets SET set_index = ? WHERE id = ?`, [i + 1, r.id]);
+    } else {
+      await db.run(`UPDATE sets SET set_index = ?, updated_at = ? WHERE id = ?`, [i + 1, at, r.id]);
+    }
   }
 }
 
-/** Same two-phase approach for exercise ordering within a session, live rows only. */
-export async function renumberExercises(db: SqlExecutor, sessionId: string): Promise<void> {
-  const remaining = await db.all<{ id: string }>(
-    `SELECT id FROM session_exercises WHERE session_id = ? AND deleted_at IS NULL ORDER BY order_index`,
+/**
+ * Same two-phase approach for exercise ordering within a session, live rows only — and the same
+ * rule about stamping whatever moved (see `renumberSets`).
+ */
+export async function renumberExercises(
+  db: SqlExecutor,
+  sessionId: string,
+  clock: Clock = defaultClock,
+): Promise<void> {
+  const remaining = await db.all<{ id: string; position: number }>(
+    `SELECT id, order_index AS position FROM session_exercises
+      WHERE session_id = ? AND deleted_at IS NULL ORDER BY order_index`,
     [sessionId],
   );
-  if (remaining.length === 0) return;
+  if (remaining.every((row, i) => row.position === i + 1)) return;
 
+  const at = clock();
   const OFFSET = 100000;
   await db.run(
     `UPDATE session_exercises SET order_index = order_index + ? WHERE session_id = ? AND deleted_at IS NULL`,
     [OFFSET, sessionId],
   );
   for (const [i, r] of remaining.entries()) {
-    await db.run(`UPDATE session_exercises SET order_index = ? WHERE id = ?`, [i + 1, r.id]);
+    if (r.position === i + 1) {
+      await db.run(`UPDATE session_exercises SET order_index = ? WHERE id = ?`, [i + 1, r.id]);
+    } else {
+      await db.run(`UPDATE session_exercises SET order_index = ?, updated_at = ? WHERE id = ?`, [
+        i + 1,
+        at,
+        r.id,
+      ]);
+    }
   }
 }
 

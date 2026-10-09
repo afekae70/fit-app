@@ -9,8 +9,22 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import type { SyncTransport } from './engine.js';
-import type { Row } from './rows.js';
+import type { RowRejection, SyncTransport } from './engine.js';
+import { isRowRefusal, type Row } from './rows.js';
+
+/**
+ * How many ids go in one `id=in.(...)` filter.
+ *
+ * The list travels in the URL, and a uuid is 36 characters: a hundred of them is under four
+ * kilobytes, comfortably inside what every proxy between the phone and Postgres will carry.
+ */
+const ID_CHUNK = 100;
+
+type ServerError = { message: string; code?: string; details?: string | null };
+
+function rejection(row: Row, error: ServerError): RowRejection {
+  return { id: String(row.id), code: error.code ?? null, message: error.message };
+}
 
 /** Raised when the server refuses a write, carrying enough detail to be actionable in a log. */
 export class SyncTransportError extends Error {
@@ -42,32 +56,48 @@ export function createSupabaseTransport(client: SupabaseClient): SyncTransport {
     },
 
     async upsert(table, rows) {
-      if (rows.length === 0) return;
+      if (rows.length === 0) return [];
       const { error } = await client.from(table).upsert(rows, { onConflict: 'id' });
-      if (!error) return;
+      if (!error) return [];
 
       // Postgres names the constraint but never the row, and a batch is up to 200 of them. The
       // first real sync failed on `sets_has_measurement_check` and finding out *which* set meant
       // reasoning backwards from the constraint to the app behaviour that produces it. Re-sending
       // one row at a time on failure costs a handful of requests on a path that has already
       // failed, and turns the next occurrence into an id that can be looked up directly.
+      //
+      // It is also what lets the rest of the batch through. A statement is all or nothing, so
+      // one row the server will not take had been keeping the other 199 off it as well.
+      const rejections: RowRejection[] = [];
       for (const row of rows) {
         const { error: rowError } = await client.from(table).upsert([row], { onConflict: 'id' });
-        if (rowError) throw new SyncTransportError(table, `upsert of row ${String(row.id)}`, rowError);
+        if (!rowError) continue;
+        // Not about this row — the connection, the session. Nothing after it would work either.
+        if (!isRowRefusal(rowError.code)) {
+          throw new SyncTransportError(table, `upsert of row ${String(row.id)}`, rowError);
+        }
+        rejections.push(rejection(row, rowError));
       }
-      // Every row passed on its own, so the batch failure was not about any single row's contents
-      // — a timeout, or a conflict between two rows in the same statement. Nothing left to report.
+      // Possibly empty: every row passed on its own, so the batch failure was not about any
+      // single row's contents — a timeout, or a conflict between two rows in the same statement.
+      return rejections;
     },
 
     async patch(table, rows) {
       // One request per row: PostgREST patches by filter, and a batch of tombstones is a batch
-      // of different ids with different timestamps. Tombstones are rare — a handful per sync at
-      // most — so the row-at-a-time cost buys a precise error when one is refused.
+      // of different ids with different timestamps. The engine only hands over the ones the
+      // server actually has, so this is a handful per sync at most.
+      const rejections: RowRejection[] = [];
       for (const row of rows) {
         const { id, ...changes } = row;
         const { error } = await client.from(table).update(changes).eq('id', id);
-        if (error) throw new SyncTransportError(table, `patch of row ${String(id)}`, error);
+        if (!error) continue;
+        if (!isRowRefusal(error.code)) {
+          throw new SyncTransportError(table, `patch of row ${String(id)}`, error);
+        }
+        rejections.push(rejection(row, error));
       }
+      return rejections;
     },
 
     async changedSince(table, since, limit) {
@@ -89,6 +119,19 @@ export function createSupabaseTransport(client: SupabaseClient): SyncTransport {
       const { data, error } = await client.from(table).select('*').eq('id', id).maybeSingle();
       if (error) throw new SyncTransportError(table, 'fetchById', error);
       return (data as Row | null) ?? null;
+    },
+
+    async fetchByIds(table, ids) {
+      const found: Row[] = [];
+      for (let i = 0; i < ids.length; i += ID_CHUNK) {
+        const { data, error } = await client
+          .from(table)
+          .select('*')
+          .in('id', ids.slice(i, i + ID_CHUNK));
+        if (error) throw new SyncTransportError(table, 'fetchByIds', error);
+        found.push(...((data ?? []) as Row[]));
+      }
+      return found;
     },
   };
 }

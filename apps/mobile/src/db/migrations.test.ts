@@ -592,3 +592,114 @@ describe('migration 16 — several workouts per day', () => {
     db.close();
   });
 });
+
+describe('migration 18 — sending everything again, once', () => {
+  /*
+   * A repair rather than a change of shape. The phone it was written for had rows the server
+   * placed differently, and deletions the server had never been sent; none of them were marked
+   * as changed, so no later sync would have offered them again.
+   */
+  function syncedDevice() {
+    const db = new DatabaseSync(':memory:');
+    db.exec(CREATE_SCHEMA_SQL.replace(/PRAGMA journal_mode = WAL;/, ''));
+    db.exec(`
+      INSERT INTO workout_sessions (id, user_id, started_at, created_at, updated_at)
+        VALUES ('s1', 'u1', '2026-09-01T10:00:00.000Z', '2026-09-01T10:00:00.000Z', '2026-09-01T10:00:00.000Z');
+      INSERT INTO session_exercises (id, session_id, exercise_key, order_index, updated_at)
+        VALUES ('live', 's1', 'Squat', 1, '2026-09-01T10:00:00.000Z');
+      INSERT INTO session_exercises (id, session_id, exercise_key, order_index, updated_at, deleted_at)
+        VALUES ('unparked', 's1', 'Bench Press', 2, '2026-09-01T10:00:00.000Z', '2026-09-01T11:00:00.000Z');
+      INSERT INTO session_exercises (id, session_id, exercise_key, order_index, updated_at, deleted_at)
+        VALUES ('banded', 's1', 'Barbell Row', 1000007, '2026-09-01T10:00:00.000Z', '2026-09-01T11:00:00.000Z');
+      INSERT INTO session_exercises (id, session_id, exercise_key, order_index, updated_at, deleted_at)
+        VALUES ('parked', 's1', 'Deadlift', -99, '2026-09-01T10:00:00.000Z', '2026-09-01T11:00:00.000Z');
+      INSERT INTO sync_state (user_id, last_pulled_at, last_synced_at)
+        VALUES ('u1', '2026-09-30T08:00:00.000Z', '2026-09-30T08:00:01.000Z'),
+               ('u2', '2026-09-29T08:00:00.000Z', '2026-09-29T08:00:01.000Z');
+    `);
+    return db;
+  }
+
+  type Position = { id: string; order_index: number };
+  const positions = (db: ReturnType<typeof syncedDevice>): Position[] =>
+    db.prepare(`SELECT id, order_index FROM session_exercises ORDER BY id`).all() as Position[];
+
+  it('is on the app upgrade path', () => {
+    expect(SCHEMA_VERSION).toBeGreaterThanOrEqual(18);
+    expect(MIGRATIONS[18]).toBeDefined();
+  });
+
+  it('clears the push cursor for every account on the device, and leaves the pull cursor', () => {
+    const db = syncedDevice();
+    applyMigration(db, MIGRATIONS[18] ?? '');
+    expect(
+      db.prepare(`SELECT user_id, last_pulled_at, last_synced_at FROM sync_state ORDER BY user_id`).all(),
+    ).toEqual([
+      { user_id: 'u1', last_pulled_at: '2026-09-30T08:00:00.000Z', last_synced_at: null },
+      { user_id: 'u2', last_pulled_at: '2026-09-29T08:00:00.000Z', last_synced_at: null },
+    ]);
+    db.close();
+  });
+
+  it('parks every deleted row that had been put back on a real position', () => {
+    const db = syncedDevice();
+    applyMigration(db, MIGRATIONS[18] ?? '');
+    const after = new Map(positions(db).map((row) => [row.id, row.order_index]));
+    // A live row keeps its place, and one already parked is not moved again.
+    expect(after.get('live')).toBe(1);
+    expect(after.get('parked')).toBe(-99);
+    // Whatever a pull wrote over the sentinel — a real slot, or the server's tombstone band —
+    // goes back to the sentinel, so the next sync compares like with like.
+    expect(after.get('unparked')).toBeLessThan(0);
+    expect(after.get('banded')).toBeLessThan(0);
+    db.close();
+  });
+
+  it('touches no workout data', () => {
+    const db = syncedDevice();
+    const before = db.prepare(`SELECT id, exercise_key, deleted_at, updated_at FROM session_exercises ORDER BY id`).all();
+    applyMigration(db, MIGRATIONS[18] ?? '');
+    expect(
+      db.prepare(`SELECT id, exercise_key, deleted_at, updated_at FROM session_exercises ORDER BY id`).all(),
+    ).toEqual(before);
+    db.close();
+  });
+
+  it('leaves a row where it is rather than fail when the sentinel is taken', () => {
+    // This runs at startup. A migration that throws leaves the app unable to open its own
+    // database, and no tidying of deleted rows is worth that.
+    const db = syncedDevice();
+    const rowid = (
+      db.prepare(`SELECT rowid AS n FROM session_exercises WHERE id = 'unparked'`).get() as { n: number }
+    ).n;
+    db.exec(`
+      INSERT INTO session_exercises (id, session_id, exercise_key, order_index, updated_at, deleted_at)
+        VALUES ('squatter', 's1', 'Curl', ${-rowid}, '2026-09-01T10:00:00.000Z', '2026-09-01T11:00:00.000Z');
+    `);
+
+    expect(() => applyMigration(db, MIGRATIONS[18] ?? '')).not.toThrow();
+
+    const after = new Map(positions(db).map((row) => [row.id, row.order_index]));
+    expect(after.get('unparked')).toBe(2);
+    // And the rest of the repair still happened.
+    expect(after.get('banded')).toBeLessThan(0);
+    expect(
+      (db.prepare(`SELECT COUNT(*) AS n FROM sync_state WHERE last_synced_at IS NOT NULL`).get() as { n: number }).n,
+    ).toBe(0);
+    db.close();
+  });
+
+  it('is safe to run twice, and on a device with nothing on it', () => {
+    const db = syncedDevice();
+    applyMigration(db, MIGRATIONS[18] ?? '');
+    const once = positions(db);
+    applyMigration(db, MIGRATIONS[18] ?? '');
+    expect(positions(db)).toEqual(once);
+    db.close();
+
+    const empty = new DatabaseSync(':memory:');
+    empty.exec(CREATE_SCHEMA_SQL.replace(/PRAGMA journal_mode = WAL;/, ''));
+    expect(() => applyMigration(empty, MIGRATIONS[18] ?? '')).not.toThrow();
+    empty.close();
+  });
+});

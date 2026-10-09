@@ -154,6 +154,28 @@ describe('plan days', () => {
     expect(days.map((d) => d.name)).toEqual(['Push', 'Legs']);
   });
 
+  it('marks the days a removal moved as changed, and only those', async () => {
+    // Sync sends what is newer than its cursor. A day renumbered without a new stamp keeps its
+    // old position on the server, and the next day added lands on a slot the server still
+    // thinks is taken.
+    const created = () => '2026-07-26T10:00:00.000Z';
+    const removed = () => '2026-07-26T11:00:00.000Z';
+    const plan = await createPlan(db, USER, newId, 'PPL', created);
+    const push = await addPlanDay(db, newId, plan, 'Push', created);
+    const pull = await addPlanDay(db, newId, plan, 'Pull', created);
+    const legs = await addPlanDay(db, newId, plan, 'Legs', created);
+
+    await removePlanDay(db, pull, removed);
+
+    const stamps = await db.all<{ id: string; day_index: number; updated_at: string }>(
+      `SELECT id, day_index, updated_at FROM plan_days WHERE deleted_at IS NULL ORDER BY day_index`,
+    );
+    expect(stamps).toEqual([
+      { id: push, day_index: 1, updated_at: created() },
+      { id: legs, day_index: 2, updated_at: removed() },
+    ]);
+  });
+
   it('cascades day and prescription deletion when the plan goes', async () => {
     const plan = await createPlan(db, USER, newId, 'PPL', clock);
     const day = await addPlanDay(db, newId, plan, 'Push');
@@ -246,6 +268,27 @@ describe('prescriptions', () => {
     expect(detail?.exercises.map((e) => e.exercise_key)).toEqual([
       'Barbell Bench Press',
       'Face Pull',
+    ]);
+  });
+
+  it('marks the exercises a removal moved as changed, and only those', async () => {
+    const created = () => '2026-07-26T10:00:00.000Z';
+    const removed = () => '2026-07-26T11:00:00.000Z';
+    const plan = await createPlan(db, USER, newId, 'PPL', created);
+    const day = await addPlanDay(db, newId, plan, 'Push', created);
+    const bench = await addPlanDayExercise(db, newId, day, 'Barbell Bench Press', {}, created);
+    const press = await addPlanDayExercise(db, newId, day, 'Overhead Press', {}, created);
+    const pull = await addPlanDayExercise(db, newId, day, 'Face Pull', {}, created);
+
+    await removePlanDayExercise(db, press, removed);
+
+    const stamps = await db.all<{ id: string; order_index: number; updated_at: string }>(
+      `SELECT id, order_index, updated_at FROM plan_day_exercises
+        WHERE deleted_at IS NULL ORDER BY order_index`,
+    );
+    expect(stamps).toEqual([
+      { id: bench, order_index: 1, updated_at: created() },
+      { id: pull, order_index: 2, updated_at: removed() },
     ]);
   });
 });

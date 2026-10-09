@@ -58,6 +58,8 @@ function dotColor(status: SyncStatus, colors: ColorPalette): string {
       // The accent, not a green. There is no success token in this palette and adding one for a
       // single dot would put a hue on screen that appears nowhere else in the app.
       return colors.accent;
+    // Coloured as a fault, because it is one: part of the training log is not in the cloud.
+    case 'partial':
     case 'error':
       return colors.danger;
     // Offline is not a fault and is not coloured like one — the phone is in a lift. Everything is
@@ -76,6 +78,7 @@ function detailFor(
 ): string {
   if (status.kind === 'syncing') return t('sync.detailSyncing');
   if (status.kind === 'error') return status.message;
+  if (status.kind === 'partial') return t('sync.detailPartial', { count: status.refused });
 
   const last = 'lastSyncedAt' in status ? status.lastSyncedAt : null;
   if (!last) return t('sync.detailNever');

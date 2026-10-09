@@ -29,25 +29,66 @@
  * before we ask what is new; the pull then hands our own rows straight back, which is a harmless
  * no-op merge. The other order has a window where a pull overwrites a local edit that was never
  * sent, and the edit is gone with nothing to recover it from.
+ *
+ * ## One refused row is one refused row
+ *
+ * The server can decline a single row — a slot it thinks is taken, a parent it does not have —
+ * and for a long time that ended the run on the spot. Tables go up in order, so everything
+ * queued behind the refusal stayed on the phone too: one exercise the server would not place
+ * meant no sets, no weigh-ins and no plans reached the cloud, on every run, indefinitely, while
+ * the app looked exactly as it always had.
+ *
+ * So a refusal is recorded and stepped over. The rest of the run carries on, the row and
+ * whatever hangs off it stay queued for next time, and the caller is told what was left behind.
+ * Only a failure that is not about any one row — no network, an expired session — still stops
+ * the run, because then nothing after it would have worked either.
  */
 
 import type { SqlExecutor } from '../db/executor.js';
-import { earlierOf, fromRemote, isNewer, laterOf, toRemote, type Row } from './rows.js';
+import {
+  earlierOf,
+  fromRemote,
+  isNewer,
+  isUniqueViolation,
+  laterOf,
+  toRemote,
+  type Row,
+} from './rows.js';
 import { SYNC_TABLES, SYNC_TABLE_BY_NAME, type SyncTable } from './tables.js';
 
 /** How many rows travel in one request. Keeps a first sync off a long history from timing out. */
 const BATCH = 200;
 
+/** One row the server would not take, and the reason it gave. */
+export interface RowRejection {
+  readonly id: string;
+  /** The Postgres error code — `23505` for a unique violation, `42501` for row-level security. */
+  readonly code: string | null;
+  readonly message: string;
+}
+
+/** A rejection, and the table it happened in. */
+export interface RefusedRow extends RowRejection {
+  readonly table: string;
+}
+
 export interface SyncTransport {
-  /** Upsert rows into `table`, keyed on the primary key. Rejects if the server refuses any row. */
-  upsert(table: string, rows: Row[]): Promise<void>;
+  /**
+   * Upsert rows into `table`, keyed on the primary key.
+   *
+   * Resolves with the rows the server refused, which is the empty list when all went in. Every
+   * other row in the call has been written. Rejects only for a failure that is not about a
+   * particular row — see `isRowRefusal`.
+   */
+  upsert(table: string, rows: Row[]): Promise<RowRejection[]>;
   /**
    * Patch rows that the server already has, by primary key. A row it does not have is not an
    * error — the patch simply matches nothing.
    *
    * Separate from `upsert` because a tombstone must never be written as one. See `push`.
+   * Resolves and rejects as `upsert` does.
    */
-  patch(table: string, rows: Row[]): Promise<void>;
+  patch(table: string, rows: Row[]): Promise<RowRejection[]>;
   /**
    * Rows in `table` whose server `updated_at` is strictly after `since`, oldest first, at most
    * `limit`. `since` null means everything.
@@ -59,6 +100,12 @@ export interface SyncTransport {
    * Used only to repair a missing parent — see `ensureParent`.
    */
   fetchById(table: string, id: string): Promise<Row | null>;
+  /**
+   * The server's copies of these rows — only the ones it has, in no particular order.
+   *
+   * Used to find out which deletions have anything to delete. See `tombstonesDue`.
+   */
+  fetchByIds(table: string, ids: string[]): Promise<Row[]>;
   /**
    * Make sure the signed-in user has a `profiles` row.
    *
@@ -78,6 +125,11 @@ export interface SyncResult {
    * not an error; it is the engine declining to write an orphan.
    */
   readonly deferred: number;
+  /**
+   * Rows the server would not take this run. They are still on the device and still queued; a
+   * non-empty list means the cloud copy is incomplete, which the user is entitled to know.
+   */
+  readonly refused: readonly RefusedRow[];
   readonly syncedAt: string;
 }
 
@@ -126,6 +178,15 @@ async function writeCursors(db: SqlExecutor, userId: string, cursors: Cursors): 
  * row with `deleted_at` set, and pushing it is the only way the other device ever learns about
  * it. Excluding them — the reflex everywhere else in the repository — would make deletes local
  * forever and let the row come back on the next pull.
+ *
+ * That includes a row deleted before this device ever heard back from the server about it.
+ * Such rows used to be left out here, on the reasoning that a row created and deleted between
+ * two syncs was never on the server. `remote_updated_at IS NULL` was the test, and it does not
+ * mean that: it is only filled in by a pull, so a row that was pushed in a run that then died
+ * before pulling looks exactly the same. The server had it, the phone deleted it, the deletion
+ * was never sent — and the row lived on up there, holding its slot against the sibling that
+ * moved into it and waiting to come back on the next pull. Whether there is anything to delete
+ * is now asked of the server itself, in `tombstonesDue`.
  */
 export function buildPushQuery(table: SyncTable): string {
   const joins: string[] = [];
@@ -146,16 +207,11 @@ export function buildPushQuery(table: SyncTable): string {
   // delete — so `pushWhere` never applies to one. Without the escape, deleting a blank set would
   // hold its tombstone back and leave that row alive on the server permanently.
   const extra = table.pushWhere ? `AND (${table.pushWhere} OR t0.deleted_at IS NOT NULL)` : '';
-  // A row created and deleted between two syncs has never existed on the server, so there is
-  // nothing there to delete. Sending it would mean inserting a tombstone for a row nobody has —
-  // and for an ordered table that insert has no index to carry, since the parked one cannot go.
-  const tombstone = 'AND NOT (t0.deleted_at IS NOT NULL AND t0.remote_updated_at IS NULL)';
   return `SELECT ${columns} FROM ${table.table} t0
     ${joins.join('\n    ')}
     WHERE ${alias}.user_id = ?
       AND (? IS NULL OR t0.updated_at IS NULL OR t0.updated_at > ?)
       ${extra}
-      ${tombstone}
     ORDER BY t0.updated_at`;
 }
 
@@ -168,34 +224,110 @@ export function buildPushQuery(table: SyncTable): string {
  */
 const PUSH_PARK = 100_000;
 
+/**
+ * Which of these deletions the server still needs to hear about.
+ *
+ * One request for the lot, rather than a patch per row sent on the off chance. That matters
+ * for the commonest deletion there is: a workout started from a plan and thrown away before it
+ * ever synced is a session, its exercises and every blank set under them, none of which the
+ * server has — thirty patches that match nothing, one after another, where this is three reads.
+ *
+ * A row is due when the server has it and it is not already out of the way there:
+ *
+ *  - still alive, which is the ordinary case; or
+ *  - deleted, but still sitting on a real position. Deletions sent before the tombstone band
+ *    existed kept the index they had, and the unique constraint counts a deleted row like any
+ *    other — so each of those goes on refusing whichever sibling is moved into its place.
+ */
+async function tombstonesDue(
+  transport: SyncTransport,
+  table: SyncTable,
+  tombstones: readonly Row[],
+): Promise<Row[]> {
+  if (tombstones.length === 0) return [];
+
+  const remote = new Map<string, Row>();
+  for (const row of await transport.fetchByIds(
+    table.table,
+    tombstones.map((row) => String(row.id)),
+  )) {
+    remote.set(String(row.id), row);
+  }
+
+  return tombstones
+    .map((row) => toRemote(table, row))
+    .filter((payload) => {
+      const there = remote.get(String(payload.id));
+      if (!there) return false;
+      if (there.deleted_at === null || there.deleted_at === undefined) return true;
+      return (table.indexColumns ?? []).some((column) => there[column] !== payload[column]);
+    });
+}
+
+interface PushOutcome {
+  /** Rows the server took. */
+  pushed: number;
+  refused: RefusedRow[];
+}
+
 async function push(
   db: SqlExecutor,
   transport: SyncTransport,
   userId: string,
   since: string | null,
-): Promise<number> {
-  let total = 0;
+  startedAt: string,
+): Promise<PushOutcome> {
+  let pushed = 0;
+  const refused: RefusedRow[] = [];
+  /**
+   * Per table, the rows that did not reach the server this run — refused outright, or held back
+   * because their parent was. Everything in here is put back in the queue before the cursor moves.
+   */
+  const unsent = new Map<string, Set<string>>();
+
   for (const table of SYNC_TABLES) {
-    const rows = await db.all<Row>(buildPushQuery(table), [userId, since, since]);
-    if (rows.length === 0) continue;
+    const dirty = await db.all<Row>(buildPushQuery(table), [userId, since, since]);
+    if (dirty.length === 0) continue;
+
+    const waiting = new Set<string>();
+    unsent.set(table.table, waiting);
+    const refuse = (rejections: readonly RowRejection[]): number => {
+      for (const rejection of rejections) {
+        waiting.add(rejection.id);
+        refused.push({ table: table.table, ...rejection });
+      }
+      return rejections.length;
+    };
+
+    /*
+     * A row whose parent did not get through waits with it.
+     *
+     * The server would refuse it anyway — its ownership is proved through the parent, and a
+     * parent it does not have proves nothing. Offering it regardless costs more than the one
+     * request: a single refusal fails its whole batch, and the transport then resends that
+     * batch a row at a time to find out which one it was.
+     */
+    const scope = table.scope;
+    const stuck = scope.kind === 'parent' ? unsent.get(scope.table) : undefined;
+    const rows: Row[] = [];
+    for (const row of dirty) {
+      if (scope.kind === 'parent' && stuck?.has(String(row[scope.column]))) {
+        waiting.add(String(row.id));
+      } else {
+        rows.push(row);
+      }
+    }
 
     /*
      * Tombstones travel as patches, everything else as upserts.
      *
-     * `toRemote` omits a deleted row's ordering column, because the local sentinel `-rowid` is
-     * something the server rejects and no substitute is safe — every positive value risks
-     * colliding with a live row under the same parent. Omitting it was supposed to leave the
-     * server's own value alone.
+     * An upsert is `INSERT ... ON CONFLICT DO UPDATE`: it would create the row if the server
+     * did not have it, and a deletion must never bring a row into being. It also checks NOT
+     * NULL against the proposed insert tuple before it ever looks for the conflict, which is
+     * how one deleted plan day once stopped every later sync on the same row.
      *
-     * It does not. An upsert is `INSERT ... ON CONFLICT DO UPDATE`, and Postgres checks NOT NULL
-     * against the proposed insert tuple before it ever looks for the conflict — so omitting a
-     * NOT NULL column fails outright even when the row is certainly there. That is what broke
-     * syncing entirely: one deleted plan day, and every later sync died on the same row, so
-     * nothing at all reached the server.
-     *
-     * A patch has no insert tuple to check. It also cannot resurrect a row the server has
-     * already lost, which is the right behaviour — `buildPushQuery` has already excluded
-     * tombstones the server never saw.
+     * A patch has no insert tuple. It cannot resurrect a row the server has already lost, and
+     * `tombstonesDue` has already set aside the ones the server never had.
      */
     const live = rows.filter((row) => row.deleted_at === null || row.deleted_at === undefined);
     const tombstones = rows.filter((row) => row.deleted_at !== null && row.deleted_at !== undefined);
@@ -208,11 +340,10 @@ async function push(
      * still sitting in that position and the server refuses it — which is the same unique
      * violation, just reached from the opposite direction.
      */
-    for (let i = 0; i < tombstones.length; i += BATCH) {
-      await transport.patch(
-        table.table,
-        tombstones.slice(i, i + BATCH).map((row) => toRemote(table, row)),
-      );
+    const due = await tombstonesDue(transport, table, tombstones);
+    for (let i = 0; i < due.length; i += BATCH) {
+      const batch = due.slice(i, i + BATCH);
+      pushed += batch.length - refuse(await transport.patch(table.table, batch));
     }
 
     /*
@@ -220,8 +351,7 @@ async function push(
      *
      * `UNIQUE (parent, index)` is checked per row, and `onConflict: 'id'` resolves a clash on
      * the primary key and nothing else — so two exercises trading places means one arrives at a
-     * slot the other has not left yet, and the server refuses it. Since a rejected row aborts
-     * the whole push, one reorder used to stop every table from syncing.
+     * slot the other has not left yet, and the server refuses it.
      *
      * The first pass parks the batch's indexes far above anything a real position occupies, the
      * second writes the true ones into slots that are now certainly free. It costs one extra
@@ -232,31 +362,96 @@ async function push(
      */
     const orders = table.indexColumns ?? [];
     if (orders.length > 0 && live.length > 1) {
-      for (let i = 0; i < live.length; i += BATCH) {
-        await transport.upsert(
-          table.table,
-          live.slice(i, i + BATCH).map((row) => {
-            const parked = toRemote(table, row);
-            for (const column of orders) {
-              const value = parked[column];
-              if (typeof value === 'number') parked[column] = value + PUSH_PARK;
-            }
-            return parked;
-          }),
+      const park = (row: Row): Row => {
+        const parked = toRemote(table, row);
+        for (const column of orders) {
+          const value = parked[column];
+          if (typeof value === 'number') parked[column] = value + PUSH_PARK;
+        }
+        return parked;
+      };
+
+      /*
+       * A clash *in the parking band* is not a refusal of the row.
+       *
+       * It means a sibling is already parked on that value — left there by a run that died
+       * between the two passes, and holding a position this device has since given to another
+       * row. That sibling is in this batch too and is about to move, so the row that clashed
+       * is simply offered again once the others have gone. If it still cannot park, it takes
+       * its turn below regardless: where a row may wait says nothing about where it may live.
+       *
+       * Anything else the server objected to, it will object to again, and asking a second
+       * time would only fail another batch for nothing.
+       */
+      const sendParked = async (batch: readonly Row[]): Promise<Row[]> => {
+        const rejections = await transport.upsert(table.table, batch.map(park));
+        refuse(rejections.filter((rejection) => !isUniqueViolation(rejection.code)));
+        const clashed = new Set(
+          rejections.filter((rejection) => isUniqueViolation(rejection.code)).map((r) => r.id),
         );
+        return batch.filter((row) => clashed.has(String(row.id)));
+      };
+
+      const again: Row[] = [];
+      for (let i = 0; i < live.length; i += BATCH) {
+        again.push(...(await sendParked(live.slice(i, i + BATCH))));
+      }
+      for (let i = 0; i < again.length; i += BATCH) {
+        await sendParked(again.slice(i, i + BATCH));
       }
     }
 
-    for (let i = 0; i < live.length; i += BATCH) {
-      await transport.upsert(
-        table.table,
-        live.slice(i, i + BATCH).map((row) => toRemote(table, row)),
+    const placing = live.filter((row) => !waiting.has(String(row.id)));
+    for (let i = 0; i < placing.length; i += BATCH) {
+      const batch = placing.slice(i, i + BATCH);
+      pushed +=
+        batch.length -
+        refuse(
+          await transport.upsert(
+            table.table,
+            batch.map((row) => toRemote(table, row)),
+          ),
+        );
+    }
+  }
+
+  /*
+   * Put back what did not get through, before the cursor moves past it.
+   *
+   * "Dirty" means `updated_at` later than the cursor, and the cursor is about to become
+   * `startedAt`. A row left as it is would drop out of the queue for good, having never been
+   * sent. Holding the cursor back instead would keep it — and with it every other row this run
+   * *did* send, all of which would then go up again on every sync for as long as one row was
+   * stuck.
+   *
+   * So each one is stamped a millisecond past the cursor. That is all `updated_at` means on
+   * this side of the wire — "this device has something the server has not taken" — and it has
+   * to happen here, ahead of `writeCursors`: an app killed between the two leaves the rows
+   * queued under the old cursor, where the other order would have lost them.
+   *
+   * A row edited since the run began is already later than that and is left alone.
+   */
+  const retryAt = justAfter(startedAt);
+  for (const [name, ids] of unsent) {
+    const list = [...ids];
+    for (let i = 0; i < list.length; i += BATCH) {
+      const chunk = list.slice(i, i + BATCH);
+      await db.run(
+        `UPDATE ${name} SET updated_at = ?
+          WHERE id IN (${chunk.map(() => '?').join(', ')})
+            AND (updated_at IS NULL OR updated_at <= ?)`,
+        [retryAt, ...chunk, startedAt],
       );
     }
-
-    total += rows.length;
   }
-  return total;
+
+  return { pushed, refused };
+}
+
+function justAfter(timestamp: string): string {
+  const parsed = Date.parse(timestamp);
+  if (Number.isNaN(parsed)) return timestamp;
+  return new Date(parsed + 1).toISOString();
 }
 
 /* -------------------------------------------------------------------------- */
@@ -275,9 +470,15 @@ async function push(
  * without claiming a local edit happened. Copying the server's value into it instead is what made
  * every synced row look permanently dirty and shuttle back and forth on every run.
  *
- * A local edit made in the window between the push and this write is overwritten. That edit is
- * not lost — its local `updated_at` is later than `localStamp`, so the next run still sends it —
- * but for the moment between, the server's version is what is on screen.
+ * A row this device changed after the run began is left exactly as it is. The copy coming back
+ * is, at best, the version this run pushed a moment ago, and writing it would put the reps as
+ * they were before the correction back on screen and mark them as synced — the edit gone, and
+ * nothing left to say it had ever been made. Sync runs when the app returns to the foreground,
+ * which in the middle of a workout is exactly when someone is about to type. The row is still
+ * dirty, so the next run sends it and it wins there in the ordinary way.
+ *
+ * The same test protects a row the server refused: `push` stamps those just past `localStamp`
+ * to keep them queued, so the server's older copy does not replace the one it would not take.
  */
 async function upsertLocal(
   db: SqlExecutor,
@@ -287,11 +488,15 @@ async function upsertLocal(
 ): Promise<boolean> {
   const incoming = typeof row.updated_at === 'string' ? row.updated_at : null;
 
-  const existing = await db.get<{ remote_updated_at: string | null }>(
-    `SELECT remote_updated_at FROM ${table.table} WHERE id = ?`,
+  const existing = await db.get<{ remote_updated_at: string | null; updated_at: string | null }>(
+    `SELECT remote_updated_at, updated_at FROM ${table.table} WHERE id = ?`,
     [row.id],
   );
   if (existing && !isNewer(incoming, existing.remote_updated_at)) return false;
+  // Later than the run itself: typed while it was in flight, or refused by the server during
+  // it and stamped to be sent again. Either way this device holds something the server has not
+  // taken, and what the server is offering is the older copy. See the note above.
+  if (existing && isNewer(existing.updated_at, localStamp)) return false;
 
   // `updated_at` is dropped from the copied set and re-added with the local stamp: the incoming
   // value belongs in `remote_updated_at`, not in the column this device writes from its own clock.
@@ -529,6 +734,8 @@ function justBefore(timestamp: string): string {
 /**
  * One full sync. Safe to call again at any time — every write on both sides is an idempotent
  * upsert, so a run interrupted halfway leaves no partial state to repair, only work still to do.
+ *
+ * Resolving is not the same as everything having gone up: check `refused`.
  */
 export async function runSync(
   db: SqlExecutor,
@@ -545,9 +752,10 @@ export async function runSync(
 
   await transport.ensureProfile(userId);
 
-  const pushed = await push(db, transport, userId, lastSyncedAt);
-  // Only advanced once the push has fully succeeded. A throw above leaves the cursor where it
-  // was, so the next run re-offers the same rows rather than treating them as sent.
+  const { pushed, refused } = await push(db, transport, userId, lastSyncedAt, startedAt);
+  // Only advanced once the push has run to the end. A throw above leaves the cursor where it
+  // was, so the next run re-offers the same rows rather than treating them as sent. Rows the
+  // server refused do not hold it back — `push` has already queued those again by themselves.
   await writeCursors(db, userId, { lastPulledAt, lastSyncedAt: startedAt });
 
   const outcome = await pull(db, transport, lastPulledAt, startedAt);
@@ -558,6 +766,7 @@ export async function runSync(
     pushed,
     pulled: outcome.pulled,
     deferred: outcome.deferred,
+    refused,
     syncedAt: startedAt,
   };
 }

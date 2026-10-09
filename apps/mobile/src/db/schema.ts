@@ -26,7 +26,7 @@
  * TEXT (lexicographically sortable, which is what the history queries rely on).
  */
 
-export const SCHEMA_VERSION = 17;
+export const SCHEMA_VERSION = 18;
 
 /**
  * Incremental migrations, keyed by the version they upgrade TO.
@@ -324,6 +324,40 @@ CREATE INDEX IF NOT EXISTS locations_user_idx ON locations (user_id);
   // day written before today does — the same reasoning as the timing columns above.
   17: `
     ALTER TABLE plan_days ADD COLUMN rounds INTEGER;
+  `,
+
+  // Not a change of shape. A repair, run once, for a phone whose cloud copy had fallen behind
+  // without anyone being told.
+  //
+  // Two faults had let the server and the phone disagree about where rows sit. Removing an
+  // exercise or a set renumbered the ones after it and never marked them as changed, so the
+  // server kept the old positions. And a deletion was only sent if a pull had already confirmed
+  // the row, so a row pushed by a run that then failed stayed alive on the server after it was
+  // deleted here. Either one ends with the server refusing a row for a position it believes is
+  // taken, and until this version one refused row stopped every table from syncing.
+  //
+  // Both faults are fixed where they were made. That stops new damage and repairs none of the
+  // old: the rows already out of step are not marked as changed, so nothing would ever send
+  // them again. Hence the last statement. With no push cursor, the next sync offers the server
+  // everything this device holds, which is the one way to make the two agree that does not
+  // depend on knowing which rows went wrong.
+  //
+  // The four before it are for the same run. A deleted row gives up its position by parking at
+  // -rowid, but a pull writes the position the server holds back over that, and for a while the
+  // server kept a deleted row on its real one. Re-parking them here is what lets the next sync
+  // see that the server still has such a row on a live slot, and move it. (No semicolons in
+  // this comment, for the runner's sake.)
+  //
+  // OR IGNORE, because this runs at startup and a migration that throws leaves the app unable
+  // to open its own database. A row that cannot take the sentinel stays exactly where it is,
+  // which is no worse than before. Safe to run twice, and it does nothing on a new install,
+  // where the tables are empty.
+  18: `
+    UPDATE OR IGNORE plan_days          SET day_index   = -rowid WHERE deleted_at IS NOT NULL AND day_index   >= 0;
+    UPDATE OR IGNORE plan_day_exercises SET order_index = -rowid WHERE deleted_at IS NOT NULL AND order_index >= 0;
+    UPDATE OR IGNORE session_exercises  SET order_index = -rowid WHERE deleted_at IS NOT NULL AND order_index >= 0;
+    UPDATE OR IGNORE sets               SET set_index   = -rowid WHERE deleted_at IS NOT NULL AND set_index   >= 0;
+    UPDATE sync_state SET last_synced_at = NULL;
   `,
 };
 

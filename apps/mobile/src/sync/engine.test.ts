@@ -1,20 +1,29 @@
 /**
  * Sync tests against a real SQLite database and a fake server.
  *
- * The fake is a plain Map per table, not a mock with recorded expectations — it enforces the two
+ * The fake is a plain Map per table, not a mock with recorded expectations — it enforces the
  * things the real server enforces that the engine could get wrong (the server stamps its own
- * `updated_at`, and it rejects a child whose parent it has not seen), and is otherwise honest
- * storage. A test that asserts "we called upsert with these arguments" would pass just as
+ * `updated_at`, it refuses a child whose parent it has not seen, and it holds every ordered
+ * table to one row per position), and is otherwise honest storage. A test that asserts "we called upsert with these arguments" would pass just as
  * happily against an engine that syncs the wrong rows.
  */
 
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { SqlExecutor } from '../db/executor.js';
+import { MIGRATIONS } from '../db/schema.js';
 import { createTestExecutor } from '../db/testUtils.js';
-import { runSync, type SyncTransport } from './engine.js';
-import type { Row } from './rows.js';
-import { SYNC_TABLES } from './tables.js';
+import {
+  addExerciseToSession,
+  addSet,
+  deleteSession,
+  removeExerciseFromSession,
+  removeSet,
+  startSession,
+} from '../db/workouts.js';
+import { runSync, type RowRejection, type SyncTransport } from './engine.js';
+import { isRowRefusal, type Row } from './rows.js';
+import { SYNC_TABLES, SYNC_TABLE_BY_NAME } from './tables.js';
 
 const USER = '11111111-1111-4111-8111-111111111111';
 const OTHER_USER = '22222222-2222-4222-8222-222222222222';
@@ -58,7 +67,12 @@ interface FakeServer extends SyncTransport {
   seed(table: string, row: Row): void;
   /** Server clock, deliberately offset from the phone's — see the clock-skew test. */
   now: () => string;
+  /** The next upsert fails as a request, not as a row: no network, an expired session. */
   failNextUpsert: boolean;
+  /** Ids the server refuses outright, with the code it gives — a check constraint, say. */
+  refuse: Map<string, string>;
+  /** Every call that reached the server, for the tests that are about how many there were. */
+  calls: { op: 'upsert' | 'patch' | 'fetchByIds'; table: string; ids: string[] }[];
 }
 
 function createFakeServer(startAt = Date.parse('2026-03-01T00:00:00.000Z')): FakeServer {
@@ -72,9 +86,91 @@ function createFakeServer(startAt = Date.parse('2026-03-01T00:00:00.000Z')): Fak
     return t;
   };
 
+  /**
+   * Why the server will not take this row, or null if it will.
+   *
+   * Checked in the order Postgres checks: row-level security against the proposed row, then
+   * the constraints of the tuple, then the unique index as the row is written.
+   */
+  const objection = (
+    name: string,
+    payload: Row,
+    row: Row,
+  ): { code: string; message: string } | null => {
+    const forced = server.refuse.get(row.id as string);
+    if (forced) return { code: forced, message: `refused by the test with ${forced}` };
+
+    /*
+     * A child's ownership is proved through its parent, and a parent the server does not have
+     * proves nothing.
+     *
+     * The real policy is `EXISTS (SELECT 1 FROM workout_sessions ws WHERE ws.id = session_id
+     * AND ws.user_id = auth.uid())`, and it runs before the foreign key is ever looked at —
+     * which is why a missing parent reads as 42501 on a real phone and not as 23503.
+     */
+    const scope = SYNC_TABLE_BY_NAME.get(name)?.scope;
+    if (scope?.kind === 'parent') {
+      const parentId = row[scope.column];
+      if (typeof parentId === 'string' && !table(scope.table).has(parentId)) {
+        return {
+          code: '42501',
+          message: `new row violates row-level security policy for table "${name}"`,
+        };
+      }
+    }
+
+    /*
+     * NOT NULL is checked against the payload, even when the row already exists.
+     *
+     * This fake used to merge the payload over the stored row and conclude that an omitted
+     * column simply kept the server's value. Postgres does not work that way: an upsert is
+     * `INSERT ... ON CONFLICT DO UPDATE`, and the proposed insert tuple is checked against
+     * the table's constraints before the conflict is ever detected. Omitting a NOT NULL
+     * column therefore fails outright.
+     *
+     * Modelling the merge instead of the constraint is how a real bug shipped past this
+     * file: the fake agreed with the code rather than with the database, which is the one
+     * thing a fake must never do.
+     */
+    for (const column of REQUIRED_COLUMNS[name] ?? []) {
+      if (payload[column] === undefined || payload[column] === null) {
+        return {
+          code: '23502',
+          message: `null value in column "${column}" of relation "${name}" violates not-null constraint`,
+        };
+      }
+    }
+
+    /*
+     * UNIQUE (parent, index), checked per row within the statement.
+     *
+     * `onConflict: 'id'` resolves a clash on the primary key and nothing else, so a row
+     * moving into a slot a sibling has not vacated yet is a plain constraint violation —
+     * which is exactly what a reorder produces, and what this fake previously let through.
+     */
+    const unique = UNIQUE_ORDER[name];
+    if (unique) {
+      const clash = [...table(name).values()].find(
+        (other) =>
+          other.id !== row.id &&
+          other[unique.parent] === row[unique.parent] &&
+          other[unique.index] === row[unique.index],
+      );
+      if (clash) {
+        return {
+          code: '23505',
+          message: `duplicate key value violates unique constraint "${name}_${unique.index}_unique"`,
+        };
+      }
+    }
+    return null;
+  };
+
   const server: FakeServer = {
     now,
     failNextUpsert: false,
+    refuse: new Map(),
+    calls: [],
     rows: (name) => [...table(name).values()],
     seed(name, row) {
       table(name).set(row.id as string, { ...row, updated_at: row.updated_at ?? now() });
@@ -91,70 +187,62 @@ function createFakeServer(startAt = Date.parse('2026-03-01T00:00:00.000Z')): Fak
         server.failNextUpsert = false;
         throw new Error('server rejected the batch');
       }
+      server.calls.push({ op: 'upsert', table: name, ids: rows.map((row) => row.id as string) });
+
+      /*
+       * What the transport hands back after its own retry: the rows the server would not take,
+       * with every other row written.
+       *
+       * The real statement is all or nothing, and the real transport answers a failed batch by
+       * resending it a row at a time. Row by row in the same order reaches the same end state,
+       * because Postgres checks a unique index as each row lands rather than once at the end.
+       */
+      const rejections: RowRejection[] = [];
       for (const row of rows) {
-        /*
-         * NOT NULL is checked against the payload, even when the row already exists.
-         *
-         * This fake used to merge the payload over the stored row and conclude that an omitted
-         * column simply kept the server's value. Postgres does not work that way: an upsert is
-         * `INSERT ... ON CONFLICT DO UPDATE`, and the proposed insert tuple is checked against
-         * the table's constraints before the conflict is ever detected. Omitting a NOT NULL
-         * column therefore fails outright.
-         *
-         * Modelling the merge instead of the constraint is how a real bug shipped past this
-         * file: the fake agreed with the code rather than with the database, which is the one
-         * thing a fake must never do.
-         */
-        for (const column of REQUIRED_COLUMNS[name] ?? []) {
-          if (row[column] === undefined || row[column] === null) {
-            throw new Error(
-              `null value in column "${column}" of relation "${name}" violates not-null constraint`,
-            );
-          }
-        }
         const previous = table(name).get(row.id as string) ?? {};
-        const merged: Row = { ...previous, ...row, updated_at: now() };
-
-        /*
-         * UNIQUE (parent, index), checked per row within the statement.
-         *
-         * `onConflict: 'id'` resolves a clash on the primary key and nothing else, so a row
-         * moving into a slot a sibling has not vacated yet is a plain constraint violation —
-         * which is exactly what a reorder produces, and what this fake previously let through.
-         */
-        const unique = UNIQUE_ORDER[name];
-        if (unique) {
-          const clash = [...table(name).values()].find(
-            (other) =>
-              other.id !== merged.id &&
-              other[unique.parent] === merged[unique.parent] &&
-              other[unique.index] === merged[unique.index],
-          );
-          if (clash) {
-            throw new Error(
-              `duplicate key value violates unique constraint "${name}_${unique.index}_unique"`,
-            );
-          }
-        }
-
         // The real server stamps updated_at by trigger and ignores what the client sent. Modelling
         // that is the point of this fake: it is what makes the two-clock design testable.
+        const merged: Row = { ...previous, ...row, updated_at: now() };
+
+        const why = objection(name, row, merged);
+        if (why) {
+          rejections.push({ id: row.id as string, ...why });
+          continue;
+        }
         table(name).set(row.id as string, merged);
       }
+      return rejections;
     },
 
 
     async patch(name, rows) {
+      server.calls.push({ op: 'patch', table: name, ids: rows.map((row) => row.id as string) });
+      const rejections: RowRejection[] = [];
       for (const row of rows) {
         // A patch touches only the columns it carries, and a row the server does not have is
         // not an error — PostgREST matches nothing and reports success.
         const previous = table(name).get(row.id as string);
         if (!previous) continue;
+        const forced = server.refuse.get(row.id as string);
+        if (forced) {
+          rejections.push({ id: row.id as string, code: forced, message: `refused with ${forced}` });
+          continue;
+        }
         table(name).set(row.id as string, { ...previous, ...row, updated_at: now() });
       }
+      return rejections;
     },
 
-     
+
+    async fetchByIds(name, ids) {
+      server.calls.push({ op: 'fetchByIds', table: name, ids: [...ids] });
+      return ids.flatMap((id) => {
+        const row = table(name).get(id);
+        return row ? [{ ...row }] : [];
+      });
+    },
+
+
     async changedSince(name, since, limit) {
       return [...table(name).values()]
         .filter((r) => since === null || Date.parse(r.updated_at as string) > Date.parse(since))
@@ -959,5 +1047,674 @@ describe('pulling a reorder into a unique index', () => {
       `SELECT id FROM plan_days WHERE day_index < 1 AND deleted_at IS NULL`,
     );
     expect(parked).toEqual([]);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* The repository and the engine together                                      */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Everything above writes, by hand, the rows a repository function is *supposed* to leave
+ * behind. That is how a real fault got past this file: the test for a removed exercise stamped
+ * the survivor with a new `updated_at`, "exactly as `renumberExercises` does" — and
+ * `renumberExercises` did no such thing. The test agreed with the comment, the code agreed with
+ * neither, and a phone spent an unknown number of days syncing nothing.
+ *
+ * So these call the functions the screens call.
+ */
+describe('a workout edited the way the app edits it', () => {
+  let counter = 0;
+  const newId = () => `f0000000-0000-4000-8000-${String(++counter).padStart(12, '0')}`;
+  const at = (time: string) => localClock(`2026-02-01T${time}.000Z`);
+
+  beforeEach(() => {
+    counter = 0;
+  });
+
+  const liveOnServer = (server: FakeServer, table: string, index: string) =>
+    server
+      .rows(table)
+      .filter((row) => row.deleted_at === null || row.deleted_at === undefined)
+      .sort((a, b) => (a[index] as number) - (b[index] as number))
+      .map((row) => [row.id, row[index]]);
+
+  it('syncs an exercise added after another one was removed', async () => {
+    /*
+     * The failure on the phone:
+     *
+     *   upsert of row a23c5875-… on session_exercises failed: duplicate key value violates
+     *   unique constraint "session_exercises_session_order_unique"  (23505)
+     *
+     * Remove the first of three and the other two move up — on the phone. Unless they are
+     * marked as changed the server keeps them where they were, and the exercise added next
+     * takes position 3: free here, still occupied there.
+     */
+    const server = createFakeServer();
+    const session = await startSession(db, USER, newId, {}, at('10:00:00'));
+    const bench = await addExerciseToSession(db, newId, session, 'Bench Press', at('10:00:01'));
+    const row = await addExerciseToSession(db, newId, session, 'Barbell Row', at('10:00:02'));
+    const squat = await addExerciseToSession(db, newId, session, 'Squat', at('10:00:03'));
+    await runSync(db, server, USER, at('10:05:00'));
+
+    await removeExerciseFromSession(db, bench, at('10:10:00'));
+    await runSync(db, server, USER, at('10:15:00'));
+    const deadlift = await addExerciseToSession(db, newId, session, 'Deadlift', at('10:20:00'));
+    const result = await runSync(db, server, USER, at('10:25:00'));
+
+    expect(result.refused).toEqual([]);
+    expect(liveOnServer(server, 'session_exercises', 'order_index')).toEqual([
+      [row, 1],
+      [squat, 2],
+      [deadlift, 3],
+    ]);
+  });
+
+  it('syncs a set added after another one was removed', async () => {
+    const server = createFakeServer();
+    const session = await startSession(db, USER, newId, {}, at('10:00:00'));
+    const bench = await addExerciseToSession(db, newId, session, 'Bench Press', at('10:00:01'));
+    const first = await addSet(db, newId, bench, { weightKg: 60, reps: 8 }, at('10:00:02'));
+    const second = await addSet(db, newId, bench, { weightKg: 60, reps: 8 }, at('10:00:03'));
+    const third = await addSet(db, newId, bench, { weightKg: 60, reps: 7 }, at('10:00:04'));
+    await runSync(db, server, USER, at('10:05:00'));
+
+    await removeSet(db, first, at('10:10:00'));
+    await runSync(db, server, USER, at('10:15:00'));
+    const fourth = await addSet(db, newId, bench, { weightKg: 60, reps: 6 }, at('10:20:00'));
+    const result = await runSync(db, server, USER, at('10:25:00'));
+
+    expect(result.refused).toEqual([]);
+    expect(liveOnServer(server, 'sets', 'set_index')).toEqual([
+      [second, 1],
+      [third, 2],
+      [fourth, 3],
+    ]);
+  });
+
+  it('marks as changed only the rows a removal actually moved', async () => {
+    // Removing the last set moves nobody. Stamping the others anyway would send the whole
+    // exercise up again every time one row was touched.
+    const session = await startSession(db, USER, newId, {}, at('10:00:00'));
+    const bench = await addExerciseToSession(db, newId, session, 'Bench Press', at('10:00:01'));
+    const first = await addSet(db, newId, bench, { weightKg: 60, reps: 8 }, at('10:00:02'));
+    const second = await addSet(db, newId, bench, { weightKg: 60, reps: 8 }, at('10:00:03'));
+    const third = await addSet(db, newId, bench, { weightKg: 60, reps: 7 }, at('10:00:04'));
+
+    const live = () =>
+      db.all<{ id: string; set_index: number; updated_at: string }>(
+        `SELECT id, set_index, updated_at FROM sets WHERE deleted_at IS NULL ORDER BY set_index`,
+      );
+
+    await removeSet(db, third, at('10:10:00'));
+    expect(await live()).toEqual([
+      { id: first, set_index: 1, updated_at: '2026-02-01T10:00:02.000Z' },
+      { id: second, set_index: 2, updated_at: '2026-02-01T10:00:03.000Z' },
+    ]);
+
+    await removeSet(db, first, at('10:20:00'));
+    expect(await live()).toEqual([
+      { id: second, set_index: 1, updated_at: '2026-02-01T10:20:00.000Z' },
+    ]);
+  });
+
+  it('sends a deletion for a row whose own push was never confirmed', async () => {
+    /*
+     * The row goes up, and the run dies before the pull that would have recorded the fact. The
+     * phone has no `remote_updated_at` for it, which used to be read as "the server never had
+     * this" — so when the exercise was removed, its deletion was held back for good, and the
+     * row lived on in the cloud on the position its replacement was about to need.
+     */
+    const server = createFakeServer();
+    const session = await startSession(db, USER, newId, {}, at('10:00:00'));
+    const bench = await addExerciseToSession(db, newId, session, 'Bench Press', at('10:00:01'));
+
+    const dropsDuringPull: SyncTransport = {
+      ...server,
+      changedSince: async () => {
+        throw new Error('Network request failed');
+      },
+    };
+    await expect(runSync(db, dropsDuringPull, USER, at('10:05:00'))).rejects.toThrow();
+    expect(liveOnServer(server, 'session_exercises', 'order_index')).toEqual([[bench, 1]]);
+
+    await removeExerciseFromSession(db, bench, at('10:10:00'));
+    const curl = await addExerciseToSession(db, newId, session, 'Barbell Curl', at('10:11:00'));
+    const result = await runSync(db, server, USER, at('10:15:00'));
+
+    expect(result.refused).toEqual([]);
+    expect(liveOnServer(server, 'session_exercises', 'order_index')).toEqual([[curl, 1]]);
+    // And the pull that follows does not bring the deleted one back to life here.
+    const local = await db.get<{ deleted_at: string | null }>(
+      `SELECT deleted_at FROM session_exercises WHERE id = ?`,
+      [bench],
+    );
+    expect(local?.deleted_at).toBe('2026-02-01T10:10:00.000Z');
+  });
+
+  it('asks once about a discarded workout instead of deleting it row by row', async () => {
+    // Started and thrown away before any sync: a session, two exercises, four sets, and the
+    // server has none of them. Nothing to delete, and it should not take seven requests to
+    // establish that.
+    const server = createFakeServer();
+    const session = await startSession(db, USER, newId, {}, at('10:00:00'));
+    for (const key of ['Bench Press', 'Barbell Row']) {
+      const exercise = await addExerciseToSession(db, newId, session, key, at('10:00:01'));
+      await addSet(db, newId, exercise, { weightKg: 60, reps: 8 }, at('10:00:02'));
+      await addSet(db, newId, exercise, { weightKg: 60, reps: 8 }, at('10:00:03'));
+    }
+    await deleteSession(db, USER, session, at('10:01:00'));
+
+    const result = await runSync(db, server, USER, at('10:05:00'));
+
+    expect(result.pushed).toBe(0);
+    expect(server.calls.filter((call) => call.op === 'patch')).toEqual([]);
+    expect(server.calls.filter((call) => call.op === 'upsert')).toEqual([]);
+    expect(server.calls.filter((call) => call.op === 'fetchByIds').map((call) => call.table)).toEqual([
+      'workout_sessions',
+      'session_exercises',
+      'sets',
+    ]);
+    expect(server.rows('workout_sessions')).toEqual([]);
+  });
+});
+
+describe('a deleted row the server still keeps on a live position', () => {
+  it('is moved out of the way when its deletion is offered again', async () => {
+    /*
+     * Deletions sent before the tombstone band existed kept their index on the server. The row
+     * is deleted there and still occupies position 1 — and the unique constraint does not care
+     * that it is deleted.
+     */
+    const at = '2026-02-01T10:00:00.000Z';
+    const sessionId = await seedSession(at);
+    const { exerciseId } = await seedExerciseWithSet(sessionId, at);
+    const server = createFakeServer();
+    await runSync(db, server, USER, localClock('2026-02-01T11:00:00.000Z'));
+
+    const deletedAt = '2026-02-01T12:00:00.000Z';
+    await db.run(
+      `UPDATE session_exercises SET deleted_at = ?, updated_at = ?, order_index = -rowid WHERE id = ?`,
+      [deletedAt, deletedAt, exerciseId],
+    );
+    // What the old engine left behind: deleted, and still on its real position.
+    server.seed('session_exercises', {
+      ...server.rows('session_exercises')[0],
+      deleted_at: deletedAt,
+      order_index: 1,
+    });
+
+    await runSync(db, server, USER, localClock('2026-02-01T13:00:00.000Z'));
+
+    expect(server.rows('session_exercises')[0]?.order_index as number).toBeGreaterThan(1_000_000);
+  });
+
+  it('is left alone once it is out of the way', async () => {
+    const at = '2026-02-01T10:00:00.000Z';
+    const sessionId = await seedSession(at);
+    const { exerciseId } = await seedExerciseWithSet(sessionId, at);
+    const server = createFakeServer();
+    await runSync(db, server, USER, localClock('2026-02-01T11:00:00.000Z'));
+
+    const deletedAt = '2026-02-01T12:00:00.000Z';
+    await db.run(
+      `UPDATE session_exercises SET deleted_at = ?, updated_at = ?, order_index = -rowid WHERE id = ?`,
+      [deletedAt, deletedAt, exerciseId],
+    );
+    await runSync(db, server, USER, localClock('2026-02-01T13:00:00.000Z'));
+
+    // Offered again — as it would be after the repair in migration 18 — with nothing to do.
+    await db.run(`UPDATE sync_state SET last_synced_at = NULL`);
+    server.calls.length = 0;
+    await runSync(db, server, USER, localClock('2026-02-01T14:00:00.000Z'));
+
+    expect(server.calls.filter((call) => call.op === 'patch')).toEqual([]);
+  });
+});
+
+describe('a row the server refuses', () => {
+  const SESSION = 'aaaaaaaa-0000-4000-8000-000000000001';
+  const EXERCISE = 'bbbbbbbb-0000-4000-8000-000000000001';
+  const SET = 'cccccccc-0000-4000-8000-000000000001';
+  const WEIGH_IN = 'dddddddd-0000-4000-8000-000000000001';
+
+  async function seedWorkoutAndWeighIn(at: string) {
+    const sessionId = await seedSession(at);
+    await seedExerciseWithSet(sessionId, at);
+    await db.run(
+      `INSERT INTO body_metrics (id, user_id, measured_at, weight_kg, source, updated_at)
+         VALUES (?, ?, ?, 80.5, 'manual', ?)`,
+      [WEIGH_IN, USER, at, at],
+    );
+  }
+
+  it('does not stop the rows behind it', async () => {
+    /*
+     * The whole reason for this section. Tables go up in order, body_metrics last, so a single
+     * exercise the server would not take used to mean that no weigh-in reached the cloud
+     * either — on that run and on every run after it.
+     */
+    await seedWorkoutAndWeighIn('2026-02-01T10:00:00.000Z');
+    const server = createFakeServer();
+    server.refuse.set(EXERCISE, '23514');
+
+    const result = await runSync(db, server, USER, localClock('2026-02-01T11:00:00.000Z'));
+
+    expect(server.rows('workout_sessions').map((row) => row.id)).toEqual([SESSION]);
+    expect(server.rows('body_metrics').map((row) => row.id)).toEqual([WEIGH_IN]);
+    expect(result.refused.map((row) => [row.table, row.id, row.code])).toEqual([
+      ['session_exercises', EXERCISE, '23514'],
+    ]);
+    // The session and the weigh-in, and not the exercise or the set under it.
+    expect(result.pushed).toBe(2);
+  });
+
+  it('holds its children back rather than offering them to be refused too', async () => {
+    await seedWorkoutAndWeighIn('2026-02-01T10:00:00.000Z');
+    const server = createFakeServer();
+    server.refuse.set(EXERCISE, '23514');
+
+    const result = await runSync(db, server, USER, localClock('2026-02-01T11:00:00.000Z'));
+
+    expect(server.calls.filter((call) => call.table === 'sets')).toEqual([]);
+    // One refusal reported, not one per row that was waiting on it.
+    expect(result.refused).toHaveLength(1);
+  });
+
+  it('goes up with everything under it once the server will take it', async () => {
+    await seedWorkoutAndWeighIn('2026-02-01T10:00:00.000Z');
+    const server = createFakeServer();
+    server.refuse.set(EXERCISE, '23514');
+    await runSync(db, server, USER, localClock('2026-02-01T11:00:00.000Z'));
+
+    server.refuse.clear();
+    const retry = await runSync(db, server, USER, localClock('2026-02-01T12:00:00.000Z'));
+
+    expect(retry.refused).toEqual([]);
+    expect(server.rows('session_exercises').map((row) => row.id)).toEqual([EXERCISE]);
+    expect(server.rows('sets').map((row) => row.id)).toEqual([SET]);
+    // Only what was left behind — the session and the weigh-in are not sent a second time.
+    expect(retry.pushed).toBe(2);
+  });
+
+  it('keeps being offered for as long as it is refused, and nothing else is', async () => {
+    await seedWorkoutAndWeighIn('2026-02-01T10:00:00.000Z');
+    const server = createFakeServer();
+    server.refuse.set(EXERCISE, '23514');
+    await runSync(db, server, USER, localClock('2026-02-01T11:00:00.000Z'));
+    await runSync(db, server, USER, localClock('2026-02-01T12:00:00.000Z'));
+
+    server.calls.length = 0;
+    const third = await runSync(db, server, USER, localClock('2026-02-01T13:00:00.000Z'));
+
+    expect(third.refused.map((row) => row.id)).toEqual([EXERCISE]);
+    expect(server.calls.filter((call) => call.op === 'upsert')).toEqual([
+      { op: 'upsert', table: 'session_exercises', ids: [EXERCISE] },
+    ]);
+  });
+
+  it('is not overwritten by the copy the server does have', async () => {
+    /*
+     * The server holds an older version of the row and refuses the newer one. The pull that
+     * follows the push must not conclude that the server's copy is the one to keep: the edit on
+     * this device is the only copy of it there is.
+     */
+    await seedWorkoutAndWeighIn('2026-02-01T10:00:00.000Z');
+    const server = createFakeServer();
+    await runSync(db, server, USER, localClock('2026-02-01T11:00:00.000Z'));
+
+    await db.run(`UPDATE sets SET reps = 12, updated_at = ? WHERE id = ?`, [
+      '2026-02-01T12:00:00.000Z',
+      SET,
+    ]);
+    // Another device touched the same set, so the server's copy is newer than the last one
+    // this phone saw — and then the server refuses what this phone sends.
+    server.seed('sets', { ...server.rows('sets')[0], reps: 5, updated_at: undefined });
+    server.refuse.set(SET, '23514');
+
+    const result = await runSync(db, server, USER, localClock('2026-02-01T13:00:00.000Z'));
+
+    expect(result.refused.map((row) => row.id)).toEqual([SET]);
+    const local = await db.get<{ reps: number }>(`SELECT reps FROM sets WHERE id = ?`, [SET]);
+    expect(local?.reps).toBe(12);
+  });
+
+  it('still stops the run when the failure is not about a row', async () => {
+    // No network, an expired session: nothing after it would work either, and nothing may be
+    // treated as sent.
+    await seedWorkoutAndWeighIn('2026-02-01T10:00:00.000Z');
+    const server = createFakeServer();
+    server.failNextUpsert = true;
+
+    await expect(runSync(db, server, USER, localClock('2026-02-01T11:00:00.000Z'))).rejects.toThrow();
+
+    const retry = await runSync(db, server, USER, localClock('2026-02-01T12:00:00.000Z'));
+    expect(retry.pushed).toBe(4);
+  });
+
+  it('is refused for a missing parent the way the real server refuses it', async () => {
+    // A child whose session never reached the server. Row-level security answers before the
+    // foreign key is looked at, which is why the phone logged 42501 and not 23503.
+    const at = '2026-02-01T10:00:00.000Z';
+    const sessionId = await seedSession(at);
+    await seedExerciseWithSet(sessionId, at);
+    await runSync(db, createFakeServer(), USER, localClock('2026-02-01T11:00:00.000Z'));
+
+    // The phone believes the session went up. This server never received it — and only the
+    // exercise has changed since, so only the exercise is offered.
+    const withoutTheSession = createFakeServer();
+    await db.run(`UPDATE session_exercises SET notes = 'slow', updated_at = ? WHERE id = ?`, [
+      '2026-02-01T12:00:00.000Z',
+      EXERCISE,
+    ]);
+
+    const result = await runSync(
+      db,
+      withoutTheSession,
+      USER,
+      localClock('2026-02-01T13:00:00.000Z'),
+    );
+
+    expect(result.refused.map((row) => [row.table, row.code])).toEqual([
+      ['session_exercises', '42501'],
+    ]);
+  });
+});
+
+describe('something left parked by a run that died half way', () => {
+  it('does not keep a sibling from being placed', async () => {
+    /*
+     * A run parks a session's exercises and never gets to the second pass, so on the server
+     * they sit at 100001, 100002 and 100003. The phone then swaps the last two. Each now wants
+     * to wait on the value the other is still parked on — a clash both ways round, which no
+     * amount of retrying the first pass can undo.
+     *
+     * It does not need undoing. The positions they are actually going to, 2 and 3, are free,
+     * and a clash in the parking band must never be taken to mean the row itself was refused.
+     */
+    const at = '2026-02-01T10:00:00.000Z';
+    const sessionId = await seedSession(at);
+    const first = 'bbbbbbbb-0000-4000-8000-000000000001';
+    const second = 'bbbbbbbb-0000-4000-8000-000000000002';
+    const third = 'bbbbbbbb-0000-4000-8000-000000000003';
+    for (const [id, index] of [
+      [first, 1],
+      [second, 2],
+      [third, 3],
+    ] as const) {
+      await db.run(
+        `INSERT INTO session_exercises (id, session_id, exercise_key, order_index, updated_at)
+           VALUES (?, ?, 'Bench Press', ?, ?)`,
+        [id, sessionId, index, at],
+      );
+    }
+    const server = createFakeServer();
+    await runSync(db, server, USER, localClock('2026-02-01T11:00:00.000Z'));
+
+    // The state a dead run leaves: everything parked, nothing placed.
+    for (const row of server.rows('session_exercises')) {
+      server.seed('session_exercises', {
+        ...row,
+        order_index: (row.order_index as number) + 100_000,
+      });
+    }
+
+    // Swap the last two on the phone, by way of a spare position: SQLite holds the same
+    // unique index the server does.
+    await db.run(`UPDATE session_exercises SET order_index = 100, updated_at = ? WHERE id = ?`, [
+      '2026-02-01T12:00:00.000Z',
+      second,
+    ]);
+    await db.run(`UPDATE session_exercises SET order_index = 2, updated_at = ? WHERE id = ?`, [
+      '2026-02-01T12:00:00.000Z',
+      third,
+    ]);
+    await db.run(`UPDATE session_exercises SET order_index = 3, updated_at = ? WHERE id = ?`, [
+      '2026-02-01T12:00:01.000Z',
+      second,
+    ]);
+
+    const result = await runSync(db, server, USER, localClock('2026-02-01T13:00:00.000Z'));
+
+    expect(result.refused).toEqual([]);
+    const placed = server
+      .rows('session_exercises')
+      .filter((row) => (row.order_index as number) < 100_000)
+      .sort((a, b) => (a.order_index as number) - (b.order_index as number))
+      .map((row) => [row.id, row.order_index]);
+    expect(placed).toEqual([
+      [third, 2],
+      [second, 3],
+    ]);
+  });
+});
+
+describe('a row edited while the sync was running', () => {
+  it('is not put back to what was sent a moment earlier', async () => {
+    /*
+     * Sync runs when the app comes back to the foreground — which, mid-workout, is the moment
+     * someone is about to type. The set goes up with 8 reps, the reps are corrected to 10 while
+     * the request is in flight, and the pull hands the 8 straight back. Writing it would undo
+     * the correction and mark the row as synced, with nothing left to show it was ever made.
+     */
+    const at = '2026-02-01T10:00:00.000Z';
+    const sessionId = await seedSession(at);
+    const { setId } = await seedExerciseWithSet(sessionId, at);
+    const server = createFakeServer();
+
+    let typed = false;
+    const typesDuringTheRun: SyncTransport = {
+      ...server,
+      changedSince: async (table, since, limit) => {
+        if (!typed) {
+          typed = true;
+          await db.run(`UPDATE sets SET reps = 10, updated_at = ? WHERE id = ?`, [
+            '2026-02-01T11:00:02.000Z',
+            setId,
+          ]);
+        }
+        return server.changedSince(table, since, limit);
+      },
+    };
+
+    await runSync(db, typesDuringTheRun, USER, localClock('2026-02-01T11:00:00.000Z'));
+
+    const local = await db.get<{ reps: number }>(`SELECT reps FROM sets WHERE id = ?`, [setId]);
+    expect(local?.reps).toBe(10);
+
+    // And the correction is still on its way: the next run sends it.
+    await runSync(db, server, USER, localClock('2026-02-01T11:05:00.000Z'));
+    expect(server.rows('sets')[0]?.reps).toBe(10);
+  });
+});
+
+describe('telling a refused row from a failed request', () => {
+  it.each([
+    ['23505', 'a position another row holds'],
+    ['23503', 'a parent that is not there'],
+    ['23502', 'a required value left out'],
+    ['23514', 'a check constraint'],
+    ['22P02', 'a value the column cannot hold'],
+    ['42501', 'row-level security'],
+  ])('treats %s (%s) as being about the row', (code) => {
+    expect(isRowRefusal(code)).toBe(true);
+  });
+
+  it.each([
+    ['PGRST301', 'an expired session'],
+    ['PGRST204', 'a column the server does not know'],
+    ['', 'a request that never got an answer'],
+    ['57014', 'a statement that timed out'],
+  ])('treats %s (%s) as being about the whole run', (code) => {
+    expect(isRowRefusal(code)).toBe(false);
+  });
+
+  it('treats a missing code the same way', () => {
+    expect(isRowRefusal(null)).toBe(false);
+    expect(isRowRefusal(undefined)).toBe(false);
+  });
+});
+
+describe('the repair: migration 18, then one sync', () => {
+  /*
+   * A phone and a server that have drifted apart in each of the ways the old code allowed, all
+   * at once, in one workout. Nothing on the phone is marked as changed except the newest row —
+   * the one the server refuses, and which used to stop everything behind it.
+   *
+   * The repair is not clever. It forgets how far the push had got, so the next sync offers the
+   * server everything, and the engine's ordinary rules do the rest.
+   */
+  const SESSION = 'aaaaaaaa-0000-4000-8000-000000000001';
+  const id = (n: number) => `bbbbbbbb-0000-4000-8000-00000000000${n}`;
+  const SYNCED = '2026-02-01T10:00:00.000Z';
+
+  async function driftApart(server: FakeServer) {
+    await seedSession(SYNCED);
+    // Seven exercises, as first synced.
+    for (let n = 1; n <= 7; n++) {
+      await db.run(
+        `INSERT INTO session_exercises (id, session_id, exercise_key, order_index, updated_at)
+           VALUES (?, ?, ?, ?, ?)`,
+        [id(n), SESSION, `Exercise ${n}`, n, SYNCED],
+      );
+    }
+    await runSync(db, server, USER, localClock('2026-02-01T11:00:00.000Z'));
+
+    const later = '2026-02-01T12:00:00.000Z';
+    const park = (n: number) =>
+      db.run(`UPDATE session_exercises SET deleted_at = ?, order_index = -rowid WHERE id = ?`, [
+        later,
+        id(n),
+      ]);
+
+    // 1. Removed here, and the server was told while tombstones still kept their index: it
+    //    holds a deleted row on position 1. The pull then wrote that position back over the
+    //    sentinel, so the phone has it on a real slot too.
+    await park(1);
+    server.seed('session_exercises', { ...serverRow(server, id(1)), deleted_at: later });
+    await db.run(`UPDATE session_exercises SET order_index = 50 WHERE id = ?`, [id(1)]);
+
+    // 2. Removed here, and the server never told at all: it still has the row alive.
+    await park(2);
+
+    // 3. The survivors moved up to close the gaps — and were not marked as changed.
+    for (const [n, position] of [
+      [3, 1],
+      [4, 2],
+      [5, 3],
+      [6, 4],
+      [7, 5],
+    ] as const) {
+      await db.run(`UPDATE session_exercises SET order_index = ? WHERE id = ?`, [position, id(n)]);
+    }
+
+    // 4. A run died between its two passes and left two rows parked on the server.
+    for (const n of [3, 4]) {
+      const row = serverRow(server, id(n));
+      server.seed('session_exercises', { ...row, order_index: (row.order_index as number) + 100_000 });
+    }
+
+    // 5. And a new exercise, added at the next free position — free on the phone.
+    await db.run(
+      `INSERT INTO session_exercises (id, session_id, exercise_key, order_index, updated_at)
+         VALUES (?, ?, 'Exercise 8', 6, ?)`,
+      [id(8), SESSION, later],
+    );
+    await db.run(
+      `INSERT INTO sets (id, session_exercise_id, set_index, weight_kg, reps, is_warmup, to_failure, completed_at, updated_at)
+         VALUES ('cccccccc-0000-4000-8000-000000000008', ?, 1, 40, 10, 0, 0, ?, ?)`,
+      [id(8), later, later],
+    );
+  }
+
+  const serverRow = (server: FakeServer, rowId: string): Row => {
+    const row = server.rows('session_exercises').find((candidate) => candidate.id === rowId);
+    if (!row) throw new Error(`the server has no ${rowId}`);
+    return row;
+  };
+
+  const migrate = async (version: number) => {
+    for (const statement of (MIGRATIONS[version] ?? '').split(';')) {
+      if (statement.trim()) await db.exec(`${statement};`);
+    }
+  };
+
+  const liveHere = () =>
+    db.all<{ id: string; order_index: number }>(
+      `SELECT id, order_index FROM session_exercises WHERE deleted_at IS NULL ORDER BY order_index`,
+    );
+
+  const liveThere = (server: FakeServer) =>
+    server
+      .rows('session_exercises')
+      .filter((row) => row.deleted_at === null || row.deleted_at === undefined)
+      .map((row) => ({ id: row.id, order_index: row.order_index }))
+      .sort((a, b) => (a.order_index as number) - (b.order_index as number));
+
+  it('is the state the old code could not get out of', async () => {
+    // Without the repair the new exercise is refused: position 6 is where the server still
+    // has one of the rows that moved. The engine now reports that instead of stopping — which
+    // is better, and not enough, because nothing would ever send the rows in its way.
+    const server = createFakeServer();
+    await driftApart(server);
+
+    const result = await runSync(db, server, USER, localClock('2026-02-01T13:00:00.000Z'));
+
+    expect(result.refused.map((row) => [row.id, row.code])).toEqual([[id(8), '23505']]);
+  });
+
+  it('brings the server into line with the phone, with nothing refused', async () => {
+    const server = createFakeServer();
+    await driftApart(server);
+    const before = await liveHere();
+
+    await migrate(18);
+    const result = await runSync(db, server, USER, localClock('2026-02-01T13:00:00.000Z'));
+
+    expect(result.refused).toEqual([]);
+    expect(liveThere(server)).toEqual(before);
+    // The set under the new exercise, which had been waiting behind it.
+    expect(server.rows('sets').map((row) => row.session_exercise_id)).toContain(id(8));
+  });
+
+  it('changes nothing on the phone that the user would see', async () => {
+    const server = createFakeServer();
+    await driftApart(server);
+    const before = await liveHere();
+
+    await migrate(18);
+    await runSync(db, server, USER, localClock('2026-02-01T13:00:00.000Z'));
+
+    expect(await liveHere()).toEqual(before);
+    const deleted = await db.all<{ id: string }>(
+      `SELECT id FROM session_exercises WHERE deleted_at IS NOT NULL ORDER BY id`,
+    );
+    expect(deleted.map((row) => row.id)).toEqual([id(1), id(2)]);
+  });
+
+  it('leaves no deleted row on the server holding a position a live one could want', async () => {
+    const server = createFakeServer();
+    await driftApart(server);
+
+    await migrate(18);
+    await runSync(db, server, USER, localClock('2026-02-01T13:00:00.000Z'));
+
+    const tombstones = server
+      .rows('session_exercises')
+      .filter((row) => row.deleted_at !== null && row.deleted_at !== undefined);
+    expect(tombstones.map((row) => row.id).sort()).toEqual([id(1), id(2)]);
+    for (const row of tombstones) expect(row.order_index as number).toBeGreaterThan(1_000_000);
+  });
+
+  it('settles: the sync after that has nothing left to send', async () => {
+    const server = createFakeServer();
+    await driftApart(server);
+    await migrate(18);
+    await runSync(db, server, USER, localClock('2026-02-01T13:00:00.000Z'));
+
+    const next = await runSync(db, server, USER, localClock('2026-02-01T14:00:00.000Z'));
+
+    expect(next.pushed).toBe(0);
+    expect(next.refused).toEqual([]);
   });
 });

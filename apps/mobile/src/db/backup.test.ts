@@ -172,6 +172,30 @@ describe('restoreBackup', () => {
     expect(await db.all(`SELECT id FROM workout_sessions`)).toHaveLength(1);
   });
 
+  it('has the next sync send everything again', async () => {
+    /*
+     * A restored row carries the `updated_at` it was backed up with, which is older than the
+     * sync cursor nearly every time. Sync sends what is newer than the cursor — so without
+     * this the phone would hold the backup and the server would never be told.
+     */
+    await seed();
+    const file = await createBackup(db, USER, SCHEMA_VERSION);
+    await db.run(
+      `INSERT INTO sync_state (user_id, last_pulled_at, last_synced_at)
+         VALUES (?, '2026-06-02T00:00:00.000Z', '2026-06-02T00:00:00.000Z')`,
+      [USER],
+    );
+
+    await restoreBackup(db, file);
+
+    const cursors = await db.get<{ last_pulled_at: string | null; last_synced_at: string | null }>(
+      `SELECT last_pulled_at, last_synced_at FROM sync_state WHERE user_id = ?`,
+      [USER],
+    );
+    // Only the push cursor. What has been pulled is still what has been pulled.
+    expect(cursors).toEqual({ last_pulled_at: '2026-06-02T00:00:00.000Z', last_synced_at: null });
+  });
+
   it('restores an older backup that lacks a newer column', async () => {
     await seed();
     const file = await createBackup(db, USER, SCHEMA_VERSION);

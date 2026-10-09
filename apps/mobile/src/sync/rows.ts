@@ -46,11 +46,32 @@ export function earlierOf(a: string | null, b: string | null): string | null {
 }
 
 /**
- * SQLite row -> the JSON body PostgREST expects.
+ * Did the server refuse this one row, as opposed to the request not working at all?
  *
- * Only the declared columns travel: a local-only column that happens to share a table would
- * otherwise be sent and rejected as unknown by PostgREST, failing the whole batch.
+ * The difference decides what a sync does next. A row the server will not take — its slot is
+ * occupied, its parent is not there, a value fails a check — is a fact about that row: it is
+ * set aside and everything else carries on. A dead connection or an expired session is a fact
+ * about the whole run, and carrying on would only fail every remaining request the same way.
+ *
+ * Postgres says which it is in the error code:
+ *
+ *  - class `23`, integrity constraints: unique, foreign key, not-null, check;
+ *  - class `22`, a value the column cannot hold;
+ *  - `42501`, which is what row-level security answers with.
+ *
+ * Anything else — no code at all, or one of PostgREST's own (`PGRST301` for an expired token) —
+ * is not about a row, and is deliberately not guessed at.
  */
+export function isRowRefusal(code: string | null | undefined): boolean {
+  if (!code) return false;
+  return /^(22|23)[0-9A-Z]{3}$/.test(code) || code === '42501';
+}
+
+/** `23505`: the row wants a value that a unique constraint says another row already holds. */
+export function isUniqueViolation(code: string | null | undefined): boolean {
+  return code === '23505';
+}
+
 /**
  * Where a deleted row's ordering column is sent to live.
  *
@@ -63,6 +84,12 @@ export function earlierOf(a: string | null, b: string | null): string | null {
  */
 const TOMBSTONE_PARK = 1_000_000;
 
+/**
+ * SQLite row -> the JSON body PostgREST expects.
+ *
+ * Only the declared columns travel: a local-only column that happens to share a table would
+ * otherwise be sent and rejected as unknown by PostgREST, failing the whole batch.
+ */
 export function toRemote(table: SyncTable, row: Row): Row {
   const out: Row = {};
   /*

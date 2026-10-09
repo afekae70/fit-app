@@ -220,6 +220,19 @@ export async function restoreBackup(db: SqlExecutor, file: BackupFile): Promise<
       }
     }
 
+    /*
+     * Have the next sync send everything again.
+     *
+     * Sync pushes what is newer than its cursor, and a restored row carries the `updated_at` it
+     * was backed up with — older than the cursor, nearly always. Left alone, the phone would
+     * hold the backup while the server went on holding whatever it had before: a restored
+     * workout the server never received, and under it exercises the server then refuses,
+     * because their parent is not there.
+     *
+     * Only the push cursor. What has been pulled is still what has been pulled.
+     */
+    await db.run(`UPDATE sync_state SET last_synced_at = NULL`);
+
     await db.exec('COMMIT');
   } catch (error) {
     // Leaves the database exactly as it was. A half-restored history is worse than a failed

@@ -34,6 +34,11 @@ export type SyncStatus =
   /** No Supabase project configured — this build is local-only and that is not an error. */
   | { kind: 'unconfigured' }
   | { kind: 'idle'; lastSyncedAt: string | null }
+  /**
+   * The run finished, and the server would not take some of it. Everything else went up and
+   * came down; the rows it refused are still on this device and will be offered again.
+   */
+  | { kind: 'partial'; refused: number; lastSyncedAt: string | null }
   | { kind: 'syncing' }
   | { kind: 'offline'; lastSyncedAt: string | null }
   | { kind: 'error'; message: string; lastSyncedAt: string | null };
@@ -45,6 +50,9 @@ interface SyncState {
 }
 
 const SyncContext = createContext<SyncState | null>(null);
+
+/** How many refused rows are written to the log from one run. */
+const REFUSALS_LOGGED = 20;
 
 export function SyncProvider({ userId, children }: { userId: string; children: ReactNode }) {
   const [status, setStatus] = useState<SyncStatus>(() =>
@@ -79,9 +87,27 @@ export function SyncProvider({ userId, children }: { userId: string; children: R
       // one that ran and moved nothing look identical from outside, and telling them apart is
       // most of diagnosing "it still is not working".
       console.log(
-        `[sync] ok: pushed=${result.pushed} pulled=${result.pulled} deferred=${result.deferred}`,
+        `[sync] ok: pushed=${result.pushed} pulled=${result.pulled} deferred=${result.deferred}` +
+          ` refused=${result.refused.length}`,
       );
-      setStatus({ kind: 'idle', lastSyncedAt: result.syncedAt });
+      /*
+       * Each refusal on a line of its own, with the table, the row and the server's reason.
+       *
+       * A refused row no longer stops the run, which is the point — and also means the one
+       * loud failure that used to announce it is gone. Without these lines a row could sit on
+       * the phone for weeks behind a status that reads as nothing much. Capped, because a
+       * refused parent takes its children with it and the first few say what is wrong.
+       */
+      for (const row of result.refused.slice(0, REFUSALS_LOGGED)) {
+        console.warn(
+          `[sync] refused: ${row.table} ${row.id} code=${row.code ?? 'none'} ${row.message}`,
+        );
+      }
+      setStatus(
+        result.refused.length > 0
+          ? { kind: 'partial', refused: result.refused.length, lastSyncedAt: result.syncedAt }
+          : { kind: 'idle', lastSyncedAt: result.syncedAt },
+      );
       return result;
     } catch (error) {
       // A failed sync is genuinely routine — a tunnel, a dead hotspot, an expired token being

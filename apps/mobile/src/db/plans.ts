@@ -309,22 +309,40 @@ export async function removePlanDay(
     [at, at, planDayId],
   );
 
-  await closeDayGaps(db, day.plan_id);
+  await closeDayGaps(db, day.plan_id, clock);
 }
 
-/** Renumber a plan's live days 1..N in their current order, in two passes — see removePlanDay. */
-async function closeDayGaps(db: SqlExecutor, planId: string): Promise<void> {
-  const remaining = await db.all<{ id: string }>(
-    `SELECT id FROM plan_days WHERE plan_id = ? AND deleted_at IS NULL ORDER BY day_index`,
+/**
+ * Renumber a plan's live days 1..N in their current order, in two passes — see removePlanDay.
+ *
+ * A day whose index shifts gets a new `updated_at`. Sync sends only what is newer than its
+ * cursor, so a day renumbered without a new stamp keeps its old position on the server, and the
+ * next day added here lands on a slot the server still considers taken — a unique violation
+ * that refuses the new row. Days already in the right place are left alone.
+ */
+async function closeDayGaps(db: SqlExecutor, planId: string, clock: Clock): Promise<void> {
+  const remaining = await db.all<{ id: string; position: number }>(
+    `SELECT id, day_index AS position FROM plan_days
+      WHERE plan_id = ? AND deleted_at IS NULL ORDER BY day_index`,
     [planId],
   );
+  if (remaining.every((row, offset) => row.position === offset + 1)) return;
 
+  const at = clock();
   const PARK = 100000;
   for (const [offset, row] of remaining.entries()) {
     await db.run(`UPDATE plan_days SET day_index = ? WHERE id = ?`, [PARK + offset, row.id]);
   }
   for (const [offset, row] of remaining.entries()) {
-    await db.run(`UPDATE plan_days SET day_index = ? WHERE id = ?`, [offset + 1, row.id]);
+    if (row.position === offset + 1) {
+      await db.run(`UPDATE plan_days SET day_index = ? WHERE id = ?`, [offset + 1, row.id]);
+    } else {
+      await db.run(`UPDATE plan_days SET day_index = ?, updated_at = ? WHERE id = ?`, [
+        offset + 1,
+        at,
+        row.id,
+      ]);
+    }
   }
 }
 
@@ -356,7 +374,7 @@ export async function movePlanDayToPlan(
     clock(),
     planDayId,
   ]);
-  await closeDayGaps(db, day.plan_id);
+  await closeDayGaps(db, day.plan_id, clock);
 }
 
 /**
@@ -557,11 +575,13 @@ export async function removePlanDayExercise(
     [at, at, id],
   );
 
-  const remaining = await db.all<{ id: string }>(
-    `SELECT id FROM plan_day_exercises WHERE plan_day_id = ? AND deleted_at IS NULL
+  const remaining = await db.all<{ id: string; position: number }>(
+    `SELECT id, order_index AS position FROM plan_day_exercises
+      WHERE plan_day_id = ? AND deleted_at IS NULL
       ORDER BY order_index`,
     [row.plan_day_id],
   );
+  if (remaining.every((entry, offset) => entry.position === offset + 1)) return;
 
   const PARK = 100000;
   for (const [offset, entry] of remaining.entries()) {
@@ -570,11 +590,20 @@ export async function removePlanDayExercise(
       entry.id,
     ]);
   }
+  // Whatever moved is stamped, so that sync sends its new position — see closeDayGaps.
   for (const [offset, entry] of remaining.entries()) {
-    await db.run(`UPDATE plan_day_exercises SET order_index = ? WHERE id = ?`, [
-      offset + 1,
-      entry.id,
-    ]);
+    if (entry.position === offset + 1) {
+      await db.run(`UPDATE plan_day_exercises SET order_index = ? WHERE id = ?`, [
+        offset + 1,
+        entry.id,
+      ]);
+    } else {
+      await db.run(`UPDATE plan_day_exercises SET order_index = ?, updated_at = ? WHERE id = ?`, [
+        offset + 1,
+        at,
+        entry.id,
+      ]);
+    }
   }
 }
 

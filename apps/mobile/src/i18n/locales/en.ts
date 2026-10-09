@@ -429,6 +429,7 @@ export const en = {
     title: 'Cloud sync',
     state: {
       idle: 'Up to date',
+      partial: 'Partly synced',
       syncing: 'Syncing…',
       offline: 'No connection',
       error: 'Sync failed',
@@ -437,6 +438,8 @@ export const en = {
     detailLast: 'Last updated {{time}}',
     detailNever: 'Not yet synced from this device',
     detailSyncing: 'Sending and receiving changes…',
+    detailPartial:
+      'Some of your data ({{count}}) was not saved to the cloud. It is all still on this device, and sync will try again.',
     syncNow: 'Sync now',
     syncing: 'Syncing…',
   },

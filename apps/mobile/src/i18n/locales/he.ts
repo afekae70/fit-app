@@ -422,6 +422,7 @@ export const he = {
     title: 'סנכרון ענן',
     state: {
       idle: 'מסונכרן',
+      partial: 'סונכרן חלקית',
       syncing: 'מסנכרן…',
       offline: 'אין חיבור',
       error: 'הסנכרון נכשל',
@@ -430,6 +431,8 @@ export const he = {
     detailLast: 'עודכן לאחרונה {{time}}',
     detailNever: 'עוד לא סונכרן מהמכשיר הזה',
     detailSyncing: 'מעלה ומוריד שינויים…',
+    detailPartial:
+      'חלק מהנתונים ({{count}}) לא נשמרו בענן. הכול שמור במכשיר, והסנכרון ינסה שוב.',
     syncNow: 'סנכרן עכשיו',
     syncing: 'מסנכרן…',
   },
