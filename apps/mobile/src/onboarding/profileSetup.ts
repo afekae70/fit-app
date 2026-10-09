@@ -66,6 +66,16 @@ export interface SetupProfile {
  * saved all four. One that never did is asked once, which is the right outcome rather than an
  * accident: it has been shown targets built on someone else's body.
  */
+/**
+ * Has this phone ever compared its profile with the server's?
+ *
+ * Until it has, an empty profile says nothing about the account — only about the phone. See
+ * `OnboardingGate` for what is done about that.
+ */
+export function hasMetServer(profile: { synced_json: string | null } | null): boolean {
+  return profile !== null && profile.synced_json !== null;
+}
+
 export function needsProfileSetup(profile: SetupProfile | null): boolean {
   if (!profile) return true;
   return (

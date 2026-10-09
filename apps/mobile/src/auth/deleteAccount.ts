@@ -16,6 +16,19 @@
  *
  * The server side is one function, `delete_my_account` (apps/api/drizzle/0006), which deletes the
  * caller and nothing else. Everything the account owns goes with it by cascade.
+ *
+ * ## The one thing that has to go first
+ *
+ * Files. A profile picture is kept in file storage, which the cascade does not reach, and it
+ * can only be deleted by the account that owns it — which, a moment after the account is
+ * deleted, no longer exists to ask. So the files are removed before the account, while there
+ * is still a session to remove them with.
+ *
+ * That bends "if the server call fails, nothing has happened": the pictures can be gone with
+ * the account still standing. `afterServerRefused` is what puts that right — it is told, and
+ * arranges for the picture still on this phone to be sent back. And it is not allowed to stop
+ * a deletion: if the files cannot be removed the account is deleted regardless, because being
+ * unable to leave is worse than a picture nobody else can read being left behind.
  */
 
 import type { SqlExecutor } from '../db/executor.js';
@@ -73,6 +86,10 @@ export interface DeleteAccountInput {
   userId: string;
   /** Things kept outside the database for this user — a profile picture, saved switches. */
   clearDeviceState?: (userId: string) => Promise<void>;
+  /** The account's files on the server. Run first; see the note at the top of the file. */
+  removeServerFiles?: (userId: string) => Promise<void>;
+  /** The files were removed and the account then was not. Undo what can be undone. */
+  afterServerRefused?: (userId: string) => Promise<void>;
 }
 
 /** Delete the signed-in account. See the note at the top of the file for the order of things. */
@@ -81,7 +98,16 @@ export async function deleteAccount({
   db,
   userId,
   clearDeviceState,
+  removeServerFiles,
+  afterServerRefused,
 }: DeleteAccountInput): Promise<DeleteAccountOutcome> {
+  const filesRemoved = removeServerFiles
+    ? await removeServerFiles(userId).then(
+        () => true,
+        () => false,
+      )
+    : false;
+
   let error: { code?: string; message?: string } | null;
   try {
     ({ error } = await client.rpc('delete_my_account'));
@@ -89,7 +115,10 @@ export async function deleteAccount({
     // A thrown request is a request that did not arrive, as far as anyone here can tell.
     error = { message: thrown instanceof Error ? thrown.message : 'network request failed' };
   }
-  if (error) return interpretDeletionError(error);
+  if (error) {
+    if (filesRemoved) await afterServerRefused?.(userId).catch(() => undefined);
+    return interpretDeletionError(error);
+  }
 
   // The account no longer exists. Everything from here is cleaning up after it, and none of it
   // may turn a deletion that happened into one that is reported as having failed.

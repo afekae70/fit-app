@@ -28,6 +28,7 @@ import { DEFAULT_UNIT_PREFERENCE, parseUnitPreference, type UnitPreference } fro
 
 import { getProfile, saveProfile } from './db/metrics.js';
 import { getExecutor } from './db/provider.js';
+import { onProfilePulled } from './sync/profileEvents.js';
 
 interface UnitsContextValue {
   unit: UnitPreference;
@@ -44,14 +45,21 @@ export function UnitsProvider({ userId, children }: { userId: string; children: 
 
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
-      const db = await getExecutor();
-      const profile = await getProfile(db, userId);
-      if (cancelled) return;
-      setUnitState(parseUnitPreference(profile?.unit_preference));
-    })();
+    const load = () => {
+      void (async () => {
+        const db = await getExecutor();
+        const profile = await getProfile(db, userId);
+        if (cancelled) return;
+        setUnitState(parseUnitPreference(profile?.unit_preference));
+      })();
+    };
+    load();
+    // The preference can arrive after this has mounted: on a new phone the profile comes down
+    // from the server a moment after sign-in, and until then there is nothing to read here.
+    const stop = onProfilePulled(load);
     return () => {
       cancelled = true;
+      stop();
     };
   }, [userId]);
 

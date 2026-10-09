@@ -28,6 +28,7 @@ import { AppState, type AppStateStatus } from 'react-native';
 import { getSupabaseClient } from '../auth/client.js';
 import { getExecutor } from '../db/provider.js';
 import { runSync, type SyncResult } from './engine.js';
+import { syncProfileNow } from './profileSyncRunner.js';
 import { createSupabaseTransport } from './transport.js';
 
 export type SyncStatus =
@@ -103,6 +104,11 @@ export function SyncProvider({ userId, children }: { userId: string; children: R
           `[sync] refused: ${row.table} ${row.id} code=${row.code ?? 'none'} ${row.message}`,
         );
       }
+      // The profile and its picture, which are not rows in a table and sync by rules of their
+      // own (see profileSync.ts). After the training data, because that run is what makes sure
+      // the account has a row on the server at all. It reports for itself and never throws:
+      // whatever becomes of it, the result above stands.
+      await syncProfileNow(userId);
       setStatus(
         result.refused.length > 0
           ? { kind: 'partial', refused: result.refused.length, lastSyncedAt: result.syncedAt }
@@ -131,6 +137,9 @@ export function SyncProvider({ userId, children }: { userId: string; children: R
           detail.code ? `code=${detail.code}` : '',
           detail.details ? `details=${detail.details}` : '',
         );
+        // The server answered, and something about the training data was wrong. That is no
+        // reason for the profile to wait as well.
+        await syncProfileNow(userId);
       }
       setStatus(
         offline

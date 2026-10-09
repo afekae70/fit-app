@@ -44,6 +44,10 @@ export interface ProfileRow {
   goal: string | null;
   unit_preference: string | null;
   updated_at: string;
+  /** Which profile picture is on this phone; null is none. See `setAvatarVersion`. */
+  avatar_version: string | null;
+  /** What this phone and the server last agreed on. Sync's own; see sync/profileSync.ts. */
+  synced_json: string | null;
 }
 
 export interface ProfileInput {
@@ -122,6 +126,32 @@ export async function saveProfile(
 
   params.push(userId);
   await db.run(`UPDATE profile SET ${assignments.join(', ')} WHERE user_id = ?`, params);
+}
+
+/**
+ * Record which profile picture is on this phone, or — with null — that there is none.
+ *
+ * The picture itself is a file, kept outside the database. This is its name tag: a value that
+ * changes whenever the picture does, so the phone and the server can tell whether they are
+ * holding the same one without comparing two images. Called by the picker when the user
+ * chooses or removes a picture, which is what makes sync carry the change.
+ *
+ * Creates the profile row if the account has none yet, like `saveProfile`: someone can choose
+ * a picture before they have ever filled anything in.
+ */
+export async function setAvatarVersion(
+  db: SqlExecutor,
+  userId: string,
+  version: string | null,
+  clock: Clock = defaultClock,
+): Promise<void> {
+  const now = clock();
+  await db.run(`INSERT OR IGNORE INTO profile (user_id, updated_at) VALUES (?, ?)`, [userId, now]);
+  await db.run(`UPDATE profile SET avatar_version = ?, updated_at = ? WHERE user_id = ?`, [
+    version,
+    now,
+    userId,
+  ]);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -211,7 +241,10 @@ export async function listBodyMetrics(
   );
 }
 
-export async function getLatestWeight(db: SqlExecutor, userId: string): Promise<BodyMetricRow | null> {
+export async function getLatestWeight(
+  db: SqlExecutor,
+  userId: string,
+): Promise<BodyMetricRow | null> {
   return db.get<BodyMetricRow>(
     `SELECT * FROM body_metrics
       WHERE user_id = ? AND weight_kg IS NOT NULL AND deleted_at IS NULL
@@ -316,7 +349,8 @@ export function summariseComposition(
     bmiCategory: bmiCategory(bmiValue),
     bodyFatPct,
     bodyFatIsEstimate,
-    leanMassKg: bodyFatPct === null ? null : Number(leanBodyMassKg(weightKg, bodyFatPct).toFixed(1)),
+    leanMassKg:
+      bodyFatPct === null ? null : Number(leanBodyMassKg(weightKg, bodyFatPct).toFixed(1)),
   };
 }
 
@@ -366,8 +400,7 @@ export type TargetsGap =
   | 'needs_bmr_formula_sex';
 
 export type TargetsResult =
-  | { ok: true; targets: ComputedTargets }
-  | { ok: false; missing: TargetsGap };
+  { ok: true; targets: ComputedTargets } | { ok: false; missing: TargetsGap };
 
 /**
  * Compute current targets from the profile and the most recent weight.

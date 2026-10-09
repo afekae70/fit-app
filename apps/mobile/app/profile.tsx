@@ -12,7 +12,7 @@
 
 import { router } from 'expo-router';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CaretLeft, CaretRight } from 'phosphor-react-native';
 import {
@@ -34,7 +34,8 @@ import { useAuth } from '../src/auth/AuthProvider.js';
 import { useAccountRole } from '../src/coaching/useAccountRole.js';
 import { useActionSheet } from '../src/components/ActionSheetProvider.js';
 import { RoleBadge } from '../src/components/RoleBadge.js';
-import { loadAvatar, pickAvatar, removeAvatar } from '../src/profile/avatar.js';
+import { pickAvatar, removeAvatar } from '../src/profile/avatar.js';
+import { useAvatar } from '../src/profile/useAvatar.js';
 import { useCurrentUserId } from '../src/auth/CurrentUserProvider.js';
 import { useUnit } from '../src/UnitsProvider.js';
 import { formatBodyWeight, weightUnitKey } from '../src/units.js';
@@ -58,13 +59,9 @@ export default function ProfileScreen() {
 
   const [totals, setTotals] = useState({ workouts: 0, streakWeeks: 0, prs: 0 });
   const [weightKg, setWeightKg] = useState<number | null>(null);
-  const [avatarUri, setAvatarUri] = useState<string | null>(null);
+  const avatarUri = useAvatar(userId);
   const { ask, notify } = useActionSheet();
   const role = useAccountRole(userId);
-
-  useEffect(() => {
-    void loadAvatar(userId).then(setAvatarUri);
-  }, [userId]);
 
   /** Tap the picture: choose one, or with one already set, replace or remove it. */
   const changeAvatar = () => {
@@ -79,14 +76,12 @@ export default function ProfileScreen() {
         });
         if (choice === 1) {
           await removeAvatar(userId);
-          setAvatarUri(null);
           return;
         }
         if (choice !== 0) return;
       }
       try {
-        const uri = await pickAvatar(userId);
-        if (uri) setAvatarUri(uri);
+        await pickAvatar(userId);
       } catch {
         await notify({ message: t('profileScreen.photoFailed') });
       }
@@ -123,10 +118,7 @@ export default function ProfileScreen() {
   return (
     <ScrollView
       style={styles.screen}
-      contentContainerStyle={[
-        styles.content,
-        { paddingTop: 8, paddingBottom: insets.bottom + 28 },
-      ]}
+      contentContainerStyle={[styles.content, { paddingTop: 8, paddingBottom: insets.bottom + 28 }]}
     >
       <View style={styles.identity}>
         <Pressable

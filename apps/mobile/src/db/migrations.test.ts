@@ -72,7 +72,10 @@ CREATE TABLE plan_day_exercises (
 
 /** Mirrors db/index.ts: statement at a time, tolerating "already exists" the same way. */
 function applyMigration(db: { exec(sql: string): void }, sql: string): void {
-  for (const statement of sql.split(';').map((s) => s.trim()).filter(Boolean)) {
+  for (const statement of sql
+    .split(';')
+    .map((s) => s.trim())
+    .filter(Boolean)) {
     try {
       db.exec(`${statement};`);
     } catch (error) {
@@ -115,7 +118,9 @@ function seededV6Database() {
  */
 function startUpLikeTheApp(db: { exec(sql: string): void }): void {
   db.exec(CREATE_SCHEMA_SQL.replace(/PRAGMA journal_mode = WAL;/, ''));
-  for (const version of Object.keys(MIGRATIONS).map(Number).sort((a, b) => a - b)) {
+  for (const version of Object.keys(MIGRATIONS)
+    .map(Number)
+    .sort((a, b) => a - b)) {
     applyMigration(db, MIGRATIONS[version] ?? '');
   }
 }
@@ -188,8 +193,7 @@ describe('migration 7 — sync columns', () => {
       ['plan_day_exercises', 'x1'],
     ] as const) {
       const row = db.prepare(`SELECT id FROM ${table} WHERE id = ?`).get(id as never) as
-        | { id: string }
-        | undefined;
+        { id: string } | undefined;
       expect(row?.id, table).toBe(id);
     }
 
@@ -227,7 +231,9 @@ describe('migration 7 — sync columns', () => {
     const db = seededV6Database();
     applyMigration(db, MIGRATIONS[7] ?? '');
 
-    db.exec(`INSERT INTO sync_state (user_id, last_pulled_at) VALUES ('u1', '2026-01-01T00:00:00Z')`);
+    db.exec(
+      `INSERT INTO sync_state (user_id, last_pulled_at) VALUES ('u1', '2026-01-01T00:00:00Z')`,
+    );
     const row = db.prepare(`SELECT last_pulled_at FROM sync_state WHERE user_id = 'u1'`).get() as {
       last_pulled_at: string;
     };
@@ -353,9 +359,7 @@ describe('migration 10 — unit preference', () => {
     // single place that turns the absence into a usable value.
     const db = seededV6Database();
     startUpLikeTheApp(db);
-    db.exec(
-      `INSERT INTO profile (user_id, updated_at) VALUES ('u1', '2026-01-01T09:00:00.000Z');`,
-    );
+    db.exec(`INSERT INTO profile (user_id, updated_at) VALUES ('u1', '2026-01-01T09:00:00.000Z');`);
 
     const row = db.prepare(`SELECT unit_preference FROM profile WHERE user_id = 'u1'`).get() as {
       unit_preference: string | null;
@@ -475,7 +479,9 @@ describe('migration 15 — timed workouts', () => {
     startUpLikeTheApp(db);
 
     db.exec(`UPDATE plan_days SET work_seconds = 50, rest_seconds = 10 WHERE id = 'd1'`);
-    const row = db.prepare(`SELECT work_seconds, rest_seconds FROM plan_days WHERE id = 'd1'`).get() as {
+    const row = db
+      .prepare(`SELECT work_seconds, rest_seconds FROM plan_days WHERE id = 'd1'`)
+      .get() as {
       work_seconds: number;
       rest_seconds: number;
     };
@@ -488,7 +494,9 @@ describe('migration 15 — timed workouts', () => {
     // the update. NULL is the only honest value for a day that was never timed.
     const db = seededV6Database();
     startUpLikeTheApp(db);
-    const row = db.prepare(`SELECT work_seconds, rest_seconds, name FROM plan_days WHERE id = 'd1'`).get() as {
+    const row = db
+      .prepare(`SELECT work_seconds, rest_seconds, name FROM plan_days WHERE id = 'd1'`)
+      .get() as {
       work_seconds: number | null;
       rest_seconds: number | null;
       name: string;
@@ -579,7 +587,9 @@ describe('migration 16 — several workouts per day', () => {
     // What the app does on its next launch: a fresh connection, where the unfinished
     // transaction is gone. Rolled back here explicitly, as the same connection is reused.
     db.exec('ROLLBACK;');
-    const survivors = db.prepare(`SELECT id FROM scheduled_days ORDER BY id`).all() as { id: string }[];
+    const survivors = db.prepare(`SELECT id FROM scheduled_days ORDER BY id`).all() as {
+      id: string;
+    }[];
     expect(survivors.map((row) => row.id)).toEqual(['r1', 'r2']);
     db.close();
   });
@@ -633,7 +643,9 @@ describe('migration 18 — sending everything again, once', () => {
     const db = syncedDevice();
     applyMigration(db, MIGRATIONS[18] ?? '');
     expect(
-      db.prepare(`SELECT user_id, last_pulled_at, last_synced_at FROM sync_state ORDER BY user_id`).all(),
+      db
+        .prepare(`SELECT user_id, last_pulled_at, last_synced_at FROM sync_state ORDER BY user_id`)
+        .all(),
     ).toEqual([
       { user_id: 'u1', last_pulled_at: '2026-09-30T08:00:00.000Z', last_synced_at: null },
       { user_id: 'u2', last_pulled_at: '2026-09-29T08:00:00.000Z', last_synced_at: null },
@@ -657,10 +669,16 @@ describe('migration 18 — sending everything again, once', () => {
 
   it('touches no workout data', () => {
     const db = syncedDevice();
-    const before = db.prepare(`SELECT id, exercise_key, deleted_at, updated_at FROM session_exercises ORDER BY id`).all();
+    const before = db
+      .prepare(`SELECT id, exercise_key, deleted_at, updated_at FROM session_exercises ORDER BY id`)
+      .all();
     applyMigration(db, MIGRATIONS[18] ?? '');
     expect(
-      db.prepare(`SELECT id, exercise_key, deleted_at, updated_at FROM session_exercises ORDER BY id`).all(),
+      db
+        .prepare(
+          `SELECT id, exercise_key, deleted_at, updated_at FROM session_exercises ORDER BY id`,
+        )
+        .all(),
     ).toEqual(before);
     db.close();
   });
@@ -670,7 +688,9 @@ describe('migration 18 — sending everything again, once', () => {
     // database, and no tidying of deleted rows is worth that.
     const db = syncedDevice();
     const rowid = (
-      db.prepare(`SELECT rowid AS n FROM session_exercises WHERE id = 'unparked'`).get() as { n: number }
+      db.prepare(`SELECT rowid AS n FROM session_exercises WHERE id = 'unparked'`).get() as {
+        n: number;
+      }
     ).n;
     db.exec(`
       INSERT INTO session_exercises (id, session_id, exercise_key, order_index, updated_at, deleted_at)
@@ -684,7 +704,11 @@ describe('migration 18 — sending everything again, once', () => {
     // And the rest of the repair still happened.
     expect(after.get('banded')).toBeLessThan(0);
     expect(
-      (db.prepare(`SELECT COUNT(*) AS n FROM sync_state WHERE last_synced_at IS NOT NULL`).get() as { n: number }).n,
+      (
+        db
+          .prepare(`SELECT COUNT(*) AS n FROM sync_state WHERE last_synced_at IS NOT NULL`)
+          .get() as { n: number }
+      ).n,
     ).toBe(0);
     db.close();
   });
@@ -722,7 +746,9 @@ describe('migration 19 — the calendar joins sync', () => {
 
   type Stamp = { id: string; updated_at: string | null; remote_updated_at: string | null };
   const stamps = (db: ReturnType<typeof plannedDevice>): Stamp[] =>
-    db.prepare(`SELECT id, updated_at, remote_updated_at FROM scheduled_days ORDER BY id`).all() as Stamp[];
+    db
+      .prepare(`SELECT id, updated_at, remote_updated_at FROM scheduled_days ORDER BY id`)
+      .all() as Stamp[];
 
   it('is on the app upgrade path', () => {
     expect(SCHEMA_VERSION).toBeGreaterThanOrEqual(19);
@@ -770,6 +796,80 @@ describe('migration 19 — the calendar joins sync', () => {
     const fresh = new DatabaseSync(':memory:');
     fresh.exec(CREATE_SCHEMA_SQL.replace(/PRAGMA journal_mode = WAL;/, ''));
     expect(() => applyMigration(fresh, MIGRATIONS[19] ?? '')).not.toThrow();
+    fresh.close();
+  });
+});
+
+describe('migration 21 — the profile joins the cloud copy', () => {
+  /** The profile as it was at version 20, with someone's answers in it. */
+  function answeredDevice() {
+    const db = new DatabaseSync(':memory:');
+    db.exec(`
+      CREATE TABLE profile (
+        user_id TEXT PRIMARY KEY NOT NULL, display_name TEXT, birth_date TEXT, sex TEXT,
+        bmr_formula_sex TEXT, height_cm REAL, activity_level TEXT, goal TEXT,
+        unit_preference TEXT, updated_at TEXT NOT NULL
+      );
+      INSERT INTO profile (user_id, display_name, birth_date, sex, height_cm, activity_level,
+                           goal, unit_preference, updated_at)
+        VALUES ('u1', 'אפק', '1998-04-12', 'male', 178, 'active', 'bulk', 'metric',
+                '2026-09-01T00:00:00.000Z');
+    `);
+    return db;
+  }
+
+  it('is on the app upgrade path', () => {
+    expect(SCHEMA_VERSION).toBeGreaterThanOrEqual(21);
+    expect(MIGRATIONS[21]).toBeDefined();
+  });
+
+  it('starts every phone as one that has never compared notes with the server', () => {
+    // NULL, not an empty agreement. An empty one would say "we agreed there was nothing", and
+    // the first sync would then read a full profile as a set of edits — harmless here, but the
+    // same mistake on a new phone is the one that blanks the server.
+    const db = answeredDevice();
+    applyMigration(db, MIGRATIONS[21] ?? '');
+    expect(db.prepare(`SELECT avatar_version, synced_json FROM profile`).all()).toEqual([
+      { avatar_version: null, synced_json: null },
+    ]);
+    db.close();
+  });
+
+  it('keeps every answer exactly as it was', () => {
+    const db = answeredDevice();
+    applyMigration(db, MIGRATIONS[21] ?? '');
+    expect(
+      db
+        .prepare(
+          `SELECT user_id, display_name, birth_date, sex, height_cm, activity_level, goal,
+                  unit_preference, updated_at FROM profile`,
+        )
+        .all(),
+    ).toEqual([
+      {
+        user_id: 'u1',
+        display_name: 'אפק',
+        birth_date: '1998-04-12',
+        sex: 'male',
+        height_cm: 178,
+        activity_level: 'active',
+        goal: 'bulk',
+        unit_preference: 'metric',
+        updated_at: '2026-09-01T00:00:00.000Z',
+      },
+    ]);
+    db.close();
+  });
+
+  it('is safe to run twice, and on a new install where the columns are already there', () => {
+    const db = answeredDevice();
+    applyMigration(db, MIGRATIONS[21] ?? '');
+    expect(() => applyMigration(db, MIGRATIONS[21] ?? '')).not.toThrow();
+    db.close();
+
+    const fresh = new DatabaseSync(':memory:');
+    fresh.exec(CREATE_SCHEMA_SQL.replace(/PRAGMA journal_mode = WAL;/, ''));
+    expect(() => applyMigration(fresh, MIGRATIONS[21] ?? '')).not.toThrow();
     fresh.close();
   });
 });

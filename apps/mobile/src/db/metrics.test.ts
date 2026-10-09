@@ -47,6 +47,8 @@ const fullProfile: ProfileRow = {
   // reads it — stored measurements are metric regardless of what the user reads them in.
   unit_preference: null,
   updated_at: clock(),
+  avatar_version: null,
+  synced_json: null,
 };
 
 describe('profile', () => {
@@ -339,7 +341,7 @@ describe('target snapshots', () => {
     expect(await getCurrentTargets(db, USER)).toBeNull();
   });
 
-  it('does not let one user closing their period close another user\'s open period', async () => {
+  it("does not let one user closing their period close another user's open period", async () => {
     const targets = {
       weightKg: 80,
       bmi: 24.7,
@@ -435,6 +437,8 @@ describe('summariseComposition', () => {
     goal: 'cut',
     unit_preference: 'metric',
     updated_at: '2026-07-25T10:00:00.000Z',
+    avatar_version: null,
+    synced_json: null,
   };
   const TODAY = new Date('2026-08-15T00:00:00Z');
 

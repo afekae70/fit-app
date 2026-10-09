@@ -8,6 +8,7 @@ import {
   birthDateFromAge,
   heightRange,
   indexAtOffset,
+  hasMetServer,
   indexOfValue,
   isNewWeight,
   needsProfileSetup,
@@ -28,6 +29,20 @@ const complete = {
   activity_level: 'moderate',
   goal: 'cut',
 };
+
+describe('whether the server has been asked first', () => {
+  it('has not, on a phone with no profile row or one that sync has never touched', () => {
+    // A new phone is not a new person: until the two have compared, an empty profile here
+    // says nothing about whether the account answered these questions somewhere else.
+    expect(hasMetServer(null)).toBe(false);
+    expect(hasMetServer({ synced_json: null })).toBe(false);
+  });
+
+  it('has, once sync has written down what the two agreed on — even if that was nothing', () => {
+    expect(hasMetServer({ synced_json: '{}' })).toBe(true);
+    expect(hasMetServer({ synced_json: '{"goal":"cut"}' })).toBe(true);
+  });
+});
 
 describe('who is asked', () => {
   it('asks a brand-new account, which has no profile row at all', () => {

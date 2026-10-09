@@ -71,7 +71,7 @@ import {
   isWeeklyReminderScheduled,
   scheduleWeeklyReminder,
 } from '../src/notifications.js';
-import { loadAvatar } from '../src/profile/avatar.js';
+import { useAvatar } from '../src/profile/useAvatar.js';
 import { useTheme, type ThemePreference } from '../src/ThemeProvider.js';
 import { fontSize, fontWeight, radius, shadow, spacing, type ColorPalette } from '../src/theme.js';
 import { useUnits } from '../src/UnitsProvider.js';
@@ -90,10 +90,7 @@ export default function SettingsScreen() {
   const userId = useCurrentUserId();
   const role = useAccountRole(userId);
 
-  const [avatarUri, setAvatarUri] = useState<string | null>(null);
-  useEffect(() => {
-    void loadAvatar(userId).then(setAvatarUri);
-  }, [userId]);
+  const avatarUri = useAvatar(userId);
 
   /**
    * Delete the account, after asking twice.
@@ -206,33 +203,33 @@ export default function SettingsScreen() {
             accessibilityLabel={`${t('menu.profile')}, ${email}`}
             style={({ pressed }) => pressed && styles.heroPressed}
           >
-          {/* A wash of the accent over the card's own colour, strongest behind the picture and
+            {/* A wash of the accent over the card's own colour, strongest behind the picture and
               gone by the far edge — the same thing the bar at the top of every screen does.
               It was the logo's full violet-to-pink, which is the app's one loud colour and is
               kept for the button a screen wants pressed; a banner that only says who is signed
               in had no business being the brightest thing on the page. */}
-          <LinearGradient
-            colors={[colors.accentSoft, colors.surface]}
-            start={{ x: leading, y: 0 }}
-            end={{ x: 1 - leading, y: 1 }}
-            style={styles.hero}
-          >
-            <View style={styles.avatar}>
-              {avatarUri ? (
-                <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
-              ) : (
-                <Text style={styles.avatarText}>{initialsFor(email)}</Text>
-              )}
-            </View>
-            <View style={styles.heroText}>
-              <Text style={styles.heroCaption}>{t('settings.signedInAs')}</Text>
-              <Text style={styles.heroEmail} numberOfLines={1}>
-                {email}
-              </Text>
-              <RoleBadge role={role} style={styles.heroRole} />
-            </View>
-            <Onward size={18} color={colors.textFaint} />
-          </LinearGradient>
+            <LinearGradient
+              colors={[colors.accentSoft, colors.surface]}
+              start={{ x: leading, y: 0 }}
+              end={{ x: 1 - leading, y: 1 }}
+              style={styles.hero}
+            >
+              <View style={styles.avatar}>
+                {avatarUri ? (
+                  <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
+                ) : (
+                  <Text style={styles.avatarText}>{initialsFor(email)}</Text>
+                )}
+              </View>
+              <View style={styles.heroText}>
+                <Text style={styles.heroCaption}>{t('settings.signedInAs')}</Text>
+                <Text style={styles.heroEmail} numberOfLines={1}>
+                  {email}
+                </Text>
+                <RoleBadge role={role} style={styles.heroRole} />
+              </View>
+              <Onward size={18} color={colors.textFaint} />
+            </LinearGradient>
           </Pressable>
         </FadeSlideIn>
       ) : null}

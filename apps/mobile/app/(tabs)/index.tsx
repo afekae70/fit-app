@@ -12,7 +12,7 @@
  */
 
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Barbell, CalendarBlank, ForkKnife, Scales, Sparkle } from 'phosphor-react-native';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -20,7 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '../../src/auth/AuthProvider.js';
 import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
-import { loadAvatar } from '../../src/profile/avatar.js';
+import { useAvatar } from '../../src/profile/useAvatar.js';
 import { weekForWidget, writeWidgetSnapshot } from '../../src/widget/snapshot.js';
 import { QuickActions } from '../../src/components/home/QuickActions.js';
 import {
@@ -82,10 +82,7 @@ export default function TodayScreen() {
   // The reader's own name and face at the top of their own screen — the picture from the profile
   // page, the name from the address they signed in with.
   const displayName = (session?.user.email ?? '').split('@')[0] ?? '';
-  const [avatarUri, setAvatarUri] = useState<string | null>(null);
-  useEffect(() => {
-    void loadAvatar(userId).then(setAvatarUri);
-  }, [userId]);
+  const avatarUri = useAvatar(userId);
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -186,10 +183,7 @@ export default function TodayScreen() {
   return (
     <ScrollView
       style={styles.screen}
-      contentContainerStyle={[
-        styles.content,
-        { paddingTop: 8, paddingBottom: insets.bottom + 28 },
-      ]}
+      contentContainerStyle={[styles.content, { paddingTop: 8, paddingBottom: insets.bottom + 28 }]}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
       }
@@ -234,10 +228,7 @@ export default function TodayScreen() {
                 </FadeSlideIn>
               ) : null}
               <FadeSlideIn index={1}>
-                <StreakCard
-                  days={data.strip}
-                  monthWeeks={data.monthWeeks}
-                />
+                <StreakCard days={data.strip} monthWeeks={data.monthWeeks} />
               </FadeSlideIn>
               <FadeSlideIn index={2}>
                 <WeekSummaryRow summary={data.summary} />
@@ -251,10 +242,7 @@ export default function TodayScreen() {
                 <TodayWorkoutCard workout={data.workout} onStart={startWorkout} />
               </FadeSlideIn>
               <FadeSlideIn index={1}>
-                <StreakCard
-                  days={data.strip}
-                  monthWeeks={data.monthWeeks}
-                />
+                <StreakCard days={data.strip} monthWeeks={data.monthWeeks} />
               </FadeSlideIn>
               <FadeSlideIn index={2}>
                 <WeekSummaryRow summary={data.summary} />
@@ -269,10 +257,7 @@ export default function TodayScreen() {
                 <RestDayCard />
               </FadeSlideIn>
               <FadeSlideIn index={1}>
-                <StreakCard
-                  days={data.strip}
-                  monthWeeks={data.monthWeeks}
-                />
+                <StreakCard days={data.strip} monthWeeks={data.monthWeeks} />
               </FadeSlideIn>
               <FadeSlideIn index={2}>
                 <WeekSummaryRow summary={data.summary} />

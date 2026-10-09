@@ -26,7 +26,7 @@
  * TEXT (lexicographically sortable, which is what the history queries rely on).
  */
 
-export const SCHEMA_VERSION = 20;
+export const SCHEMA_VERSION = 21;
 
 /**
  * Incremental migrations, keyed by the version they upgrade TO.
@@ -396,6 +396,26 @@ CREATE INDEX IF NOT EXISTS locations_user_idx ON locations (user_id);
     UPDATE plan_days SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
       WHERE work_seconds IS NOT NULL OR rest_seconds IS NOT NULL OR rounds IS NOT NULL;
   `,
+
+  /*
+   * 21 — the profile joins the cloud copy.
+   *
+   * The profile was the last thing a person typed in that lived only on the phone: name, date
+   * of birth, height, how active, the goal. Reinstalling asked for all of it again.
+   *
+   * `synced_json` is what this phone and the server last agreed on, field by field. With it a
+   * difference can be told apart: a field that differs from the server and from the agreement
+   * was changed here; one that differs from the server but still matches the agreement was
+   * changed somewhere else. NULL means the two have never compared notes — see profileSync.ts
+   * for what that first meeting does, and why it never blanks anything.
+   *
+   * `avatar_version` names the profile picture that is on this phone, so it can be told
+   * whether the one in the cloud is the same picture. NULL is no picture.
+   */
+  21: `
+    ALTER TABLE profile ADD COLUMN avatar_version TEXT;
+    ALTER TABLE profile ADD COLUMN synced_json TEXT;
+  `,
 };
 
 export const CREATE_SCHEMA_SQL = `
@@ -420,7 +440,11 @@ CREATE TABLE IF NOT EXISTS profile (
   -- column lines up if profile ever joins SYNC_TABLES. NULL means never chosen -- see
   -- parseUnitPreference in @fit/shared.
   unit_preference  TEXT,
-  updated_at       TEXT NOT NULL
+  updated_at       TEXT NOT NULL,
+  -- Which profile picture is on this phone; NULL is none. See migration 21.
+  avatar_version   TEXT,
+  -- What this phone and the server last agreed the profile was. See migration 21.
+  synced_json      TEXT
 );
 
 CREATE TABLE IF NOT EXISTS body_metrics (

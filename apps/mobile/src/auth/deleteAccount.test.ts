@@ -115,6 +115,83 @@ describe('deleteAccount', () => {
   });
 });
 
+describe('files the account keeps on the server', () => {
+  it('are removed before the account, while there is still a session to remove them with', async () => {
+    const { client, calls } = server(null);
+
+    const outcome = await deleteAccount({
+      client,
+      db,
+      userId: USER,
+      removeServerFiles: async (userId) => {
+        calls.push(`files:${userId}`);
+      },
+    });
+
+    expect(outcome).toEqual({ status: 'deleted' });
+    expect(calls).toEqual([`files:${USER}`, 'rpc:delete_my_account', 'signOut:local']);
+  });
+
+  it('do not stand in the way of a deletion when they cannot be removed', async () => {
+    const { client, calls } = server(null);
+    const undone: string[] = [];
+
+    const outcome = await deleteAccount({
+      client,
+      db,
+      userId: USER,
+      removeServerFiles: async () => {
+        throw new Error('storage is down');
+      },
+      afterServerRefused: async (userId) => {
+        undone.push(userId);
+      },
+    });
+
+    expect(outcome).toEqual({ status: 'deleted' });
+    expect(calls).toContain('rpc:delete_my_account');
+    expect(await localRows()).toBe(0);
+    // Nothing was removed, so there is nothing to put back.
+    expect(undone).toEqual([]);
+  });
+
+  it('are asked for again when they went and the account then did not', async () => {
+    const { client } = server({ code: '57014', message: 'canceling statement due to timeout' });
+    const undone: string[] = [];
+
+    const outcome = await deleteAccount({
+      client,
+      db,
+      userId: USER,
+      removeServerFiles: async () => undefined,
+      afterServerRefused: async (userId) => {
+        undone.push(userId);
+      },
+    });
+
+    expect(outcome.status).toBe('failed');
+    expect(undone).toEqual([USER]);
+    // The phone is as it was.
+    expect(await localRows()).toBe(2);
+  });
+
+  it('report the refusal, not a failure of their own, when putting them back fails too', async () => {
+    const { client } = server('throws');
+
+    const outcome = await deleteAccount({
+      client,
+      db,
+      userId: USER,
+      removeServerFiles: async () => undefined,
+      afterServerRefused: async () => {
+        throw new Error('database is closed');
+      },
+    });
+
+    expect(outcome).toEqual({ status: 'offline' });
+  });
+});
+
 describe('interpretDeletionError', () => {
   it('knows a server that has not been given the function yet', () => {
     expect(
@@ -149,7 +226,9 @@ describe('interpretDeletionError', () => {
 
   it('does not mistake a database error that mentions a network for being offline', () => {
     // Offline is "no code at all". A Postgres error has one, whatever its text says.
-    expect(interpretDeletionError({ code: '08006', message: 'network connection failure' })).toEqual({
+    expect(
+      interpretDeletionError({ code: '08006', message: 'network connection failure' }),
+    ).toEqual({
       status: 'failed',
       message: 'network connection failure',
     });

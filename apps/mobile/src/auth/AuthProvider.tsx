@@ -17,7 +17,8 @@ import { getSupabaseClient } from './client.js';
 import { friendlyAuthError } from './friendlyAuthError.js';
 import { deleteAccount, type DeleteAccountOutcome } from './deleteAccount.js';
 import { secureClaimStorage } from './storage.js';
-import { removeAvatar } from '../profile/avatar.js';
+import { deleteLocalAvatar } from '../profile/avatar.js';
+import { removeCloudAvatars, resendAvatarLater } from '../profile/avatarCloud.js';
 
 export interface AuthState {
   /** Undefined while the stored session is still being read; null once confirmed absent. */
@@ -124,7 +125,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           client: { rpc: (fn) => client.rpc(fn), auth: client.auth },
           db,
           userId: session.user.id,
-          clearDeviceState: removeAvatar,
+          // Not `removeAvatar`: that records the change on the profile so it can be synced,
+          // and by this point there is no profile left to record it on.
+          clearDeviceState: deleteLocalAvatar,
+          removeServerFiles: (userId) => removeCloudAvatars(client, userId),
+          afterServerRefused: (userId) => resendAvatarLater(db, userId),
         });
       },
       resetPassword: async (email) => {

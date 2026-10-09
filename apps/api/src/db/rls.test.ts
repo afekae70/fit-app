@@ -36,12 +36,12 @@ interface Policy {
 }
 
 /**
- * A table's name as either generation of migration writes it: `"plans"` from the generated ones,
- * `public.scheduled_days` from the hand-written ones. Without the schema part this audit read
- * `CREATE TABLE public.coach_links` as a table called `public` — and did not look at
- * `coach_links` at all.
+ * A table's name as any migration writes it: `"plans"` from the generated ones,
+ * `public.scheduled_days` from the hand-written ones, `storage.objects` for a file policy.
+ * Without the schema part this audit read `CREATE TABLE public.coach_links` as a table called
+ * `public` — and did not look at `coach_links` at all.
  */
-const NAME = String.raw`(?:"?public"?\.)?"?([a-z_]+)"?`;
+const NAME = String.raw`(?:"?[a-z_]+"?\.)?"?([a-z_]+)"?`;
 
 const tables = [
   ...new Set(
@@ -181,5 +181,121 @@ describe('row level security, as written in the migrations', () => {
         expect(policy.body).toMatch(/EXISTS|IN\s*\(/i);
       }
     }
+  });
+});
+
+/**
+ * `profiles` is the one table where owning the row is not the whole question.
+ *
+ * It holds what a person says about themselves, and since 0007 it also holds whether they are
+ * a coach — which is not theirs to say. Row level security cannot tell those apart: a policy
+ * decides which rows, never which columns. For three migrations any signed-in account could
+ * make itself a coach with one request to its own row, and every assertion above passed.
+ *
+ * So the columns are audited here, by name.
+ */
+describe('what a client may write on its own profile', () => {
+  const granted = (privilege: 'INSERT' | 'UPDATE') => {
+    const match = new RegExp(
+      String.raw`GRANT ${privilege}\s*\(([^)]+)\)\s+ON\s+public\.profiles\s+TO\s+authenticated;`,
+      'i',
+    ).exec(sql);
+    return (match?.[1] ?? '').split(',').map((column) => column.trim());
+  };
+
+  /** Decided by the owner or by the server, never by the account itself. */
+  const NOT_THE_CLIENTS = ['role', 'coach_code', 'created_at', 'updated_at'];
+
+  it('takes the whole-table right to write away from every client role', () => {
+    for (const role of ['PUBLIC', 'anon', 'authenticated']) {
+      expect(sql).toMatch(
+        new RegExp(String.raw`REVOKE INSERT, UPDATE ON public\.profiles FROM ${role};`),
+      );
+    }
+  });
+
+  it.each(['INSERT', 'UPDATE'] as const)('grants %s on named columns only', (privilege) => {
+    const columns = granted(privilege);
+    expect(columns.length).toBeGreaterThan(5);
+    for (const column of NOT_THE_CLIENTS) expect(columns).not.toContain(column);
+    // What a person does fill in is still theirs to save.
+    for (const column of ['display_name', 'height_cm', 'goal', 'avatar_version']) {
+      expect(columns).toContain(column);
+    }
+  });
+
+  it('lets a client name its own row when creating it, and never rename it afterwards', () => {
+    expect(granted('INSERT')).toContain('id');
+    expect(granted('UPDATE')).not.toContain('id');
+  });
+
+  it('never hands the whole table back', () => {
+    // A later `GRANT ALL` or column-less `GRANT UPDATE` would undo all of the above in one
+    // line, and would look like routine housekeeping in a review.
+    const after = sql.slice(
+      sql.indexOf('REVOKE INSERT, UPDATE ON public.profiles FROM authenticated;'),
+    );
+    expect(after).not.toMatch(
+      /GRANT\s+(ALL|[A-Z, ]*\b(INSERT|UPDATE)\b(?!\s*\())[^;]*ON\s+(TABLE\s+)?(public\.)?"?profiles"?\s/i,
+    );
+  });
+
+  it('refuses to commit unless Postgres agrees the two columns are closed', () => {
+    // The revokes only remove grants made by the role running the script. The migration asks
+    // the catalogue instead of assuming, and this keeps that question from being deleted.
+    expect(sql).toMatch(
+      /has_column_privilege\(client::name, 'public\.profiles'::text, col, 'UPDATE'::text\)/,
+    );
+    expect(sql).toMatch(/ARRAY\['role', 'coach_code'\]/);
+    expect(sql).toMatch(/RAISE EXCEPTION\s+'profiles\.% can still be written/);
+  });
+
+  it('also holds the two columns still with a trigger, whoever granted what', () => {
+    const body =
+      /CREATE OR REPLACE FUNCTION public\.profiles_keep_role\(\)([\s\S]*?)\$\$;/.exec(sql)?.[1] ??
+      '';
+    expect(body).toMatch(/current_user IN \('authenticated', 'anon'\)/);
+    expect(body).toMatch(/NEW\.role := OLD\.role/);
+    expect(body).toMatch(/NEW\.coach_code := OLD\.coach_code/);
+    expect(body).toMatch(/NEW\.role := 'trainee'/);
+    // It must see the caller, so it must not run as its owner.
+    expect(body).not.toMatch(/SECURITY DEFINER/i);
+    expect(sql).toMatch(
+      /CREATE TRIGGER profiles_keep_role\s+BEFORE INSERT OR UPDATE ON public\.profiles/,
+    );
+  });
+});
+
+describe('profile pictures in file storage', () => {
+  const filePolicies = policies.filter((p) => p.table === 'objects');
+
+  it('finds the four things that can be done to a file', () => {
+    expect(filePolicies.map((p) => p.name).sort()).toEqual([
+      'avatars_own_delete',
+      'avatars_own_insert',
+      'avatars_own_select',
+      'avatars_own_update',
+    ]);
+  });
+
+  it.each(filePolicies.map((p): [string, Policy] => [p.name, p]))(
+    '%s reaches only this bucket, and only the folder named after the caller',
+    (_name, policy) => {
+      // `storage.objects` holds every file in the project. A policy that left out the bucket
+      // would apply to all of them; one that left out the folder would open every picture to
+      // every signed-in account.
+      const conditions = policy.body.match(/\((bucket_id[^;]*?::text)\)/g) ?? [];
+      expect(conditions.length).toBeGreaterThan(0);
+      for (const condition of conditions) {
+        expect(condition).toContain("bucket_id = 'avatars'");
+        expect(condition).toContain('(storage.foldername(name))[1] = (SELECT auth.uid())::text');
+      }
+      expect(policy.body).not.toMatch(/\bOR\b/);
+    },
+  );
+
+  it('keeps the bucket private, on first run and on every run after', () => {
+    expect(sql).toMatch(/VALUES \('avatars', 'avatars', false,/);
+    expect(sql).toMatch(/ON CONFLICT \(id\) DO UPDATE\s+SET public = false/);
   });
 });
