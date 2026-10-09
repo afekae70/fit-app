@@ -49,7 +49,6 @@ import appIcon from '../../assets/icon.png';
 
 import { BrandButton } from '../components/BrandButton.js';
 import { Field } from '../components/Field.js';
-import { Choice } from '../components/settings/kit.js';
 import { KeyboardSafe } from '../components/KeyboardSafe.js';
 import { FadeSlideIn, useReduceMotion } from '../components/motion.js';
 import { splashTimeLeft } from '../components/SplashOverlay.js';
@@ -88,7 +87,6 @@ export function AuthGate() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [forgotEmail, setForgotEmail] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [asCoach, setAsCoach] = useState(false);
   const [busy, setBusy] = useState(false);
   const [errorKey, setErrorKey] = useState<string | null>(null);
 
@@ -123,9 +121,7 @@ export function AuthGate() {
 
     void (async () => {
       const result =
-        mode === 'signIn'
-          ? await signIn(trimmedEmail, password)
-          : await signUp(trimmedEmail, password, { asCoach });
+        mode === 'signIn' ? await signIn(trimmedEmail, password) : await signUp(trimmedEmail, password);
       // On success nothing here changes: `AuthProvider`'s subscription sets the session, and
       // the gate above this component renders past it. The button keeps spinning until then,
       // which is the honest state for the half second it takes.
@@ -204,19 +200,6 @@ export function AuthGate() {
                 <Text style={styles.subtitle}>
                   {mode === 'signIn' ? t('auth.subtitleSignIn') : t('auth.subtitle')}
                 </Text>
-
-                {/* Asked here because it decides what the account is for, but it is a switch
-                    and not a fork: either kind can become the other from the coaching screen. */}
-                {mode === 'signUp' ? (
-                  <Choice<'trainee' | 'coach'>
-                    selected={asCoach ? 'coach' : 'trainee'}
-                    onSelect={(next) => setAsCoach(next === 'coach')}
-                    options={[
-                      { value: 'trainee', label: t('auth.roleTrainee') },
-                      { value: 'coach', label: t('auth.roleCoach') },
-                    ]}
-                  />
-                ) : null}
 
                 <Field
                   icon={EnvelopeSimple}

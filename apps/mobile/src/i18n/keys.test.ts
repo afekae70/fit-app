@@ -137,6 +137,8 @@ describe('keys assembled at runtime', () => {
     'not_signed_in',
     'no_such_code',
     'own_code',
+    'no_such_user',
+    'not_admin',
     'not_your_trainee',
     'gone',
     'invalid',

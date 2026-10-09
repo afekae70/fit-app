@@ -1,17 +1,23 @@
 /**
- * Coaching: who trains you, and whom you train.
+ * Coaching: who trains you, whom you train — and, for the owner, who is a coach at all.
  *
- * One screen for both sides, because they are the same relationship seen from either end and a
- * coach is usually somebody's trainee as well.
+ * Up to three sections, and most people see one:
  *
- *  - **My coach.** Type the code a coach gave you and they can see and change your training
- *    plans — the groups, the workouts in them, the exercises and their sets and reps. Nothing
- *    else of yours. Leaving ends it at once.
- *  - **My trainees.** Switch coach mode on and you get a code to hand out. Everyone who enters
- *    it appears here; tapping one opens their plans.
+ *  - **My coach** — everyone. Type the code a coach gave you and they can see and change your
+ *    training plans: the groups, the workouts in them, the exercises and their sets and reps.
+ *    Nothing else of yours. Leaving ends it at once.
+ *  - **My trainees** — coaches only. Your code, to hand out, and everyone who has entered it.
+ *    Tapping one opens their plans.
+ *  - **Manage coaches** — administrators only. Who is a coach is the owner's decision: an
+ *    account becomes one when it is named here, by the email it signed up with, and stops
+ *    being one the same way. Nobody can make themselves a coach.
  *
- * The link is made by the trainee and by nobody else: there is no way to add somebody to your
- * list, only for them to add themselves. That is deliberate — see 0007_coaching.sql.
+ * What is shown follows what the server says the account is, and that is only a matter of not
+ * showing people controls that would refuse them: every call is checked again on the server,
+ * whatever this screen believes. See 0007 and 0008 in apps/api/drizzle.
+ *
+ * The link between a coach and a trainee is made by the trainee and by nobody else. There is no
+ * way to add somebody to your list, only for them to add themselves.
  *
  * This screen needs the network and says so plainly when it has none. Nothing here is kept in
  * the local database: a link someone has ended must stop working the moment they end it, and a
@@ -32,13 +38,21 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
-import { Handshake, ShareNetwork, UsersThree } from 'phosphor-react-native';
+import {
+  EnvelopeSimple,
+  Handshake,
+  IdentificationBadge,
+  ShareNetwork,
+  UserMinus,
+  UsersThree,
+} from 'phosphor-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   CODE_LENGTH,
   normaliseCode,
   personLabel,
+  type AppointedCoach,
   type CoachingError,
   type CoachingStatus,
 } from '../src/coaching/api.js';
@@ -47,11 +61,14 @@ import { useActionSheet } from '../src/components/ActionSheetProvider.js';
 import { BrandButton } from '../src/components/BrandButton.js';
 import { Field } from '../src/components/Field.js';
 import { KeyboardSafe } from '../src/components/KeyboardSafe.js';
-import { LinkRow, RowDivider, SettingsSection, ToggleRow } from '../src/components/settings/kit.js';
+import { LinkRow, RowDivider, SettingsSection } from '../src/components/settings/kit.js';
 import { Banner, ScreenHeader } from '../src/components/ui.js';
 import { hapticSuccess } from '../src/haptics.js';
 import { useTheme } from '../src/ThemeProvider.js';
 import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../src/theme.js';
+
+/** Which change is in flight. A spinner belongs on the button that was pressed. */
+type Pending = 'join' | 'leave' | 'appoint' | 'dismiss' | null;
 
 export default function CoachingScreen() {
   const { t } = useTranslation();
@@ -62,14 +79,13 @@ export default function CoachingScreen() {
   const { confirm } = useActionSheet();
 
   const [status, setStatus] = useState<CoachingStatus | null>(null);
+  const [coaches, setCoaches] = useState<AppointedCoach[] | null>(null);
   const [error, setError] = useState<CoachingError | null>(null);
   const [loading, setLoading] = useState(true);
-  // Which change is in flight, if any. Named rather than a plain flag: a spinner belongs on
-  // the button that was pressed, and one flag for the screen put it on a different one —
-  // switching coach mode on made "connect to coach" look as if it were connecting.
-  const [pending, setPending] = useState<'join' | 'leave' | 'mode' | null>(null);
+  const [pending, setPending] = useState<Pending>(null);
   const busy = pending !== null;
   const [code, setCode] = useState('');
+  const [email, setEmail] = useState('');
 
   const load = useCallback(async () => {
     if (!api) {
@@ -79,11 +95,20 @@ export default function CoachingScreen() {
     }
     const result = await api.status();
     setLoading(false);
-    if (result.ok) {
-      setStatus(result.value);
-      setError(null);
-    } else {
+    if (!result.ok) {
       setError(result.error);
+      return;
+    }
+    setStatus(result.value);
+    setError(null);
+
+    // The list of coaches is asked for only by an account the server has just said may see
+    // it. Anyone else asking would be refused, and there is no reason to find that out.
+    if (result.value.isAdmin) {
+      const list = await api.coaches();
+      if (list.ok) setCoaches(list.value);
+    } else {
+      setCoaches(null);
     }
   }, [api]);
 
@@ -95,9 +120,9 @@ export default function CoachingScreen() {
     }, [load]),
   );
 
-  /** Run one change, show what went wrong if it did, and read the status again either way. */
+  /** Run one change, show what went wrong if it did, and read everything again either way. */
   const run = async (
-    action: 'join' | 'leave' | 'mode',
+    action: Exclude<Pending, null>,
     change: () => Promise<{ ok: boolean; error?: CoachingError }>,
   ) => {
     if (busy) return false;
@@ -112,8 +137,7 @@ export default function CoachingScreen() {
 
   const join = async () => {
     if (!api) return;
-    const joined = await run('join', () => api.join(code));
-    if (joined) {
+    if (await run('join', () => api.join(code))) {
       hapticSuccess();
       setCode('');
     }
@@ -129,23 +153,23 @@ export default function CoachingScreen() {
     if (sure) await run('leave', () => api.leave());
   };
 
-  const setCoachMode = async (on: boolean) => {
+  const appoint = async () => {
+    const address = email.trim();
+    if (!api || address === '') return;
+    if (await run('appoint', () => api.setCoach(address, true))) {
+      hapticSuccess();
+      setEmail('');
+    }
+  };
+
+  const dismiss = async (coach: AppointedCoach) => {
     if (!api) return;
-    if (on) {
-      await run('mode', () => api.enable());
-      return;
-    }
-    // Switching it off lets every trainee go, which is worth a question when there are any.
-    const count = status?.trainees.length ?? 0;
-    if (count > 0) {
-      const sure = await confirm({
-        title: t('coaching.coachModeOffTitle'),
-        message: t('coaching.coachModeOffBody', { count }),
-        confirmLabel: t('coaching.coachModeOff'),
-      });
-      if (!sure) return;
-    }
-    await run('mode', () => api.disable());
+    const sure = await confirm({
+      title: t('coaching.dismissCoachTitle'),
+      message: t('coaching.dismissCoachBody', { name: personLabel(coach), count: coach.trainees }),
+      confirmLabel: t('coaching.dismissCoach'),
+    });
+    if (sure) await run('dismiss', () => api.setCoach(coach.email, false));
   };
 
   const shareCode = () => {
@@ -232,22 +256,17 @@ export default function CoachingScreen() {
               )}
             </SettingsSection>
 
-            <SettingsSection
-              icon={UsersThree}
-              title={t('coaching.myTrainees')}
-              hint={t('coaching.myTraineesHint')}
-              index={2}
-            >
-              <ToggleRow
-                label={t('coaching.coachMode')}
-                value={isCoach}
-                onChange={(next) => void setCoachMode(next)}
-                disabled={busy}
-              />
-
-              {isCoach && status.code ? (
-                <>
-                  <RowDivider />
+            {/* Only for someone the owner has made a coach. A trainee has no code to hand out
+                and nobody to list, and a section that could only ever be empty is one that
+                invites the question of how to fill it. */}
+            {isCoach ? (
+              <SettingsSection
+                icon={UsersThree}
+                title={t('coaching.myTrainees')}
+                hint={t('coaching.myTraineesHint')}
+                index={2}
+              >
+                {status.code ? (
                   <View style={styles.codeBlock}>
                     <Text style={styles.codeLabel}>{t('coaching.yourCode')}</Text>
                     {/* A code is read one character at a time and typed on another phone:
@@ -264,30 +283,94 @@ export default function CoachingScreen() {
                       <Text style={styles.shareText}>{t('coaching.shareCode')}</Text>
                     </Pressable>
                   </View>
+                ) : null}
 
-                  <RowDivider />
-                  {status.trainees.length === 0 ? (
-                    <Text style={styles.note}>{t('coaching.noTrainees')}</Text>
-                  ) : (
-                    status.trainees.map((trainee, index) => (
-                      <View key={trainee.id} style={styles.traineeRow}>
-                        {index > 0 ? <RowDivider /> : null}
-                        <LinkRow
-                          label={personLabel(trainee)}
-                          hint={trainee.email}
-                          onPress={() =>
-                            router.push({
-                              pathname: '/trainee/[id]',
-                              params: { id: trainee.id, name: personLabel(trainee) },
-                            })
-                          }
-                        />
+                <RowDivider />
+                {status.trainees.length === 0 ? (
+                  <Text style={styles.note}>{t('coaching.noTrainees')}</Text>
+                ) : (
+                  status.trainees.map((trainee, index) => (
+                    <View key={trainee.id} style={styles.rows}>
+                      {index > 0 ? <RowDivider /> : null}
+                      <LinkRow
+                        label={personLabel(trainee)}
+                        hint={trainee.email}
+                        onPress={() =>
+                          router.push({
+                            pathname: '/trainee/[id]',
+                            params: { id: trainee.id, name: personLabel(trainee) },
+                          })
+                        }
+                      />
+                    </View>
+                  ))
+                )}
+              </SettingsSection>
+            ) : null}
+
+            {status.isAdmin ? (
+              <SettingsSection
+                icon={IdentificationBadge}
+                title={t('coaching.manageCoaches')}
+                hint={t('coaching.manageCoachesHint')}
+                index={3}
+              >
+                <Field
+                  icon={EnvelopeSimple}
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder={t('coaching.coachEmailPlaceholder')}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="email-address"
+                  editable={!busy}
+                  onSubmitEditing={() => void appoint()}
+                />
+                <BrandButton
+                  label={t('coaching.appoint')}
+                  onPress={() => void appoint()}
+                  disabled={email.trim() === '' || (busy && pending !== 'appoint')}
+                  busy={pending === 'appoint'}
+                />
+
+                <RowDivider />
+                {coaches === null || coaches.length === 0 ? (
+                  <Text style={styles.note}>{t('coaching.noCoaches')}</Text>
+                ) : (
+                  coaches.map((coach, index) => (
+                    <View key={coach.id} style={styles.rows}>
+                      {index > 0 ? <RowDivider /> : null}
+                      <View style={styles.coachRow}>
+                        <View style={styles.coachText}>
+                          <Text style={styles.coachEmail} numberOfLines={1}>
+                            {coach.email}
+                          </Text>
+                          <Text style={styles.note}>
+                            {t('coaching.coachSummary', {
+                              code: coach.code ?? '—',
+                              count: coach.trainees,
+                            })}
+                          </Text>
+                        </View>
+                        <Pressable
+                          onPress={() => void dismiss(coach)}
+                          disabled={busy}
+                          hitSlop={8}
+                          accessibilityRole="button"
+                          accessibilityLabel={`${t('coaching.dismissCoach')} ${coach.email}`}
+                          style={({ pressed }) => [
+                            styles.dismiss,
+                            (pressed || busy) && styles.pressed,
+                          ]}
+                        >
+                          <UserMinus size={18} color={colors.danger} />
+                        </Pressable>
                       </View>
-                    ))
-                  )}
-                </>
-              ) : null}
-            </SettingsSection>
+                    </View>
+                  ))
+                )}
+              </SettingsSection>
+            ) : null}
           </>
         ) : null}
       </ScrollView>
@@ -312,7 +395,11 @@ const createStyles = (colors: ColorPalette) =>
     share: ViewStyle;
     shareText: TextStyle;
     pressed: ViewStyle;
-    traineeRow: ViewStyle;
+    rows: ViewStyle;
+    coachRow: ViewStyle;
+    coachText: ViewStyle;
+    coachEmail: TextStyle;
+    dismiss: ViewStyle;
   }>({
     screen: { flex: 1 },
     content: { paddingHorizontal: spacing.lg, gap: spacing.lg },
@@ -357,5 +444,22 @@ const createStyles = (colors: ColorPalette) =>
     },
     shareText: { color: colors.accent, fontSize: fontSize.sm, fontWeight: fontWeight.medium },
     pressed: { opacity: 0.6 },
-    traineeRow: { gap: spacing.md },
+    rows: { gap: spacing.md },
+
+    coachRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 44 },
+    coachText: { flex: 1, gap: spacing.xxs },
+    coachEmail: {
+      color: colors.text,
+      fontSize: fontSize.sm,
+      fontWeight: fontWeight.medium,
+      textAlign: 'auto',
+    },
+    dismiss: {
+      width: 38,
+      height: 38,
+      borderRadius: radius.pill,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.dangerSoft,
+    },
   });

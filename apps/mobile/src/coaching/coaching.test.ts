@@ -4,6 +4,7 @@ import {
   createCoachingApi,
   interpretCoachingError,
   normaliseCode,
+  parseCoaches,
   parseStatus,
   personLabel,
   type RpcClient,
@@ -307,8 +308,42 @@ describe('the coaching status', () => {
 
   it('reads anything it does not understand as the quiet case', () => {
     for (const raw of [null, undefined, 'x', [], { role: 'admin', trainees: 'many' }]) {
-      expect(parseStatus(raw)).toEqual({ role: 'trainee', code: null, coach: null, trainees: [] });
+      expect(parseStatus(raw)).toEqual({
+        role: 'trainee',
+        code: null,
+        isAdmin: false,
+        coach: null,
+        trainees: [],
+      });
     }
+  });
+
+  it('is an administrator only when the server says exactly that', () => {
+    expect(parseStatus({ is_admin: true }).isAdmin).toBe(true);
+    // Anything short of `true` is no: a missing field on an older server, a string, a number.
+    for (const value of [undefined, null, 'true', 1, {}]) {
+      expect(parseStatus({ is_admin: value }).isAdmin).toBe(false);
+    }
+  });
+});
+
+describe('the list of coaches an administrator sees', () => {
+  it('reads who they are, their code and how many they train', () => {
+    expect(
+      parseCoaches([
+        { id: 'c1', email: 'yael@example.com', name: null, code: 'K7M2QP', trainees: 3 },
+        { id: 'c2', email: 'noa@example.com', name: 'Noa', code: null, trainees: 0 },
+      ]),
+    ).toEqual([
+      { id: 'c1', email: 'yael@example.com', name: null, code: 'K7M2QP', trainees: 3 },
+      { id: 'c2', email: 'noa@example.com', name: 'Noa', code: null, trainees: 0 },
+    ]);
+  });
+
+  it('is empty for anything that is not a list, and skips a row with no id', () => {
+    expect(parseCoaches(null)).toEqual([]);
+    expect(parseCoaches({})).toEqual([]);
+    expect(parseCoaches([{ email: 'nobody@example.com' }])).toEqual([]);
   });
 });
 
@@ -323,6 +358,8 @@ describe('what a refusal means', () => {
     [{ code: 'PGRST202', message: 'Could not find the function public.coach_status' }, 'not_available'],
     [{ code: 'P0002', message: 'no_such_code' }, 'no_such_code'],
     [{ code: '22023', message: 'own_code' }, 'own_code'],
+    [{ code: 'P0002', message: 'no_such_user' }, 'no_such_user'],
+    [{ code: '42501', message: 'not_admin' }, 'not_admin'],
     [{ code: '42501', message: 'not_your_trainee' }, 'not_your_trainee'],
     [{ code: 'P0002', message: 'no_such_plan' }, 'gone'],
     [{ code: 'P0002', message: 'no_such_day' }, 'gone'],
@@ -377,6 +414,32 @@ describe('calling the server', () => {
       p_plan: 'plan-1',
       p_day: { id: 'day-1', exercises: [{ id: 'a' }, { id: 'b' }, { id: 'c' }] },
     });
+  });
+
+  it('appoints a coach by email, trimmed, and answers with the list as it now stands', async () => {
+    const { api, calls } = answering({
+      admin_set_coach: { data: [{ id: 'c1', email: 'yael@example.com', code: 'K7M2QP', trainees: 0 }] },
+    });
+    const result = await api.setCoach('  yael@example.com ', true);
+    expect(calls).toEqual([
+      { fn: 'admin_set_coach', args: { p_email: 'yael@example.com', p_on: true } },
+    ]);
+    expect(result).toMatchObject({ ok: true, value: [{ id: 'c1', code: 'K7M2QP' }] });
+  });
+
+  it('is told no when the account asking is not an administrator', async () => {
+    const { api } = answering({
+      admin_set_coach: { error: { code: '42501', message: 'not_admin' } },
+    });
+    expect(await api.setCoach('yael@example.com', true)).toEqual({ ok: false, error: 'not_admin' });
+  });
+
+  it('has no way to make itself a coach', () => {
+    // There used to be an `enable`. Who is a coach is the owner's decision, made through
+    // `setCoach` by an administrator; a call the app does not have is one it cannot make.
+    const { api } = answering({});
+    expect(Object.keys(api)).not.toContain('enable');
+    expect(Object.keys(api)).not.toContain('disable');
   });
 
   it('reports a refusal by what it means', async () => {

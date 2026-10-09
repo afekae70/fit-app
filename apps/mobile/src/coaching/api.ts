@@ -28,6 +28,10 @@ export type CoachingError =
   | 'not_your_trainee'
   /** The group or workout no longer exists. */
   | 'gone'
+  /** Appointing a coach: nobody has signed up with that email. */
+  | 'no_such_user'
+  /** Appointing a coach, from an account that may not. */
+  | 'not_admin'
   /** The server would not take what was sent. */
   | 'invalid'
   | 'failed';
@@ -44,8 +48,13 @@ export interface CoachingPerson {
 
 export interface CoachingStatus {
   role: 'trainee' | 'coach';
-  /** The code a trainee types to join. Null until coach mode has been switched on once. */
+  /** The code a trainee types to join. Null for anyone who is not a coach. */
   code: string | null;
+  /**
+   * Whether this account may appoint coaches. Only decides whether that part of the screen is
+   * shown: the server checks for itself on every call, whatever this says.
+   */
+  isAdmin: boolean;
   /** Who coaches this account, if anyone. */
   coach: CoachingPerson | null;
   /** Whom this account coaches. Empty for a trainee. */
@@ -74,6 +83,8 @@ export function interpretCoachingError(error: { code?: string; message?: string 
   // PostgREST's "no such function in the schema cache".
   if (code === 'PGRST202' || /could not find the function/i.test(message)) return 'not_available';
   if (/no_such_code/.test(message)) return 'no_such_code';
+  if (/no_such_user/.test(message)) return 'no_such_user';
+  if (/not_admin/.test(message)) return 'not_admin';
   if (/own_code/.test(message)) return 'own_code';
   if (/not_your_trainee/.test(message)) return 'not_your_trainee';
   if (/no_such_(plan|day)/.test(message)) return 'gone';
@@ -115,13 +126,41 @@ export function parseStatus(raw: unknown): CoachingStatus {
   return {
     role: status.role === 'coach' ? 'coach' : 'trainee',
     code: typeof status.code === 'string' && status.code !== '' ? status.code : null,
+    isAdmin: status.is_admin === true,
     coach: parsePerson(status.coach),
     trainees: trainees.map(parsePerson).filter((person): person is CoachingPerson => person !== null),
   };
 }
 
+/** A coach, as an administrator sees one: who they are, their code, how many they train. */
+export interface AppointedCoach {
+  id: string;
+  email: string;
+  name: string | null;
+  code: string | null;
+  trainees: number;
+}
+
+/** `admin_list_coaches`'s answer. Rows that cannot be read are left out, not fatal. */
+export function parseCoaches(raw: unknown): AppointedCoach[] {
+  if (!Array.isArray(raw)) return [];
+  const coaches: AppointedCoach[] = [];
+  for (const entry of raw) {
+    const coach = asRecord(entry);
+    if (!coach || typeof coach.id !== 'string') continue;
+    coaches.push({
+      id: coach.id,
+      email: typeof coach.email === 'string' ? coach.email : '',
+      name: typeof coach.name === 'string' && coach.name.trim() !== '' ? coach.name : null,
+      code: typeof coach.code === 'string' && coach.code !== '' ? coach.code : null,
+      trainees: typeof coach.trainees === 'number' ? coach.trainees : 0,
+    });
+  }
+  return coaches;
+}
+
 /** What to call someone in a list: their name if they gave one, otherwise the part before the @. */
-export function personLabel(person: CoachingPerson): string {
+export function personLabel(person: { name: string | null; email: string }): string {
   return person.name ?? (person.email.split('@')[0] || person.email);
 }
 
@@ -160,10 +199,6 @@ export function createCoachingApi(client: RpcClient) {
 
   return {
     status: () => call('coach_status', undefined, parseStatus),
-    /** Switch coach mode on. Answers with the code. */
-    enable: () =>
-      call('coach_enable', undefined, (data) => (typeof data === 'string' ? data : null)),
-    disable: () => call('coach_disable', undefined, nothing),
     join: (code: string) => call('coach_join', { p_code: normaliseCode(code) }, parseStatus),
     leave: () => call('coach_leave', undefined, nothing),
     removeTrainee: (traineeId: string) =>
@@ -183,6 +218,15 @@ export function createCoachingApi(client: RpcClient) {
       call('coach_delete', { p_trainee: traineeId, p_kind: 'plan', p_id: planId }, nothing),
     deleteDay: (traineeId: string, dayId: string) =>
       call('coach_delete', { p_trainee: traineeId, p_kind: 'day', p_id: dayId }, nothing),
+
+    /** Administrators only. Every coach there is. */
+    coaches: () => call('admin_list_coaches', undefined, parseCoaches),
+    /**
+     * Administrators only. Make the account with this email a coach, or stop it being one.
+     * Answers with the list of coaches as it now stands.
+     */
+    setCoach: (email: string, on: boolean) =>
+      call('admin_set_coach', { p_email: email.trim(), p_on: on }, parseCoaches),
   };
 }
 
