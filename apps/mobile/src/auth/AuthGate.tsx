@@ -543,6 +543,8 @@ function Field({
 }
 
 const MARK = 96;
+/** How much wider than the logo the halo behind it is, at rest. */
+const HALO_SPREAD = 28;
 
 const createStyles = (colors: ColorPalette) =>
   StyleSheet.create<{
@@ -595,10 +597,14 @@ const createStyles = (colors: ColorPalette) =>
       justifyContent: 'center',
       marginBottom: spacing.md,
     },
+    // Placed by its own offsets rather than left to the wrapper's centring: where an absolute
+    // child lands when it is given none has changed between layout-engine versions before.
     halo: {
       position: 'absolute',
-      width: MARK + 28,
-      height: MARK + 28,
+      top: -HALO_SPREAD / 2,
+      start: -HALO_SPREAD / 2,
+      width: MARK + HALO_SPREAD,
+      height: MARK + HALO_SPREAD,
       borderRadius: 38,
       backgroundColor: colors.accentBorder,
     },
