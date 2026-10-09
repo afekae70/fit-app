@@ -703,3 +703,73 @@ describe('migration 18 — sending everything again, once', () => {
     empty.close();
   });
 });
+
+describe('migration 19 — the calendar joins sync', () => {
+  /** The calendar as it was at version 18: no column for the server's timestamp. */
+  function plannedDevice() {
+    const db = new DatabaseSync(':memory:');
+    db.exec(`
+      CREATE TABLE scheduled_days (
+        id TEXT PRIMARY KEY NOT NULL, user_id TEXT NOT NULL, scheduled_on TEXT NOT NULL,
+        plan_day_id TEXT, position INTEGER NOT NULL DEFAULT 0, updated_at TEXT, deleted_at TEXT
+      );
+      INSERT INTO scheduled_days (id, user_id, scheduled_on, plan_day_id, position, updated_at)
+        VALUES ('r1', 'u1', '2026-09-20', 'push', 0, '2026-09-01T00:00:00.000Z'),
+               ('r2', 'u1', '2026-09-21', NULL, 0, NULL);
+    `);
+    return db;
+  }
+
+  type Stamp = { id: string; updated_at: string | null; remote_updated_at: string | null };
+  const stamps = (db: ReturnType<typeof plannedDevice>): Stamp[] =>
+    db.prepare(`SELECT id, updated_at, remote_updated_at FROM scheduled_days ORDER BY id`).all() as Stamp[];
+
+  it('is on the app upgrade path', () => {
+    expect(SCHEMA_VERSION).toBeGreaterThanOrEqual(19);
+    expect(MIGRATIONS[19]).toBeDefined();
+  });
+
+  it('adds the column every synced table carries', () => {
+    const db = plannedDevice();
+    applyMigration(db, MIGRATIONS[19] ?? '');
+    expect(stamps(db).every((row) => row.remote_updated_at === null)).toBe(true);
+    db.close();
+  });
+
+  it('marks every planned date as changed, so that the plan already made is sent', () => {
+    // Sync sends what is newer than its cursor. A week planned before the upgrade is older
+    // than that, and would be the one thing on the phone the server never received.
+    const db = plannedDevice();
+    applyMigration(db, MIGRATIONS[19] ?? '');
+    for (const row of stamps(db)) {
+      // The format the app itself writes, because these are compared as text.
+      expect(row.updated_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(Date.parse(row.updated_at!)).toBeGreaterThan(Date.parse('2026-09-01T00:00:00.000Z'));
+    }
+    db.close();
+  });
+
+  it('keeps every date and what it holds', () => {
+    const db = plannedDevice();
+    applyMigration(db, MIGRATIONS[19] ?? '');
+    expect(
+      db.prepare(`SELECT id, scheduled_on, plan_day_id FROM scheduled_days ORDER BY id`).all(),
+    ).toEqual([
+      { id: 'r1', scheduled_on: '2026-09-20', plan_day_id: 'push' },
+      { id: 'r2', scheduled_on: '2026-09-21', plan_day_id: null },
+    ]);
+    db.close();
+  });
+
+  it('is safe to run twice, and on a new install where the column is already there', () => {
+    const db = plannedDevice();
+    applyMigration(db, MIGRATIONS[19] ?? '');
+    expect(() => applyMigration(db, MIGRATIONS[19] ?? '')).not.toThrow();
+    db.close();
+
+    const fresh = new DatabaseSync(':memory:');
+    fresh.exec(CREATE_SCHEMA_SQL.replace(/PRAGMA journal_mode = WAL;/, ''));
+    expect(() => applyMigration(fresh, MIGRATIONS[19] ?? '')).not.toThrow();
+    fresh.close();
+  });
+});

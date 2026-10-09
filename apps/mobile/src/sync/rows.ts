@@ -67,6 +67,19 @@ export function isRowRefusal(code: string | null | undefined): boolean {
   return /^(22|23)[0-9A-Z]{3}$/.test(code) || code === '42501';
 }
 
+/**
+ * Did the server say it has no such table?
+ *
+ * `PGRST205` is PostgREST's "could not find the table in the schema cache"; `42P01` is
+ * Postgres's own "relation does not exist", which is what a function would raise. Either means
+ * the app is ahead of the server: it knows about a table whose migration has not been run yet.
+ *
+ * That is not a reason to stop syncing everything else. See `SyncTable.optional`.
+ */
+export function isMissingRelation(code: string | null | undefined): boolean {
+  return code === 'PGRST205' || code === '42P01';
+}
+
 /** `23505`: the row wants a value that a unique constraint says another row already holds. */
 export function isUniqueViolation(code: string | null | undefined): boolean {
   return code === '23505';

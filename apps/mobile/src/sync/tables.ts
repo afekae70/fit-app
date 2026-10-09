@@ -58,6 +58,20 @@ export interface SyncTable {
    * these columns, leaving whatever the server already had.
    */
   readonly indexColumns?: readonly string[];
+  /**
+   * The server may not have this table yet, and that is not an error.
+   *
+   * A table joins sync in two places that are not released together: the app, which ships in a
+   * build, and the server, where somebody has to run a migration by hand. Between the two, an
+   * app that insists on the table fails every sync on the first request to it — and since a
+   * failed run moves no cursor, it fails the same way for every other table too, on every
+   * phone, until the migration is run.
+   *
+   * Marked optional, a table the server does not know is stepped over: nothing is sent to it or
+   * read from it, its unsent rows stay queued, and everything else syncs. The run after the
+   * migration picks it up with nothing to repair.
+   */
+  readonly optional?: boolean;
 }
 
 export const SYNC_TABLES: readonly SyncTable[] = [
@@ -94,6 +108,25 @@ export const SYNC_TABLES: readonly SyncTable[] = [
     json: [],
     scope: { kind: 'parent', table: 'plan_days', column: 'plan_day_id' },
     indexColumns: ['order_index'],
+  },
+  {
+    /*
+     * The calendar: which workout is planned for which date.
+     *
+     * After the plan tables, since a scheduled row names a plan day. There is no foreign key
+     * on either side — the phone never had one — but offering a date before the workout it
+     * points at would still show another device a day whose workout it cannot find yet.
+     *
+     * A date holds several rows (two workouts, in `position` order) and no row at all means
+     * "undecided", so replacing a day is tombstones for the old rows and new rows for the new
+     * ones; nothing is ever updated in place and there is no unique index to trip.
+     */
+    table: 'scheduled_days',
+    columns: ['id', 'user_id', 'scheduled_on', 'plan_day_id', 'position', 'updated_at', 'deleted_at'],
+    booleans: [],
+    json: [],
+    scope: { kind: 'column' },
+    optional: true,
   },
   {
     table: 'workout_sessions',

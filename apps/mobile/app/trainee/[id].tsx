@@ -23,7 +23,14 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
-import { ListChecks, PencilSimple, Plus, Trash, UserMinus } from 'phosphor-react-native';
+import {
+  CalendarBlank,
+  ListChecks,
+  PencilSimple,
+  Plus,
+  Trash,
+  UserMinus,
+} from 'phosphor-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { CoachingError } from '../../src/coaching/api.js';
@@ -154,6 +161,27 @@ export default function TraineeScreen() {
           <View style={styles.loading}>
             <ActivityIndicator color={colors.accent} />
           </View>
+        ) : null}
+
+        {/* First, because it is what a coach comes back for week after week: the plans below
+            are built once, the calendar is filled in every Saturday. */}
+        {plans ? (
+          <SettingsSection
+            icon={CalendarBlank}
+            title={t('coaching.calendar')}
+            hint={t('coaching.calendarHint')}
+            index={0}
+          >
+            <LinkRow
+              label={t('coaching.open')}
+              onPress={() =>
+                router.push({
+                  pathname: '/trainee-calendar/[id]',
+                  params: { id, name: name ?? '' },
+                })
+              }
+            />
+          </SettingsSection>
         ) : null}
 
         {plans?.length === 0 ? <Banner tone="info">{t('coaching.noGroups')}</Banner> : null}

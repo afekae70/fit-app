@@ -14,6 +14,12 @@ import type { SqlExecutor } from '../db/executor.js';
 import { MIGRATIONS } from '../db/schema.js';
 import { createTestExecutor } from '../db/testUtils.js';
 import {
+  clearScheduledDay,
+  scheduledFor,
+  setScheduledDay,
+  setScheduledWorkouts,
+} from '../db/schedule.js';
+import {
   addExerciseToSession,
   addSet,
   deleteSession,
@@ -73,6 +79,8 @@ interface FakeServer extends SyncTransport {
   refuse: Map<string, string>;
   /** Every call that reached the server, for the tests that are about how many there were. */
   calls: { op: 'upsert' | 'patch' | 'fetchByIds'; table: string; ids: string[] }[];
+  /** Tables this server has not been given yet: any request to one is answered as PostgREST does. */
+  missing: Set<string>;
 }
 
 function createFakeServer(startAt = Date.parse('2026-03-01T00:00:00.000Z')): FakeServer {
@@ -166,11 +174,20 @@ function createFakeServer(startAt = Date.parse('2026-03-01T00:00:00.000Z')): Fak
     return null;
   };
 
+  /** What PostgREST answers for a table that is not in its schema cache. */
+  const absent = (name: string) => {
+    if (!server.missing.has(name)) return;
+    throw Object.assign(new Error(`Could not find the table 'public.${name}' in the schema cache`), {
+      code: 'PGRST205',
+    });
+  };
+
   const server: FakeServer = {
     now,
     failNextUpsert: false,
     refuse: new Map(),
     calls: [],
+    missing: new Set(),
     rows: (name) => [...table(name).values()],
     seed(name, row) {
       table(name).set(row.id as string, { ...row, updated_at: row.updated_at ?? now() });
@@ -187,6 +204,7 @@ function createFakeServer(startAt = Date.parse('2026-03-01T00:00:00.000Z')): Fak
         server.failNextUpsert = false;
         throw new Error('server rejected the batch');
       }
+      absent(name);
       server.calls.push({ op: 'upsert', table: name, ids: rows.map((row) => row.id as string) });
 
       /*
@@ -226,6 +244,7 @@ function createFakeServer(startAt = Date.parse('2026-03-01T00:00:00.000Z')): Fak
 
 
     async patch(name, rows) {
+      absent(name);
       server.calls.push({ op: 'patch', table: name, ids: rows.map((row) => row.id as string) });
       const rejections: RowRejection[] = [];
       for (const row of rows) {
@@ -245,6 +264,7 @@ function createFakeServer(startAt = Date.parse('2026-03-01T00:00:00.000Z')): Fak
 
 
     async fetchByIds(name, ids) {
+      absent(name);
       server.calls.push({ op: 'fetchByIds', table: name, ids: [...ids] });
       return ids.flatMap((id) => {
         const row = table(name).get(id);
@@ -254,6 +274,7 @@ function createFakeServer(startAt = Date.parse('2026-03-01T00:00:00.000Z')): Fak
 
 
     async changedSince(name, since, limit, afterId = null) {
+      absent(name);
       const stamp = (row: Row) => Date.parse(row.updated_at as string);
       const from = since === null ? null : Date.parse(since);
       return [...table(name).values()]
@@ -1915,5 +1936,165 @@ describe('a row arriving on a position this device has already given to another'
     expect(third.pushed).toBe(0);
     expect(third.refused).toEqual([]);
     expect(await here()).toHaveLength(3);
+  });
+});
+
+describe('the calendar', () => {
+  const DAY_PUSH = 'eeeeeeee-0000-4000-8000-00000000000a';
+  const DAY_LEGS = 'eeeeeeee-0000-4000-8000-00000000000b';
+  let counter = 0;
+  const newId = () => `90000000-0000-4000-8000-${String(++counter).padStart(12, '0')}`;
+  const at = (time: string) => localClock(`2026-02-01T${time}.000Z`);
+
+  beforeEach(() => {
+    counter = 0;
+  });
+
+  const planned = (onto: SqlExecutor, date: string) => scheduledFor(onto, USER, date);
+
+  it('reaches the server', async () => {
+    const server = createFakeServer();
+    await setScheduledDay(db, USER, newId, '2026-02-03', DAY_PUSH, at('10:00:00'));
+
+    await runSync(db, server, USER, at('11:00:00'));
+
+    expect(server.rows('scheduled_days')).toMatchObject([
+      { user_id: USER, scheduled_on: '2026-02-03', plan_day_id: DAY_PUSH, position: 0 },
+    ]);
+  });
+
+  it('reaches a second phone, two workouts on one day in their order', async () => {
+    const server = createFakeServer();
+    await setScheduledWorkouts(db, USER, newId, '2026-02-03', [DAY_PUSH, DAY_LEGS], at('10:00:00'));
+    await runSync(db, server, USER, at('11:00:00'));
+
+    const second = createTestExecutor();
+    await runSync(second, server, USER, at('12:00:00'));
+
+    expect(await planned(second, '2026-02-03')).toEqual([DAY_PUSH, DAY_LEGS]);
+    second.close();
+  });
+
+  it('tells the second phone when a date is changed, and when it is cleared', async () => {
+    /*
+     * The reason deletions are marked rather than removed. A changed date is the old rows
+     * deleted and new ones written; a phone that only ever heard about the new ones would show
+     * both workouts for ever.
+     */
+    const server = createFakeServer();
+    const second = createTestExecutor();
+    await setScheduledDay(db, USER, newId, '2026-02-03', DAY_PUSH, at('10:00:00'));
+    await runSync(db, server, USER, at('11:00:00'));
+    await runSync(second, server, USER, at('11:30:00'));
+
+    await setScheduledDay(db, USER, newId, '2026-02-03', DAY_LEGS, at('12:00:00'));
+    await runSync(db, server, USER, at('13:00:00'));
+    await runSync(second, server, USER, at('13:30:00'));
+    expect(await planned(second, '2026-02-03')).toEqual([DAY_LEGS]);
+
+    await clearScheduledDay(db, USER, '2026-02-03', at('14:00:00'));
+    await runSync(db, server, USER, at('15:00:00'));
+    await runSync(second, server, USER, at('15:30:00'));
+    expect(await planned(second, '2026-02-03')).toBeUndefined();
+    second.close();
+  });
+
+  it('takes a day set on the server by somebody else — a coach — and drops what it replaced', async () => {
+    // Exactly what `coach_set_schedule` does: the rows that were there are marked deleted, and
+    // new rows are written for what the day should now hold.
+    const server = createFakeServer();
+    await setScheduledDay(db, USER, newId, '2026-02-03', DAY_PUSH, at('10:00:00'));
+    await runSync(db, server, USER, at('11:00:00'));
+
+    const mine = server.rows('scheduled_days')[0]!;
+    server.seed('scheduled_days', { ...mine, deleted_at: server.now(), updated_at: undefined });
+    server.seed('scheduled_days', {
+      id: '91111111-0000-4000-8000-000000000001',
+      user_id: USER,
+      scheduled_on: '2026-02-03',
+      plan_day_id: DAY_LEGS,
+      position: 0,
+      deleted_at: null,
+    });
+
+    await runSync(db, server, USER, at('12:00:00'));
+
+    expect(await planned(db, '2026-02-03')).toEqual([DAY_LEGS]);
+  });
+
+  it('keeps a rest day a rest day across the wire, not an undecided one', async () => {
+    const server = createFakeServer();
+    await setScheduledDay(db, USER, newId, '2026-02-03', null, at('10:00:00'));
+    await runSync(db, server, USER, at('11:00:00'));
+
+    const second = createTestExecutor();
+    await runSync(second, server, USER, at('12:00:00'));
+
+    expect(await planned(second, '2026-02-03')).toBeNull();
+    expect(await planned(second, '2026-02-04')).toBeUndefined();
+    second.close();
+  });
+});
+
+describe('a table the server has not been given yet', () => {
+  /*
+   * The app ships in a build; a new table on the server is a script somebody runs by hand. In
+   * between, the app knows about a table the server does not. The calendar is the first table
+   * added that way since sync has had users, and without this the phone that installed the new
+   * build first would fail every sync, for every table, until the script was run.
+   */
+  let counter = 0;
+  const newId = () => `92000000-0000-4000-8000-${String(++counter).padStart(12, '0')}`;
+  const at = (time: string) => localClock(`2026-02-01T${time}.000Z`);
+  const DAY = 'eeeeeeee-0000-4000-8000-00000000000a';
+
+  beforeEach(() => {
+    counter = 0;
+  });
+
+  it('does not stop everything else from syncing', async () => {
+    const server = createFakeServer();
+    server.missing.add('scheduled_days');
+    const sessionId = await seedSession('2026-02-01T10:00:00.000Z');
+    await setScheduledDay(db, USER, newId, '2026-02-03', DAY, at('10:00:00'));
+
+    const result = await runSync(db, server, USER, at('11:00:00'));
+
+    expect(server.rows('workout_sessions').map((row) => row.id)).toEqual([sessionId]);
+    // Not counted as sent, and not reported as refused: the server did not refuse the row, it
+    // has nowhere to put it yet.
+    expect(result.pushed).toBe(1);
+    expect(result.refused).toEqual([]);
+  });
+
+  it('sends what was waiting as soon as the table exists', async () => {
+    const server = createFakeServer();
+    server.missing.add('scheduled_days');
+    await setScheduledDay(db, USER, newId, '2026-02-03', DAY, at('10:00:00'));
+    await runSync(db, server, USER, at('11:00:00'));
+    await runSync(db, server, USER, at('12:00:00'));
+
+    server.missing.clear();
+    const result = await runSync(db, server, USER, at('13:00:00'));
+
+    expect(result.pushed).toBe(1);
+    expect(server.rows('scheduled_days')).toMatchObject([
+      { scheduled_on: '2026-02-03', plan_day_id: DAY },
+    ]);
+  });
+
+  it('still fails the run for a table that is not optional', async () => {
+    // A missing `sets` table is not a migration waiting to be run. It is a broken server.
+    const server = createFakeServer();
+    server.missing.add('workout_sessions');
+    await seedSession('2026-02-01T10:00:00.000Z');
+
+    await expect(runSync(db, server, USER, at('11:00:00'))).rejects.toThrow(/Could not find the table/);
+  });
+
+  it('marks only the calendar as allowed to be missing', () => {
+    expect(SYNC_TABLES.filter((entry) => entry.optional).map((entry) => entry.table)).toEqual([
+      'scheduled_days',
+    ]);
   });
 });

@@ -47,7 +47,12 @@ export type DayDecision = string[] | null | undefined;
 /** The decision a set of rows for one date adds up to. Rows must already be in position order. */
 function decisionOf(rows: readonly { plan_day_id: string | null }[]): DayDecision {
   if (rows.length === 0) return undefined;
-  const workouts = rows.map((row) => row.plan_day_id).filter((id): id is string => id !== null);
+  // Once, in the order first seen. One device never writes the same workout twice on a date,
+  // but two can: this phone and a coach each putting "legs" on Tuesday arrive as two rows, and
+  // that is one workout planned by two people, not two workouts.
+  const workouts = [
+    ...new Set(rows.map((row) => row.plan_day_id).filter((id): id is string => id !== null)),
+  ];
   // A workout outranks a stray rest row for the same date. The writes below never produce both,
   // but a date that somehow held both is a date with training on it.
   return workouts.length > 0 ? workouts : null;
@@ -204,10 +209,11 @@ export async function isWeekUnplanned(
  * `null` records a rest day, a list records those workouts in that order, and duplicates in the
  * list are dropped — the same workout twice on one date is a typo, not a plan.
  *
- * Rows are deleted rather than tombstoned. The calendar is local only (it is not in the sync
- * tables), so there is nobody to tell about a deletion, and with several rows per date a
- * tombstone would have to be matched to the row it shadows — which is exactly the kind of
- * bookkeeping that ends with a cleared workout reappearing.
+ * The rows that were there are marked deleted, not removed, and the new ones are written as new
+ * rows. The calendar syncs: another device — this person's other phone, or their coach — has to
+ * hear that a date was cleared, and a row that has simply vanished says nothing to anyone. A row
+ * is never changed in place, so there is no matching a tombstone to what replaced it: what a
+ * date holds is whichever of its rows are not deleted.
  */
 export async function setScheduledWorkouts(
   db: SqlExecutor,
@@ -218,7 +224,7 @@ export async function setScheduledWorkouts(
   clock: Clock = defaultClock,
 ): Promise<void> {
   const now = clock();
-  await db.run(`DELETE FROM scheduled_days WHERE user_id = ? AND scheduled_on = ?`, [userId, date]);
+  await retire(db, userId, date, now);
 
   const entries: (string | null)[] = planDayIds === null ? [null] : [...new Set(planDayIds)];
   for (const [position, planDayId] of entries.entries()) {
@@ -285,15 +291,29 @@ export async function removeScheduledWorkout(
   if (!Array.isArray(current) || !current.includes(planDayId)) return;
   const remaining = current.filter((id) => id !== planDayId);
   if (remaining.length === 0) {
-    await clearScheduledDay(db, userId, date);
+    await clearScheduledDay(db, userId, date, clock);
     return;
   }
   await setScheduledWorkouts(db, userId, newId, date, remaining, clock);
 }
 
 /** Undo every decision for a date, returning it to the rotation. */
-export async function clearScheduledDay(db: SqlExecutor, userId: string, date: string): Promise<void> {
-  await db.run(`DELETE FROM scheduled_days WHERE user_id = ? AND scheduled_on = ?`, [userId, date]);
+export async function clearScheduledDay(
+  db: SqlExecutor,
+  userId: string,
+  date: string,
+  clock: Clock = defaultClock,
+): Promise<void> {
+  await retire(db, userId, date, clock());
+}
+
+/** Mark everything a date holds as deleted. See `setScheduledWorkouts` for why not removed. */
+async function retire(db: SqlExecutor, userId: string, date: string, at: string): Promise<void> {
+  await db.run(
+    `UPDATE scheduled_days SET deleted_at = ?, updated_at = ?
+      WHERE user_id = ? AND scheduled_on = ? AND deleted_at IS NULL`,
+    [at, at, userId, date],
+  );
 }
 
 /**

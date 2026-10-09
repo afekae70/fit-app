@@ -26,7 +26,7 @@
  * TEXT (lexicographically sortable, which is what the history queries rely on).
  */
 
-export const SCHEMA_VERSION = 18;
+export const SCHEMA_VERSION = 19;
 
 /**
  * Incremental migrations, keyed by the version they upgrade TO.
@@ -359,6 +359,24 @@ CREATE INDEX IF NOT EXISTS locations_user_idx ON locations (user_id);
     UPDATE OR IGNORE sets               SET set_index   = -rowid WHERE deleted_at IS NOT NULL AND set_index   >= 0;
     UPDATE sync_state SET last_synced_at = NULL;
   `,
+
+  // The calendar joins sync. Two things it needs that it did not have.
+  //
+  // The column is what every synced table carries: the server's own timestamp for the row, as
+  // of the last time it crossed the wire, which is what an incoming copy is compared against.
+  //
+  // The UPDATE marks every date already planned as changed. Sync sends what is newer than its
+  // cursor, and a calendar planned last week is older than that - so without it, the plan
+  // already on the phone would be the one thing that never reached the server, and a coach
+  // opening this person's calendar would see an empty month. The stamp is written in the same
+  // format the app writes (toISOString), because these values are compared as text.
+  //
+  // Safe to run twice: the ALTER is tolerated as a duplicate column, and marking rows as
+  // changed a second time only sends them a second time.
+  19: `
+    ALTER TABLE scheduled_days ADD COLUMN remote_updated_at TEXT;
+    UPDATE scheduled_days SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now');
+  `,
 };
 
 export const CREATE_SCHEMA_SQL = `
@@ -624,7 +642,8 @@ CREATE TABLE IF NOT EXISTS scheduled_days (
   plan_day_id   TEXT,
   position      INTEGER NOT NULL DEFAULT 0,
   updated_at    TEXT,
-  deleted_at    TEXT
+  deleted_at    TEXT,
+  remote_updated_at TEXT
 );
 
 CREATE INDEX IF NOT EXISTS scheduled_days_user_date_idx

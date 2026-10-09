@@ -240,3 +240,134 @@ export function dayPayload(day: CoachDay): Record<string, unknown> {
     }),
   };
 }
+
+/* -------------------------------------------------------------------------- */
+/* Giving a trainee one of the coach's own workouts                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One of the coach's own saved workouts, read from the coach's own database: the group it sits
+ * in, its name, and what it prescribes.
+ *
+ * It carries no ids on purpose. A coach's workout and a trainee's are different rows belonging
+ * to different people; what is handed over is what the workout *says*, written afresh under
+ * the trainee's account.
+ */
+export interface OwnWorkout {
+  groupName: string;
+  name: string | null;
+  exercises: Omit<CoachExercise, 'id'>[];
+}
+
+const sameText = (a: string | null, b: string | null) => (a?.trim() ?? '') === (b?.trim() ?? '');
+
+/** Do two workouts prescribe the same thing, exercise for exercise, in the same order? */
+function samePrescription(day: CoachDay, source: OwnWorkout): boolean {
+  if (day.exercises.length !== source.exercises.length) return false;
+  return day.exercises.every((exercise, index) => {
+    const other = source.exercises[index];
+    return (
+      other !== undefined &&
+      exercise.exerciseKey === other.exerciseKey &&
+      exercise.targetSets === other.targetSets &&
+      exercise.targetRepsMin === other.targetRepsMin &&
+      exercise.targetRepsMax === other.targetRepsMax &&
+      sameText(exercise.notes, other.notes)
+    );
+  });
+}
+
+/**
+ * The trainee's copy of this workout, if they already have one.
+ *
+ * A coach puts the same leg day on four Tuesdays. Without this, each of those would hand the
+ * trainee a fresh copy, and their plan screen would fill with identical workouts. A copy counts
+ * as the same when it sits in a group of the same name, has the same name, and prescribes
+ * exactly the same thing — so a copy the coach or the trainee has since edited is left alone,
+ * and the next assignment makes a new one that says what the coach's workout says now.
+ */
+export function existingCopy(
+  plans: readonly CoachPlan[],
+  source: OwnWorkout,
+): { planId: string; dayId: string } | null {
+  for (const plan of plans) {
+    if (!sameText(plan.name, source.groupName)) continue;
+    for (const day of plan.days) {
+      if (sameText(day.name, source.name) && samePrescription(day, source)) {
+        return { planId: plan.id, dayId: day.id };
+      }
+    }
+  }
+  return null;
+}
+
+/** The trainee's group with this name, to put a copy into. Null when they have none yet. */
+export function groupNamed(plans: readonly CoachPlan[], name: string): CoachPlan | null {
+  return plans.find((plan) => sameText(plan.name, name)) ?? null;
+}
+
+/** The workout as a new one of the trainee's own: the same content, every id new. */
+export function copyForTrainee(source: OwnWorkout, newId: () => string): CoachDay {
+  return {
+    id: newId(),
+    name: source.name,
+    exercises: source.exercises.map((exercise) => ({ ...exercise, id: newId() })),
+  };
+}
+
+/** Every workout a trainee has, with the group it is in — for a list to choose from. */
+export function allDays(
+  plans: readonly CoachPlan[],
+): { planId: string; planName: string; day: CoachDay; number: number }[] {
+  return plans.flatMap((plan) =>
+    plan.days.map((day, index) => ({
+      planId: plan.id,
+      planName: plan.name,
+      day,
+      // Its place in the group, for a workout nobody has named.
+      number: index + 1,
+    })),
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* A trainee's calendar                                                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * What a date holds, exactly as the trainee's own calendar means it:
+ *
+ *   absent     nothing decided
+ *   null       a rest day
+ *   string[]   one or more workouts, in order — never empty
+ */
+export type CoachCalendar = Map<string, string[] | null>;
+
+/**
+ * `coach_get_schedule`'s answer, by date.
+ *
+ * The server sends one entry per row, already in the order the day is done. A date whose only
+ * entries have no workout is a rest day; a workout on the same date outranks it, and the same
+ * workout named twice is counted once — the same rules the phone applies to its own calendar,
+ * so a coach and a trainee looking at the same date see the same thing.
+ */
+export function parseSchedule(raw: unknown): CoachCalendar {
+  const calendar: CoachCalendar = new Map();
+  if (!Array.isArray(raw)) return calendar;
+
+  const seen = new Map<string, { workouts: string[]; rows: number }>();
+  for (const entry of raw) {
+    const row = asRecord(entry);
+    const date = asText(row?.date);
+    if (!row || !date) continue;
+    const day = seen.get(date) ?? { workouts: [], rows: 0 };
+    day.rows += 1;
+    const workout = asText(row.plan_day_id);
+    if (workout && !day.workouts.includes(workout)) day.workouts.push(workout);
+    seen.set(date, day);
+  }
+  for (const [date, day] of seen) {
+    calendar.set(date, day.workouts.length > 0 ? day.workouts : null);
+  }
+  return calendar;
+}

@@ -11,18 +11,24 @@ import {
 } from './api.js';
 import {
   addExercise,
+  allDays,
+  copyForTrainee,
   dayPayload,
   describeTargets,
+  existingCopy,
   findDay,
+  groupNamed,
   moveExercise,
   newExercise,
   parsePlans,
+  parseSchedule,
   removeExercise,
   REPS,
   sameDay,
   SETS,
   stepTarget,
   type CoachDay,
+  type OwnWorkout,
 } from './planDocument.js';
 
 /* -------------------------------------------------------------------------- */
@@ -459,5 +465,151 @@ describe('calling the server', () => {
       coach_status: { error: { code: 'PGRST202', message: 'Could not find the function' } },
     });
     expect(await api.status()).toEqual({ ok: false, error: 'not_available' });
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* A trainee's calendar, and giving them one of the coach's own workouts       */
+/* -------------------------------------------------------------------------- */
+
+describe('reading a trainee\'s calendar', () => {
+  it('groups the rows by date, workouts in the order the day is done', () => {
+    const calendar = parseSchedule([
+      { date: '2026-10-11', plan_day_id: 'push', position: 0 },
+      { date: '2026-10-11', plan_day_id: 'abs', position: 1 },
+      { date: '2026-10-13', plan_day_id: 'legs', position: 0 },
+    ]);
+    expect(calendar.get('2026-10-11')).toEqual(['push', 'abs']);
+    expect(calendar.get('2026-10-13')).toEqual(['legs']);
+  });
+
+  it('keeps the three states apart: workouts, a rest day, and nothing decided', () => {
+    const calendar = parseSchedule([
+      { date: '2026-10-11', plan_day_id: 'push', position: 0 },
+      { date: '2026-10-12', plan_day_id: null, position: 0 },
+    ]);
+    expect(calendar.get('2026-10-11')).toEqual(['push']);
+    expect(calendar.get('2026-10-12')).toBeNull();
+    // Absent, not null: an undecided date is not a rest day.
+    expect(calendar.has('2026-10-13')).toBe(false);
+  });
+
+  it('counts a workout once when two rows name it, and lets it outrank a stray rest row', () => {
+    const calendar = parseSchedule([
+      { date: '2026-10-11', plan_day_id: 'legs', position: 0 },
+      { date: '2026-10-11', plan_day_id: 'legs', position: 0 },
+      { date: '2026-10-11', plan_day_id: null, position: 0 },
+    ]);
+    expect(calendar.get('2026-10-11')).toEqual(['legs']);
+  });
+
+  it('is empty for anything that is not a list', () => {
+    expect(parseSchedule(null).size).toBe(0);
+    expect(parseSchedule({}).size).toBe(0);
+    expect(parseSchedule([{ plan_day_id: 'no date' }]).size).toBe(0);
+  });
+});
+
+describe('giving a trainee one of the coach\'s own workouts', () => {
+  const legs: OwnWorkout = {
+    groupName: 'Gym',
+    name: 'Legs',
+    exercises: [
+      { exerciseKey: 'Squat', targetSets: 4, targetRepsMin: 5, targetRepsMax: 8, notes: null },
+      { exerciseKey: 'Leg Press', targetSets: 3, targetRepsMin: 10, targetRepsMax: 12, notes: 'slow' },
+    ],
+  };
+
+  let n = 0;
+  const newId = () => `id-${++n}`;
+
+  const trainee = () => [
+    {
+      id: 'plan-1',
+      name: 'Gym',
+      isActive: true,
+      days: [{ ...copyForTrainee(legs, newId), id: 'their-legs' }],
+    },
+  ];
+
+  it('writes it as a new workout of theirs: the same content, every id new', () => {
+    const copy = copyForTrainee(legs, newId);
+    expect(copy.name).toBe('Legs');
+    expect(copy.exercises.map((exercise) => exercise.exerciseKey)).toEqual(['Squat', 'Leg Press']);
+    expect(copy.exercises[1]).toMatchObject({ targetSets: 3, targetRepsMin: 10, notes: 'slow' });
+    const ids = [copy.id, ...copy.exercises.map((exercise) => exercise.id)];
+    expect(new Set(ids).size).toBe(3);
+  });
+
+  it('finds the copy they already have instead of making another', () => {
+    // The same leg day on four Tuesdays is one workout on their plan screen, not four.
+    expect(existingCopy(trainee(), legs)).toEqual({ planId: 'plan-1', dayId: 'their-legs' });
+  });
+
+  it('does not take an edited copy for the same workout', () => {
+    const plans = trainee();
+    plans[0]!.days[0]!.exercises[0]!.targetSets = 5;
+    expect(existingCopy(plans, legs)).toBeNull();
+  });
+
+  it('does not take a workout of the same name in a different group, or in a different order', () => {
+    const elsewhere = trainee();
+    elsewhere[0]!.name = 'Home';
+    expect(existingCopy(elsewhere, legs)).toBeNull();
+
+    const reordered = trainee();
+    reordered[0]!.days[0]!.exercises.reverse();
+    expect(existingCopy(reordered, legs)).toBeNull();
+  });
+
+  it('finds the group to put a copy in by its name, ignoring stray spaces', () => {
+    expect(groupNamed(trainee(), ' Gym ')?.id).toBe('plan-1');
+    expect(groupNamed(trainee(), 'Home')).toBeNull();
+  });
+
+  it('lists every workout a trainee has with its group, for choosing from', () => {
+    const days = allDays(parsePlans(SERVER_PLANS));
+    expect(days.map((entry) => [entry.planName, entry.day.id, entry.number])).toEqual([
+      ['Gym', 'day-1', 1],
+      ['Gym', 'day-2', 2],
+    ]);
+  });
+});
+
+describe('setting a trainee\'s day', () => {
+  it('sends the date, the workouts in order, and whether an empty day is a rest day', async () => {
+    const calls: { fn: string; args: unknown }[] = [];
+    const api = createCoachingApi({
+      rpc: (fn, args) => {
+        calls.push({ fn, args });
+        return Promise.resolve({ data: null, error: null });
+      },
+    });
+
+    await api.setSchedule('trainee-1', '2026-10-13', ['legs', 'abs'], false);
+    await api.setSchedule('trainee-1', '2026-10-14', [], true);
+
+    expect(calls).toEqual([
+      {
+        fn: 'coach_set_schedule',
+        args: { p_trainee: 'trainee-1', p_date: '2026-10-13', p_plan_days: ['legs', 'abs'], p_rest: false },
+      },
+      {
+        fn: 'coach_set_schedule',
+        args: { p_trainee: 'trainee-1', p_date: '2026-10-14', p_plan_days: [], p_rest: true },
+      },
+    ]);
+  });
+
+  it('reads the month back as a calendar', async () => {
+    const api = createCoachingApi({
+      rpc: () =>
+        Promise.resolve({
+          data: [{ date: '2026-10-13', plan_day_id: 'legs', position: 0 }],
+          error: null,
+        }),
+    });
+    const result = await api.schedule('trainee-1', '2026-09-27', '2026-10-31');
+    expect(result.ok && result.value.get('2026-10-13')).toEqual(['legs']);
   });
 });

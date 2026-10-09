@@ -48,6 +48,7 @@ import type { SqlExecutor } from '../db/executor.js';
 import {
   earlierOf,
   fromRemote,
+  isMissingRelation,
   isNewer,
   isUniqueViolation,
   laterOf,
@@ -308,119 +309,14 @@ async function push(
       return rejections.length;
     };
 
-    /*
-     * A row whose parent did not get through waits with it.
-     *
-     * The server would refuse it anyway — its ownership is proved through the parent, and a
-     * parent it does not have proves nothing. Offering it regardless costs more than the one
-     * request: a single refusal fails its whole batch, and the transport then resends that
-     * batch a row at a time to find out which one it was.
-     */
-    const scope = table.scope;
-    const stuck = scope.kind === 'parent' ? unsent.get(scope.table) : undefined;
-    const rows: Row[] = [];
-    for (const row of dirty) {
-      if (scope.kind === 'parent' && stuck?.has(String(row[scope.column]))) {
-        waiting.add(String(row.id));
-      } else {
-        rows.push(row);
-      }
-    }
-
-    /*
-     * Tombstones travel as patches, everything else as upserts.
-     *
-     * An upsert is `INSERT ... ON CONFLICT DO UPDATE`: it would create the row if the server
-     * did not have it, and a deletion must never bring a row into being. It also checks NOT
-     * NULL against the proposed insert tuple before it ever looks for the conflict, which is
-     * how one deleted plan day once stopped every later sync on the same row.
-     *
-     * A patch has no insert tuple. It cannot resurrect a row the server has already lost, and
-     * `tombstonesDue` has already set aside the ones the server never had.
-     */
-    const live = rows.filter((row) => row.deleted_at === null || row.deleted_at === undefined);
-    const tombstones = rows.filter((row) => row.deleted_at !== null && row.deleted_at !== undefined);
-
-    /*
-     * Tombstones go first, and the order is load-bearing.
-     *
-     * A deleted row parks its index out of the way; a surviving sibling then renumbers into the
-     * slot it left. Sent the other way round, the survivor arrives while the deleted row is
-     * still sitting in that position and the server refuses it — which is the same unique
-     * violation, just reached from the opposite direction.
-     */
-    const due = await tombstonesDue(transport, table, tombstones);
-    for (let i = 0; i < due.length; i += BATCH) {
-      const batch = due.slice(i, i + BATCH);
-      pushed += batch.length - refuse(await transport.patch(table.table, batch));
-    }
-
-    /*
-     * Ordered rows go up in two passes, for the same reason the local reorder does.
-     *
-     * `UNIQUE (parent, index)` is checked per row, and `onConflict: 'id'` resolves a clash on
-     * the primary key and nothing else — so two exercises trading places means one arrives at a
-     * slot the other has not left yet, and the server refuses it.
-     *
-     * The first pass parks the batch's indexes far above anything a real position occupies, the
-     * second writes the true ones into slots that are now certainly free. It costs one extra
-     * request per ordered table, on a path that runs a few times a day.
-     *
-     * Skipped for a single row: with nothing to permute against there is no slot to contend
-     * for, and the common sync is one row or none.
-     */
-    const orders = table.indexColumns ?? [];
-    if (orders.length > 0 && live.length > 1) {
-      const park = (row: Row): Row => {
-        const parked = toRemote(table, row);
-        for (const column of orders) {
-          const value = parked[column];
-          if (typeof value === 'number') parked[column] = value + PUSH_PARK;
-        }
-        return parked;
-      };
-
-      /*
-       * A clash *in the parking band* is not a refusal of the row.
-       *
-       * It means a sibling is already parked on that value — left there by a run that died
-       * between the two passes, and holding a position this device has since given to another
-       * row. That sibling is in this batch too and is about to move, so the row that clashed
-       * is simply offered again once the others have gone. If it still cannot park, it takes
-       * its turn below regardless: where a row may wait says nothing about where it may live.
-       *
-       * Anything else the server objected to, it will object to again, and asking a second
-       * time would only fail another batch for nothing.
-       */
-      const sendParked = async (batch: readonly Row[]): Promise<Row[]> => {
-        const rejections = await transport.upsert(table.table, batch.map(park));
-        refuse(rejections.filter((rejection) => !isUniqueViolation(rejection.code)));
-        const clashed = new Set(
-          rejections.filter((rejection) => isUniqueViolation(rejection.code)).map((r) => r.id),
-        );
-        return batch.filter((row) => clashed.has(String(row.id)));
-      };
-
-      const again: Row[] = [];
-      for (let i = 0; i < live.length; i += BATCH) {
-        again.push(...(await sendParked(live.slice(i, i + BATCH))));
-      }
-      for (let i = 0; i < again.length; i += BATCH) {
-        await sendParked(again.slice(i, i + BATCH));
-      }
-    }
-
-    const placing = live.filter((row) => !waiting.has(String(row.id)));
-    for (let i = 0; i < placing.length; i += BATCH) {
-      const batch = placing.slice(i, i + BATCH);
-      pushed +=
-        batch.length -
-        refuse(
-          await transport.upsert(
-            table.table,
-            batch.map((row) => toRemote(table, row)),
-          ),
-        );
+    try {
+      pushed += await pushTable(transport, table, dirty, unsent, waiting, refuse);
+    } catch (error) {
+      // A table the server has not been given yet. Its rows wait — all of them, whatever had
+      // or had not been sent before the server said so — and the run carries on. See
+      // `SyncTable.optional`. Anything else is a real failure and ends the run as before.
+      if (!table.optional || !isMissingTable(error)) throw error;
+      for (const row of dirty) waiting.add(String(row.id));
     }
   }
 
@@ -455,6 +351,145 @@ async function push(
   }
 
   return { pushed, refused };
+}
+
+/** Is this the server saying it has no such table? Read off whatever was thrown. */
+function isMissingTable(error: unknown): boolean {
+  return isMissingRelation((error as { code?: string | null } | null)?.code);
+}
+
+/**
+ * Send one table's changed rows. Returns how many the server took.
+ *
+ * Throws only for a failure that is not about a row. Rows the server refuses are reported
+ * through `refuse`; rows held back behind a refused parent are added to `waiting`.
+ */
+async function pushTable(
+  transport: SyncTransport,
+  table: SyncTable,
+  dirty: readonly Row[],
+  unsent: ReadonlyMap<string, Set<string>>,
+  waiting: Set<string>,
+  refuse: (rejections: readonly RowRejection[]) => number,
+): Promise<number> {
+  let pushed = 0;
+
+  /*
+   * A row whose parent did not get through waits with it.
+   *
+   * The server would refuse it anyway — its ownership is proved through the parent, and a
+   * parent it does not have proves nothing. Offering it regardless costs more than the one
+   * request: a single refusal fails its whole batch, and the transport then resends that
+   * batch a row at a time to find out which one it was.
+   */
+  const scope = table.scope;
+  const stuck = scope.kind === 'parent' ? unsent.get(scope.table) : undefined;
+  const rows: Row[] = [];
+  for (const row of dirty) {
+    if (scope.kind === 'parent' && stuck?.has(String(row[scope.column]))) {
+      waiting.add(String(row.id));
+    } else {
+      rows.push(row);
+    }
+  }
+
+  /*
+   * Tombstones travel as patches, everything else as upserts.
+   *
+   * An upsert is `INSERT ... ON CONFLICT DO UPDATE`: it would create the row if the server
+   * did not have it, and a deletion must never bring a row into being. It also checks NOT
+   * NULL against the proposed insert tuple before it ever looks for the conflict, which is
+   * how one deleted plan day once stopped every later sync on the same row.
+   *
+   * A patch has no insert tuple. It cannot resurrect a row the server has already lost, and
+   * `tombstonesDue` has already set aside the ones the server never had.
+   */
+  const live = rows.filter((row) => row.deleted_at === null || row.deleted_at === undefined);
+  const tombstones = rows.filter((row) => row.deleted_at !== null && row.deleted_at !== undefined);
+
+  /*
+   * Tombstones go first, and the order is load-bearing.
+   *
+   * A deleted row parks its index out of the way; a surviving sibling then renumbers into the
+   * slot it left. Sent the other way round, the survivor arrives while the deleted row is
+   * still sitting in that position and the server refuses it — which is the same unique
+   * violation, just reached from the opposite direction.
+   */
+  const due = await tombstonesDue(transport, table, tombstones);
+  for (let i = 0; i < due.length; i += BATCH) {
+    const batch = due.slice(i, i + BATCH);
+    pushed += batch.length - refuse(await transport.patch(table.table, batch));
+  }
+
+  /*
+   * Ordered rows go up in two passes, for the same reason the local reorder does.
+   *
+   * `UNIQUE (parent, index)` is checked per row, and `onConflict: 'id'` resolves a clash on
+   * the primary key and nothing else — so two exercises trading places means one arrives at a
+   * slot the other has not left yet, and the server refuses it.
+   *
+   * The first pass parks the batch's indexes far above anything a real position occupies, the
+   * second writes the true ones into slots that are now certainly free. It costs one extra
+   * request per ordered table, on a path that runs a few times a day.
+   *
+   * Skipped for a single row: with nothing to permute against there is no slot to contend
+   * for, and the common sync is one row or none.
+   */
+  const orders = table.indexColumns ?? [];
+  if (orders.length > 0 && live.length > 1) {
+    const park = (row: Row): Row => {
+      const parked = toRemote(table, row);
+      for (const column of orders) {
+        const value = parked[column];
+        if (typeof value === 'number') parked[column] = value + PUSH_PARK;
+      }
+      return parked;
+    };
+
+    /*
+     * A clash *in the parking band* is not a refusal of the row.
+     *
+     * It means a sibling is already parked on that value — left there by a run that died
+     * between the two passes, and holding a position this device has since given to another
+     * row. That sibling is in this batch too and is about to move, so the row that clashed
+     * is simply offered again once the others have gone. If it still cannot park, it takes
+     * its turn below regardless: where a row may wait says nothing about where it may live.
+     *
+     * Anything else the server objected to, it will object to again, and asking a second
+     * time would only fail another batch for nothing.
+     */
+    const sendParked = async (batch: readonly Row[]): Promise<Row[]> => {
+      const rejections = await transport.upsert(table.table, batch.map(park));
+      refuse(rejections.filter((rejection) => !isUniqueViolation(rejection.code)));
+      const clashed = new Set(
+        rejections.filter((rejection) => isUniqueViolation(rejection.code)).map((r) => r.id),
+      );
+      return batch.filter((row) => clashed.has(String(row.id)));
+    };
+
+    const again: Row[] = [];
+    for (let i = 0; i < live.length; i += BATCH) {
+      again.push(...(await sendParked(live.slice(i, i + BATCH))));
+    }
+    for (let i = 0; i < again.length; i += BATCH) {
+      await sendParked(again.slice(i, i + BATCH));
+    }
+  }
+
+  const placing = live.filter((row) => !waiting.has(String(row.id)));
+  for (let i = 0; i < placing.length; i += BATCH) {
+    const batch = placing.slice(i, i + BATCH);
+    pushed +=
+      batch.length -
+      refuse(
+        await transport.upsert(
+          table.table,
+          batch.map((row) => toRemote(table, row)),
+        ),
+      );
+  }
+
+  return pushed;
 }
 
 function justAfter(timestamp: string): string {
@@ -707,7 +742,14 @@ async function pull(
     let cursor = since;
     let afterId: string | null = null;
     for (;;) {
-      const remote = await transport.changedSince(table.table, cursor, BATCH, afterId);
+      let remote: Row[];
+      try {
+        remote = await transport.changedSince(table.table, cursor, BATCH, afterId);
+      } catch (error) {
+        // Nothing to read from a table the server has not been given yet.
+        if (!table.optional || !isMissingTable(error)) throw error;
+        break;
+      }
       if (remote.length === 0) break;
 
       // Every id arriving together. Only these may be parked out of the way, since only these

@@ -104,12 +104,39 @@ describe('committing a day', () => {
     expect(await scheduledFor(db, USER, '2026-08-18')).toBeUndefined();
   });
 
-  it('updates in place rather than leaving two rows for one date', async () => {
+  it('replaces what a date held rather than adding to it', async () => {
     await setScheduledDay(db, USER, newId, '2026-08-17', 'day-push', clock);
     await setScheduledDay(db, USER, newId, '2026-08-17', 'day-legs', clock);
 
     expect(await scheduledFor(db, USER, '2026-08-17')).toEqual(['day-legs']);
-    expect(await db.all('SELECT id FROM scheduled_days')).toHaveLength(1);
+    expect(await db.all('SELECT id FROM scheduled_days WHERE deleted_at IS NULL')).toHaveLength(1);
+  });
+
+  it('marks what it replaces as deleted, so another device hears about it', async () => {
+    // The calendar syncs. A row that simply vanished would say nothing to the other phone, or
+    // to a coach, and the workout it named would stay on their copy of the date for good.
+    await setScheduledDay(db, USER, newId, '2026-08-17', 'day-push', clock);
+    await setScheduledDay(db, USER, newId, '2026-08-17', 'day-legs', clock);
+    await clearScheduledDay(db, USER, '2026-08-17', clock);
+
+    const rows = await db.all<{ plan_day_id: string; deleted_at: string | null }>(
+      `SELECT plan_day_id, deleted_at FROM scheduled_days ORDER BY plan_day_id`,
+    );
+    expect(rows.map((row) => row.plan_day_id)).toEqual(['day-legs', 'day-push']);
+    expect(rows.every((row) => row.deleted_at !== null)).toBe(true);
+    expect(await scheduledFor(db, USER, '2026-08-17')).toBeUndefined();
+  });
+
+  it('counts a workout once when two rows name it on the same date', async () => {
+    // What two devices produce: this phone and a coach each put the same workout on a date.
+    await setScheduledDay(db, USER, newId, '2026-08-17', 'day-legs', clock);
+    await db.run(
+      `INSERT INTO scheduled_days (id, user_id, scheduled_on, plan_day_id, position, updated_at)
+         VALUES ('from-the-coach', ?, '2026-08-17', 'day-legs', 0, ?)`,
+      [USER, clock()],
+    );
+
+    expect(await scheduledFor(db, USER, '2026-08-17')).toEqual(['day-legs']);
   });
 
   it('revives a cleared date instead of leaving the tombstone in the way', async () => {

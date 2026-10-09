@@ -12,7 +12,14 @@
  * refusal means can be tested without a network.
  */
 
-import { parsePlans, dayPayload, type CoachDay, type CoachPlan } from './planDocument.js';
+import {
+  dayPayload,
+  parsePlans,
+  parseSchedule,
+  type CoachCalendar,
+  type CoachDay,
+  type CoachPlan,
+} from './planDocument.js';
 
 export type CoachingError =
   /** The functions are not on the server: migration 0007 has not been run on this project. */
@@ -218,6 +225,20 @@ export function createCoachingApi(client: RpcClient) {
       call('coach_delete', { p_trainee: traineeId, p_kind: 'plan', p_id: planId }, nothing),
     deleteDay: (traineeId: string, dayId: string) =>
       call('coach_delete', { p_trainee: traineeId, p_kind: 'day', p_id: dayId }, nothing),
+
+    /** A trainee's calendar between two local dates (`YYYY-MM-DD`), inclusive. */
+    schedule: (traineeId: string, from: string, to: string): Promise<CoachingResult<CoachCalendar>> =>
+      call('coach_get_schedule', { p_trainee: traineeId, p_from: from, p_to: to }, parseSchedule),
+    /**
+     * Say what one date holds for a trainee, replacing whatever it held: those workouts in that
+     * order; or, with none, a rest day (`rest`) or nothing decided at all.
+     */
+    setSchedule: (traineeId: string, date: string, planDayIds: readonly string[], rest: boolean) =>
+      call(
+        'coach_set_schedule',
+        { p_trainee: traineeId, p_date: date, p_plan_days: [...planDayIds], p_rest: rest },
+        nothing,
+      ),
 
     /** Administrators only. Every coach there is. */
     coaches: () => call('admin_list_coaches', undefined, parseCoaches),
