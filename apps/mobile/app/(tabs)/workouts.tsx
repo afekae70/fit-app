@@ -44,7 +44,6 @@ import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
 import { useActionSheet } from '../../src/components/ActionSheetProvider.js';
 import type { ExerciseTarget, PreviousSet } from '../../src/components/ExerciseCard.js';
 import { FinishedBurst } from '../../src/components/workout/FinishedBurst.js';
-import { requestBackup } from '../../src/backup/AutoBackup.js';
 import * as SecureStore from 'expo-secure-store';
 
 
@@ -88,7 +87,6 @@ import { getPlanDay, listPlanDayExercises, timingOf, type PlanDayTiming } from '
 import { getLatestWeight, getProfile } from '../../src/db/metrics.js';
 import { getExecutor, newId } from '../../src/db/provider.js';
 import { isExerciseStalling } from '../../src/db/progression.js';
-import { listLocations, setSessionLocation, type LocationRow } from '../../src/db/locations.js';
 import { getSessionType, hasType } from '../../src/db/sessionType.js';
 import {
   addExerciseToSession,
@@ -211,8 +209,6 @@ export default function WorkoutsScreen() {
   // kind, so every comparison on screen silently widens to all of them. Worth saying out loud
   // rather than letting the numbers quietly mean something else.
   const [typed, setTyped] = useState(true);
-  const [gyms, setGyms] = useState<LocationRow[]>([]);
-  const [gymId, setGymId] = useState<string | null>(null);
   const [bodyWeightKg, setBodyWeightKg] = useState<number | null>(null);
   /** From the birth date on the profile; null without one, and the heart rate then has no zone. */
   const [maxHeartRate, setMaxHeartRate] = useState<number | null>(null);
@@ -360,12 +356,10 @@ export default function WorkoutsScreen() {
     // Excluding the current session matters: without it, the sets being typed right now would
     // come back as their own "last time" the instant they are saved.
     // What kind of workout this is, resolved once. Every "last time" and every stall verdict
-    // below is scoped to sessions of the same kind, so a lift done on another gym's machine
-    // does not answer for this one.
+    // below is scoped to sessions of the same kind, so a push day is not answered for by the
+    // last leg day.
     const type = await getSessionType(db, id);
     setTyped(hasType(type));
-    setGymId(type?.locationId ?? null);
-    setGyms(await listLocations(db, userId));
     // The latest weigh-in, which is half of the calorie estimate on a cardio effort.
     setBodyWeightKg((await getLatestWeight(db, userId))?.weight_kg ?? null);
     // And the age, which is what turns a heart rate into a training zone.
@@ -552,8 +546,6 @@ export default function WorkoutsScreen() {
       // Deliberately unawaited and allowed to fail: the workout is saved either way, and the
       // trophy is not the place to find out that another app was not listening.
       void exportSessionToHealth(db, userId, sessionId, healthExportCopy(t)).catch(() => undefined);
-      // The moment worth protecting: new data exists that did not a minute ago.
-      void requestBackup(userId, { afterWorkout: true });
     })();
   };
 
@@ -1096,39 +1088,6 @@ export default function WorkoutsScreen() {
     [exercises, ask, t, patchSet, deleteSet, sessionId, reload],
   );
 
-  /**
-   * Choose where this workout is happening.
-   *
-   * Offered during the session rather than demanded before it: a workout that cannot start until
-   * a question is answered is a workout someone abandons at the door. The gym narrows every
-   * comparison on the card the moment it is set, and leaving it unset simply compares on the
-   * workout's kind, as it did before gyms existed.
-   */
-  const openGymPicker = useCallback(() => {
-    if (!sessionId) return;
-    void (async () => {
-      const choice = await ask({
-        title: t('gyms.chooseTitle'),
-        actions: [
-          ...gyms.map((gym) => ({ label: gym.name })),
-          { label: t('gyms.none') },
-          { label: t('gyms.manage') },
-        ],
-      });
-      if (choice === null) return;
-
-      if (choice === gyms.length + 1) {
-        router.push('/gyms');
-        return;
-      }
-
-      const next = choice === gyms.length ? null : (gyms[choice]?.id ?? null);
-      const db = await getExecutor();
-      await setSessionLocation(db, sessionId, next);
-      await reload(sessionId);
-    })();
-  }, [sessionId, gyms, ask, t, reload]);
-
   const groups = useMemo(
     () => stations(exercises.map((exercise) => exercise.superset_with_next === 1)),
     [exercises],
@@ -1623,29 +1582,16 @@ export default function WorkoutsScreen() {
       />
 
       {/* An unplanned, unnamed workout has no other session of its kind, so "last time" and the
-          suggestions quietly widen to every gym. Said out loud rather than left to be inferred
-          from numbers that look slightly wrong. */}
+          suggestions quietly widen to every workout. Said out loud rather than left to be
+          inferred from numbers that look slightly wrong. */}
       {!typed ? <Banner tone="info">{t('workout.untypedComparison')}</Banner> : null}
 
-      {/* Where this is happening. Shown as a quiet chip rather than a field: it changes what the
-          numbers are compared against, which is worth surfacing, but it is not something to fill
-          in before lifting. */}
-      {/* Where, and how the exercises are shown, on one quiet line: both change how the screen
-          behaves, neither is something to look at while lifting. Focus is the default — during a
-          workout the question is what to do now, and eight cards of which seven are not it is an
+      {/* How the exercises are shown, on one quiet line: it changes how the screen behaves and
+          is not something to look at while lifting. Focus is the default — during a workout
+          the question is what to do now, and eight cards of which seven are not it is an
           answer the reader has to search for. */}
-      <View style={styles.controlsRow}>
-        <Pressable
-          onPress={openGymPicker}
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.gymChip, pressed && { opacity: 0.7 }]}
-        >
-          <Text style={styles.gymChipText} numberOfLines={1}>
-            📍 {gyms.find((g) => g.id === gymId)?.name ?? t('gyms.none')}
-          </Text>
-        </Pressable>
-
-        {timing ? null : (
+      {timing ? null : (
+        <View style={styles.controlsRow}>
           <View style={styles.modeRow}>
             <Pressable
               onPress={() => setFocusMode(true)}
@@ -1676,8 +1622,8 @@ export default function WorkoutsScreen() {
               </Text>
             </Pressable>
           </View>
-        )}
-      </View>
+        </View>
+      )}
 
       <PrToast data={prToast} onDone={() => setPrToast(null)} />
 
@@ -1835,8 +1781,6 @@ const createStyles = (colors: ColorPalette) =>
   StyleSheet.create<{
     screen: ViewStyle;
     controlsRow: ViewStyle;
-    gymChip: ViewStyle;
-    gymChipText: TextStyle;
     modeRow: ViewStyle;
     modeChip: ViewStyle;
     modeChipOn: ViewStyle;
@@ -1871,16 +1815,6 @@ const createStyles = (colors: ColorPalette) =>
     marginTop: spacing.sm,
     marginBottom: spacing.md,
   },
-  gymChip: {
-    flexShrink: 1,
-    paddingVertical: 4,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surfaceRaised,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-  },
-  gymChipText: { color: colors.textMuted, fontSize: 11, textAlign: 'auto' },
   modeRow: { flexDirection: 'row', gap: 6 },
   modeChip: {
     paddingVertical: 4,

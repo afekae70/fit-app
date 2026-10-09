@@ -15,6 +15,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
+import { CalendarCheck } from 'phosphor-react-native';
 
 import { getExecutor } from '../db/provider.js';
 import { hapticLight } from '../haptics.js';
@@ -27,7 +28,8 @@ import {
 } from '../reminders/workoutDays.js';
 import { useTheme } from '../ThemeProvider.js';
 import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../theme.js';
-import { Banner, Card, Hint, SectionTitle, Segmented } from './ui.js';
+import { Choice, RowDivider, SettingRow, SettingsSection, ToggleRow } from './settings/kit.js';
+import { Banner } from './ui.js';
 
 const STEP_MINUTES = 15;
 /** September 20th 2026 is a Sunday; the week from it gives weekday names in the app's language. */
@@ -99,22 +101,21 @@ export function WorkoutReminderCard({ userId, index }: { userId: string; index?:
   );
 
   return (
-    <Card index={index}>
-      <SectionTitle>{t('settings.workoutReminderTitle')}</SectionTitle>
-      <Hint>{t('settings.workoutReminderHint')}</Hint>
-
-      <Segmented<'on' | 'off'>
-        label={t('settings.workoutReminderTitle')}
-        selected={settings.enabled ? 'on' : 'off'}
-        onSelect={(next) => apply({ ...settings, enabled: next === 'on' })}
-        options={[
-          { value: 'on', label: t('settings.reminderOn') },
-          { value: 'off', label: t('settings.reminderOff') },
-        ]}
+    <SettingsSection
+      icon={CalendarCheck}
+      title={t('settings.workoutReminderTitle')}
+      hint={t('settings.workoutReminderHint')}
+      index={index}
+    >
+      <ToggleRow
+        label={settings.enabled ? t('settings.reminderOn') : t('settings.reminderOff')}
+        value={settings.enabled}
+        onChange={(enabled) => apply({ ...settings, enabled })}
       />
 
       {settings.enabled ? (
         <View style={s.body}>
+          <RowDivider />
           {!perDay ? (
             <View style={s.row}>
               <Text style={s.rowLabel}>{t('settings.workoutReminderTime')}</Text>
@@ -137,30 +138,31 @@ export function WorkoutReminderCard({ userId, index }: { userId: string; index?:
             ))
           )}
 
-          <Segmented<'same' | 'each'>
-            label={t('settings.workoutReminderPerDay')}
-            selected={perDay ? 'each' : 'same'}
-            onSelect={(next) =>
-              apply({
-                ...settings,
-                // Every weekday starts from the shared time, so switching changes nothing until
-                // a row is moved; switching back drops the per-day times entirely.
-                perWeekday:
-                  next === 'each'
-                    ? settings.perWeekday.map((time) => time ?? settings.time)
-                    : [null, null, null, null, null, null, null],
-              })
-            }
-            options={[
-              { value: 'same', label: t('settings.workoutReminderSame') },
-              { value: 'each', label: t('settings.workoutReminderEach') },
-            ]}
-          />
+          <SettingRow label={t('settings.workoutReminderPerDay')} stacked>
+            <Choice<'same' | 'each'>
+              selected={perDay ? 'each' : 'same'}
+              onSelect={(next) =>
+                apply({
+                  ...settings,
+                  // Every weekday starts from the shared time, so switching changes nothing until
+                  // a row is moved; switching back drops the per-day times entirely.
+                  perWeekday:
+                    next === 'each'
+                      ? settings.perWeekday.map((time) => time ?? settings.time)
+                      : [null, null, null, null, null, null, null],
+                })
+              }
+              options={[
+                { value: 'same', label: t('settings.workoutReminderSame') },
+                { value: 'each', label: t('settings.workoutReminderEach') },
+              ]}
+            />
+          </SettingRow>
         </View>
       ) : null}
 
       {denied ? <Banner tone="warning">{t('settings.reminderDenied')}</Banner> : null}
-    </Card>
+    </SettingsSection>
   );
 }
 
@@ -175,9 +177,9 @@ const createStyles = (colors: ColorPalette) =>
     time: TextStyle;
     pressed: ViewStyle;
   }>({
-    body: { gap: spacing.sm, marginTop: spacing.sm },
+    body: { gap: spacing.md },
     row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-    rowLabel: { color: colors.textSecondary, fontSize: fontSize.md, textAlign: 'auto' },
+    rowLabel: { color: colors.textSecondary, fontSize: fontSize.sm, textAlign: 'auto' },
     stepper: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     stepButton: {
       width: 36,

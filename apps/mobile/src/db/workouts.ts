@@ -103,16 +103,16 @@ export async function startSession(
   db: SqlExecutor,
   userId: string,
   newId: IdFactory,
-  options: { locationId?: string | null; planDayId?: string | null; bodyweightKg?: number | null } = {},
+  options: { planDayId?: string | null; bodyweightKg?: number | null } = {},
   clock: Clock = defaultClock,
 ): Promise<string> {
   const id = newId();
   const now = clock();
   await db.run(
     `INSERT INTO workout_sessions
-       (id, user_id, location_id, plan_day_id, started_at, bodyweight_kg, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, userId, options.locationId ?? null, options.planDayId ?? null, now, options.bodyweightKg ?? null, now, now],
+       (id, user_id, plan_day_id, started_at, bodyweight_kg, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [id, userId, options.planDayId ?? null, now, options.bodyweightKg ?? null, now, now],
   );
   await enqueue(db, 'workout_session', id, 'insert', { id, startedAt: now }, clock);
   return id;

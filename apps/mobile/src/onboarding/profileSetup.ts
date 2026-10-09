@@ -136,10 +136,43 @@ export function valueAtIndex(range: RulerRange, index: number): number {
   return Number((range.min + clamped * range.step).toFixed(range.decimals));
 }
 
-/** The nearest tick to a value. Anything off the ends lands on the end. */
+/**
+ * The nearest tick to a value. Anything off the ends lands on the end.
+ *
+ * The value need not be on a tick itself — see `ontoScale`. This is where the ruler rests for
+ * it, not what it is.
+ */
 export function indexOfValue(range: RulerRange, value: number): number {
   const index = Math.round((value - range.min) / range.step);
   return Math.max(0, Math.min(tickCount(range) - 1, index));
+}
+
+/**
+ * Any number, brought onto a scale: held between its ends and cut to the precision it shows.
+ *
+ * Not the same as snapping to a tick. The ruler moves in half kilos because a finer one would
+ * take five times as long to drag across, but a number that was typed, or read off a scale
+ * this morning, is finer than that and should be kept as it is: 82.3 stays 82.3, and the ruler
+ * simply rests on the nearest mark.
+ */
+export function ontoScale(range: RulerRange, value: number): number {
+  const held = Math.max(range.min, Math.min(range.max, value));
+  return Number(held.toFixed(range.decimals));
+}
+
+/**
+ * What someone typed, as a value on the scale — or null if it is not a number at all.
+ *
+ * A comma is taken as a decimal point, since that is what half the world's keyboards offer.
+ * Out of range is held at the end rather than refused: typing 300 on a scale that stops at 250
+ * shows 250, which says what the limit is more plainly than an error would.
+ */
+export function parseTyped(range: RulerRange, text: string): number | null {
+  const normalised = text.replace(',', '.').trim();
+  if (normalised === '' || normalised === '.') return null;
+  const value = Number(normalised);
+  if (!Number.isFinite(value)) return null;
+  return ontoScale(range, value);
 }
 
 export type TickKind = 'major' | 'medium' | 'minor';
@@ -246,9 +279,10 @@ export function setupTargets(answers: SetupAnswers): SetupTargets | null {
  * It is on a new account. It is not when the account already has history — signing in on a new
  * phone asks the questions again, since the profile does not travel, and the ruler opens on the
  * last weigh-in. Leaving it there must not add a manual reading to a chart of scale readings.
- * A quarter of a kilo is half a tick: nearer than that is the same position on the ruler.
+ * The ruler opens on that weigh-in to a tenth of a kilo, so "left alone" is a difference of
+ * less than that — anything more was dragged or typed, and is a reading in its own right.
  */
 export function isNewWeight(latestKg: number | null, answeredKg: number): boolean {
   if (latestKg === null) return true;
-  return Math.abs(latestKg - answeredKg) >= 0.25;
+  return Math.abs(latestKg - answeredKg) >= 0.05;
 }

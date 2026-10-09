@@ -118,12 +118,23 @@ describe('keys assembled at runtime', () => {
     expect(hebrewKeys.has(`workout.effort${value}`)).toBe(true);
   });
 
-  it.each(['not-json', 'wrong-format', 'newer-schema', 'different-user', 'no-tables'])(
-    'restore.problem.%s',
-    (problem) => {
-      expect(hebrewKeys.has(`restore.problem.${problem}`)).toBe(true);
+  it.each(['weight', 'height', 'age', 'activity', 'goal', 'done'])('setup.%s title and hint', (step) => {
+    expect(hebrewKeys.has(`setup.${step}Title`)).toBe(true);
+    expect(hebrewKeys.has(`setup.${step}Hint`)).toBe(true);
+  });
+
+  it.each(['sedentary', 'light', 'moderate', 'active', 'very_active'])(
+    'setup.activityDetail.%s',
+    (level) => {
+      expect(hebrewKeys.has(`setup.activityDetail.${level}`)).toBe(true);
+      expect(hebrewKeys.has(`activity.${level}`)).toBe(true);
     },
   );
+
+  it.each(['cut', 'maintain', 'bulk'])('setup.goalDetail.%s', (goal) => {
+    expect(hebrewKeys.has(`setup.goalDetail.${goal}`)).toBe(true);
+    expect(hebrewKeys.has(`goal.${goal}`)).toBe(true);
+  });
 });
 
 describe('the two bundles stay in step', () => {

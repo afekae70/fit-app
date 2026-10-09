@@ -12,10 +12,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
+import { StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
+import { Heartbeat } from 'phosphor-react-native';
 
 import { getExecutor } from '../db/provider.js';
-import { hapticLight } from '../haptics.js';
 import type { HealthAvailability } from '../health/adapter.js';
 import { healthExportCopy } from '../health/copy.js';
 import {
@@ -32,7 +32,8 @@ import {
 } from '../health/writer.js';
 import { useTheme } from '../ThemeProvider.js';
 import { fontSize, spacing, type ColorPalette } from '../theme.js';
-import { Banner, Card, Hint, SectionTitle, Segmented } from './ui.js';
+import { LinkRow, RowDivider, SettingsSection, ToggleRow } from './settings/kit.js';
+import { Banner } from './ui.js';
 
 export function HealthSyncCard({ userId, index }: { userId: string; index?: number }) {
   const { t } = useTranslation();
@@ -75,7 +76,6 @@ export function HealthSyncCard({ userId, index }: { userId: string; index?: numb
   }, [t, userId]);
 
   const toggle = (next: 'on' | 'off') => {
-    void hapticLight();
     void (async () => {
       if (next === 'off') {
         setEnabled(false);
@@ -102,77 +102,46 @@ export function HealthSyncCard({ userId, index }: { userId: string; index?: numb
     // why rather than showing a switch that cannot do anything.
     if (availability.reason === 'not_android') return null;
     return (
-      <Card index={index}>
-        <SectionTitle>{t('health.title')}</SectionTitle>
-        <Hint>{t('health.hint')}</Hint>
+      <SettingsSection icon={Heartbeat} title={t('health.title')} hint={t('health.hint')} index={index}>
         <Banner tone="info">
           {availability.reason === 'not_installed' ? t('health.notInstalled') : t('health.unavailable')}
         </Banner>
-      </Card>
+      </SettingsSection>
     );
   }
 
   return (
-    <Card index={index}>
-      <SectionTitle>{t('health.title')}</SectionTitle>
-      <Hint>{t('health.hint')}</Hint>
-
-      <Segmented<'on' | 'off'>
-        label={t('health.title')}
-        selected={enabled ? 'on' : 'off'}
-        onSelect={toggle}
-        options={[
-          { value: 'on', label: t('settings.reminderOn') },
-          { value: 'off', label: t('settings.reminderOff') },
-        ]}
+    <SettingsSection icon={Heartbeat} title={t('health.title')} hint={t('health.hint')} index={index}>
+      <ToggleRow
+        label={enabled ? t('settings.reminderOn') : t('settings.reminderOff')}
+        value={enabled}
+        onChange={(next) => toggle(next ? 'on' : 'off')}
       />
 
       {enabled ? <Banner tone="success">{t('health.connected')}</Banner> : null}
       {denied ? <Banner tone="warning">{t('health.denied')}</Banner> : null}
 
-      {enabled ? (
-        <View style={s.body}>
-          <Pressable
-            onPress={() => void backfill()}
-            disabled={busy}
-            accessibilityRole="button"
-            style={({ pressed }) => [s.row, (pressed || busy) && s.pressed]}
-          >
-            <Text style={s.rowLabel}>
-              {busy ? t('health.backfillRunning') : t('health.backfill', { days: BACKFILL_DAYS })}
-            </Text>
-          </Pressable>
-          {result ? <Text style={s.result}>{result}</Text> : null}
-        </View>
-      ) : null}
-
-      <Pressable
-        onPress={() => {
-          void hapticLight();
-          openHealthConnectSettings();
-        }}
-        accessibilityRole="button"
-        style={({ pressed }) => [s.row, pressed && s.pressed]}
-      >
-        <Text style={s.link}>{t('health.openSettings')}</Text>
-      </Pressable>
-    </Card>
+      <View style={s.body}>
+        <RowDivider />
+        {enabled ? (
+          <>
+            <LinkRow
+              label={busy ? t('health.backfillRunning') : t('health.backfill', { days: BACKFILL_DAYS })}
+              onPress={() => void backfill()}
+              disabled={busy}
+              chevron={false}
+            />
+            {result ? <Text style={s.result}>{result}</Text> : null}
+          </>
+        ) : null}
+        <LinkRow label={t('health.openSettings')} onPress={openHealthConnectSettings} />
+      </View>
+    </SettingsSection>
   );
 }
 
 const createStyles = (colors: ColorPalette) =>
-  StyleSheet.create<{
-    body: ViewStyle;
-    row: ViewStyle;
-    rowLabel: TextStyle;
-    result: TextStyle;
-    link: TextStyle;
-    pressed: ViewStyle;
-  }>({
-    body: { gap: spacing.xs, marginTop: spacing.sm },
-    row: { paddingVertical: spacing.sm },
-    rowLabel: { color: colors.text, fontSize: fontSize.md, textAlign: 'auto' },
-    result: { color: colors.textSecondary, fontSize: fontSize.sm, textAlign: 'auto' },
-    link: { color: colors.accent, fontSize: fontSize.md, textAlign: 'auto' },
-    pressed: { opacity: 0.7 },
+  StyleSheet.create<{ body: ViewStyle; result: TextStyle }>({
+    body: { gap: spacing.sm },
+    result: { color: colors.textSecondary, fontSize: fontSize.xs, textAlign: 'auto' },
   });

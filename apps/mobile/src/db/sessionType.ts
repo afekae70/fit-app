@@ -20,9 +20,10 @@
  *    An ad-hoc unnamed workout genuinely has no peers, and inventing one would be worse than
  *    admitting it.
  *
- * Deliberately NOT `location_id`. The column exists on `workout_sessions` and would be the more
- * direct answer, but nothing in the app ever writes it — no screen collects a gym — so scoping
- * by it would silently match everything against everything.
+ * Deliberately NOT `location_id`. The column exists on `workout_sessions`, and for a while a
+ * "gyms" screen filled it in and comparisons narrowed by it. That screen is gone, and with it
+ * the narrowing: a column nothing writes any more would otherwise go on splitting the history
+ * of whoever had used it, by a room they can no longer choose.
  */
 
 import type { SqlExecutor } from './executor.js';
@@ -30,14 +31,6 @@ import type { SqlExecutor } from './executor.js';
 export interface SessionType {
   planDayId: string | null;
   name: string | null;
-  /**
-   * The gym, once one has been recorded.
-   *
-   * Narrows the kind rather than replacing it. The same push day done at two gyms is one kind
-   * and two sets of numbers, so a comparison requires both to match — and a session with no gym
-   * recorded is compared on its kind alone, exactly as before gyms existed.
-   */
-  locationId?: string | null;
 }
 
 /** Look up what kind of workout a session is. Null when the session does not exist. */
@@ -45,24 +38,18 @@ export async function getSessionType(
   db: SqlExecutor,
   sessionId: string,
 ): Promise<SessionType | null> {
-  const row = await db.get<{
-    plan_day_id: string | null;
-    name: string | null;
-    location_id: string | null;
-  }>(
-    `SELECT plan_day_id, name, location_id FROM workout_sessions
+  const row = await db.get<{ plan_day_id: string | null; name: string | null }>(
+    `SELECT plan_day_id, name FROM workout_sessions
       WHERE id = ? AND deleted_at IS NULL`,
     [sessionId],
   );
   if (!row) return null;
-  return { planDayId: row.plan_day_id, name: row.name, locationId: row.location_id };
+  return { planDayId: row.plan_day_id, name: row.name };
 }
 
 /** True when this session carries enough identity to be compared against its own kind. */
 export function hasType(type: SessionType | null | undefined): boolean {
-  return Boolean(
-    type && (type.planDayId !== null || type.name !== null || type.locationId != null),
-  );
+  return Boolean(type && (type.planDayId !== null || type.name !== null));
 }
 
 /**
@@ -87,13 +74,6 @@ export function sameTypeClause(
     // planned session that happens to share a name belongs to its plan's lineage, not this one.
     parts.push(`(${alias}.plan_day_id IS NULL AND ${alias}.name = ?)`);
     params.push(type.name);
-  }
-
-  if (type?.locationId != null) {
-    // ANDed, never instead of the kind. Two different workouts at one gym are still two
-    // workouts, and matching on the room alone would put a leg day's numbers under a push day.
-    parts.push(`${alias}.location_id = ?`);
-    params.push(type.locationId);
   }
 
   if (parts.length === 0) return { sql: '1 = 1', params: [] };

@@ -25,7 +25,6 @@ import { BrandBar } from '../src/components/BrandBar.js';
 import { ErrorBoundary } from '../src/components/ErrorBoundary.js';
 import { SplashOverlay } from '../src/components/SplashOverlay.js';
 import { initI18n, isRtlLanguage, loadStoredLanguage, type Language } from '../src/i18n/index.js';
-import { AutoBackup } from '../src/backup/AutoBackup.js';
 import { ActionSheetProvider } from '../src/components/ActionSheetProvider.js';
 import { ThemeProvider, useTheme } from '../src/ThemeProvider.js';
 
@@ -76,9 +75,6 @@ function RootLayoutInner() {
           and opens the database, not after. It lifts off by itself when it is done. */}
       <SplashOverlay />
       <AppGate>
-        {/* Inside AppGate: it needs a signed-in user to know whose data to write, and there is
-            nothing worth backing up before then. */}
-        <AutoBackup>
         <ErrorBoundary>
           {/* Above the router, so it is fixed: inside a screen it lived in that screen's
               ScrollView and scrolled away with the page. It owns the top safe-area inset for
@@ -103,7 +99,6 @@ function RootLayoutInner() {
             </Stack>
           </View>
         </ErrorBoundary>
-        </AutoBackup>
       </AppGate>
     </View>
   );

@@ -20,6 +20,8 @@ import { List } from 'phosphor-react-native';
 import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, type ViewStyle } from 'react-native';
 
+import { useAuth } from '../auth/AuthProvider.js';
+import { useSignOut } from '../auth/useSignOut.js';
 import { useTheme } from '../ThemeProvider.js';
 import { radius } from '../theme.js';
 import { useActionSheet } from './ActionSheetProvider.js';
@@ -28,7 +30,7 @@ import { useActionSheet } from './ActionSheetProvider.js';
  * Everything reachable from the menu, in the order it is offered.
  *
  * Ordered by how close each one is to training: the profile and the coach shape what the plan
- * says, measurements and gyms are recorded alongside it, and backup and settings are maintenance.
+ * says, measurements are recorded alongside it, and settings are maintenance.
  *
  * Nothing here is a tab, with one exception added at the top when it applies: the way home. The
  * screens in this list are pushed over the tabs, and from one of them the bar is out of reach —
@@ -43,8 +45,6 @@ const DESTINATIONS: readonly { route: Href; label: string }[] = [
   { route: '/coach', label: 'menu.coach' },
   { route: '/nutrition', label: 'menu.nutrition' },
   { route: '/metrics', label: 'menu.metrics' },
-  { route: '/gyms', label: 'menu.gyms' },
-  { route: '/restore', label: 'menu.backup' },
   { route: '/settings', label: 'menu.settings' },
 ];
 
@@ -56,6 +56,8 @@ export function MenuButton({ pushToEnd = false }: { pushToEnd?: boolean }) {
   const { ask } = useActionSheet();
   const { colors } = useTheme();
   const pathname = usePathname();
+  const { session } = useAuth();
+  const signOut = useSignOut();
 
   const open = () => {
     void (async () => {
@@ -63,10 +65,22 @@ export function MenuButton({ pushToEnd = false }: { pushToEnd?: boolean }) {
         (entry) => entry.route !== pathname,
       );
 
-      const choice = await ask({
-        title: t('menu.title'),
-        actions: destinations.map((entry) => ({ label: t(entry.label) })),
-      });
+      /*
+       * Signing out is the last line, and it is not a place.
+       *
+       * It used to be reachable only from the bottom of settings, which is two taps and a
+       * scroll for something a shared phone needs every time it changes hands. It sits below
+       * everything else and is drawn as the one entry that ends something, and it asks before
+       * it does it — see `useSignOut`. Left out when nobody is signed in to sign out.
+       */
+      const actions = destinations.map((entry) => ({ label: t(entry.label), destructive: false }));
+      if (session) actions.push({ label: t('auth.signOut'), destructive: true });
+
+      const choice = await ask({ title: t('menu.title'), actions });
+      if (choice !== null && choice === destinations.length) {
+        signOut();
+        return;
+      }
       const target = choice === null ? null : destinations[choice];
       if (!target) return;
 

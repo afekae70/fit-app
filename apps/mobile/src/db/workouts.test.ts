@@ -10,7 +10,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { SqlExecutor } from './executor.js';
-import { addLocation, setSessionLocation } from './locations.js';
 import { getSessionType, hasType, sameTypeClause } from './sessionType.js';
 import { createTestExecutor } from './testUtils.js';
 import {
@@ -851,11 +850,7 @@ describe('what counts as the same workout', () => {
 
   it('reads a session kind off the row', async () => {
     const id = await session('plan-a', 100, '2026-06-01T10:00:00.000Z');
-    expect(await getSessionType(db, id)).toEqual({
-      planDayId: 'plan-a',
-      name: null,
-      locationId: null,
-    });
+    expect(await getSessionType(db, id)).toEqual({ planDayId: 'plan-a', name: null });
   });
 
   it('has no kind for a session that is neither planned nor named', async () => {
@@ -867,9 +862,9 @@ describe('what counts as the same workout', () => {
     expect(await getSessionType(db, 'nope')).toBeNull();
   });
 
-  it('answers "last time" from the same gym, not the most recent one', async () => {
-    // The bug in one test: gym A on Monday, gym B on Wednesday, gym A again today. Without
-    // scoping, today's card would pre-fill and advise off gym B's lighter machine.
+  it('answers "last time" from the same kind of workout, not the most recent one', async () => {
+    // The bug in one test: plan A on Monday, plan B on Wednesday, plan A again today. Without
+    // scoping, today's card would pre-fill and advise off plan B's lighter day.
     await session('plan-a', 100, '2026-06-01T10:00:00.000Z');
     await session('plan-b', 60, '2026-06-03T10:00:00.000Z');
     const today = await session('plan-a', 0, '2026-06-05T10:00:00.000Z');
@@ -896,49 +891,26 @@ describe('what counts as the same workout', () => {
     expect(sets[0]?.weight_kg).toBe(60);
   });
 
-  it('narrows a kind by gym rather than replacing it', async () => {
-    // The same push day at two gyms is one kind and two sets of numbers, so both must match.
-    const clause = sameTypeClause('ws', {
-      planDayId: 'plan-a',
-      name: null,
-      locationId: 'gym-1',
-    });
-    expect(clause.sql).toContain('plan_day_id');
-    expect(clause.sql).toContain('location_id');
-    expect(clause.params).toEqual(['plan-a', 'gym-1']);
-  });
-
-  it('matches on the gym alone only when there is no kind', async () => {
-    const clause = sameTypeClause('ws', { planDayId: null, name: null, locationId: 'gym-1' });
-    expect(clause.params).toEqual(['gym-1']);
-  });
-
-  it('answers "last time" from the same gym even within one plan day', async () => {
-    // The case workout-type scoping could not reach: the same prescribed day, two gyms.
-    const gymA = await addLocation(db, newId, USER_T, 'Gym A', () => '2026-06-01T09:00:00.000Z');
-    const gymB = await addLocation(db, newId, USER_T, 'Gym B', () => '2026-06-01T09:00:00.000Z');
-
+  it('no longer splits a workout by the gym it was once recorded at', async () => {
+    /*
+     * Gyms were a screen for a while, and sessions from then carry a `location_id`. With the
+     * screen gone nobody can set or change it, so it must not go on deciding which earlier
+     * workout counts as "last time" — for the people who used it, that would freeze their
+     * history into the rooms they happened to have picked.
+     */
     const one = await session('plan-a', 100, '2026-06-01T10:00:00.000Z');
-    await setSessionLocation(db, one, gymA);
     const two = await session('plan-a', 60, '2026-06-03T10:00:00.000Z');
-    await setSessionLocation(db, two, gymB);
     const today = await session('plan-a', 0, '2026-06-05T10:00:00.000Z');
-    await setSessionLocation(db, today, gymA);
+    await db.run(`UPDATE workout_sessions SET location_id = 'gym-a' WHERE id IN (?, ?)`, [one, today]);
+    await db.run(`UPDATE workout_sessions SET location_id = 'gym-b' WHERE id = ?`, [two]);
 
-    const byKind = await getPreviousSessionSets(db, USER_T, 'Leg Press', today, {
-      planDayId: 'plan-a',
-      name: null,
-    });
-    const byKindAndGym = await getPreviousSessionSets(db, USER_T, 'Leg Press', today, {
-      planDayId: 'plan-a',
-      name: null,
-      locationId: gymA,
-    });
+    const type = await getSessionType(db, today);
+    expect(type).toEqual({ planDayId: 'plan-a', name: null });
+    expect(sameTypeClause('ws', type).sql).not.toContain('location_id');
 
-    // Same plan day, so the kind alone still answers with the other gym's machine.
-    expect(byKind[0]?.weight_kg).toBe(60);
-    // With the gym, it answers with the bench this one was actually done on.
-    expect(byKindAndGym[0]?.weight_kg).toBe(100);
+    const sets = await getPreviousSessionSets(db, USER_T, 'Leg Press', today, type);
+    // The most recent workout of the same kind, whichever room it was in.
+    expect(sets[0]?.weight_kg).toBe(60);
   });
 
   it('builds a clause that is always safe to concatenate', () => {

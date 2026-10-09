@@ -11,6 +11,8 @@ import {
   indexOfValue,
   isNewWeight,
   needsProfileSetup,
+  ontoScale,
+  parseTyped,
   setupPosition,
   setupTargets,
   tickCount,
@@ -147,6 +149,41 @@ describe('rulers', () => {
   });
 });
 
+describe('a number that is typed instead of dragged', () => {
+  const kg = weightRange('metric');
+
+  it('is kept to the tenth it was typed in, not moved to the nearest half kilo', () => {
+    expect(parseTyped(kg, '82.3')).toBe(82.3);
+    // The ruler rests on the nearest mark; the value is still what was typed.
+    expect(valueAtIndex(kg, indexOfValue(kg, 82.3))).toBe(82.5);
+  });
+
+  it('takes a comma for a decimal point', () => {
+    expect(parseTyped(kg, '82,3')).toBe(82.3);
+  });
+
+  it('drops precision the scale does not show', () => {
+    expect(parseTyped(kg, '82.349')).toBe(82.3);
+    expect(parseTyped(heightRange('metric'), '178.6')).toBe(179);
+    expect(parseTyped(AGE_RANGE, '31.9')).toBe(32);
+  });
+
+  it('holds a number from off the scale at the end of it', () => {
+    expect(parseTyped(kg, '7')).toBe(30);
+    expect(parseTyped(kg, '700')).toBe(250);
+    expect(parseTyped(AGE_RANGE, '5')).toBe(13);
+  });
+
+  it.each(['', '   ', '.', 'abc', '8..2', '-'])('gives nothing back for %j', (text) => {
+    expect(parseTyped(kg, text)).toBeNull();
+  });
+
+  it('brings a saved weigh-in onto the scale without rounding it to a tick', () => {
+    expect(ontoScale(kg, 82.34)).toBe(82.3);
+    expect(ontoScale(kg, 12)).toBe(30);
+  });
+});
+
 describe('age', () => {
   const today = new Date('2026-10-09T12:00:00.000Z');
 
@@ -220,13 +257,14 @@ describe('whether the weight is recorded as a weigh-in', () => {
   });
 
   it('is not when the ruler was left on the last weigh-in', () => {
-    // The ruler moves in half kilos, so 82.3 opens on 82.5: the same position, not a new reading.
-    expect(isNewWeight(82.3, 82.5)).toBe(false);
-    expect(isNewWeight(82.5, 82.5)).toBe(false);
+    // It opens on that weigh-in to the tenth, so untouched means the same number back.
+    expect(isNewWeight(82.3, 82.3)).toBe(false);
+    expect(isNewWeight(82.34, ontoScale(weightRange('metric'), 82.34))).toBe(false);
   });
 
-  it('is when it was moved', () => {
-    expect(isNewWeight(82.3, 83)).toBe(true);
+  it('is when it was dragged or typed to something else', () => {
+    expect(isNewWeight(82.3, 82.5)).toBe(true);
+    expect(isNewWeight(82.3, 82.2)).toBe(true);
     expect(isNewWeight(82.3, 81.5)).toBe(true);
   });
 });

@@ -1,73 +1,80 @@
 /**
- * Settings hub — appearance and account, previously scattered as inline buttons in the Today
- * and Coach tab headers. Consolidated here once there were enough of them (theme, language,
- * sign-out) that leaving them spread across two screens started to look like clutter rather
- * than convenience.
+ * Settings.
+ *
+ * Read from the top: who is signed in, then how the app looks, then what it reminds and what it
+ * talks to, and the account last — the two rows on this screen that cannot be taken back are
+ * the furthest from a thumb that has just arrived.
+ *
+ * Everything is one of a handful of shapes from `components/settings/kit` — a section with a
+ * badge and a name, a row with its control at the end, a lit choice among two or three — so the
+ * screen can be scanned rather than read. The sections that are features in their own right
+ * (workout-day reminders, Health Connect, cloud sync) keep their logic in their own components
+ * and wear the same shapes.
  */
 
-import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Pressable,
+  Image,
   ScrollView,
-  Share,
   StyleSheet,
   Text,
   View,
+  type ImageStyle,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BellRinging, Palette, SignOut, Trash, UserCircle } from 'phosphor-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { UnitPreference } from '@fit/shared';
 
 import { useAuth } from '../src/auth/AuthProvider.js';
-import { useActionSheet } from '../src/components/ActionSheetProvider.js';
 import { useCurrentUserId } from '../src/auth/CurrentUserProvider.js';
+import { useSignOut } from '../src/auth/useSignOut.js';
+import { useActionSheet } from '../src/components/ActionSheetProvider.js';
 import { HealthSyncCard } from '../src/components/HealthSyncCard.js';
-import { SyncCard } from '../src/components/SyncCard.js';
-import { WorkoutReminderCard } from '../src/components/WorkoutReminderCard.js';
+import { FadeSlideIn } from '../src/components/motion.js';
 import {
-  Banner,
-  Button,
-  Card,
-  Hint,
-  ScreenHeader,
-  Segmented,
-  SectionTitle,
-} from '../src/components/ui.js';
-import { requestBackup } from '../src/backup/AutoBackup.js';
-import { chooseBackupFolder, getBackupFolder } from '../src/backup/store.js';
-import { createBackup } from '../src/db/backup.js';
-import { exportMetrics, exportSets } from '../src/db/exportData.js';
-import { SCHEMA_VERSION } from '../src/db/schema.js';
-import { getExecutor } from '../src/db/provider.js';
-import { metricsToCsv, setsToCsv } from '../src/export/csv.js';
-import { hapticLight } from '../src/haptics.js';
-import { isRtlLanguage, setAppLanguage, type Language } from '../src/i18n/index.js';
+  Choice,
+  LinkRow,
+  RowDivider,
+  SettingRow,
+  SettingsSection,
+  ToggleRow,
+} from '../src/components/settings/kit.js';
+import { SyncCard } from '../src/components/SyncCard.js';
+import { Banner, ScreenHeader } from '../src/components/ui.js';
+import { WorkoutReminderCard } from '../src/components/WorkoutReminderCard.js';
+import { setAppLanguage, type Language } from '../src/i18n/index.js';
 import {
   cancelWeeklyReminder,
   isWeeklyReminderScheduled,
   scheduleWeeklyReminder,
 } from '../src/notifications.js';
+import { loadAvatar } from '../src/profile/avatar.js';
 import { useTheme, type ThemePreference } from '../src/ThemeProvider.js';
+import { fontSize, fontWeight, radius, shadow, spacing, type ColorPalette } from '../src/theme.js';
 import { useUnits } from '../src/UnitsProvider.js';
-import { fontSize, spacing, type ColorPalette } from '../src/theme.js';
 
 export default function SettingsScreen() {
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
-  const { session, signOut, deleteAccount } = useAuth();
+  const { session, deleteAccount } = useAuth();
   const { preference, setPreference, colors } = useTheme();
   const { unit, setUnit } = useUnits();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
-  const router = useRouter();
   const { notify, confirm } = useActionSheet();
+  const signOut = useSignOut();
   const [deleting, setDeleting] = useState(false);
   const userId = useCurrentUserId();
-  const chevron = isRtlLanguage(i18n.language as Language) ? '‹' : '›';
+
+  const [avatarUri, setAvatarUri] = useState<string | null>(null);
+  useEffect(() => {
+    void loadAvatar(userId).then(setAvatarUri);
+  }, [userId]);
 
   /**
    * Delete the account, after asking twice.
@@ -112,71 +119,6 @@ export default function SettingsScreen() {
     });
   };
 
-  /**
-   * Hand the history to the share sheet, as text.
-   *
-   * Text rather than a file, because on Android `Share` only accepts a file URI through a
-   * FileProvider, which needs `expo-sharing` — a native module that is not in this build, and
-   * adding one means the JS loads and then fails at the call site on the device already
-   * installed. The CSV goes out as the message body, which every share target accepts, and
-   * lands in a note, a mail draft or Drive from where it can be saved as `.csv`.
-   */
-  /**
-   * The whole database as one file, through the share sheet.
-   *
-   * Unlike the CSV, this one can be loaded back — see `restore.tsx`. The sync is a live mirror
-   * and protects against losing the phone; it does not protect against a mistake, because a
-   * deletion syncs as faithfully as anything else.
-   */
-  const [folder, setFolder] = useState<string | null>(null);
-  useEffect(() => {
-    void getBackupFolder().then(setFolder);
-  }, []);
-
-  /**
-   * Ask Android for a folder, once.
-   *
-   * The picker grants persistable permission, so every automatic backup afterwards writes there
-   * without asking again. A folder inside Drive means the backups leave the phone, which is the
-   * only version of this that survives losing it.
-   */
-  const pickFolder = useCallback(() => {
-    void hapticLight();
-    void (async () => {
-      const chosen = await chooseBackupFolder();
-      if (!chosen) return;
-      setFolder(chosen);
-      // Written immediately rather than waiting for tomorrow: turning it on and seeing nothing
-      // happen is indistinguishable from it not working.
-      await requestBackup(userId);
-      await notify({ message: t('settings.backupFolderDone') });
-    })();
-  }, [userId, notify, t]);
-
-  const backupNow = useCallback(() => {
-    void hapticLight();
-    void (async () => {
-      const db = await getExecutor();
-      const file = await createBackup(db, userId, SCHEMA_VERSION);
-      await Share.share({ message: JSON.stringify(file) }).catch(() => undefined);
-    })();
-  }, [userId]);
-
-  const exportCsv = useCallback(
-    (kind: 'sets' | 'metrics') => {
-      void hapticLight();
-      void (async () => {
-        const db = await getExecutor();
-        const csv =
-          kind === 'sets'
-            ? setsToCsv(await exportSets(db, userId))
-            : metricsToCsv(await exportMetrics(db, userId));
-        await Share.share({ message: csv }).catch(() => undefined);
-      })();
-    },
-    [userId],
-  );
-
   const [reminderOn, setReminderOn] = useState(false);
   const [reminderDenied, setReminderDenied] = useState(false);
 
@@ -192,8 +134,8 @@ export default function SettingsScreen() {
     };
   }, []);
 
-  const toggleReminder = async (next: 'on' | 'off') => {
-    if (next === 'off') {
+  const toggleReminder = async (next: boolean) => {
+    if (!next) {
       await cancelWeeklyReminder();
       setReminderOn(false);
       setReminderDenied(false);
@@ -209,12 +151,14 @@ export default function SettingsScreen() {
     setReminderDenied(!scheduled);
   };
 
-  // No "reopen the app" prompt any more: the root View's `direction` follows i18next, so the
-  // layout mirrors as the language changes (see app/_layout.tsx).
+  // No "reopen the app" prompt: the root View's `direction` follows i18next, so the layout
+  // mirrors as the language changes (see app/_layout.tsx).
   const changeLanguage = async (next: Language) => {
     if (next === i18n.language) return;
     await setAppLanguage(next);
   };
+
+  const email = session?.user.email ?? '';
 
   return (
     <ScrollView
@@ -223,200 +167,165 @@ export default function SettingsScreen() {
         styles.content,
         { paddingTop: spacing.lg, paddingBottom: insets.bottom + spacing.xxl },
       ]}
+      showsVerticalScrollIndicator={false}
     >
-      {/* No gear here — it would link to the screen you are already on. */}
       <ScreenHeader title={t('settings.title')} />
 
-      <Card index={0}>
-        <SectionTitle>{t('settings.appearance')}</SectionTitle>
+      {session ? (
+        <FadeSlideIn style={styles.heroShadow}>
+          <LinearGradient
+            colors={[colors.accent, colors.info]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.hero}
+          >
+            <View style={styles.avatar}>
+              {avatarUri ? (
+                <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
+              ) : (
+                <Text style={styles.avatarText}>{initialsFor(email)}</Text>
+              )}
+            </View>
+            <View style={styles.heroText}>
+              <Text style={styles.heroCaption}>{t('settings.signedInAs')}</Text>
+              <Text style={styles.heroEmail} numberOfLines={1}>
+                {email}
+              </Text>
+            </View>
+          </LinearGradient>
+        </FadeSlideIn>
+      ) : null}
 
+      <SettingsSection icon={Palette} title={t('settings.appearance')} index={1}>
         {/* Following the phone leads, because a phone that goes dark at sunset should take
             this app with it — the other two are for when someone wants it fixed. */}
-        <Segmented<ThemePreference>
-          label={t('settings.theme')}
-          selected={preference}
-          onSelect={setPreference}
-          options={[
-            { value: 'system', label: t('settings.themeSystem') },
-            { value: 'light', label: t('settings.themeLight') },
-            { value: 'dark', label: t('settings.themeDark') },
-          ]}
-        />
+        <SettingRow label={t('settings.theme')} stacked>
+          <Choice<ThemePreference>
+            selected={preference}
+            onSelect={setPreference}
+            options={[
+              { value: 'system', label: t('settings.themeSystem') },
+              { value: 'light', label: t('settings.themeLight') },
+              { value: 'dark', label: t('settings.themeDark') },
+            ]}
+          />
+        </SettingRow>
+        <RowDivider />
+        <SettingRow label={t('settings.language')} stacked>
+          <Choice<Language>
+            selected={i18n.language as Language}
+            onSelect={(next) => void changeLanguage(next)}
+            options={[
+              { value: 'he', label: 'עברית' },
+              { value: 'en', label: 'English' },
+            ]}
+          />
+        </SettingRow>
+        <RowDivider />
+        <SettingRow label={t('settings.units')} hint={t('settings.unitsHint')} stacked>
+          <Choice<UnitPreference>
+            selected={unit}
+            onSelect={setUnit}
+            options={[
+              { value: 'metric', label: t('settings.unitsMetric') },
+              { value: 'imperial', label: t('settings.unitsImperial') },
+            ]}
+          />
+        </SettingRow>
+      </SettingsSection>
 
-        <Segmented<Language>
-          label={t('settings.language')}
-          selected={i18n.language as Language}
-          onSelect={(next) => void changeLanguage(next)}
-          options={[
-            { value: 'he', label: 'עברית' },
-            { value: 'en', label: 'English' },
-          ]}
-        />
-
-        <Segmented<UnitPreference>
-          label={t('settings.units')}
-          selected={unit}
-          onSelect={setUnit}
-          options={[
-            { value: 'metric', label: t('settings.unitsMetric') },
-            { value: 'imperial', label: t('settings.unitsImperial') },
-          ]}
-        />
-        <Text style={styles.unitsHint}>{t('settings.unitsHint')}</Text>
-      </Card>
-
-      <Card index={1}>
-        <SectionTitle>{t('settings.remindersTitle')}</SectionTitle>
-        <Hint>{t('settings.reminderWeeklyHint')}</Hint>
-
-        <Segmented<'on' | 'off'>
+      <SettingsSection icon={BellRinging} title={t('settings.remindersTitle')} index={2}>
+        <ToggleRow
           label={t('settings.reminderWeekly')}
-          selected={reminderOn ? 'on' : 'off'}
-          onSelect={(next) => void toggleReminder(next)}
-          options={[
-            { value: 'on', label: t('settings.reminderOn') },
-            { value: 'off', label: t('settings.reminderOff') },
-          ]}
+          hint={t('settings.reminderWeeklyHint')}
+          value={reminderOn}
+          onChange={(next) => void toggleReminder(next)}
         />
         {reminderDenied ? <Banner tone="warning">{t('settings.reminderDenied')}</Banner> : null}
-      </Card>
+      </SettingsSection>
 
-      <WorkoutReminderCard userId={userId} index={1} />
+      <WorkoutReminderCard userId={userId} index={3} />
 
-      <HealthSyncCard userId={userId} index={1} />
+      <HealthSyncCard userId={userId} index={4} />
 
-      <Card index={2}>
-        <SectionTitle>{t('gyms.title')}</SectionTitle>
-        <Hint>{t('gyms.addHint')}</Hint>
-        <Pressable
-          onPress={() => router.push('/gyms')}
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.7 }]}
-        >
-          <Text style={styles.linkText}>{t('gyms.manage')}</Text>
-          <Text style={styles.linkChevron}>{chevron}</Text>
-        </Pressable>
-      </Card>
-
-      <Card index={2}>
-        <SectionTitle>{t('settings.exportTitle')}</SectionTitle>
-        <Hint>{t('settings.exportHint')}</Hint>
-        <Pressable
-          onPress={() => exportCsv('sets')}
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.7 }]}
-        >
-          <Text style={styles.linkText}>{t('settings.exportSets')}</Text>
-          <Text style={styles.linkChevron}>{chevron}</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => exportCsv('metrics')}
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.7 }]}
-        >
-          <Text style={styles.linkText}>{t('settings.exportMetrics')}</Text>
-          <Text style={styles.linkChevron}>{chevron}</Text>
-        </Pressable>
-      </Card>
-
-      <Card index={2}>
-        <SectionTitle>{t('settings.backupTitle')}</SectionTitle>
-        <Hint>{t('settings.backupHint')}</Hint>
-        {/* The automatic half. Everything below it still works without a folder; this is the
-            part that means nobody has to remember. */}
-        <Pressable
-          onPress={pickFolder}
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.7 }]}
-        >
-          <Text style={styles.linkText}>
-            {folder ? t('settings.backupFolderSet') : t('settings.backupChooseFolder')}
-          </Text>
-          <Text style={styles.linkChevron}>{chevron}</Text>
-        </Pressable>
-        {folder ? (
-          <Banner tone="success">{t('settings.backupAutoOn')}</Banner>
-        ) : (
-          <Banner tone="warning">{t('settings.backupAutoOff')}</Banner>
-        )}
-
-        <Pressable
-          onPress={backupNow}
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.7 }]}
-        >
-          <Text style={styles.linkText}>{t('settings.backupCreate')}</Text>
-          <Text style={styles.linkChevron}>{chevron}</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => router.push('/restore')}
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.7 }]}
-        >
-          <Text style={styles.linkText}>{t('settings.backupRestore')}</Text>
-          <Text style={styles.linkChevron}>{chevron}</Text>
-        </Pressable>
-      </Card>
-
-      {session ? <SyncCard /> : null}
+      {session ? <SyncCard index={5} /> : null}
 
       {session ? (
-        <Card index={2}>
-          <SectionTitle>{t('settings.account')}</SectionTitle>
-          <Text style={styles.email}>{session.user.email}</Text>
-          <View style={styles.signOutSpacer} />
-          <Button label={t('auth.signOut')} variant="danger" onPress={() => void signOut()} />
-          {/* Quiet, and below the button it must never be mistaken for. Leaving for good is a
-              thing someone has to be able to do without writing to anyone — and it is asked
-              about twice, because nothing brings it back. */}
-          <Pressable
+        <SettingsSection icon={UserCircle} title={t('settings.account')} index={6}>
+          <LinkRow icon={SignOut} label={t('auth.signOut')} onPress={signOut} chevron={false} />
+          <RowDivider />
+          {/* Last on the screen and in the colour of a warning. Leaving for good is something
+              a person has to be able to do without writing to anyone — and it is asked about
+              twice, because nothing brings it back. */}
+          <LinkRow
+            icon={Trash}
+            tone="danger"
+            label={deleting ? t('settings.deleteAccountWorking') : t('settings.deleteAccount')}
             onPress={() => void removeAccount()}
             disabled={deleting}
-            accessibilityRole="button"
-            style={({ pressed }) => [styles.deleteAccount, (pressed || deleting) && { opacity: 0.6 }]}
-          >
-            <Text style={styles.deleteAccountText}>
-              {deleting ? t('settings.deleteAccountWorking') : t('settings.deleteAccount')}
-            </Text>
-          </Pressable>
-        </Card>
+            chevron={false}
+          />
+        </SettingsSection>
       ) : null}
     </ScrollView>
   );
+}
+
+function initialsFor(email: string): string {
+  const letters = (email.split('@')[0] ?? '').replace(/[^\p{L}]/gu, '');
+  return letters.slice(0, 2).toUpperCase() || '·';
 }
 
 const createStyles = (colors: ColorPalette) =>
   StyleSheet.create<{
     screen: ViewStyle;
     content: ViewStyle;
-    unitsHint: TextStyle;
-    linkRow: ViewStyle;
-    linkText: TextStyle;
-    linkChevron: TextStyle;
-    email: TextStyle;
-    signOutSpacer: ViewStyle;
-    deleteAccount: ViewStyle;
-    deleteAccountText: TextStyle;
+    heroShadow: ViewStyle;
+    hero: ViewStyle;
+    avatar: ViewStyle;
+    avatarImage: ImageStyle;
+    avatarText: TextStyle;
+    heroText: ViewStyle;
+    heroCaption: TextStyle;
+    heroEmail: TextStyle;
   }>({
-    deleteAccount: { alignSelf: 'center', paddingVertical: spacing.md, marginTop: spacing.xs },
-    deleteAccountText: { color: colors.textMuted, fontSize: fontSize.sm },
     screen: { flex: 1 },
-    content: { paddingHorizontal: spacing.lg },
-    unitsHint: {
-      color: colors.textFaint,
-      fontSize: fontSize.xs,
-      marginTop: spacing.sm,
-      textAlign: 'auto',
+    content: { paddingHorizontal: spacing.lg, gap: spacing.lg },
+
+    // On a plain view around the gradient: a gradient clipped to rounded corners cannot also
+    // cast the shadow of them.
+    heroShadow: {
+      borderRadius: radius.xl,
+      backgroundColor: colors.accent,
+      ...shadow(colors.accent).hero,
     },
-    linkRow: {
+    hero: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-between',
-      marginTop: spacing.sm,
-      paddingVertical: spacing.sm,
+      gap: spacing.lg,
+      padding: spacing.lg,
+      borderRadius: radius.xl,
+      overflow: 'hidden',
     },
-    linkText: { color: colors.text, fontSize: fontSize.sm, textAlign: 'auto' },
-    linkChevron: { color: colors.textMuted, fontSize: fontSize.lg },
-    email: { color: colors.textSecondary, fontSize: fontSize.sm, textAlign: 'auto' },
-    signOutSpacer: { height: spacing.md },
+    avatar: {
+      width: 56,
+      height: 56,
+      borderRadius: radius.pill,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'rgba(255, 255, 255, 0.22)',
+      borderWidth: 1.5,
+      borderColor: 'rgba(255, 255, 255, 0.55)',
+      overflow: 'hidden',
+    },
+    avatarImage: { width: '100%', height: '100%' },
+    avatarText: { color: colors.bg, fontSize: fontSize.lg, fontWeight: fontWeight.bold },
+    heroText: { flex: 1, gap: spacing.xxs },
+    heroCaption: { color: colors.bg, opacity: 0.8, fontSize: fontSize.xs, textAlign: 'auto' },
+    heroEmail: {
+      color: colors.bg,
+      fontSize: fontSize.md,
+      fontWeight: fontWeight.bold,
+      textAlign: 'auto',
+    },
   });

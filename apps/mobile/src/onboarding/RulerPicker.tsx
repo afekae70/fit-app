@@ -14,6 +14,17 @@
  * `direction: 'ltr'`, which also keeps the arithmetic honest — scroll offset zero is the lowest
  * value, in every locale, with nothing to flip.
  *
+ * ## And it can be typed
+ *
+ * The number above the ruler is a field. Tap it and the keyboard comes up; what is typed is
+ * taken when the field is left, and the ruler slides to it. Dragging is quicker for most
+ * people, but a ruler in half kilos cannot say 82.3, and someone who has just stepped off a
+ * scale knows their weight to the tenth.
+ *
+ * Taken on leaving the field, never per keystroke: typing "82" passes through "8", and a ruler
+ * that jumped to the bottom of its scale and back while a number was being typed would be a
+ * worse control than no ruler.
+ *
  * ## What is and is not animated
  *
  * Nothing here is driven by `Animated`. The scroll view moves natively, and the number above it
@@ -24,10 +35,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
+  Keyboard,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
   type LayoutChangeEvent,
   type NativeScrollEvent,
@@ -36,7 +49,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Minus, Plus } from 'phosphor-react-native';
+import { Minus, PencilSimple, Plus } from 'phosphor-react-native';
 
 import { hapticTick } from '../haptics.js';
 import { isRtlLanguage, type Language } from '../i18n/index.js';
@@ -45,6 +58,7 @@ import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../the
 import {
   indexAtOffset,
   indexOfValue,
+  parseTyped,
   tickCount,
   tickKind,
   valueAtIndex,
@@ -62,12 +76,15 @@ export function RulerPicker({
   onChange,
   unitLabel,
   accessibilityLabel,
+  typeHint,
 }: {
   range: RulerRange;
   value: number;
   onChange: (next: number) => void;
   unitLabel: string;
   accessibilityLabel: string;
+  /** A line under the ruler saying the number can be typed. Shown until it has been. */
+  typeHint?: string;
 }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -77,7 +94,10 @@ export function RulerPicker({
   const unitFirst = isRtlLanguage(i18n.language as Language);
 
   const scroll = useRef<ScrollView>(null);
+  const field = useRef<TextInput>(null);
   const [width, setWidth] = useState(0);
+  // What is in the field while it is being typed in; null when it is simply showing the value.
+  const [draft, setDraft] = useState<string | null>(null);
   // The tick the pointer is on, as last reported upward. A ref, because `onScroll` fires far
   // more often than the tick changes and must not re-render to find that out.
   const shown = useRef(indexOfValue(range, value));
@@ -136,6 +156,22 @@ export function RulerPicker({
     place(index, true);
   };
 
+  /** Take what was typed, if it is a number, and put the field back to showing the value. */
+  const commit = () => {
+    if (draft === null) return;
+    const typed = parseTyped(range, draft);
+    setDraft(null);
+    // The ruler follows through the effect above, which sees the value change from outside.
+    if (typed !== null && typed !== value) onChange(typed);
+  };
+
+  /** A hand on the ruler ends the typing: the two are ways of setting the same number. */
+  const abandonTyping = () => {
+    if (draft === null) return;
+    setDraft(null);
+    Keyboard.dismiss();
+  };
+
   // Half the ruler's width of empty space at each end, so the first and last ticks can reach
   // the pointer in the middle.
   const gutter = Math.max(0, width / 2 - TICK / 2);
@@ -153,16 +189,23 @@ export function RulerPicker({
           <Minus size={18} color={colors.accent} weight="bold" />
         </Pressable>
 
-        <View
-          style={[styles.valueRow, unitFirst && styles.valueRowReversed]}
-          accessible
-          accessibilityRole="adjustable"
-          accessibilityLabel={accessibilityLabel}
-          accessibilityValue={{ text: `${value.toFixed(range.decimals)} ${unitLabel}` }}
-          accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
-          onAccessibilityAction={(event) => nudge(event.nativeEvent.actionName === 'increment' ? 1 : -1)}
-        >
-          <Text style={styles.value}>{value.toFixed(range.decimals)}</Text>
+        <View style={[styles.valueRow, unitFirst && styles.valueRowReversed]}>
+          <TextInput
+            ref={field}
+            value={draft ?? value.toFixed(range.decimals)}
+            onFocus={() => setDraft(value.toFixed(range.decimals))}
+            // Digits and one separator. A phone's number pad offers little else, but a paste
+            // or a hardware keyboard can offer anything.
+            onChangeText={(text) => setDraft(text.replace(/[^0-9.,]/g, ''))}
+            onBlur={commit}
+            onSubmitEditing={commit}
+            keyboardType={range.decimals > 0 ? 'decimal-pad' : 'number-pad'}
+            returnKeyType="done"
+            selectTextOnFocus
+            maxLength={5}
+            accessibilityLabel={accessibilityLabel}
+            style={[styles.value, draft !== null && styles.valueEditing]}
+          />
           <Text style={styles.unit}>{unitLabel}</Text>
         </View>
 
@@ -186,6 +229,7 @@ export function RulerPicker({
           decelerationRate="fast"
           scrollEventThrottle={16}
           onScroll={onScroll}
+          onScrollBeginDrag={abandonTyping}
           onContentSizeChange={onContentSizeChange}
           // Not announced as a list of a few hundred unlabelled views: the readout above is the
           // adjustable control a screen reader is given.
@@ -239,6 +283,17 @@ export function RulerPicker({
           <View style={styles.pointerLine} />
         </View>
       </View>
+
+      {typeHint ? (
+        <Pressable
+          onPress={() => field.current?.focus()}
+          accessibilityRole="button"
+          style={[styles.typeHint, unitFirst && styles.valueRowReversed]}
+        >
+          <PencilSimple size={14} color={colors.textFaint} />
+          <Text style={styles.typeHintText}>{typeHint}</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -250,7 +305,10 @@ const createStyles = (colors: ColorPalette) =>
     valueRow: ViewStyle;
     valueRowReversed: ViewStyle;
     value: TextStyle;
+    valueEditing: TextStyle;
     unit: TextStyle;
+    typeHint: ViewStyle;
+    typeHintText: TextStyle;
     nudge: ViewStyle;
     nudgePressed: ViewStyle;
     ruler: ViewStyle;
@@ -286,7 +344,21 @@ const createStyles = (colors: ColorPalette) =>
       // Every digit the same width, so the number does not shuffle sideways as it changes.
       minWidth: 132,
       textAlign: 'center',
+      // A text input brings padding of its own on Android, which would push the number off
+      // the baseline it shares with its unit.
+      padding: 0,
+      includeFontPadding: false,
     },
+    // The one sign that the number has become a field: it takes the accent while being typed.
+    valueEditing: { color: colors.accent },
+    typeHint: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.xs,
+      paddingVertical: spacing.xs,
+    },
+    typeHintText: { color: colors.textFaint, fontSize: fontSize.xs },
     unit: { color: colors.textMuted, fontSize: fontSize.md, fontWeight: fontWeight.medium },
     nudge: {
       width: 44,

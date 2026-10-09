@@ -10,13 +10,14 @@
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
+import { CloudArrowUp } from 'phosphor-react-native';
 
 import { useSync, type SyncStatus } from '../sync/SyncProvider.js';
 import { useTheme } from '../ThemeProvider.js';
 import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../theme.js';
-import { Card, SectionTitle } from './ui.js';
+import { SettingsSection } from './settings/kit.js';
 
-export function SyncCard() {
+export function SyncCard({ index }: { index?: number }) {
   const { t, i18n } = useTranslation();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -29,9 +30,7 @@ export function SyncCard() {
   const busy = status.kind === 'syncing';
 
   return (
-    <Card>
-      <SectionTitle>{t('sync.title')}</SectionTitle>
-
+    <SettingsSection icon={CloudArrowUp} title={t('sync.title')} index={index}>
       <View style={styles.row}>
         <View style={[styles.dot, { backgroundColor: dotColor(status, colors) }]} />
         <Text style={styles.state}>{t(`sync.state.${status.kind}`)}</Text>
@@ -48,7 +47,7 @@ export function SyncCard() {
       >
         <Text style={styles.buttonLabel}>{busy ? t('sync.syncing') : t('sync.syncNow')}</Text>
       </Pressable>
-    </Card>
+    </SettingsSection>
   );
 }
 
@@ -108,14 +107,8 @@ const createStyles = (colors: ColorPalette) =>
     row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     dot: { width: 8, height: 8, borderRadius: 4 },
     state: { color: colors.text, fontSize: fontSize.md, fontWeight: fontWeight.medium },
-    detail: {
-      color: colors.textMuted,
-      fontSize: fontSize.sm,
-      marginTop: spacing.xs,
-      textAlign: 'auto',
-    },
+    detail: { color: colors.textMuted, fontSize: fontSize.xs, lineHeight: 17, textAlign: 'auto' },
     button: {
-      marginTop: spacing.md,
       alignSelf: 'flex-start',
       paddingVertical: spacing.sm,
       paddingHorizontal: spacing.lg,

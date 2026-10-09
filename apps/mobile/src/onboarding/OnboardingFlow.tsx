@@ -65,6 +65,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ACTIVITY_LEVELS, GOALS, type ActivityLevel, type Goal } from '@fit/shared/calculations';
 
 import { BrandButton } from '../components/BrandButton.js';
+import { KeyboardSafe } from '../components/KeyboardSafe.js';
 import { CountUp, FadeSlideIn } from '../components/motion.js';
 import { Banner } from '../components/ui.js';
 import { getLatestWeight, getProfile, recordBodyMetric, saveProfile } from '../db/metrics.js';
@@ -97,13 +98,11 @@ import {
   ageFromBirthDate,
   birthDateFromAge,
   heightRange,
-  indexOfValue,
   isNewWeight,
+  ontoScale,
   setupPosition,
   setupTargets,
-  valueAtIndex,
   weightRange,
-  type RulerRange,
   type SetupSex,
   type SetupStep,
 } from './profileSetup.js';
@@ -132,9 +131,6 @@ const GOAL_ICON: Record<Goal, Icon> = {
   maintain: Equals,
   bulk: Barbell,
 };
-
-/** A value off a saved row, moved onto the nearest tick of the ruler it is about to be shown on. */
-const onRuler = (range: RulerRange, value: number) => valueAtIndex(range, indexOfValue(range, value));
 
 export function OnboardingFlow({ userId, onDone }: { userId: string; onDone: () => void }) {
   const { t, i18n } = useTranslation();
@@ -179,9 +175,9 @@ export function OnboardingFlow({ userId, onDone }: { userId: string; onDone: () 
           getLatestWeight(db, userId),
         ]);
         if (cancelled) return;
-        if (latest?.weight_kg) setWeight(onRuler(weights, bodyKgToDisplay(latest.weight_kg, unit)));
-        if (profile?.height_cm) setHeight(onRuler(heights, cmToDisplay(profile.height_cm, unit)));
-        if (profile?.birth_date) setAge(onRuler(AGE_RANGE, ageFromBirthDate(profile.birth_date)));
+        if (latest?.weight_kg) setWeight(ontoScale(weights, bodyKgToDisplay(latest.weight_kg, unit)));
+        if (profile?.height_cm) setHeight(ontoScale(heights, cmToDisplay(profile.height_cm, unit)));
+        if (profile?.birth_date) setAge(ontoScale(AGE_RANGE, ageFromBirthDate(profile.birth_date)));
         if (profile?.sex === 'male' || profile?.sex === 'female') setSex(profile.sex);
         if (profile?.activity_level && isActivityLevel(profile.activity_level)) {
           setActivityLevel(profile.activity_level);
@@ -275,7 +271,9 @@ export function OnboardingFlow({ userId, onDone }: { userId: string; onDone: () 
   const BackArrow = rtl ? ArrowRight : ArrowLeft;
 
   return (
-    <View
+    // The three numbers can be typed, and a keyboard on this build is drawn over the app rather
+    // than pushing it up. This is what keeps the button — and the number being typed — above it.
+    <KeyboardSafe
       style={[
         styles.screen,
         { paddingTop: insets.top + spacing.md, paddingBottom: insets.bottom + spacing.lg },
@@ -317,6 +315,9 @@ export function OnboardingFlow({ userId, onDone }: { userId: string; onDone: () 
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        // A tap on the ruler or its buttons while the number is being typed should act, not
+        // merely put the keyboard away and need tapping again.
+        keyboardShouldPersistTaps="handled"
       >
         {/* Keyed on the step, so that moving on replays the entrance instead of swapping the
             text under a picture that stays where it was. */}
@@ -336,6 +337,7 @@ export function OnboardingFlow({ userId, onDone }: { userId: string; onDone: () 
                 onChange={setWeight}
                 unitLabel={t(`common.${weightUnitKey(unit)}`)}
                 accessibilityLabel={t('profile.weight')}
+                typeHint={t('setup.typeHint')}
               />
             </Panel>
           ) : null}
@@ -348,6 +350,7 @@ export function OnboardingFlow({ userId, onDone }: { userId: string; onDone: () 
                 onChange={setHeight}
                 unitLabel={t(`common.${heightUnitKey(unit)}`)}
                 accessibilityLabel={t('profile.height')}
+                typeHint={t('setup.typeHint')}
               />
             </Panel>
           ) : null}
@@ -361,6 +364,7 @@ export function OnboardingFlow({ userId, onDone }: { userId: string; onDone: () 
                   onChange={setAge}
                   unitLabel={t('profile.years')}
                   accessibilityLabel={t('profile.age')}
+                  typeHint={t('setup.typeHint')}
                 />
               </Panel>
               <View style={styles.pills}>
@@ -437,7 +441,7 @@ export function OnboardingFlow({ userId, onDone }: { userId: string; onDone: () 
         busy={saving}
         style={styles.next}
       />
-    </View>
+    </KeyboardSafe>
   );
 }
 
