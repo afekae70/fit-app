@@ -47,6 +47,7 @@ import {
   findDay,
   moveExercise,
   newExercise,
+  NO_TIMING,
   removeExercise,
   replaceExercise,
   sameDay,
@@ -115,7 +116,7 @@ export default function TraineeDayScreen() {
       }
       const found = findDay(result.value, plan, dayId);
       setSaved(found?.day ?? null);
-      setDraft(found?.day ?? { id: dayId, name: null, exercises: [] });
+      setDraft(found?.day ?? { id: dayId, name: null, ...NO_TIMING, exercises: [] });
     })();
     return () => {
       cancelled = true;

@@ -50,6 +50,7 @@ import {
   groupNamed,
   type CoachCalendar,
   type CoachPlan,
+  type DayTiming,
   type OwnWorkout,
 } from '../../src/coaching/planDocument.js';
 import { coachingErrorKey, useCoachingApi } from '../../src/coaching/useCoachingApi.js';
@@ -70,8 +71,8 @@ import { isRtlLanguage, type Language } from '../../src/i18n/index.js';
 import { useTheme } from '../../src/ThemeProvider.js';
 import { fontSize, fontWeight, radius, shadow, spacing, type ColorPalette } from '../../src/theme.js';
 
-/** One of the coach's own workouts, as listed: which row it is, and how to name it. */
-interface OwnWorkoutChoice {
+/** One of the coach's own workouts, as listed: which row it is, how to name it, how it is timed. */
+interface OwnWorkoutChoice extends DayTiming {
   planDayId: string;
   groupName: string;
   name: string | null;
@@ -141,7 +142,15 @@ export default function TraineeCalendarScreen() {
           rows.map((row) => {
             const number = (counts.get(row.plan_id) ?? 0) + 1;
             counts.set(row.plan_id, number);
-            return { planDayId: row.id, groupName: row.plan_name, name: row.name, number };
+            return {
+              planDayId: row.id,
+              groupName: row.plan_name,
+              name: row.name,
+              number,
+              workSeconds: row.work_seconds ?? null,
+              restSeconds: row.rest_seconds ?? null,
+              rounds: row.rounds ?? null,
+            };
           }),
         );
       })();
@@ -182,6 +191,9 @@ export default function TraineeCalendarScreen() {
     const source: OwnWorkout = {
       groupName: choice.groupName,
       name: choice.name ?? t('coaching.workoutNumber', { number: choice.number }),
+      workSeconds: choice.workSeconds,
+      restSeconds: choice.restSeconds,
+      rounds: choice.rounds,
       exercises: exercises.map((exercise) => ({
         exerciseKey: exercise.exercise_key,
         targetSets: exercise.target_sets,

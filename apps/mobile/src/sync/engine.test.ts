@@ -81,6 +81,12 @@ interface FakeServer extends SyncTransport {
   calls: { op: 'upsert' | 'patch' | 'fetchByIds'; table: string; ids: string[] }[];
   /** Tables this server has not been given yet: any request to one is answered as PostgREST does. */
   missing: Set<string>;
+  /**
+   * Columns this server has not been given yet, by table. A write that names one is refused
+   * whole, before anything is stored — and nothing it stores ever has the column, so nothing it
+   * sends back does either.
+   */
+  unknownColumns: Map<string, Set<string>>;
 }
 
 function createFakeServer(startAt = Date.parse('2026-03-01T00:00:00.000Z')): FakeServer {
@@ -182,12 +188,27 @@ function createFakeServer(startAt = Date.parse('2026-03-01T00:00:00.000Z')): Fak
     });
   };
 
+  /** What PostgREST answers for a write naming a column that is not in its schema cache. */
+  const unheardOf = (name: string, rows: readonly Row[]) => {
+    const unknown = server.unknownColumns.get(name);
+    if (!unknown) return;
+    for (const row of rows) {
+      const column = Object.keys(row).find((key) => unknown.has(key));
+      if (!column) continue;
+      throw Object.assign(
+        new Error(`Could not find the '${column}' column of '${name}' in the schema cache`),
+        { code: 'PGRST204' },
+      );
+    }
+  };
+
   const server: FakeServer = {
     now,
     failNextUpsert: false,
     refuse: new Map(),
     calls: [],
     missing: new Set(),
+    unknownColumns: new Map(),
     rows: (name) => [...table(name).values()],
     seed(name, row) {
       table(name).set(row.id as string, { ...row, updated_at: row.updated_at ?? now() });
@@ -205,6 +226,7 @@ function createFakeServer(startAt = Date.parse('2026-03-01T00:00:00.000Z')): Fak
         throw new Error('server rejected the batch');
       }
       absent(name);
+      unheardOf(name, rows);
       server.calls.push({ op: 'upsert', table: name, ids: rows.map((row) => row.id as string) });
 
       /*
@@ -245,6 +267,7 @@ function createFakeServer(startAt = Date.parse('2026-03-01T00:00:00.000Z')): Fak
 
     async patch(name, rows) {
       absent(name);
+      unheardOf(name, rows);
       server.calls.push({ op: 'patch', table: name, ids: rows.map((row) => row.id as string) });
       const rejections: RowRejection[] = [];
       for (const row of rows) {
@@ -2096,5 +2119,219 @@ describe('a table the server has not been given yet', () => {
     expect(SYNC_TABLES.filter((entry) => entry.optional).map((entry) => entry.table)).toEqual([
       'scheduled_days',
     ]);
+  });
+});
+
+describe('supersets, drop sets and timed workouts', () => {
+  /*
+   * Three things the phone has recorded for a long time and never sent: which exercise is
+   * paired with the next, which set was a drop set, and the timing that makes a plan day a
+   * timed workout. Left on the phone, a reinstall brought a superset back as two unrelated
+   * exercises and an interval session back as an ordinary one.
+   */
+  const PLAN = 'dddddddd-0000-4000-8000-00000000000a';
+  const DAY = 'eeeeeeee-0000-4000-8000-00000000000a';
+  const SESSION = 'aaaaaaaa-0000-4000-8000-000000000001';
+  const FIRST = 'bbbbbbbb-0000-4000-8000-000000000001';
+  const SECOND = 'bbbbbbbb-0000-4000-8000-000000000002';
+  const TOP_SET = 'cccccccc-0000-4000-8000-000000000001';
+  const DROP_SET = 'cccccccc-0000-4000-8000-000000000002';
+  const at = (time: string) => localClock(`2026-02-01T${time}.000Z`);
+
+  /** A timed plan day, and a session with a superset whose first exercise ends in a drop set. */
+  async function seedAll(onto: SqlExecutor = db) {
+    const stamp = '2026-02-01T10:00:00.000Z';
+    await onto.run(
+      `INSERT INTO plans (id, user_id, name, is_active, created_at, updated_at)
+         VALUES (?, ?, 'Gym', 1, ?, ?)`,
+      [PLAN, USER, stamp, stamp],
+    );
+    await onto.run(
+      `INSERT INTO plan_days (id, plan_id, day_index, name, work_seconds, rest_seconds, rounds, updated_at)
+         VALUES (?, ?, 1, 'Intervals', 40, 20, 3, ?)`,
+      [DAY, PLAN, stamp],
+    );
+    await onto.run(
+      `INSERT INTO workout_sessions (id, user_id, name, started_at, created_at, updated_at)
+         VALUES (?, ?, 'Push day', ?, ?, ?)`,
+      [SESSION, USER, stamp, stamp, stamp],
+    );
+    for (const [id, index, link] of [
+      [FIRST, 1, 1],
+      [SECOND, 2, 0],
+    ] as const) {
+      await onto.run(
+        `INSERT INTO session_exercises (id, session_id, exercise_key, order_index, superset_with_next, updated_at)
+           VALUES (?, ?, 'Bench Press', ?, ?, ?)`,
+        [id, SESSION, index, link, stamp],
+      );
+    }
+    for (const [id, index, drop] of [
+      [TOP_SET, 1, 0],
+      [DROP_SET, 2, 1],
+    ] as const) {
+      await onto.run(
+        `INSERT INTO sets (id, session_exercise_id, set_index, weight_kg, reps, is_warmup, to_failure, is_drop, completed_at, updated_at)
+           VALUES (?, ?, ?, 60, 8, 0, 0, ?, ?, ?)`,
+        [id, FIRST, index, drop, stamp, stamp],
+      );
+    }
+  }
+
+  const held = async (onto: SqlExecutor) => ({
+    linked: (
+      await onto.get<{ n: number }>(`SELECT superset_with_next AS n FROM session_exercises WHERE id = ?`, [
+        FIRST,
+      ])
+    )?.n,
+    drop: (await onto.get<{ n: number }>(`SELECT is_drop AS n FROM sets WHERE id = ?`, [DROP_SET]))?.n,
+    timing: await onto.get<{ work_seconds: number | null; rest_seconds: number | null; rounds: number | null }>(
+      `SELECT work_seconds, rest_seconds, rounds FROM plan_days WHERE id = ?`,
+      [DAY],
+    ),
+  });
+
+  /** A server that has not been given the newer columns: migration 0010 not run yet. */
+  function olderServer(): FakeServer {
+    const server = createFakeServer();
+    server.unknownColumns.set('plan_days', new Set(['work_seconds', 'rest_seconds', 'rounds']));
+    server.unknownColumns.set('session_exercises', new Set(['superset_with_next']));
+    server.unknownColumns.set('sets', new Set(['is_drop']));
+    return server;
+  }
+
+  it('reach the server, as real booleans where they are flags', async () => {
+    const server = createFakeServer();
+    await seedAll();
+
+    await runSync(db, server, USER, at('11:00:00'));
+
+    expect(server.rows('session_exercises').find((row) => row.id === FIRST)?.superset_with_next).toBe(true);
+    expect(server.rows('sets').find((row) => row.id === DROP_SET)?.is_drop).toBe(true);
+    expect(server.rows('sets').find((row) => row.id === TOP_SET)?.is_drop).toBe(false);
+    expect(server.rows('plan_days')[0]).toMatchObject({ work_seconds: 40, rest_seconds: 20, rounds: 3 });
+  });
+
+  it('reach a second phone', async () => {
+    const server = createFakeServer();
+    await seedAll();
+    await runSync(db, server, USER, at('11:00:00'));
+
+    const second = createTestExecutor();
+    await runSync(second, server, USER, at('12:00:00'));
+
+    expect(await held(second)).toEqual({
+      linked: 1,
+      drop: 1,
+      timing: { work_seconds: 40, rest_seconds: 20, rounds: 3 },
+    });
+    second.close();
+  });
+
+  describe('against a server that does not have the columns yet', () => {
+    it('still sends the training itself', async () => {
+      // The whole reason for the fallback. Without it every request for these three tables is
+      // refused, and sets stop reaching the cloud until somebody runs a script.
+      const server = olderServer();
+      await seedAll();
+
+      const result = await runSync(db, server, USER, at('11:00:00'));
+
+      expect(result.refused).toEqual([]);
+      expect(server.rows('sets').map((row) => row.id).sort()).toEqual([TOP_SET, DROP_SET]);
+      expect(server.rows('session_exercises')).toHaveLength(2);
+      expect(server.rows('plan_days')).toHaveLength(1);
+    });
+
+    it('does not hold the sets back behind an exercise that went up without its superset link', async () => {
+      // The exercise is sent again later, in full — but it *was* accepted, and its sets have
+      // every reason to follow it now.
+      const server = olderServer();
+      await seedAll();
+
+      await runSync(db, server, USER, at('11:00:00'));
+
+      expect(server.rows('sets')).toHaveLength(2);
+    });
+
+    it('does not let what the server sends back wipe what the phone holds', async () => {
+      /*
+       * The server's copies have no such columns. Read as null, they would be written over the
+       * phone's own: every superset unlinked, every drop set an ordinary one, every timed
+       * workout a plain one — by a server that simply had no opinion.
+       */
+      const server = olderServer();
+      await seedAll();
+
+      await runSync(db, server, USER, at('11:00:00'));
+      await runSync(db, server, USER, at('12:00:00'));
+
+      expect(await held(db)).toEqual({
+        linked: 1,
+        drop: 1,
+        timing: { work_seconds: 40, rest_seconds: 20, rounds: 3 },
+      });
+    });
+
+    it('sends the missing part by itself once the server can take it', async () => {
+      const server = olderServer();
+      await seedAll();
+      await runSync(db, server, USER, at('11:00:00'));
+      await runSync(db, server, USER, at('12:00:00'));
+
+      // Migration 0010 is run.
+      server.unknownColumns.clear();
+      await runSync(db, server, USER, at('13:00:00'));
+
+      expect(server.rows('session_exercises').find((row) => row.id === FIRST)?.superset_with_next).toBe(true);
+      expect(server.rows('sets').find((row) => row.id === DROP_SET)?.is_drop).toBe(true);
+      expect(server.rows('plan_days')[0]).toMatchObject({ work_seconds: 40, rest_seconds: 20, rounds: 3 });
+    });
+
+    it('keeps only the rows that had something to add in the queue', async () => {
+      const server = olderServer();
+      await seedAll();
+      await runSync(db, server, USER, at('11:00:00'));
+
+      server.calls.length = 0;
+      await runSync(db, server, USER, at('12:00:00'));
+
+      // The second exercise is not a superset and the first set is not a drop set: both said
+      // everything they had to say the first time, and are not sent again.
+      const sent = (name: string) =>
+        new Set(
+          server.calls.filter((call) => call.op === 'upsert' && call.table === name).flatMap((call) => call.ids),
+        );
+      expect([...sent('session_exercises')]).toEqual([FIRST]);
+      expect([...sent('sets')]).toEqual([DROP_SET]);
+    });
+
+    it('settles once the server has caught up', async () => {
+      const server = olderServer();
+      await seedAll();
+      await runSync(db, server, USER, at('11:00:00'));
+      server.unknownColumns.clear();
+      await runSync(db, server, USER, at('12:00:00'));
+
+      const after = await runSync(db, server, USER, at('13:00:00'));
+
+      expect(after.pushed).toBe(0);
+      expect(after.refused).toEqual([]);
+    });
+  });
+
+  it('names as optional only columns that are synced, and marks no other table that way', () => {
+    const optional = SYNC_TABLES.filter((entry) => entry.optionalColumns).map((entry) => [
+      entry.table,
+      entry.optionalColumns,
+    ]);
+    expect(optional).toEqual([
+      ['plan_days', ['work_seconds', 'rest_seconds', 'rounds']],
+      ['session_exercises', ['superset_with_next']],
+      ['sets', ['is_drop']],
+    ]);
+    for (const entry of SYNC_TABLES) {
+      for (const column of entry.optionalColumns ?? []) expect(entry.columns).toContain(column);
+    }
   });
 });

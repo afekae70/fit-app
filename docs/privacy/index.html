@@ -57,19 +57,20 @@
 <h2>איזה מידע נשמר</h2>
 <ul>
 <li><strong>פרטי חשבון:</strong> כתובת האימייל שלך. הסיסמה נשמרת אצל ספק האימות בצורה מגובבת; אין לנו גישה אליה.</li>
-<li><strong>פרופיל שאתה ממלא:</strong> שם תצוגה, תאריך לידה, מין, גובה ורמת פעילות. הם משמשים לחישוב יעדי תזונה ואזורי דופק.</li>
-<li><strong>נתוני אימון:</strong> אימונים, תרגילים, סטים, משקלים, חזרות, זמנים ומרחקים; תוכניות האימון ולוח האימונים שלך; ושמות חדרי הכושר שהגדרת.</li>
+<li><strong>פרופיל שאתה ממלא:</strong> שם תצוגה, תאריך לידה, מין, גובה, רמת פעילות ומטרת האימון. הם משמשים לחישוב יעדי תזונה ואזורי דופק.</li>
+<li><strong>נתוני אימון:</strong> אימונים, תרגילים, סטים, משקלים, חזרות, זמנים ומרחקים; ותוכניות האימון ולוח האימונים שלך.</li>
 <li><strong>מדדי גוף:</strong> שקילות, ואם חיברת משקל חכם — גם אחוז שומן, מסת שריר, אחוז מים, מסת עצם ושומן ויסצרלי.</li>
 <li><strong>תמונת פרופיל:</strong> נשמרת במכשיר שלך בלבד ואינה נשלחת לשרת.</li>
 </ul>
 <p>האפליקציה אינה אוספת מיקום, אנשי קשר, או מזהי פרסום.</p>
 
 <h2>איפה המידע נשמר</h2>
-<p>המידע נשמר במכשיר שלך, וכשאתה מחובר לחשבון הוא מסונכרן גם לענן, אצל Supabase — ספק מסד הנתונים והאימות שלנו. כל התעבורה מוצפנת, והגישה לנתונים בשרת מוגבלת כך שכל משתמש יכול לקרוא ולשנות רק את הנתונים של עצמו.</p>
+<p>המידע נשמר במכשיר שלך, וכשאתה מחובר לחשבון הוא מסונכרן גם לענן, אצל Supabase — ספק מסד הנתונים והאימות שלנו. כל התעבורה מוצפנת, והגישה לנתונים בשרת מוגבלת כך שכל משתמש יכול לקרוא ולשנות רק את הנתונים של עצמו. היוצא מן הכלל היחיד הוא מאמן שבחרת להתחבר אליו, כמפורט למטה.</p>
 
 <h2>עם מי המידע משותף</h2>
 <ul>
 <li><strong>Supabase</strong> — אחסון הנתונים ואימות החשבון.</li>
+<li><strong>מאמן אישי</strong> — רק אם התחברת לאחד. כשאתה מקליד באפליקציה קוד שקיבלת ממאמן, אותו מאמן יכול לראות ולערוך את תוכניות האימון ואת לוח האימונים שלך, ורואה את שם התצוגה ואת כתובת האימייל שלך. הוא אינו רואה את היסטוריית האימונים, השקילות, מדדי הגוף או שאר פרטי הפרופיל שלך. אתה רואה את שם התצוגה ואת כתובת האימייל שלו. החיבור נוצר רק על ידך, ואפשר לנתק אותו בכל רגע מתוך האפליקציה — הגישה של המאמן נפסקת מיד. אם אתה מאמן, המתאמנים שהתחברו אליך רואים את שם התצוגה ואת כתובת האימייל שלך.</li>
 <li><strong>המאמן ה-AI</strong> — רק אם אתה משתמש בו. כדי לענות לך, נשלחים לספק הבינה המלאכותית (Anthropic או Google) סיכום של הפרופיל, היעדים, מגמת המשקל, ההתקדמות בתרגילים והתוכנית שלך, יחד עם השאלות שכתבת. הבקשה עוברת דרך השרת שלנו, והשיחות אינן נשמרות בו.</li>
 <li><strong>Health Connect</strong> — רק אם הפעלת את הסנכרון. אימונים שסיימת, המרחק והקלוריות שנשרפו נכתבים למאגר הבריאות של Android במכשיר שלך, ומשם אפליקציות אחרות שאישרת (למשל Samsung Health) יכולות לקרוא אותם. NovaFit כותבת למאגר הזה ואינה קוראת ממנו. מידע שמקורו ב-Health Connect אינו משמש לפרסום ואינו מועבר לאף גורם.</li>
 </ul>
@@ -89,13 +90,13 @@
 <li><strong>מתוך האפליקציה:</strong> הגדרות ← חשבון ← מחיקת החשבון. המחיקה מיידית וסופית: החשבון, האימונים, התוכניות, השקילות והפרופיל נמחקים מהשרת ומהמכשיר.</li>
 <li><strong>בלי האפליקציה:</strong> שלח בקשה מכתובת האימייל שנרשמת איתה אל <a href="mailto:afekae90@gmail.com">afekae90@gmail.com</a>. נמחק את החשבון וכל המידע שלו בתוך 30 יום.</li>
 </ul>
-<p>שים לב: קובצי גיבוי וייצוא שיצרת בעצמך נשמרים בתיקייה שבחרת במכשיר שלך. הם שלך, והמחיקה אינה נוגעת בהם. גם אימונים שכבר נכתבו ל-Health Connect נשארים שם, ואפשר למחוק אותם מהגדרות Health Connect.</p>
+<p>שים לב: אימונים שכבר נכתבו ל-Health Connect נשארים שם, ואפשר למחוק אותם מהגדרות Health Connect. תוכניות שמאמן בנה עבורך הן חלק מהחשבון שלך ונמחקות איתו; תוכניות שבנית כמאמן עבור מתאמנים נשארות אצלם.</p>
 
 <h2>כמה זמן המידע נשמר</h2>
 <p>כל עוד החשבון קיים. עם מחיקת החשבון המידע נמחק ואינו נשמר אצלנו.</p>
 
 <h2>הזכויות שלך</h2>
-<p>אתה יכול לראות ולתקן את כל המידע שלך בתוך האפליקציה, לייצא אותו כקובץ (הגדרות ← ייצוא נתונים), ולמחוק אותו כמתואר למעלה. לכל בקשה אחרת — כתוב לנו.</p>
+<p>אתה יכול לראות ולתקן את כל המידע שלך בתוך האפליקציה, ולמחוק אותו כמתואר למעלה. לכל בקשה אחרת — כתוב לנו.</p>
 
 <h2>ילדים</h2>
 <p>האפליקציה אינה מיועדת לילדים מתחת לגיל 16, ואיננו אוספים ביודעין מידע מילדים.</p>
@@ -118,19 +119,20 @@
 <h2>What is stored</h2>
 <ul>
 <li><strong>Account details:</strong> your email address. Your password is held by the authentication provider in hashed form; we have no access to it.</li>
-<li><strong>The profile you fill in:</strong> display name, date of birth, sex, height and activity level. They are used to calculate nutrition targets and heart-rate zones.</li>
-<li><strong>Training data:</strong> workouts, exercises, sets, weights, repetitions, durations and distances; your training plans and schedule; and the names of the gyms you set up.</li>
+<li><strong>The profile you fill in:</strong> display name, date of birth, sex, height, activity level and training goal. They are used to calculate nutrition targets and heart-rate zones.</li>
+<li><strong>Training data:</strong> workouts, exercises, sets, weights, repetitions, durations and distances; and your training plans and schedule.</li>
 <li><strong>Body measurements:</strong> weigh-ins, and if you connect a smart scale, body-fat percentage, muscle mass, water percentage, bone mass and visceral fat.</li>
 <li><strong>Profile picture:</strong> kept on your device only and never sent to a server.</li>
 </ul>
 <p>The app does not collect your location, your contacts or any advertising identifier.</p>
 
 <h2>Where it is stored</h2>
-<p>On your device, and when you are signed in, also in the cloud with Supabase, our database and authentication provider. All traffic is encrypted, and access on the server is restricted so that each user can read and change only their own data.</p>
+<p>On your device, and when you are signed in, also in the cloud with Supabase, our database and authentication provider. All traffic is encrypted, and access on the server is restricted so that each user can read and change only their own data. The one exception is a coach you have chosen to connect to, as described below.</p>
 
 <h2>Who it is shared with</h2>
 <ul>
 <li><strong>Supabase</strong> — data storage and account authentication.</li>
+<li><strong>A personal coach</strong> — only if you connect to one. When you enter a code a coach gave you, that coach can see and edit your training plans and your training schedule, and sees your display name and email address. They do not see your workout history, weigh-ins, body measurements or the rest of your profile. You see their display name and email address. The connection is only ever made by you, and you can end it at any time from inside the app — the coach's access stops at once. If you are a coach, the trainees who have connected to you see your display name and email address.</li>
 <li><strong>The AI coach</strong> — only if you use it. To answer you, a summary of your profile, targets, weight trend, exercise progress and plan is sent to the AI provider (Anthropic or Google), together with the questions you typed. The request passes through our server, and conversations are not stored on it.</li>
 <li><strong>Health Connect</strong> — only if you switch the sync on. Workouts you finish, their distance and the calories burned are written to Android's health store on your device, where other apps you have approved (Samsung Health, for example) can read them. NovaFit writes to that store and does not read from it. Information from Health Connect is not used for advertising and is not transferred to anyone.</li>
 </ul>
@@ -150,13 +152,13 @@
 <li><strong>In the app:</strong> Settings → Account → Delete account. Deletion is immediate and final: the account, workouts, plans, weigh-ins and profile are removed from the server and from the device.</li>
 <li><strong>Without the app:</strong> send a request from the email address you registered with to <a href="mailto:afekae90@gmail.com">afekae90@gmail.com</a>. We will delete the account and all of its data within 30 days.</li>
 </ul>
-<p>Note that backup and export files you created yourself are kept in the folder you chose on your own device. They are yours, and deletion does not touch them. Workouts already written to Health Connect stay there too, and can be removed from Health Connect's own settings.</p>
+<p>Note that workouts already written to Health Connect stay there, and can be removed from Health Connect's own settings. Plans a coach built for you are part of your account and are deleted with it; plans you built as a coach for your trainees stay with them.</p>
 
 <h2>How long it is kept</h2>
 <p>For as long as the account exists. When the account is deleted, the data is deleted and we keep nothing.</p>
 
 <h2>Your rights</h2>
-<p>You can see and correct all of your data inside the app, export it as a file (Settings → Export data), and delete it as described above. For anything else, write to us.</p>
+<p>You can see and correct all of your data inside the app, and delete it as described above. For anything else, write to us.</p>
 
 <h2>Children</h2>
 <p>The app is not intended for children under 16, and we do not knowingly collect information from children.</p>

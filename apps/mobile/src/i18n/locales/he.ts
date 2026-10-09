@@ -451,6 +451,9 @@ export const he = {
     title: 'מאמן אישי',
     open: 'פתח',
     settingsHint: 'חבר מאמן שיבנה ויעדכן לך את תוכניות האימון',
+    roleCoach: 'מאמן',
+    roleTrainee: 'מתאמן',
+    roleAdmin: 'מנהל',
     myCoach: 'המאמן שלי',
     myCoachHint: 'קיבלת קוד ממאמן? הקלד אותו כאן, והוא יוכל לראות ולערוך את תוכניות האימון שלך',
     coachCanSee:

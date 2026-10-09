@@ -773,3 +773,79 @@ describe('migration 19 — the calendar joins sync', () => {
     fresh.close();
   });
 });
+
+describe('migration 20 — supersets, drop sets and timed workouts join sync', () => {
+  const OLD = '2026-09-01T10:00:00.000Z';
+
+  function loggedDevice() {
+    const db = new DatabaseSync(':memory:');
+    db.exec(CREATE_SCHEMA_SQL.replace(/PRAGMA journal_mode = WAL;/, ''));
+    db.exec(`
+      INSERT INTO plans (id, user_id, name, is_active, created_at, updated_at)
+        VALUES ('p1', 'u1', 'Gym', 1, '${OLD}', '${OLD}');
+      INSERT INTO plan_days (id, plan_id, day_index, name, work_seconds, rest_seconds, rounds, updated_at)
+        VALUES ('timed', 'p1', 1, 'Intervals', 40, 20, 3, '${OLD}'),
+               ('plain', 'p1', 2, 'Push', NULL, NULL, NULL, '${OLD}');
+      INSERT INTO workout_sessions (id, user_id, started_at, created_at, updated_at)
+        VALUES ('s1', 'u1', '${OLD}', '${OLD}', '${OLD}');
+      INSERT INTO session_exercises (id, session_id, exercise_key, order_index, superset_with_next, updated_at)
+        VALUES ('linked', 's1', 'Bench Press', 1, 1, '${OLD}'),
+               ('alone', 's1', 'Barbell Row', 2, 0, '${OLD}');
+      INSERT INTO sets (id, session_exercise_id, set_index, weight_kg, reps, is_drop, completed_at, updated_at)
+        VALUES ('drop', 'linked', 2, 40, 8, 1, '${OLD}', '${OLD}'),
+               ('top', 'linked', 1, 60, 8, 0, '${OLD}', '${OLD}');
+    `);
+    return db;
+  }
+
+  const changed = (db: ReturnType<typeof loggedDevice>, tableName: string): string[] =>
+    (
+      db.prepare(`SELECT id FROM ${tableName} WHERE updated_at <> '${OLD}' ORDER BY id`).all() as {
+        id: string;
+      }[]
+    ).map((row) => row.id);
+
+  it('is on the app upgrade path', () => {
+    expect(SCHEMA_VERSION).toBeGreaterThanOrEqual(20);
+    expect(MIGRATIONS[20]).toBeDefined();
+  });
+
+  it('marks as changed the rows that have something new to send, and no others', () => {
+    // Sync sends what is newer than its cursor. These were logged before the columns were
+    // synced, so without a new stamp they would never be offered again.
+    const db = loggedDevice();
+    applyMigration(db, MIGRATIONS[20] ?? '');
+    expect(changed(db, 'plan_days')).toEqual(['timed']);
+    expect(changed(db, 'session_exercises')).toEqual(['linked']);
+    expect(changed(db, 'sets')).toEqual(['drop']);
+    db.close();
+  });
+
+  it('changes nothing about the rows but the stamp', () => {
+    const db = loggedDevice();
+    applyMigration(db, MIGRATIONS[20] ?? '');
+    expect(
+      db.prepare(`SELECT id, work_seconds, rest_seconds, rounds FROM plan_days ORDER BY id`).all(),
+    ).toEqual([
+      { id: 'plain', work_seconds: null, rest_seconds: null, rounds: null },
+      { id: 'timed', work_seconds: 40, rest_seconds: 20, rounds: 3 },
+    ]);
+    expect(db.prepare(`SELECT id, is_drop FROM sets ORDER BY id`).all()).toEqual([
+      { id: 'drop', is_drop: 1 },
+      { id: 'top', is_drop: 0 },
+    ]);
+    db.close();
+  });
+
+  it('is safe to run twice, and on a device with nothing on it', () => {
+    const db = loggedDevice();
+    applyMigration(db, MIGRATIONS[20] ?? '');
+    expect(() => applyMigration(db, MIGRATIONS[20] ?? '')).not.toThrow();
+    db.close();
+
+    const empty = new DatabaseSync(':memory:');
+    empty.exec(CREATE_SCHEMA_SQL.replace(/PRAGMA journal_mode = WAL;/, ''));
+    expect(() => applyMigration(empty, MIGRATIONS[20] ?? '')).not.toThrow();
+    empty.close();
+  });
+});

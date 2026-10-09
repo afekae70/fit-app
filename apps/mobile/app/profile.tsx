@@ -31,7 +31,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { I18nManager } from 'react-native';
 
 import { useAuth } from '../src/auth/AuthProvider.js';
+import { useAccountRole } from '../src/coaching/useAccountRole.js';
 import { useActionSheet } from '../src/components/ActionSheetProvider.js';
+import { RoleBadge } from '../src/components/RoleBadge.js';
 import { loadAvatar, pickAvatar, removeAvatar } from '../src/profile/avatar.js';
 import { useCurrentUserId } from '../src/auth/CurrentUserProvider.js';
 import { useUnit } from '../src/UnitsProvider.js';
@@ -58,6 +60,7 @@ export default function ProfileScreen() {
   const [weightKg, setWeightKg] = useState<number | null>(null);
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const { ask, notify } = useActionSheet();
+  const role = useAccountRole(userId);
 
   useEffect(() => {
     void loadAvatar(userId).then(setAvatarUri);
@@ -143,6 +146,9 @@ export default function ProfileScreen() {
           </View>
         </Pressable>
         <Text style={styles.name}>{name}</Text>
+        {/* Under the name, where a title would go: whether this account is a trainee or one
+            the owner has made a coach. Nothing until it is known. */}
+        <RoleBadge role={role} />
         <Text style={styles.subtitle}>
           {t('profileScreen.trainsPerWeek', { count: WEEKLY_TARGET })}
           {weightKg !== null

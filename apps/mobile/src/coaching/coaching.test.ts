@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { accountRoleKey, parseStoredRole, serialiseRole } from './accountRole.js';
 import {
   createCoachingApi,
   interpretCoachingError,
@@ -20,6 +21,7 @@ import {
   groupNamed,
   moveExercise,
   newExercise,
+  NO_TIMING,
   parsePlans,
   parseSchedule,
   removeExercise,
@@ -44,6 +46,9 @@ const SERVER_PLANS = [
       {
         id: 'day-1',
         name: 'Push',
+        work_seconds: null,
+        rest_seconds: null,
+        rounds: null,
         exercises: [
           {
             id: 'ex-1',
@@ -63,7 +68,7 @@ const SERVER_PLANS = [
           },
         ],
       },
-      { id: 'day-2', name: null, exercises: [] },
+      { id: 'day-2', name: null, work_seconds: 40, rest_seconds: 20, rounds: 3, exercises: [] },
     ],
   },
 ];
@@ -127,6 +132,18 @@ describe('reading a trainee\'s plans', () => {
     ]);
   });
 
+  it('reads a timed workout\'s timing, and none on an ordinary one', () => {
+    const [plan] = parsePlans(SERVER_PLANS);
+    expect(plan?.days[0]).toMatchObject({ workSeconds: null, restSeconds: null, rounds: null });
+    expect(plan?.days[1]).toMatchObject({ workSeconds: 40, restSeconds: 20, rounds: 3 });
+  });
+
+  it('reads a server that says nothing about timing as an ordinary workout', () => {
+    // Before migration 0010 the function sends no timing keys at all.
+    const [plan] = parsePlans([{ id: 'p', name: 'Gym', days: [{ id: 'd', name: 'Push', exercises: [] }] }]);
+    expect(plan?.days[0]).toMatchObject({ workSeconds: null, restSeconds: null, rounds: null });
+  });
+
   it('finds a workout by its group and its own id', () => {
     const plans = parsePlans(SERVER_PLANS);
     expect(findDay(plans, 'plan-1', 'day-2')?.day.id).toBe('day-2');
@@ -142,6 +159,7 @@ describe('reading a trainee\'s plans', () => {
 const day = (): CoachDay => ({
   id: 'day-1',
   name: 'Push',
+  ...NO_TIMING,
   exercises: [newExercise('a', 'Bench'), newExercise('b', 'Row'), newExercise('c', 'Curl')],
 });
 
@@ -250,6 +268,9 @@ describe('what goes back to the server', () => {
     expect(dayPayload(moveExercise(day(), 'c', -1))).toEqual({
       id: 'day-1',
       name: 'Push',
+      work_seconds: null,
+      rest_seconds: null,
+      rounds: null,
       exercises: [
         { id: 'a', exercise_key: 'Bench', target_sets: 3, target_reps_min: 8, target_reps_max: 12, notes: null },
         { id: 'c', exercise_key: 'Curl', target_sets: 3, target_reps_min: 8, target_reps_max: 12, notes: null },
@@ -262,6 +283,7 @@ describe('what goes back to the server', () => {
     const blank: CoachDay = {
       id: 'day-1',
       name: '   ',
+      ...NO_TIMING,
       exercises: [{ ...newExercise('a', 'Bench'), notes: '  ' }],
     };
     const payload = dayPayload(blank) as { name: unknown; exercises: { notes: unknown }[] };
@@ -514,6 +536,7 @@ describe('giving a trainee one of the coach\'s own workouts', () => {
   const legs: OwnWorkout = {
     groupName: 'Gym',
     name: 'Legs',
+    ...NO_TIMING,
     exercises: [
       { exerciseKey: 'Squat', targetSets: 4, targetRepsMin: 5, targetRepsMax: 8, notes: null },
       { exerciseKey: 'Leg Press', targetSets: 3, targetRepsMin: 10, targetRepsMax: 12, notes: 'slow' },
@@ -560,6 +583,17 @@ describe('giving a trainee one of the coach\'s own workouts', () => {
     const reordered = trainee();
     reordered[0]!.days[0]!.exercises.reverse();
     expect(existingCopy(reordered, legs)).toBeNull();
+  });
+
+  it('carries the timing of a timed workout, and tells a timed copy from an ordinary one', () => {
+    // Forty seconds on, twenty off, three rounds — the part that used to be left behind.
+    const intervals: OwnWorkout = { ...legs, workSeconds: 40, restSeconds: 20, rounds: 3 };
+    const copy = copyForTrainee(intervals, newId);
+    expect(copy).toMatchObject({ workSeconds: 40, restSeconds: 20, rounds: 3 });
+    expect(dayPayload(copy)).toMatchObject({ work_seconds: 40, rest_seconds: 20, rounds: 3 });
+
+    // The same exercises under the same name, but not timed: a different workout.
+    expect(existingCopy(trainee(), intervals)).toBeNull();
   });
 
   it('finds the group to put a copy in by its name, ignoring stray spaces', () => {
@@ -611,5 +645,34 @@ describe('setting a trainee\'s day', () => {
     });
     const result = await api.schedule('trainee-1', '2026-09-27', '2026-10-31');
     expect(result.ok && result.value.get('2026-10-13')).toEqual(['legs']);
+  });
+});
+
+describe('remembering what kind of account this is', () => {
+  it('reads back exactly what was stored', () => {
+    for (const role of [
+      { role: 'trainee', isAdmin: false },
+      { role: 'coach', isAdmin: false },
+      { role: 'coach', isAdmin: true },
+      { role: 'trainee', isAdmin: true },
+    ] as const) {
+      expect(parseStoredRole(serialiseRole(role))).toEqual(role);
+    }
+  });
+
+  it('is no answer, rather than a guess, for nothing stored or something unrecognised', () => {
+    // Null is drawn as nothing at all. "trainee" as a fallback would tell a coach, on every
+    // screen, that they are not one.
+    for (const raw of [null, undefined, '', 'admin', 'owner', 'coach+', 'coach+root', 'coach+admin+x']) {
+      expect(parseStoredRole(raw)).toBeNull();
+    }
+  });
+
+  it('keeps each account\'s answer under a key of its own', () => {
+    expect(accountRoleKey('11111111-1111-4111-8111-111111111111')).not.toBe(
+      accountRoleKey('22222222-2222-4222-8222-222222222222'),
+    );
+    // The store accepts letters, digits, dots, dashes and underscores, and nothing else.
+    expect(accountRoleKey('a b/c@d')).toMatch(/^[A-Za-z0-9._-]+$/);
   });
 });

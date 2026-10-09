@@ -72,6 +72,20 @@ export interface SyncTable {
    * migration picks it up with nothing to repair.
    */
   readonly optional?: boolean;
+  /**
+   * Columns the server may not have yet. A subset of `columns`.
+   *
+   * The same gap as `optional`, one level down: a column added to a table that already syncs.
+   * These tables are the training log itself, so the cost of getting it wrong is higher — an
+   * app that sent a column the server had never heard of would have every request for that
+   * table refused outright, and sets would stop reaching the cloud until a script was run.
+   *
+   * So when the server says it does not know one of these, the table is sent again without
+   * them. The rows go up as they always did; the ones that actually had something in a newer
+   * column stay queued, and go again in full once the server can take it. Coming the other way,
+   * a row that arrives without one of these leaves the local value alone — see `fromRemote`.
+   */
+  readonly optionalColumns?: readonly string[];
 }
 
 export const SYNC_TABLES: readonly SyncTable[] = [
@@ -84,11 +98,25 @@ export const SYNC_TABLES: readonly SyncTable[] = [
   },
   {
     table: 'plan_days',
-    columns: ['id', 'plan_id', 'day_index', 'name', 'updated_at', 'deleted_at'],
+    // The last three make a workout a timed one: seconds of work, seconds of rest, how many
+    // times round. They were phone-only until a coach needed to hand a timed workout over, and
+    // until a reinstall needed to bring one back.
+    columns: [
+      'id',
+      'plan_id',
+      'day_index',
+      'name',
+      'work_seconds',
+      'rest_seconds',
+      'rounds',
+      'updated_at',
+      'deleted_at',
+    ],
     booleans: [],
     json: [],
     scope: { kind: 'parent', table: 'plans', column: 'plan_id' },
     indexColumns: ['day_index'],
+    optionalColumns: ['work_seconds', 'rest_seconds', 'rounds'],
   },
   {
     table: 'plan_day_exercises',
@@ -153,11 +181,23 @@ export const SYNC_TABLES: readonly SyncTable[] = [
   },
   {
     table: 'session_exercises',
-    columns: ['id', 'session_id', 'exercise_key', 'order_index', 'notes', 'updated_at', 'deleted_at'],
-    booleans: [],
+    // `superset_with_next` links an exercise to the one after it. Without it a superset comes
+    // back from the cloud as two unrelated exercises.
+    columns: [
+      'id',
+      'session_id',
+      'exercise_key',
+      'order_index',
+      'notes',
+      'superset_with_next',
+      'updated_at',
+      'deleted_at',
+    ],
+    booleans: ['superset_with_next'],
     json: [],
     scope: { kind: 'parent', table: 'workout_sessions', column: 'session_id' },
     indexColumns: ['order_index'],
+    optionalColumns: ['superset_with_next'],
   },
   {
     table: 'sets',
@@ -174,10 +214,12 @@ export const SYNC_TABLES: readonly SyncTable[] = [
       'to_failure',
       'completed_at',
       'done_at',
+      // A drop set: done straight after the one before it, with less weight and no rest.
+      'is_drop',
       'updated_at',
       'deleted_at',
     ],
-    booleans: ['is_warmup', 'to_failure'],
+    booleans: ['is_warmup', 'to_failure', 'is_drop'],
     json: [],
     scope: { kind: 'parent', table: 'session_exercises', column: 'session_exercise_id' },
     // A set with no reps, no duration and no distance records nothing. It is a placeholder the
@@ -186,6 +228,7 @@ export const SYNC_TABLES: readonly SyncTable[] = [
     // an empty row is not training data, and the moment anything is entered it syncs normally.
     pushWhere: '(t0.reps IS NOT NULL OR t0.duration_seconds IS NOT NULL OR t0.distance_m IS NOT NULL)',
     indexColumns: ['set_index'],
+    optionalColumns: ['is_drop'],
   },
   {
     table: 'body_metrics',

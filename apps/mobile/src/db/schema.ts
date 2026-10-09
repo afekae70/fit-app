@@ -26,7 +26,7 @@
  * TEXT (lexicographically sortable, which is what the history queries rely on).
  */
 
-export const SCHEMA_VERSION = 19;
+export const SCHEMA_VERSION = 20;
 
 /**
  * Incremental migrations, keyed by the version they upgrade TO.
@@ -376,6 +376,25 @@ CREATE INDEX IF NOT EXISTS locations_user_idx ON locations (user_id);
   19: `
     ALTER TABLE scheduled_days ADD COLUMN remote_updated_at TEXT;
     UPDATE scheduled_days SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now');
+  `,
+
+  // Supersets, drop sets and timed workouts join sync. Nothing changes shape here: the columns
+  // have been on the phone for a long time, and were simply never sent.
+  //
+  // What they need is the same thing the calendar needed. Sync sends what is newer than its
+  // cursor, and a superset logged last month is older than that, so every row that holds one
+  // of these is marked as changed and goes up again, this time with the part that was left
+  // behind. Only those rows: a set that is not a drop set has nothing new to say.
+  //
+  // If the server has not been given the columns yet, these rows are sent without them and
+  // stay queued until it has - see optionalColumns in sync/tables.ts.
+  20: `
+    UPDATE session_exercises SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      WHERE superset_with_next <> 0;
+    UPDATE sets SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      WHERE is_drop <> 0;
+    UPDATE plan_days SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      WHERE work_seconds IS NOT NULL OR rest_seconds IS NOT NULL OR rounds IS NOT NULL;
   `,
 };
 

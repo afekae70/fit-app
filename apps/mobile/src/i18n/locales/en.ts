@@ -458,6 +458,9 @@ export const en = {
     title: 'Personal coach',
     open: 'Open',
     settingsHint: 'Connect a coach who builds and updates your training plans',
+    roleCoach: 'Coach',
+    roleTrainee: 'Trainee',
+    roleAdmin: 'Manager',
     myCoach: 'My coach',
     myCoachHint: 'Got a code from a coach? Enter it here and they can see and edit your training plans',
     coachCanSee:

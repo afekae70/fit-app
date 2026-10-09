@@ -80,6 +80,17 @@ export function isMissingRelation(code: string | null | undefined): boolean {
   return code === 'PGRST205' || code === '42P01';
 }
 
+/**
+ * Did the server say it has no such column?
+ *
+ * `PGRST204` is PostgREST's "could not find the column in the schema cache"; `42703` is
+ * Postgres's own "column does not exist". The app is ahead of the server again, by a column
+ * this time rather than a table. See `SyncTable.optionalColumns`.
+ */
+export function isUnknownColumn(code: string | null | undefined): boolean {
+  return code === 'PGRST204' || code === '42703';
+}
+
 /** `23505`: the row wants a value that a unique constraint says another row already holds. */
 export function isUniqueViolation(code: string | null | undefined): boolean {
   return code === '23505';
@@ -174,6 +185,12 @@ export function fromRemote(table: SyncTable, row: Row): Row {
   const out: Row = {};
   for (const column of table.columns) {
     const value = row[column];
+
+    // A newer column the server did not send — because it does not have it yet — is left out
+    // altogether, not read as null. Null would be written over whatever this device holds:
+    // every superset unlinked and every timed workout made an ordinary one, by a server that
+    // simply had no opinion. Left out, the local value stays as it is.
+    if (value === undefined && table.optionalColumns?.includes(column)) continue;
 
     if (table.booleans.includes(column)) {
       out[column] = value === null || value === undefined ? null : value ? 1 : 0;

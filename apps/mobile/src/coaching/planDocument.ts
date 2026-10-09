@@ -24,8 +24,21 @@ export interface CoachExercise {
   notes: string | null;
 }
 
+/**
+ * What makes a workout a timed one: every exercise done for `workSeconds`, `restSeconds`
+ * between, the whole list `rounds` times. All null on an ordinary sets-and-reps workout.
+ */
+export interface DayTiming {
+  workSeconds: number | null;
+  restSeconds: number | null;
+  rounds: number | null;
+}
+
+/** An ordinary workout: nothing timed. */
+export const NO_TIMING: DayTiming = { workSeconds: null, restSeconds: null, rounds: null };
+
 /** One workout in a group. */
-export interface CoachDay {
+export interface CoachDay extends DayTiming {
   id: string;
   name: string | null;
   exercises: CoachExercise[];
@@ -93,7 +106,14 @@ export function parsePlans(raw: unknown): CoachPlan[] {
           notes: asText(exercise.notes),
         });
       }
-      days.push({ id: dayId, name: asText(day.name), exercises });
+      days.push({
+        id: dayId,
+        name: asText(day.name),
+        workSeconds: asCount(day.work_seconds),
+        restSeconds: asCount(day.rest_seconds),
+        rounds: asCount(day.rounds),
+        exercises,
+      });
     }
 
     plans.push({ id, name: asText(plan.name) ?? '', isActive: plan.is_active === true, days });
@@ -227,6 +247,11 @@ export function dayPayload(day: CoachDay): Record<string, unknown> {
   return {
     id: day.id,
     name: name === '' ? null : name,
+    // Always sent, null included: null is how a workout says it is not timed, and leaving the
+    // key out is how an app that knows nothing about timing says nothing.
+    work_seconds: day.workSeconds,
+    rest_seconds: day.restSeconds,
+    rounds: day.rounds,
     exercises: day.exercises.map((exercise) => {
       const notes = exercise.notes?.trim() ?? '';
       return {
@@ -253,7 +278,7 @@ export function dayPayload(day: CoachDay): Record<string, unknown> {
  * to different people; what is handed over is what the workout *says*, written afresh under
  * the trainee's account.
  */
-export interface OwnWorkout {
+export interface OwnWorkout extends DayTiming {
   groupName: string;
   name: string | null;
   exercises: Omit<CoachExercise, 'id'>[];
@@ -263,6 +288,15 @@ const sameText = (a: string | null, b: string | null) => (a?.trim() ?? '') === (
 
 /** Do two workouts prescribe the same thing, exercise for exercise, in the same order? */
 function samePrescription(day: CoachDay, source: OwnWorkout): boolean {
+  // Forty seconds on and twenty off is a different workout from three sets of ten, whatever
+  // the exercises are.
+  if (
+    day.workSeconds !== source.workSeconds ||
+    day.restSeconds !== source.restSeconds ||
+    day.rounds !== source.rounds
+  ) {
+    return false;
+  }
   if (day.exercises.length !== source.exercises.length) return false;
   return day.exercises.every((exercise, index) => {
     const other = source.exercises[index];
@@ -311,6 +345,9 @@ export function copyForTrainee(source: OwnWorkout, newId: () => string): CoachDa
   return {
     id: newId(),
     name: source.name,
+    workSeconds: source.workSeconds,
+    restSeconds: source.restSeconds,
+    rounds: source.rounds,
     exercises: source.exercises.map((exercise) => ({ ...exercise, id: newId() })),
   };
 }

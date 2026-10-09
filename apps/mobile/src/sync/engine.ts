@@ -51,6 +51,7 @@ import {
   isMissingRelation,
   isNewer,
   isUniqueViolation,
+  isUnknownColumn,
   laterOf,
   toRemote,
   type Row,
@@ -294,6 +295,14 @@ async function push(
    * because their parent was. Everything in here is put back in the queue before the cursor moves.
    */
   const unsent = new Map<string, Set<string>>();
+  /**
+   * Per table, rows that *did* reach the server but not in full, and so go again next time.
+   *
+   * Kept apart from `unsent` on purpose. That one also holds children back — a set does not go
+   * up behind an exercise the server refused. A row in here was accepted; its children have
+   * every reason to follow it.
+   */
+  const resend = new Map<string, Set<string>>();
 
   for (const table of SYNC_TABLES) {
     const dirty = await db.all<Row>(buildPushQuery(table), [userId, since, since]);
@@ -312,11 +321,41 @@ async function push(
     try {
       pushed += await pushTable(transport, table, dirty, unsent, waiting, refuse);
     } catch (error) {
-      // A table the server has not been given yet. Its rows wait — all of them, whatever had
-      // or had not been sent before the server said so — and the run carries on. See
-      // `SyncTable.optional`. Anything else is a real failure and ends the run as before.
-      if (!table.optional || !isMissingTable(error)) throw error;
-      for (const row of dirty) waiting.add(String(row.id));
+      const code = (error as { code?: string | null } | null)?.code;
+
+      if (table.optionalColumns?.length && isUnknownColumn(code)) {
+        /*
+         * The server does not have this table's newer columns yet. See `optionalColumns`.
+         *
+         * Sent again without them — from the top, which is safe: a request that names a column
+         * the server does not know is refused before anything is written, so nothing of the
+         * first attempt landed. Whatever had a value in one of those columns is marked to go
+         * again, because for those rows "sent" is not yet the whole truth.
+         */
+        const optional = table.optionalColumns;
+        const plain: SyncTable = {
+          ...table,
+          columns: table.columns.filter((column) => !optional.includes(column)),
+          booleans: table.booleans.filter((column) => !optional.includes(column)),
+        };
+        pushed += await pushTable(transport, plain, dirty, unsent, waiting, refuse);
+
+        const again = new Set<string>();
+        for (const row of dirty) {
+          if (optional.some((column) => row[column] !== null && row[column] !== 0)) {
+            again.add(String(row.id));
+          }
+        }
+        if (again.size > 0) resend.set(table.table, again);
+      } else if (table.optional && isMissingRelation(code)) {
+        // A table the server has not been given yet. Its rows wait — all of them, whatever
+        // had or had not been sent before the server said so — and the run carries on. See
+        // `SyncTable.optional`.
+        for (const row of dirty) waiting.add(String(row.id));
+      } else {
+        // Anything else is a real failure and ends the run as before.
+        throw error;
+      }
     }
   }
 
@@ -337,7 +376,13 @@ async function push(
    * A row edited since the run began is already later than that and is left alone.
    */
   const retryAt = justAfter(startedAt);
-  for (const [name, ids] of unsent) {
+  const queued = new Map<string, Set<string>>();
+  for (const [name, ids] of [...unsent, ...resend]) {
+    const all = queued.get(name) ?? new Set<string>();
+    for (const id of ids) all.add(id);
+    queued.set(name, all);
+  }
+  for (const [name, ids] of queued) {
     const list = [...ids];
     for (let i = 0; i < list.length; i += BATCH) {
       const chunk = list.slice(i, i + BATCH);
@@ -544,16 +589,13 @@ async function upsertLocal(
 
   // `updated_at` is dropped from the copied set and re-added with the local stamp: the incoming
   // value belongs in `remote_updated_at`, not in the column this device writes from its own clock.
-  const columns = [
-    ...table.columns.filter((c) => c !== 'updated_at'),
-    'remote_updated_at',
-    'updated_at',
-  ];
-  const values = [
-    ...table.columns.filter((c) => c !== 'updated_at').map((c) => row[c] ?? null),
-    incoming,
-    localStamp,
-  ];
+  //
+  // Only the columns the row actually carries. `fromRemote` leaves out a newer column the
+  // server did not send, and a column that is not written here is one whose local value is
+  // kept — on an insert it takes the table's own default, on an update it is not touched.
+  const carried = table.columns.filter((c) => c !== 'updated_at' && c in row);
+  const columns = [...carried, 'remote_updated_at', 'updated_at'];
+  const values = [...carried.map((c) => row[c] ?? null), incoming, localStamp];
   const assignments = columns
     .filter((c) => c !== 'id')
     .map((c) => `${c} = excluded.${c}`)

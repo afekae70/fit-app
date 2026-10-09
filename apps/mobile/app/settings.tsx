@@ -23,6 +23,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Image,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -32,7 +33,16 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BellRinging, Handshake, Palette, SignOut, Trash, UserCircle } from 'phosphor-react-native';
+import {
+  BellRinging,
+  CaretLeft,
+  CaretRight,
+  Handshake,
+  Palette,
+  SignOut,
+  Trash,
+  UserCircle,
+} from 'phosphor-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { UnitPreference } from '@fit/shared';
@@ -40,9 +50,11 @@ import type { UnitPreference } from '@fit/shared';
 import { useAuth } from '../src/auth/AuthProvider.js';
 import { useCurrentUserId } from '../src/auth/CurrentUserProvider.js';
 import { useSignOut } from '../src/auth/useSignOut.js';
+import { useAccountRole } from '../src/coaching/useAccountRole.js';
 import { useActionSheet } from '../src/components/ActionSheetProvider.js';
 import { HealthSyncCard } from '../src/components/HealthSyncCard.js';
 import { FadeSlideIn } from '../src/components/motion.js';
+import { RoleBadge } from '../src/components/RoleBadge.js';
 import {
   Choice,
   LinkRow,
@@ -76,6 +88,7 @@ export default function SettingsScreen() {
   const signOut = useSignOut();
   const [deleting, setDeleting] = useState(false);
   const userId = useCurrentUserId();
+  const role = useAccountRole(userId);
 
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   useEffect(() => {
@@ -167,7 +180,10 @@ export default function SettingsScreen() {
   const email = session?.user.email ?? '';
   // Which side the row starts on, as a gradient coordinate: a gradient is drawn in physical
   // space and does not turn around with the layout the way padding does.
-  const leading = isRtlLanguage(i18n.language as Language) ? 1 : 0;
+  const rtl = isRtlLanguage(i18n.language as Language);
+  const leading = rtl ? 1 : 0;
+  // Points where the row leads, which is the other way in a right-to-left layout.
+  const Onward = rtl ? CaretLeft : CaretRight;
 
   return (
     <ScrollView
@@ -182,6 +198,14 @@ export default function SettingsScreen() {
 
       {session ? (
         <FadeSlideIn style={styles.heroShadow}>
+          {/* The whole banner is the way to the profile: it is a picture and a name, and that
+              is where a picture and a name are expected to lead. */}
+          <Pressable
+            onPress={() => router.push('/profile')}
+            accessibilityRole="button"
+            accessibilityLabel={`${t('menu.profile')}, ${email}`}
+            style={({ pressed }) => pressed && styles.heroPressed}
+          >
           {/* A wash of the accent over the card's own colour, strongest behind the picture and
               gone by the far edge — the same thing the bar at the top of every screen does.
               It was the logo's full violet-to-pink, which is the app's one loud colour and is
@@ -205,8 +229,11 @@ export default function SettingsScreen() {
               <Text style={styles.heroEmail} numberOfLines={1}>
                 {email}
               </Text>
+              <RoleBadge role={role} style={styles.heroRole} />
             </View>
+            <Onward size={18} color={colors.textFaint} />
           </LinearGradient>
+          </Pressable>
         </FadeSlideIn>
       ) : null}
 
@@ -304,6 +331,8 @@ const createStyles = (colors: ColorPalette) =>
     screen: ViewStyle;
     content: ViewStyle;
     heroShadow: ViewStyle;
+    heroPressed: ViewStyle;
+    heroRole: ViewStyle;
     hero: ViewStyle;
     avatar: ViewStyle;
     avatarImage: ImageStyle;
@@ -322,6 +351,8 @@ const createStyles = (colors: ColorPalette) =>
       backgroundColor: colors.surface,
       ...shadow(colors.shadow).card,
     },
+    heroPressed: { opacity: 0.7 },
+    heroRole: { marginTop: spacing.xs },
     hero: {
       flexDirection: 'row',
       alignItems: 'center',
