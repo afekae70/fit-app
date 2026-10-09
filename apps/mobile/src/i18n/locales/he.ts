@@ -296,7 +296,7 @@ export const he = {
     meters: 'מ׳',
   },
   coach: {
-    title: 'המאמן',
+    title: 'מאמן AI',
     dailyBriefTitle: 'הערת המאמן',
     open: 'שאל את המאמן',
     openHint: 'שאלות על ההתקדמות שלך, מבוססות על המספרים האמיתיים',
@@ -340,7 +340,7 @@ export const he = {
     more: 'עוד',
     nutrition: 'תזונה ויעדים',
     metrics: 'מדדי גוף',
-    coach: 'המאמן',
+    coach: 'מאמן AI',
     settings: 'הגדרות',
   },
   home: {

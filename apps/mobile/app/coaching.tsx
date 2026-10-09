@@ -64,7 +64,11 @@ export default function CoachingScreen() {
   const [status, setStatus] = useState<CoachingStatus | null>(null);
   const [error, setError] = useState<CoachingError | null>(null);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
+  // Which change is in flight, if any. Named rather than a plain flag: a spinner belongs on
+  // the button that was pressed, and one flag for the screen put it on a different one —
+  // switching coach mode on made "connect to coach" look as if it were connecting.
+  const [pending, setPending] = useState<'join' | 'leave' | 'mode' | null>(null);
+  const busy = pending !== null;
   const [code, setCode] = useState('');
 
   const load = useCallback(async () => {
@@ -92,20 +96,23 @@ export default function CoachingScreen() {
   );
 
   /** Run one change, show what went wrong if it did, and read the status again either way. */
-  const run = async (change: () => Promise<{ ok: boolean; error?: CoachingError }>) => {
+  const run = async (
+    action: 'join' | 'leave' | 'mode',
+    change: () => Promise<{ ok: boolean; error?: CoachingError }>,
+  ) => {
     if (busy) return false;
-    setBusy(true);
+    setPending(action);
     setError(null);
     const result = await change();
     if (!result.ok && result.error) setError(result.error);
     await load();
-    setBusy(false);
+    setPending(null);
     return result.ok;
   };
 
   const join = async () => {
     if (!api) return;
-    const joined = await run(() => api.join(code));
+    const joined = await run('join', () => api.join(code));
     if (joined) {
       hapticSuccess();
       setCode('');
@@ -119,13 +126,13 @@ export default function CoachingScreen() {
       message: t('coaching.leaveBody', { name: personLabel(status.coach) }),
       confirmLabel: t('coaching.leave'),
     });
-    if (sure) await run(() => api.leave());
+    if (sure) await run('leave', () => api.leave());
   };
 
   const setCoachMode = async (on: boolean) => {
     if (!api) return;
     if (on) {
-      await run(() => api.enable());
+      await run('mode', () => api.enable());
       return;
     }
     // Switching it off lets every trainee go, which is worth a question when there are any.
@@ -138,7 +145,7 @@ export default function CoachingScreen() {
       });
       if (!sure) return;
     }
-    await run(() => api.disable());
+    await run('mode', () => api.disable());
   };
 
   const shareCode = () => {
@@ -211,13 +218,15 @@ export default function CoachingScreen() {
                     maxLength={CODE_LENGTH}
                     editable={!busy}
                     onSubmitEditing={() => void join()}
-                    inputStyle={styles.codeInput}
+                    // Set wide once there is a code in it. The placeholder is a phrase, and
+                    // a phrase tracked out like a code reads as letters, not words.
+                    inputStyle={code === '' ? styles.codePlaceholder : styles.codeInput}
                   />
                   <BrandButton
                     label={t('coaching.join')}
                     onPress={() => void join()}
-                    disabled={typed.length !== CODE_LENGTH}
-                    busy={busy}
+                    disabled={typed.length !== CODE_LENGTH || (busy && pending !== 'join')}
+                    busy={pending === 'join'}
                   />
                 </>
               )}
@@ -296,6 +305,7 @@ const createStyles = (colors: ColorPalette) =>
     personDetail: TextStyle;
     note: TextStyle;
     codeInput: TextStyle;
+    codePlaceholder: TextStyle;
     codeBlock: ViewStyle;
     codeLabel: TextStyle;
     code: TextStyle;
@@ -325,6 +335,7 @@ const createStyles = (colors: ColorPalette) =>
       letterSpacing: 6,
       writingDirection: 'ltr',
     },
+    codePlaceholder: { textAlign: 'center' },
     codeBlock: { alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm },
     codeLabel: { color: colors.textMuted, fontSize: fontSize.xs },
     code: {

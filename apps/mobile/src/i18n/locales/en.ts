@@ -303,7 +303,7 @@ export const en = {
     meters: 'm',
   },
   coach: {
-    title: 'Coach',
+    title: 'AI coach',
     dailyBriefTitle: "Coach's note",
     open: 'Ask the coach',
     openHint: 'Questions about your progress, answered from your real numbers',
@@ -347,7 +347,7 @@ export const en = {
     more: 'More',
     nutrition: 'Nutrition & targets',
     metrics: 'Body metrics',
-    coach: 'Coach',
+    coach: 'AI coach',
     settings: 'Settings',
   },
   home: {

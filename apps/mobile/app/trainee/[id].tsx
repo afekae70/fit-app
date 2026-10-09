@@ -51,6 +51,8 @@ export default function TraineeScreen() {
   const [plans, setPlans] = useState<CoachPlan[] | null>(null);
   const [error, setError] = useState<CoachingError | null>(null);
   const [busy, setBusy] = useState(false);
+  // Whether the change in flight is the new group, so that only its own button shows it.
+  const [adding, setAdding] = useState(false);
   const [newGroup, setNewGroup] = useState('');
   // The group whose name is being edited, and what has been typed for it so far.
   const [renaming, setRenaming] = useState<{ planId: string; draft: string } | null>(null);
@@ -87,7 +89,9 @@ export default function TraineeScreen() {
   const addGroup = async () => {
     const groupName = newGroup.trim();
     if (!api || !id || groupName === '') return;
+    setAdding(true);
     if (await run(() => api.savePlan(id, newId(), groupName))) setNewGroup('');
+    setAdding(false);
   };
 
   const rename = async () => {
@@ -231,8 +235,8 @@ export default function TraineeScreen() {
             <BrandButton
               label={t('coaching.addGroup')}
               onPress={() => void addGroup()}
-              disabled={newGroup.trim() === ''}
-              busy={busy}
+              disabled={newGroup.trim() === '' || (busy && !adding)}
+              busy={adding}
             />
           </SettingsSection>
         ) : null}
