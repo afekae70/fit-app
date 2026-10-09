@@ -197,12 +197,22 @@ function createFakeServer(startAt = Date.parse('2026-03-01T00:00:00.000Z')): Fak
        * resending it a row at a time. Row by row in the same order reaches the same end state,
        * because Postgres checks a unique index as each row lands rather than once at the end.
        */
+      /*
+       * One statement, one timestamp.
+       *
+       * The trigger stamps `now()`, and in Postgres that is the time the transaction began —
+       * so every row in a batch carries the same `updated_at`, to the microsecond. This fake
+       * used to tick its clock per row, which gave each one a stamp of its own and made paging
+       * by timestamp look sound when it was not. Two hundred rows that tie are the normal case,
+       * not a coincidence.
+       */
+      const stamp = now();
       const rejections: RowRejection[] = [];
       for (const row of rows) {
         const previous = table(name).get(row.id as string) ?? {};
         // The real server stamps updated_at by trigger and ignores what the client sent. Modelling
         // that is the point of this fake: it is what makes the two-clock design testable.
-        const merged: Row = { ...previous, ...row, updated_at: now() };
+        const merged: Row = { ...previous, ...row, updated_at: stamp };
 
         const why = objection(name, row, merged);
         if (why) {
@@ -243,10 +253,17 @@ function createFakeServer(startAt = Date.parse('2026-03-01T00:00:00.000Z')): Fak
     },
 
 
-    async changedSince(name, since, limit) {
+    async changedSince(name, since, limit, afterId = null) {
+      const stamp = (row: Row) => Date.parse(row.updated_at as string);
+      const from = since === null ? null : Date.parse(since);
       return [...table(name).values()]
-        .filter((r) => since === null || Date.parse(r.updated_at as string) > Date.parse(since))
-        .sort((a, b) => Date.parse(a.updated_at as string) - Date.parse(b.updated_at as string))
+        .filter((row) => {
+          if (from === null) return true;
+          if (stamp(row) > from) return true;
+          // The rest of a run of equal timestamps, picked up from where the last page stopped.
+          return afterId !== null && stamp(row) === from && (row.id as string) > afterId;
+        })
+        .sort((a, b) => stamp(a) - stamp(b) || (a.id as string).localeCompare(b.id as string))
         .slice(0, limit);
     },
 
@@ -1716,5 +1733,76 @@ describe('the repair: migration 18, then one sync', () => {
 
     expect(next.pushed).toBe(0);
     expect(next.refused).toEqual([]);
+  });
+});
+
+describe('a new phone signing in to an account with history', () => {
+  /*
+   * The pull pages through each table two hundred rows at a time, in order of `updated_at`.
+   * Rows written by one request share one timestamp — so a page can end part way through a
+   * group of rows that tie, and "everything after the last timestamp I saw" then steps over
+   * the rest of that group. Nothing fails. The new phone is simply missing some sets, and has
+   * no way to know.
+   */
+  const SESSION = 'aaaaaaaa-0000-4000-8000-000000000001';
+  const EXERCISE = 'bbbbbbbb-0000-4000-8000-000000000001';
+  const setId = (n: number) => `cccccccc-0000-4000-8000-${String(n).padStart(12, '0')}`;
+
+  async function logSets(from: number, to: number, at: string) {
+    for (let n = from; n <= to; n++) {
+      await db.run(
+        `INSERT INTO sets (id, session_exercise_id, set_index, weight_kg, reps, is_warmup, to_failure, completed_at, updated_at)
+           VALUES (?, ?, ?, 60, 8, 0, 0, ?, ?)`,
+        [setId(n), EXERCISE, n, at, at],
+      );
+    }
+  }
+
+  it('receives every row, wherever the page boundaries fall', async () => {
+    const server = createFakeServer();
+    await seedSession('2026-02-01T10:00:00.000Z');
+    await db.run(
+      `INSERT INTO session_exercises (id, session_id, exercise_key, order_index, updated_at)
+         VALUES (?, ?, 'Bench Press', 1, ?)`,
+      [EXERCISE, SESSION, '2026-02-01T10:00:00.000Z'],
+    );
+    // Two syncs, 150 sets each: two groups of rows that tie. The first page of 200 takes all
+    // of the first group and 50 of the second.
+    await logSets(1, 150, '2026-02-01T10:00:00.000Z');
+    await runSync(db, server, USER, localClock('2026-02-01T11:00:00.000Z'));
+    await logSets(151, 300, '2026-02-01T12:00:00.000Z');
+    await runSync(db, server, USER, localClock('2026-02-01T13:00:00.000Z'));
+    expect(server.rows('sets')).toHaveLength(300);
+
+    const newPhone = createTestExecutor();
+    const result = await runSync(newPhone, server, USER, localClock('2026-02-02T09:00:00.000Z'));
+
+    const arrived = await newPhone.get<{ n: number }>(`SELECT COUNT(*) AS n FROM sets`);
+    expect(arrived?.n).toBe(300);
+    expect(result.pulled).toBe(302);
+    newPhone.close();
+  });
+
+  it('receives every row when more of them tie than fit on one page', async () => {
+    // A first sync of a long history: 450 sets, sent 200 at a time.
+    const server = createFakeServer();
+    await seedSession('2026-02-01T10:00:00.000Z');
+    await db.run(
+      `INSERT INTO session_exercises (id, session_id, exercise_key, order_index, updated_at)
+         VALUES (?, ?, 'Bench Press', 1, ?)`,
+      [EXERCISE, SESSION, '2026-02-01T10:00:00.000Z'],
+    );
+    await logSets(1, 450, '2026-02-01T10:00:00.000Z');
+    await runSync(db, server, USER, localClock('2026-02-01T11:00:00.000Z'));
+    // And then a long one more, so the groups no longer line up with the pages.
+    await logSets(451, 620, '2026-02-01T12:00:00.000Z');
+    await runSync(db, server, USER, localClock('2026-02-01T13:00:00.000Z'));
+
+    const newPhone = createTestExecutor();
+    await runSync(newPhone, server, USER, localClock('2026-02-02T09:00:00.000Z'));
+
+    const arrived = await newPhone.get<{ n: number }>(`SELECT COUNT(*) AS n FROM sets`);
+    expect(arrived?.n).toBe(620);
+    newPhone.close();
   });
 });

@@ -90,10 +90,19 @@ export interface SyncTransport {
    */
   patch(table: string, rows: Row[]): Promise<RowRejection[]>;
   /**
-   * Rows in `table` whose server `updated_at` is strictly after `since`, oldest first, at most
-   * `limit`. `since` null means everything.
+   * The next page of `table`, at most `limit` rows, in the order `(updated_at, id)`.
+   *
+   * `since` null means from the beginning. With `afterId` null the page holds rows stamped
+   * strictly after `since`. With an id, it starts just past that row: the rows stamped exactly
+   * `since` whose id is greater, then everything later. The id is what makes it possible to
+   * stop in the middle of a run of equal timestamps and pick up again — see `pull`.
    */
-  changedSince(table: string, since: string | null, limit: number): Promise<Row[]>;
+  changedSince(
+    table: string,
+    since: string | null,
+    limit: number,
+    afterId?: string | null,
+  ): Promise<Row[]>;
   /**
    * One row by primary key, or null if the server does not have it (or will not show it).
    *
@@ -648,11 +657,22 @@ async function pull(
   const outcome: PullOutcome = { pulled: 0, deferred: 0, maxSeen: null, earliestDeferred: null };
 
   for (const table of SYNC_TABLES) {
-    // Paginate to exhaustion, walking the cursor forward within the table. Stopping early would
-    // leave rows behind that the global cursor then advances past.
+    /*
+     * Paginate to exhaustion, walking the cursor forward within the table. Stopping early would
+     * leave rows behind that the global cursor then advances past.
+     *
+     * The cursor is a timestamp *and an id*. A timestamp alone is not a position: the server
+     * stamps `now()`, which is the time a transaction began, so every row written by one
+     * request carries the same one — two hundred of them, on a first sync. A page that ends
+     * part way through such a run, followed by "everything later than the last timestamp
+     * seen", steps over the rest of the run without a word. On a phone signing in to an
+     * account with history that was a third of the sets in a test, and nothing anywhere to say
+     * they were missing.
+     */
     let cursor = since;
+    let afterId: string | null = null;
     for (;;) {
-      const remote = await transport.changedSince(table.table, cursor, BATCH);
+      const remote = await transport.changedSince(table.table, cursor, BATCH, afterId);
       if (remote.length === 0) break;
 
       // Every id arriving together. Only these may be parked out of the way, since only these
@@ -689,11 +709,13 @@ async function pull(
         }
       }
 
-      cursor = remote.reduce<string | null>(
-        (max, raw) => laterOf(max, typeof raw.updated_at === 'string' ? raw.updated_at : null),
-        cursor,
-      );
-      if (remote.length < BATCH) break;
+      // The page arrives in (updated_at, id) order, so its last row is exactly how far this
+      // table has been read. The server's own spelling of the timestamp is kept, microseconds
+      // and all: it is compared for equality on the next request.
+      const last = remote[remote.length - 1];
+      if (remote.length < BATCH || typeof last?.updated_at !== 'string') break;
+      cursor = last.updated_at;
+      afterId = String(last.id);
     }
   }
 

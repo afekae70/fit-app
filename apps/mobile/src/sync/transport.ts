@@ -100,10 +100,25 @@ export function createSupabaseTransport(client: SupabaseClient): SyncTransport {
       return rejections;
     },
 
-    async changedSince(table, since, limit) {
-      let query = client.from(table).select('*').order('updated_at', { ascending: true }).limit(limit);
+    async changedSince(table, since, limit, afterId = null) {
+      let query = client
+        .from(table)
+        .select('*')
+        .order('updated_at', { ascending: true })
+        // The tie-break. Rows written by one request share a timestamp to the microsecond, and
+        // without a second key their order between two requests is whatever Postgres likes.
+        .order('id', { ascending: true })
+        .limit(limit);
       // A null cursor means "everything", which is the first sync on a new device.
-      if (since) query = query.gt('updated_at', since);
+      if (since && afterId) {
+        // "Later, or stamped the same and further on by id." Quoted, because a timestamp is
+        // full of characters PostgREST's filter grammar reserves.
+        query = query.or(
+          `updated_at.gt."${since}",and(updated_at.eq."${since}",id.gt."${afterId}")`,
+        );
+      } else if (since) {
+        query = query.gt('updated_at', since);
+      }
 
       const { data, error } = await query;
       if (error) throw new SyncTransportError(table, 'changedSince', error);
