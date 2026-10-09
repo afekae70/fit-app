@@ -35,24 +35,65 @@ interface Policy {
   body: string;
 }
 
+/**
+ * A table's name as either generation of migration writes it: `"plans"` from the generated ones,
+ * `public.scheduled_days` from the hand-written ones. Without the schema part this audit read
+ * `CREATE TABLE public.coach_links` as a table called `public` — and did not look at
+ * `coach_links` at all.
+ */
+const NAME = String.raw`(?:"?public"?\.)?"?([a-z_]+)"?`;
+
 const tables = [
   ...new Set(
-    [...sql.matchAll(/CREATE TABLE(?: IF NOT EXISTS)? "?([a-z_]+)"?/gi)].map((m) => m[1]!),
+    [...sql.matchAll(new RegExp(String.raw`CREATE TABLE(?: IF NOT EXISTS)?\s+${NAME}`, 'gi'))].map(
+      (m) => m[1]!,
+    ),
   ),
 ].sort();
 
 const rlsEnabled = new Set(
-  [...sql.matchAll(/ALTER TABLE\s+"?([a-z_]+)"?\s+ENABLE ROW LEVEL SECURITY/gi)].map((m) => m[1]!),
+  [
+    ...sql.matchAll(
+      new RegExp(String.raw`ALTER TABLE\s+${NAME}\s+ENABLE ROW LEVEL SECURITY`, 'gi'),
+    ),
+  ].map((m) => m[1]!),
 );
 
-const policies: Policy[] = [...sql.matchAll(/CREATE POLICY "([^"]+)" ON "?([a-z_]+)"?([\s\S]*?);/gi)].map(
-  (m) => ({ name: m[1]!, table: m[2]!, body: m[3]! }),
-);
+const policies: Policy[] = [
+  ...sql.matchAll(
+    new RegExp(
+      String.raw`CREATE POLICY\s+(?:"([^"]+)"|([a-z_0-9]+))\s+ON\s+${NAME}([\s\S]*?);`,
+      'gi',
+    ),
+  ),
+].map((m) => ({ name: (m[1] ?? m[2])!, table: m[3]!, body: m[4]! }));
 
 const policiesFor = (table: string) => policies.filter((p) => p.table === table);
 
 /** Catalogue tables every signed-in user is meant to read. Anything else is private. */
 const SHARED_READ_ONLY = new Set(['equipment']);
+
+/**
+ * Tables no client may touch directly, in any way: who coaches whom, and who may appoint
+ * coaches. They have row level security on and deliberately no policy, which denies everything,
+ * and are reached only through the SECURITY DEFINER functions that check the caller first.
+ *
+ * Named here so that "no policy" is an assertion about these tables rather than an oversight
+ * the audit forgives everywhere. A policy on one of them is a door, and fails below.
+ */
+const FUNCTIONS_ONLY = new Set(['coach_links', 'app_admins']);
+
+/** Every role a table's privileges were taken away from, across all the migrations. */
+const revokedFrom = (table: string) =>
+  new Set(
+    [
+      ...sql.matchAll(
+        new RegExp(String.raw`REVOKE ALL ON\s+(?:TABLE\s+)?${NAME}\s+FROM\s+([a-z_, ]+);`, 'gi'),
+      ),
+    ]
+      .filter((m) => m[1] === table)
+      .flatMap((m) => m[2]!.split(',').map((role) => role.trim().toLowerCase())),
+  );
 
 describe('row level security, as written in the migrations', () => {
   it('finds the migrations at all', () => {
@@ -67,10 +108,33 @@ describe('row level security, as written in the migrations', () => {
     expect(rlsEnabled.has(table)).toBe(true);
   });
 
-  it.each(tables)('%s has at least one policy', (table) => {
-    // RLS with no policy denies everything, which is safe but is never what anyone meant — it
-    // means a feature is silently broken rather than a door is open.
-    expect(policiesFor(table).length).toBeGreaterThan(0);
+  it('reads a schema-qualified name as the table, not as the schema', () => {
+    // The mistake this audit made for three migrations: it reported a table called "public" and
+    // never examined the ones that were actually created.
+    expect(tables).not.toContain('public');
+    expect(tables).toEqual(expect.arrayContaining(['coach_links', 'app_admins', 'scheduled_days']));
+    expect(policiesFor('scheduled_days').map((p) => p.name)).toEqual(['scheduled_days_own']);
+  });
+
+  it.each(tables.filter((table) => !FUNCTIONS_ONLY.has(table)))(
+    '%s has at least one policy',
+    (table) => {
+      // RLS with no policy denies everything, which is safe but is never what anyone meant — it
+      // means a feature is silently broken rather than a door is open.
+      expect(policiesFor(table).length).toBeGreaterThan(0);
+    },
+  );
+
+  it.each([...FUNCTIONS_ONLY])('%s is closed to every client', (table) => {
+    // Here denying everything is exactly what was meant, so it is asserted both ways: no policy
+    // lets a row through, and the table privileges are gone as well, so that a policy added
+    // later by mistake still has nothing to grant.
+    expect(tables).toContain(table);
+    expect(policiesFor(table)).toEqual([]);
+    expect([...revokedFrom(table)].sort()).toEqual(['anon', 'authenticated', 'public']);
+    expect(sql).not.toMatch(
+      new RegExp(String.raw`GRANT[^;]*\bON\s+(?:TABLE\s+)?(?:"?public"?\.)?"?${table}"?[\s;]`, 'i'),
+    );
   });
 
   it.each(policies.map((p): [string, Policy] => [`${p.table}.${p.name}`, p]))(
