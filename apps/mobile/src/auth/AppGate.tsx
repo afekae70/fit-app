@@ -7,27 +7,31 @@
  *
  * Before Supabase is configured (`isConfigured === false` — the state of this repo until
  * deployment, see `AuthProvider`), the app behaves exactly as it always has: no wall, everything
- * scoped to the fixed pseudo-user id `'local'`. Once configured, a signed-out visitor sees a
- * full-screen sign-in form instead of the tabs — reusing `AuthGate` verbatim, the same
- * email/password form already used in its compact form to unlock the coach chat.
+ * scoped to the fixed pseudo-user id `'local'`. Once configured, a signed-out visitor sees the
+ * sign-in screen (`AuthGate`) instead of the tabs.
+ *
+ * Signing in is not quite the end of it. An account that has not yet said how much it weighs,
+ * how tall it is and what it is training for is asked — `OnboardingGate`, the innermost thing
+ * here — before it reaches the app. That is every new account, straight after the sign-up
+ * form, and nobody else.
  *
  * `/auth/*` routes (`app/auth/callback.tsx`, `app/auth/reset-password.tsx`) are exempt from the
  * wall entirely. That's not a style choice: the callback screen's whole job is to *create* a
- * session from a confirmation/recovery deep link, which happens precisely when there is no
- * session yet — gating it behind "you need a session to get past this screen" would make a
- * confirmation link unable to ever complete.
+ * session from a recovery deep link, which happens precisely when there is no session yet —
+ * gating it behind "you need a session to get past this screen" would make a recovery link
+ * unable to ever complete.
  */
 
 import { usePathname } from 'expo-router';
 import type { ReactNode } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
+import { ErrorBoundary } from '../components/ErrorBoundary.js';
 import { useTheme } from '../ThemeProvider.js';
-import { spacing } from '../theme.js';
 import { AuthGate } from './AuthGate.js';
 import { useAuth } from './AuthProvider.js';
 import { CurrentUserProvider } from './CurrentUserProvider.js';
+import { OnboardingGate } from '../onboarding/OnboardingGate.js';
 import { SyncProvider } from '../sync/SyncProvider.js';
 import { UnitsProvider } from '../UnitsProvider.js';
 
@@ -35,7 +39,6 @@ const LOCAL_USER_ID = 'local';
 
 export function AppGate({ children }: { children: ReactNode }) {
   const { session, isConfigured } = useAuth();
-  const insets = useSafeAreaInsets();
   const pathname = usePathname();
   const { colors } = useTheme();
 
@@ -52,16 +55,14 @@ export function AppGate({ children }: { children: ReactNode }) {
     );
   }
 
+  // The sign-in screen lays itself out — its own safe areas, its own room for the keyboard.
+  // Wrapped, because the app's error boundary is among the children this gate has not let
+  // through yet: without one here a fault on this screen would have nothing to catch it.
   if (isConfigured && session === null) {
     return (
-      <KeyboardAvoidingView
-        style={styles.screen}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <View style={[styles.gateContent, { paddingTop: insets.top + spacing.xxl }]}>
-          <AuthGate />
-        </View>
-      </KeyboardAvoidingView>
+      <ErrorBoundary>
+        <AuthGate />
+      </ErrorBoundary>
     );
   }
 
@@ -76,7 +77,12 @@ export function AppGate({ children }: { children: ReactNode }) {
         {/* Below CurrentUserProvider for the same reason as SyncProvider: the preference is a
             per-user profile field, so switching account must reload it rather than inherit the
             previous person's units. */}
-        <UnitsProvider userId={userId}>{children}</UnitsProvider>
+        <UnitsProvider userId={userId}>
+          {/* Innermost, so the questions can use everything above: whose answers they are,
+              which units to ask in — and so the first sync is already running behind them,
+              bringing down the history of someone who is signing in on a new phone. */}
+          <OnboardingGate userId={userId}>{children}</OnboardingGate>
+        </UnitsProvider>
       </SyncProvider>
     </CurrentUserProvider>
   );
@@ -85,7 +91,5 @@ export function AppGate({ children }: { children: ReactNode }) {
 // Transparent, not colors.bg — this is exactly where AnimatedGradientBackground is meant to
 // show through, the emptiest, most ambient real estate in the whole app.
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  gateContent: { flex: 1, justifyContent: 'center', paddingHorizontal: spacing.lg },
 });

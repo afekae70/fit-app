@@ -1,6 +1,6 @@
 /**
- * Where the sign-up confirmation and password-recovery emails redirect back into the app (see
- * `AUTH_CALLBACK_URL` in `AuthProvider.tsx`). expo-router hands this screen the URL's query
+ * Where the password-recovery email redirects back into the app (see `AUTH_CALLBACK_URL` in
+ * `AuthProvider.tsx`). expo-router hands this screen the URL's query
  * params via `useLocalSearchParams()` automatically — cold start (app not yet running) and
  * warm start (already open) both land here the same way, no manual `Linking` listener needed.
  *
@@ -52,13 +52,9 @@ export default function AuthCallbackScreen() {
         return;
       }
 
-      if (classification.kind === 'recovery') {
-        // Never falls through to the tabs first — this is a navigation-level guarantee,
-        // independent of however AppGate itself is currently gating.
-        router.replace('/auth/reset-password');
-      } else {
-        router.replace('/');
-      }
+      // Never falls through to the tabs first — this is a navigation-level guarantee,
+      // independent of however AppGate itself is currently gating.
+      router.replace('/auth/reset-password');
     })();
   }, [params, exchangeCode]);
 

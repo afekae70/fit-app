@@ -45,6 +45,21 @@ import { radius } from '../theme.js';
 const MINIMUM_MS = 2600;
 const FADE_MS = 520;
 
+/** When this module was first evaluated, which is as near to "the app started" as JS can know. */
+const BOOTED_AT = Date.now();
+
+/**
+ * How long until the splash starts to lift, in milliseconds. Zero once it has.
+ *
+ * For whatever is underneath and has an entrance of its own to play. The splash covers the
+ * whole screen, so an animation that runs during it is one nobody sees: the sign-in screen
+ * would simply be standing there, finished, when the splash left. Starting it as the splash
+ * begins to fade makes the two one movement — this lifts off, that rises in.
+ */
+export function splashTimeLeft(): number {
+  return Math.max(0, MINIMUM_MS - (Date.now() - BOOTED_AT));
+}
+
 export function SplashOverlay() {
   const { t } = useTranslation();
   const { colors } = useTheme();

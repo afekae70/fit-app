@@ -36,15 +36,12 @@ export interface AuthState {
   resetPassword: (email: string) => Promise<{ error: string | null }>;
   /** Sets a new password — only meaningful once a recovery session exists (see auth/reset-password.tsx). */
   updatePassword: (newPassword: string) => Promise<{ error: string | null }>;
-  /** Re-sends the sign-up confirmation email, for when the first one expired or got lost. */
-  resendConfirmation: (email: string) => Promise<{ error: string | null }>;
-  /** Completes the PKCE round trip for a confirmation/recovery deep link (see auth/callback.tsx). */
+  /** Completes the PKCE round trip for a password-recovery deep link (see auth/callback.tsx). */
   exchangeCode: (code: string) => Promise<{ error: string | null }>;
 }
 
-/** Where both the sign-up confirmation and password-recovery emails redirect back into the app.
- *  A single shared route (see app/auth/callback.tsx) dispatches on the `type` query param GoTrue
- *  always attaches, rather than needing two separate redirect URLs kept in sync everywhere. */
+/** Where the password-recovery email redirects back into the app (see app/auth/callback.tsx).
+ *  The only email this app still sends: signing up no longer waits on one. */
 const AUTH_CALLBACK_URL = 'fitapp://auth/callback';
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -101,12 +98,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       signUp: async (email, password) => {
         if (!client) return { error: 'not_configured' };
-        const { error } = await client.auth.signUp({
-          email,
-          password,
-          options: { emailRedirectTo: AUTH_CALLBACK_URL },
-        });
-        return { error: error ? friendlyAuthError(error.message) : null };
+        const { data, error } = await client.auth.signUp({ email, password });
+        if (error) return { error: friendlyAuthError(error.message) };
+        /*
+         * Signing up is meant to sign you in: no confirmation email, no link to come back by.
+         *
+         * Whether it does is not this app's decision. It is a switch on the Supabase project
+         * ("Confirm email"), and with it on the server makes the account and withholds the
+         * session until a link in an email is followed. Nothing here can override that, and
+         * pretending it worked would leave someone on a sign-in form that refuses a password
+         * they have just chosen. So the case is named, and the screen says what happened.
+         */
+        if (!data.session) return { error: 'confirmation_required' };
+        return { error: null };
       },
       signOut: async () => {
         await client?.auth.signOut();
@@ -133,15 +137,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       updatePassword: async (newPassword) => {
         if (!client) return { error: 'not_configured' };
         const { error } = await client.auth.updateUser({ password: newPassword });
-        return { error: error ? friendlyAuthError(error.message) : null };
-      },
-      resendConfirmation: async (email) => {
-        if (!client) return { error: 'not_configured' };
-        const { error } = await client.auth.resend({
-          type: 'signup',
-          email,
-          options: { emailRedirectTo: AUTH_CALLBACK_URL },
-        });
         return { error: error ? friendlyAuthError(error.message) : null };
       },
       exchangeCode: async (code) => {

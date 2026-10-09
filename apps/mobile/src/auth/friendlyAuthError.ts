@@ -16,7 +16,7 @@ export function friendlyAuthError(message: string): string {
   if (/email rate limit exceeded/i.test(message)) return 'rate_limited';
   if (/for security purposes, you can only request this after/i.test(message)) return 'rate_limited';
   if (/new password should be different/i.test(message)) return 'same_password';
-  // Covers an expired, already-used, or wrong-device confirmation/recovery link — PKCE's code
+  // Covers an expired, already-used, or wrong-device recovery link — PKCE's code
   // verifier is stored locally at request time and read back at exchange time, so a link opened
   // on a different device (or a second tap after the code was already consumed) fails here.
   if (/code verifier|invalid.*grant|invalid.*code/i.test(message)) return 'link_expired';
@@ -33,6 +33,9 @@ export const AUTH_ERROR_I18N_KEY: Record<string, string> = {
   already_registered: 'auth.errorAlreadyRegistered',
   weak_password: 'auth.errorWeakPassword',
   email_not_confirmed: 'auth.errorEmailNotConfirmed',
+  // Not from GoTrue's wording: `AuthProvider.signUp` raises it when an account was created
+  // but no session came back, which only happens while the project still confirms by email.
+  confirmation_required: 'auth.errorConfirmationRequired',
   not_configured: 'auth.errorNotConfigured',
   rate_limited: 'auth.errorRateLimited',
   same_password: 'auth.errorSamePassword',

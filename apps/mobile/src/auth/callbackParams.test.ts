@@ -1,8 +1,7 @@
 /**
- * `classifyCallbackParams` is the only thing standing between a real confirmation/recovery link
- * and a stray or malformed deep link — misclassifying a recovery link as "enter the app" would
- * skip the new-password screen entirely, and misclassifying a signup link as recovery would
- * strand a brand-new user on a "set your password" form they never asked for.
+ * `classifyCallbackParams` is the only thing standing between a real recovery link and a stray
+ * or malformed deep link. Recovery is the one kind the app completes: taking any other for it
+ * would put someone on a "set your password" form they never asked for.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -10,19 +9,14 @@ import { describe, expect, it } from 'vitest';
 import { classifyCallbackParams } from './callbackParams.js';
 
 describe('classifyCallbackParams', () => {
-  it('classifies a signup confirmation link', () => {
-    expect(classifyCallbackParams({ code: 'abc123', type: 'signup' })).toEqual({
-      kind: 'signup',
-      code: 'abc123',
-    });
+  it('no longer completes a sign-up confirmation link', () => {
+    // Signing up signs you in now. A link like this is left over from when it did not.
+    expect(classifyCallbackParams({ code: 'abc123', type: 'signup' })).toEqual({ kind: 'invalid' });
   });
 
-  it('classifies an email-change confirmation the same way as signup', () => {
-    // No dedicated email-change feature exists yet — both should just complete the exchange and
-    // land the user in the app, which is what the 'signup' branch already does.
+  it('does not complete an email-change link, which the app has no feature for', () => {
     expect(classifyCallbackParams({ code: 'abc123', type: 'email_change' })).toEqual({
-      kind: 'signup',
-      code: 'abc123',
+      kind: 'invalid',
     });
   });
 
@@ -34,7 +28,7 @@ describe('classifyCallbackParams', () => {
   });
 
   it('is invalid with no code at all', () => {
-    expect(classifyCallbackParams({ type: 'signup' })).toEqual({ kind: 'invalid' });
+    expect(classifyCallbackParams({ type: 'recovery' })).toEqual({ kind: 'invalid' });
   });
 
   it('is invalid with an unrecognised type', () => {

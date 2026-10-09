@@ -59,31 +59,10 @@ import {
 import { API_BASE_URL } from '../src/config.js';
 import { getLatestWeight, getProfile, recordBodyMetric, saveProfile } from '../src/db/metrics.js';
 import { getExecutor, newId } from '../src/db/provider.js';
+import { ageFromBirthDate, birthDateFromAge } from '../src/onboarding/profileSetup.js';
 import { getWorkoutStreak, type WorkoutStreak } from '../src/db/workouts.js';
 import { useTheme } from '../src/ThemeProvider.js';
 import { fontSize, spacing, type ColorPalette } from '../src/theme.js';
-
-/**
- * Convert an entered age to a date of birth.
- *
- * The profile stores a birth date rather than an age so the value cannot go stale — a stored
- * age silently becomes wrong on the user's birthday and skews every BMR calculation from then
- * on. Anchoring to today's month and day keeps the derived age correct for a full year.
- */
-function birthDateFromAge(ageYears: number, today = new Date()): string {
-  const birth = new Date(
-    Date.UTC(today.getUTCFullYear() - ageYears, today.getUTCMonth(), today.getUTCDate()),
-  );
-  return birth.toISOString().slice(0, 10);
-}
-
-function ageFromBirthDate(birthDate: string, today = new Date()): number {
-  const birth = new Date(birthDate);
-  let age = today.getUTCFullYear() - birth.getUTCFullYear();
-  const monthDelta = today.getUTCMonth() - birth.getUTCMonth();
-  if (monthDelta < 0 || (monthDelta === 0 && today.getUTCDate() < birth.getUTCDate())) age -= 1;
-  return age;
-}
 
 type SexChoice = 'male' | 'female';
 

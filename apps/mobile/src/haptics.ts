@@ -31,6 +31,17 @@ export function hapticLight(): void {
   safely(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light));
 }
 
+/**
+ * A detent — one notch on a dial or a ruler going past.
+ *
+ * The lightest thing the motor can do, and meant to be felt dozens of times in a second: dragging
+ * a ruler across forty kilos is eighty of these. An impact, even a light one, repeated at that
+ * rate is a buzz rather than a click.
+ */
+export function hapticTick(): void {
+  safely(() => Haptics.selectionAsync());
+}
+
 /** A firmer tap — finishing a set of consequence, applying a proposal. */
 export function hapticMedium(): void {
   safely(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
