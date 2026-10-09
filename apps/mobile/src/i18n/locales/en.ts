@@ -381,24 +381,6 @@ export const en = {
     errorBody: 'Your data is safe on this device — only the read failed.',
     nutritionMissing: 'Complete your profile to get calorie and macro targets',
   },
-  sync: {
-    title: 'Cloud sync',
-    state: {
-      idle: 'Up to date',
-      partial: 'Partly synced',
-      syncing: 'Syncing…',
-      offline: 'No connection',
-      error: 'Sync failed',
-      unconfigured: 'Not configured',
-    },
-    detailLast: 'Last updated {{time}}',
-    detailNever: 'Not yet synced from this device',
-    detailSyncing: 'Sending and receiving changes…',
-    detailPartial:
-      'Some of your data ({{count}}) was not saved to the cloud. It is all still on this device, and sync will try again.',
-    syncNow: 'Sync now',
-    syncing: 'Syncing…',
-  },
   auth: {
     subtitle: 'Your account keeps your training in the cloud and in sync across devices',
     subtitleSignIn: 'Good to see you again. Your training is waiting.',

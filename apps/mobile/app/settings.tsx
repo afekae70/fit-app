@@ -8,8 +8,14 @@
  * Everything is one of a handful of shapes from `components/settings/kit` — a section with a
  * badge and a name, a row with its control at the end, a lit choice among two or three — so the
  * screen can be scanned rather than read. The sections that are features in their own right
- * (workout-day reminders, Health Connect, cloud sync) keep their logic in their own components
- * and wear the same shapes.
+ * (workout-day reminders, Health Connect) keep their logic in their own components and wear
+ * the same shapes.
+ *
+ * Cloud sync is not on this screen. It had a card here — a state, a time and a "sync now"
+ * button — and the owner asked for it to go: sync runs by itself on sign-in and whenever the
+ * app comes back to the foreground, and a card about something nobody has to do read as
+ * something to do. `SyncProvider` still runs every sync and still writes each result and each
+ * refused row to the log.
  */
 
 import { router } from 'expo-router';
@@ -45,10 +51,9 @@ import {
   SettingsSection,
   ToggleRow,
 } from '../src/components/settings/kit.js';
-import { SyncCard } from '../src/components/SyncCard.js';
 import { Banner, ScreenHeader } from '../src/components/ui.js';
 import { WorkoutReminderCard } from '../src/components/WorkoutReminderCard.js';
-import { setAppLanguage, type Language } from '../src/i18n/index.js';
+import { isRtlLanguage, setAppLanguage, type Language } from '../src/i18n/index.js';
 import {
   cancelWeeklyReminder,
   isWeeklyReminderScheduled,
@@ -160,6 +165,9 @@ export default function SettingsScreen() {
   };
 
   const email = session?.user.email ?? '';
+  // Which side the row starts on, as a gradient coordinate: a gradient is drawn in physical
+  // space and does not turn around with the layout the way padding does.
+  const leading = isRtlLanguage(i18n.language as Language) ? 1 : 0;
 
   return (
     <ScrollView
@@ -174,10 +182,15 @@ export default function SettingsScreen() {
 
       {session ? (
         <FadeSlideIn style={styles.heroShadow}>
+          {/* A wash of the accent over the card's own colour, strongest behind the picture and
+              gone by the far edge — the same thing the bar at the top of every screen does.
+              It was the logo's full violet-to-pink, which is the app's one loud colour and is
+              kept for the button a screen wants pressed; a banner that only says who is signed
+              in had no business being the brightest thing on the page. */}
           <LinearGradient
-            colors={[colors.accent, colors.info]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
+            colors={[colors.accentSoft, colors.surface]}
+            start={{ x: leading, y: 0 }}
+            end={{ x: 1 - leading, y: 1 }}
             style={styles.hero}
           >
             <View style={styles.avatar}>
@@ -249,21 +262,19 @@ export default function SettingsScreen() {
 
       <HealthSyncCard userId={userId} index={4} />
 
-      {session ? <SyncCard index={5} /> : null}
-
       {session ? (
         <SettingsSection
           icon={Handshake}
           title={t('coaching.title')}
           hint={t('coaching.settingsHint')}
-          index={6}
+          index={5}
         >
           <LinkRow label={t('coaching.open')} onPress={() => router.push('/coaching')} />
         </SettingsSection>
       ) : null}
 
       {session ? (
-        <SettingsSection icon={UserCircle} title={t('settings.account')} index={7}>
+        <SettingsSection icon={UserCircle} title={t('settings.account')} index={6}>
           <LinkRow icon={SignOut} label={t('auth.signOut')} onPress={signOut} chevron={false} />
           <RowDivider />
           {/* Last on the screen and in the colour of a warning. Leaving for good is something
@@ -305,11 +316,11 @@ const createStyles = (colors: ColorPalette) =>
     content: { paddingHorizontal: spacing.lg, gap: spacing.lg },
 
     // On a plain view around the gradient: a gradient clipped to rounded corners cannot also
-    // cast the shadow of them.
+    // cast the shadow of them. The same card every section below is, at the same height.
     heroShadow: {
       borderRadius: radius.xl,
-      backgroundColor: colors.accent,
-      ...shadow(colors.accent).hero,
+      backgroundColor: colors.surface,
+      ...shadow(colors.shadow).card,
     },
     hero: {
       flexDirection: 'row',
@@ -325,17 +336,18 @@ const createStyles = (colors: ColorPalette) =>
       borderRadius: radius.pill,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: 'rgba(255, 255, 255, 0.22)',
+      // The avatar as the profile screen draws it: a ring of the accent around a deeper fill.
+      backgroundColor: colors.surfaceHigh,
       borderWidth: 1.5,
-      borderColor: 'rgba(255, 255, 255, 0.55)',
+      borderColor: colors.accent,
       overflow: 'hidden',
     },
     avatarImage: { width: '100%', height: '100%' },
-    avatarText: { color: colors.bg, fontSize: fontSize.lg, fontWeight: fontWeight.bold },
+    avatarText: { color: colors.accent, fontSize: fontSize.lg, fontWeight: fontWeight.bold },
     heroText: { flex: 1, gap: spacing.xxs },
-    heroCaption: { color: colors.bg, opacity: 0.8, fontSize: fontSize.xs, textAlign: 'auto' },
+    heroCaption: { color: colors.textMuted, fontSize: fontSize.xs, textAlign: 'auto' },
     heroEmail: {
-      color: colors.bg,
+      color: colors.text,
       fontSize: fontSize.md,
       fontWeight: fontWeight.bold,
       textAlign: 'auto',
