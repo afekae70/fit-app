@@ -54,7 +54,8 @@ if [ -z "$keytool" ]; then
 fi
 
 echo "Choose a password for the upload key."
-echo "At least 8 characters; letters, digits and . _ @ % + - only. Nothing is shown as you type."
+echo "At least 8 characters: English letters, digits and symbols. No spaces and no backslash."
+echo "Nothing is shown as you type - check the keyboard is set to English first."
 read -r -s -p "Password: " password; echo
 read -r -s -p "Again:    " confirm; echo
 
@@ -62,10 +63,26 @@ if [ "$password" != "$confirm" ]; then
   echo "The two did not match. Nothing was created." >&2
   exit 1
 fi
-# A plain alphabet on purpose: the password ends up in a Java properties file, where a backslash
-# or a stray space changes what the build reads without saying so.
-if ! printf '%s' "$password" | grep -Eq '^[A-Za-z0-9._@%+-]{8,}$'; then
-  echo "That password has too few characters, or one that is not allowed. Nothing was created." >&2
+
+# The password is typed blind, so a refusal has to say which rule it broke — "not allowed" with
+# no more than that sends someone back to guess, and the commonest cause is one they cannot see:
+# a keyboard still set to Hebrew. The length is reported; the password itself never is.
+if [ "${#password}" -lt 8 ]; then
+  echo "That password has ${#password} characters and needs at least 8. Nothing was created." >&2
+  exit 1
+fi
+# Printable ASCII, less two characters. The password ends up in a Java properties file, which
+# is read as Latin-1 and treats a backslash as an escape: a letter outside ASCII or a backslash
+# would be written as one thing and read back as another, and the build would then fail to open
+# a key whose password is, as far as anyone can tell, correct. A space is refused for the same
+# kind of reason — at the end of a line it is invisible and it counts.
+#
+# In the bracket: `]` first so that it is literal, then `!` to `[`, then `^` to `~`. That is
+# every printable character except the backslash that sits between `[` and `]`.
+if ! printf '%s' "$password" | LC_ALL=C grep -Eq '^[]!-[^-~]+$'; then
+  echo "That password has a character that cannot be used: a space, a backslash, or a letter" >&2
+  echo "that is not English. If you did not mean to type one, the keyboard is probably not set" >&2
+  echo "to English. Nothing was created." >&2
   exit 1
 fi
 
