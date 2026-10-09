@@ -612,40 +612,75 @@ function isUniqueConflict(error: unknown): boolean {
 /**
  * Move whatever is sitting in this incoming row's slot out of the way.
  *
- * The mirror of the problem the push solves by parking: a reorder arrives as a permutation, the
- * rows are written one at a time, and the first to land wants a position its neighbour has not
- * given up yet. `UNIQUE (parent, index)` refuses it, and the whole sync run dies on it — which
- * on a real phone showed up as `UNIQUE constraint failed: plan_days.plan_id, plan_days.day_index`.
+ * The mirror of the problem the push solves by parking: rows are written one at a time, and
+ * one of them wants a position another row has not given up. `UNIQUE (parent, index)` refuses
+ * it, and the whole sync run used to die on it — which on a real phone showed up as
+ * `UNIQUE constraint failed: plan_days.plan_id, plan_days.day_index`.
  *
- * `-rowid` is the same sentinel a soft delete uses: negative, so it cannot collide with any real
- * position, and unique because rowid is.
+ * What is in the way decides what happens to it:
  *
- * Only ever applied to a row the server is about to overwrite anyway — that is what `batchIds`
- * checks. Parking a row that is not in this batch would strand it at a negative index with
- * nothing coming to correct it.
+ *  - **A row that is in this batch too** is about to be rewritten with a position of its own.
+ *    It is parked at `-rowid` — the sentinel a soft delete uses: negative, so it cannot collide
+ *    with any real position, and unique because rowid is — and corrected when its turn comes.
+ *    This is a reorder made on another device arriving as a permutation.
+ *
+ *  - **A deleted row** has no claim on a real position at all, and goes to the same sentinel.
+ *
+ *  - **A live row that is not in this batch** is something this device has and the server has
+ *    not placed: an exercise added here, offline, to a workout that somebody else — a coach,
+ *    another phone — added one to as well. Both asked for "the next position", and the server's
+ *    answer has arrived first. The local row moves to the end of its list and is stamped as
+ *    changed, so its new position goes up on the next run. Nothing is lost and neither row is
+ *    hidden; the one this device has not yet sent simply comes after the one already agreed.
+ *
+ *    This case used to return false and let the error through, on the reasoning that parking a
+ *    row with nothing coming to correct it would strand it at a negative index. That was true
+ *    of parking — and the alternative it left was a pull that failed on the same row on every
+ *    run, for good. Moving it to a real position at the end needs no correction to follow.
  */
 async function parkClashingRow(
   db: SqlExecutor,
   table: SyncTable,
   row: Row,
   batchIds: ReadonlySet<string>,
+  localStamp: string,
 ): Promise<boolean> {
   if (table.scope.kind !== 'parent') return false;
 
   const parent = table.scope.column;
-  let parked = false;
+  let moved = false;
 
   for (const column of table.indexColumns ?? []) {
-    const clash = await db.get<{ id: string }>(
-      `SELECT id FROM ${table.table} WHERE ${parent} = ? AND ${column} = ? AND id <> ?`,
+    const clash = await db.get<{ id: string; deleted_at: string | null }>(
+      `SELECT id, deleted_at FROM ${table.table} WHERE ${parent} = ? AND ${column} = ? AND id <> ?`,
       [row[parent], row[column], row.id],
     );
-    if (!clash || !batchIds.has(clash.id)) continue;
-    await db.run(`UPDATE ${table.table} SET ${column} = -rowid WHERE id = ?`, [clash.id]);
-    parked = true;
+    if (!clash) continue;
+
+    if (batchIds.has(clash.id) || clash.deleted_at !== null) {
+      await db.run(`UPDATE ${table.table} SET ${column} = -rowid WHERE id = ?`, [clash.id]);
+    } else {
+      // Past every real position in the list, and below the bands rows are parked in. The
+      // incoming row's own position counts as taken: it is about to be.
+      const end = await db.get<{ next: number }>(
+        `SELECT COALESCE(MAX(${column}), 0) + 1 AS next FROM ${table.table}
+          WHERE ${parent} = ? AND deleted_at IS NULL AND ${column} < ?`,
+        [row[parent], PUSH_PARK],
+      );
+      const position = row[column];
+      const incoming = typeof position === 'number' ? position : 0;
+      await db.run(`UPDATE ${table.table} SET ${column} = ?, updated_at = ? WHERE id = ?`, [
+        Math.max(end?.next ?? 1, incoming + 1),
+        // Later than this run, which is what "changed here, not yet sent" means — and what
+        // keeps the pull from writing the server's copy back over it a moment from now.
+        justAfter(localStamp),
+        clash.id,
+      ]);
+    }
+    moved = true;
   }
 
-  return parked;
+  return moved;
 }
 
 async function pull(
@@ -693,7 +728,10 @@ async function pull(
           } catch (error) {
             // Retried once, and only after something was actually moved. Retrying a conflict
             // nothing gave way to would just fail again, one row at a time, for ever.
-            if (!isUniqueConflict(error) || !(await parkClashingRow(db, table, row, batchIds))) {
+            if (
+              !isUniqueConflict(error) ||
+              !(await parkClashingRow(db, table, row, batchIds, localStamp))
+            ) {
               throw error;
             }
             written = await upsertLocal(db, table, row, localStamp);

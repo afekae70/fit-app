@@ -37,19 +37,19 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
   type ImageStyle,
-  type TextInputProps,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
-import { EnvelopeSimple, Eye, EyeSlash, LockSimple, type Icon } from 'phosphor-react-native';
+import { EnvelopeSimple, Eye, EyeSlash, LockSimple } from 'phosphor-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import appIcon from '../../assets/icon.png';
 
 import { BrandButton } from '../components/BrandButton.js';
+import { Field } from '../components/Field.js';
+import { Choice } from '../components/settings/kit.js';
 import { KeyboardSafe } from '../components/KeyboardSafe.js';
 import { FadeSlideIn, useReduceMotion } from '../components/motion.js';
 import { splashTimeLeft } from '../components/SplashOverlay.js';
@@ -88,6 +88,7 @@ export function AuthGate() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [forgotEmail, setForgotEmail] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [asCoach, setAsCoach] = useState(false);
   const [busy, setBusy] = useState(false);
   const [errorKey, setErrorKey] = useState<string | null>(null);
 
@@ -122,7 +123,9 @@ export function AuthGate() {
 
     void (async () => {
       const result =
-        mode === 'signIn' ? await signIn(trimmedEmail, password) : await signUp(trimmedEmail, password);
+        mode === 'signIn'
+          ? await signIn(trimmedEmail, password)
+          : await signUp(trimmedEmail, password, { asCoach });
       // On success nothing here changes: `AuthProvider`'s subscription sets the session, and
       // the gate above this component renders past it. The button keeps spinning until then,
       // which is the honest state for the half second it takes.
@@ -201,6 +204,19 @@ export function AuthGate() {
                 <Text style={styles.subtitle}>
                   {mode === 'signIn' ? t('auth.subtitleSignIn') : t('auth.subtitle')}
                 </Text>
+
+                {/* Asked here because it decides what the account is for, but it is a switch
+                    and not a fork: either kind can become the other from the coaching screen. */}
+                {mode === 'signUp' ? (
+                  <Choice<'trainee' | 'coach'>
+                    selected={asCoach ? 'coach' : 'trainee'}
+                    onSelect={(next) => setAsCoach(next === 'coach')}
+                    options={[
+                      { value: 'trainee', label: t('auth.roleTrainee') },
+                      { value: 'coach', label: t('auth.roleCoach') },
+                    ]}
+                  />
+                ) : null}
 
                 <Field
                   icon={EnvelopeSimple}
@@ -513,35 +529,6 @@ function Tabs({ mode, onChoose }: { mode: Mode; onChoose: (next: Mode) => void }
   );
 }
 
-/* -------------------------------------------------------------------------- */
-/* A field                                                                     */
-/* -------------------------------------------------------------------------- */
-
-/** A text input with a picture of what goes in it, and room for a control at the far end. */
-function Field({
-  icon: IconComponent,
-  trailing,
-  ...input
-}: TextInputProps & { icon: Icon; trailing?: ReactNode }) {
-  const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
-  const [focused, setFocused] = useState(false);
-
-  return (
-    <View style={[styles.field, focused && styles.fieldFocused]}>
-      <IconComponent size={20} color={focused ? colors.accent : colors.textMuted} />
-      <TextInput
-        {...input}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        placeholderTextColor={colors.textFaint}
-        style={styles.input}
-      />
-      {trailing}
-    </View>
-  );
-}
-
 const MARK = 96;
 /** How much wider than the logo the halo behind it is, at rest. */
 const HALO_SPREAD = 28;
@@ -570,9 +557,6 @@ const createStyles = (colors: ColorPalette) =>
     progressText: TextStyle;
     title: TextStyle;
     subtitle: TextStyle;
-    field: ViewStyle;
-    fieldFocused: ViewStyle;
-    input: TextStyle;
     forgot: ViewStyle;
     centredLink: ViewStyle;
     link: TextStyle;
@@ -679,26 +663,6 @@ const createStyles = (colors: ColorPalette) =>
       textAlign: 'auto',
     },
     subtitle: { color: colors.textMuted, fontSize: fontSize.sm, lineHeight: 20, textAlign: 'auto' },
-
-    field: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.md,
-      minHeight: 52,
-      paddingHorizontal: spacing.md,
-      borderRadius: radius.md,
-      borderWidth: 1.5,
-      borderColor: colors.border,
-      backgroundColor: colors.surfaceRaised,
-    },
-    fieldFocused: { borderColor: colors.accent, backgroundColor: colors.surface },
-    input: {
-      flex: 1,
-      color: colors.text,
-      fontSize: fontSize.md,
-      paddingVertical: spacing.sm,
-      textAlign: 'auto',
-    },
 
     forgot: { alignSelf: 'flex-end', paddingVertical: spacing.xs },
     centredLink: { alignSelf: 'center', padding: spacing.sm },

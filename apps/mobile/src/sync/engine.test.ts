@@ -1806,3 +1806,114 @@ describe('a new phone signing in to an account with history', () => {
     newPhone.close();
   });
 });
+
+describe('a row arriving on a position this device has already given to another', () => {
+  /*
+   * A workout with one exercise, on both sides. Somebody else — a coach, a second phone — adds
+   * an exercise to it, and so does this phone, offline. Each asks for position 2.
+   *
+   * The server refuses this phone's row, since the other got there first. That is handled. What
+   * was not: the pull then brings the other row down onto position 2, where this phone's own
+   * unsent exercise is sitting, and SQLite refuses it. The run used to die there, on every
+   * attempt, with a row it could neither send nor make room for.
+   */
+  const PLAN = 'dddddddd-0000-4000-8000-00000000000a';
+  const DAY = 'eeeeeeee-0000-4000-8000-00000000000a';
+  const FIRST = 'ffffffff-0000-4000-8000-000000000001';
+  const MINE = 'ffffffff-0000-4000-8000-000000000002';
+  const THEIRS = 'ffffffff-0000-4000-8000-000000000003';
+
+  async function workoutOnBothSides(server: FakeServer) {
+    const at = '2026-02-01T10:00:00.000Z';
+    await db.run(
+      `INSERT INTO plans (id, user_id, name, is_active, created_at, updated_at)
+         VALUES (?, ?, 'Gym', 1, ?, ?)`,
+      [PLAN, USER, at, at],
+    );
+    await db.run(
+      `INSERT INTO plan_days (id, plan_id, day_index, name, updated_at) VALUES (?, ?, 1, 'Push', ?)`,
+      [DAY, PLAN, at],
+    );
+    await db.run(
+      `INSERT INTO plan_day_exercises (id, plan_day_id, exercise_key, order_index, updated_at)
+         VALUES (?, ?, 'Bench Press', 1, ?)`,
+      [FIRST, DAY, at],
+    );
+    await runSync(db, server, USER, localClock('2026-02-01T11:00:00.000Z'));
+
+    // Theirs reaches the server; mine exists only here.
+    server.seed('plan_day_exercises', {
+      id: THEIRS,
+      plan_day_id: DAY,
+      exercise_key: 'Overhead Press',
+      order_index: 2,
+      deleted_at: null,
+    });
+    await db.run(
+      `INSERT INTO plan_day_exercises (id, plan_day_id, exercise_key, order_index, updated_at)
+         VALUES (?, ?, 'Barbell Row', 2, ?)`,
+      [MINE, DAY, '2026-02-01T12:00:00.000Z'],
+    );
+  }
+
+  const here = () =>
+    db.all<{ id: string; order_index: number }>(
+      `SELECT id, order_index FROM plan_day_exercises
+        WHERE plan_day_id = ? AND deleted_at IS NULL ORDER BY order_index`,
+      [DAY],
+    );
+
+  it('does not end the run', async () => {
+    const server = createFakeServer();
+    await workoutOnBothSides(server);
+
+    await expect(
+      runSync(db, server, USER, localClock('2026-02-01T13:00:00.000Z')),
+    ).resolves.toBeDefined();
+  });
+
+  it('keeps both exercises, with the unsent one after the one already agreed', async () => {
+    const server = createFakeServer();
+    await workoutOnBothSides(server);
+
+    await runSync(db, server, USER, localClock('2026-02-01T13:00:00.000Z'));
+
+    expect(await here()).toEqual([
+      { id: FIRST, order_index: 1 },
+      { id: THEIRS, order_index: 2 },
+      { id: MINE, order_index: 3 },
+    ]);
+  });
+
+  it('sends the moved exercise on the next run, to a position the server now accepts', async () => {
+    const server = createFakeServer();
+    await workoutOnBothSides(server);
+    await runSync(db, server, USER, localClock('2026-02-01T13:00:00.000Z'));
+
+    const next = await runSync(db, server, USER, localClock('2026-02-01T14:00:00.000Z'));
+
+    expect(next.refused).toEqual([]);
+    const there = server
+      .rows('plan_day_exercises')
+      .map((row) => [row.id, row.order_index])
+      .sort((a, b) => (a[1] as number) - (b[1] as number));
+    expect(there).toEqual([
+      [FIRST, 1],
+      [THEIRS, 2],
+      [MINE, 3],
+    ]);
+  });
+
+  it('then settles', async () => {
+    const server = createFakeServer();
+    await workoutOnBothSides(server);
+    await runSync(db, server, USER, localClock('2026-02-01T13:00:00.000Z'));
+    await runSync(db, server, USER, localClock('2026-02-01T14:00:00.000Z'));
+
+    const third = await runSync(db, server, USER, localClock('2026-02-01T15:00:00.000Z'));
+
+    expect(third.pushed).toBe(0);
+    expect(third.refused).toEqual([]);
+    expect(await here()).toHaveLength(3);
+  });
+});

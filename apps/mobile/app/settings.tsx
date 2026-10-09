@@ -12,6 +12,7 @@
  * and wear the same shapes.
  */
 
+import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -25,7 +26,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BellRinging, Palette, SignOut, Trash, UserCircle } from 'phosphor-react-native';
+import { BellRinging, Handshake, Palette, SignOut, Trash, UserCircle } from 'phosphor-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { UnitPreference } from '@fit/shared';
@@ -251,7 +252,18 @@ export default function SettingsScreen() {
       {session ? <SyncCard index={5} /> : null}
 
       {session ? (
-        <SettingsSection icon={UserCircle} title={t('settings.account')} index={6}>
+        <SettingsSection
+          icon={Handshake}
+          title={t('coaching.title')}
+          hint={t('coaching.settingsHint')}
+          index={6}
+        >
+          <LinkRow label={t('coaching.open')} onPress={() => router.push('/coaching')} />
+        </SettingsSection>
+      ) : null}
+
+      {session ? (
+        <SettingsSection icon={UserCircle} title={t('settings.account')} index={7}>
           <LinkRow icon={SignOut} label={t('auth.signOut')} onPress={signOut} chevron={false} />
           <RowDivider />
           {/* Last on the screen and in the colour of a warning. Leaving for good is something

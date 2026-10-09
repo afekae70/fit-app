@@ -131,6 +131,20 @@ describe('keys assembled at runtime', () => {
     },
   );
 
+  it.each([
+    'not_available',
+    'offline',
+    'not_signed_in',
+    'no_such_code',
+    'own_code',
+    'not_your_trainee',
+    'gone',
+    'invalid',
+    'failed',
+  ])('coaching.error.%s', (error) => {
+    expect(hebrewKeys.has(`coaching.error.${error}`)).toBe(true);
+  });
+
   it.each(['cut', 'maintain', 'bulk'])('setup.goalDetail.%s', (goal) => {
     expect(hebrewKeys.has(`setup.goalDetail.${goal}`)).toBe(true);
     expect(hebrewKeys.has(`goal.${goal}`)).toBe(true);

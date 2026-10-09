@@ -25,7 +25,15 @@ export interface AuthState {
   /** False when app.json has no Supabase project configured yet. */
   isConfigured: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
-  signUp: (email: string, password: string) => Promise<{ error: string | null }>;
+  /**
+   * `asCoach` switches coach mode on for the new account straight away — see `app/coaching.tsx`
+   * for what that means. It can be switched on, or off, at any time afterwards.
+   */
+  signUp: (
+    email: string,
+    password: string,
+    options?: { asCoach?: boolean },
+  ) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   /**
    * Deletes the signed-in account: on the server, then everything of theirs on this device.
@@ -96,7 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { error } = await client.auth.signInWithPassword({ email, password });
         return { error: error ? friendlyAuthError(error.message) : null };
       },
-      signUp: async (email, password) => {
+      signUp: async (email, password, options) => {
         if (!client) return { error: 'not_configured' };
         const { data, error } = await client.auth.signUp({ email, password });
         if (error) return { error: friendlyAuthError(error.message) };
@@ -110,6 +118,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
          * they have just chosen. So the case is named, and the screen says what happened.
          */
         if (!data.session) return { error: 'confirmation_required' };
+        if (options?.asCoach) {
+          // Best effort. The account exists either way, and a coach whose mode did not switch
+          // on here — no signal, or a server that has not been given coaching yet — finds the
+          // same switch on the coaching screen. Failing the sign-up over it would be absurd.
+          try {
+            await client.rpc('coach_enable');
+          } catch {
+            /* switched on later, from the coaching screen */
+          }
+        }
         return { error: null };
       },
       signOut: async () => {

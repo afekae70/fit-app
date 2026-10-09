@@ -43,6 +43,7 @@ import { useActionSheet } from './ActionSheetProvider.js';
 const DESTINATIONS: readonly { route: Href; label: string }[] = [
   { route: '/profile', label: 'menu.profile' },
   { route: '/coach', label: 'menu.coach' },
+  { route: '/coaching', label: 'menu.coaching' },
   { route: '/nutrition', label: 'menu.nutrition' },
   { route: '/metrics', label: 'menu.metrics' },
   { route: '/settings', label: 'menu.settings' },
