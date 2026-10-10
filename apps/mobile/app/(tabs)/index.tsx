@@ -21,6 +21,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../src/auth/AuthProvider.js';
 import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
 import { useAvatar } from '../../src/profile/useAvatar.js';
+import { useSync } from '../../src/sync/SyncProvider.js';
+import { SyncTrouble } from '../../src/sync/SyncTrouble.js';
 import { weekForWidget, writeWidgetSnapshot } from '../../src/widget/snapshot.js';
 import { QuickActions } from '../../src/components/home/QuickActions.js';
 import {
@@ -151,10 +153,17 @@ export default function TodayScreen() {
     }, [load]),
   );
 
+  const { syncNow } = useSync();
+  // Pulling down means "is this current?", and the honest answer includes the cloud: a plan a
+  // coach changed, a workout logged on another phone. So it syncs first and then redraws from
+  // the database. A sync that fails still leaves the reload — the pull never does nothing.
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    void load().finally(() => setRefreshing(false));
-  }, [load]);
+    void syncNow()
+      .catch(() => null)
+      .then(() => load())
+      .finally(() => setRefreshing(false));
+  }, [load, syncNow]);
 
   /**
    * Open today's planned workout, already populated.
@@ -195,6 +204,9 @@ export default function TodayScreen() {
         avatarUri={avatarUri}
         onOpenProfile={() => router.push('/profile')}
       />
+
+      {/* Nothing, unless a sync has failed. See SyncTrouble. */}
+      <SyncTrouble />
 
       {failed ? (
         <ErrorPanel onRetry={() => void load()} />

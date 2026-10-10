@@ -46,7 +46,6 @@ import type { ExerciseTarget, PreviousSet } from '../../src/components/ExerciseC
 import { FinishedBurst } from '../../src/components/workout/FinishedBurst.js';
 import * as SecureStore from 'expo-secure-store';
 
-
 import { DragReorderList, type DragHandleProps } from '../../src/components/DragReorderList.js';
 import { KeyboardSafe } from '../../src/components/KeyboardSafe.js';
 import { ExerciseVisual } from '../../src/components/ExerciseVisual.js';
@@ -83,7 +82,12 @@ import {
   periodStart,
   type HistoryPeriod,
 } from '../../src/workout/historyPeriod.js';
-import { getPlanDay, listPlanDayExercises, timingOf, type PlanDayTiming } from '../../src/db/plans.js';
+import {
+  getPlanDay,
+  listPlanDayExercises,
+  timingOf,
+  type PlanDayTiming,
+} from '../../src/db/plans.js';
 import { getLatestWeight, getProfile } from '../../src/db/metrics.js';
 import { getExecutor, newId } from '../../src/db/provider.js';
 import { isExerciseStalling } from '../../src/db/progression.js';
@@ -128,6 +132,7 @@ import {
   stopWatchHeartRate,
   useLiveHeartRate,
 } from '../../src/workout/liveHeartRate.js';
+import { useSync } from '../../src/sync/SyncProvider.js';
 import { createLatestOnly } from '../../src/workout/latestOnly.js';
 import { syncWorkoutReminders } from '../../src/reminders/sync.js';
 import { stationMove } from '../../src/workout/stripReorder.js';
@@ -213,6 +218,7 @@ export default function WorkoutsScreen() {
   /** From the birth date on the profile; null without one, and the heart rate then has no zone. */
   const [maxHeartRate, setMaxHeartRate] = useState<number | null>(null);
   const liveHeartRate = useLiveHeartRate(sessionId !== null);
+  const { syncNow } = useSync();
 
   /*
    * The sets as they are right now, for the handlers below.
@@ -226,9 +232,7 @@ export default function WorkoutsScreen() {
   liveExercises.current = exercises;
   const liveSet = (setId: string) =>
     liveExercises.current.flatMap((e) => e.sets).find((set) => set.id === setId) ?? null;
-  const [previous, setPrevious] = useState<Record<string, PreviousSet[] | null>>(
-    {},
-  );
+  const [previous, setPrevious] = useState<Record<string, PreviousSet[] | null>>({});
   const [loading, setLoading] = useState(true);
   /** True from the tap on Finish until the trophy has played out. */
   const [finishing, setFinishing] = useState(false);
@@ -310,7 +314,10 @@ export default function WorkoutsScreen() {
         const held = history.find((session) => session.id === id);
         const choice = await ask({
           title: held?.name?.trim() || t('history.unnamed'),
-          actions: [{ label: t('history.edit') }, { label: t('history.delete'), destructive: true }],
+          actions: [
+            { label: t('history.edit') },
+            { label: t('history.delete'), destructive: true },
+          ],
         });
         if (choice === 0) {
           router.push({ pathname: '/session/[id]', params: { id, mode: 'edit' } });
@@ -344,71 +351,74 @@ export default function WorkoutsScreen() {
   const latestReload = useRef(createLatestOnly()).current;
 
   /** Reload the session from SQLite — the database is the source of truth, not component state. */
-  const reload = useCallback(async (id: string) => {
-    const ticket = latestReload.begin();
-    const db = await getExecutor();
-    const { session, exercises: loaded } = await getSessionDetail(db, id);
-    if (!latestReload.isCurrent(ticket)) return loaded;
-    setExercises(loaded);
-    setStartedAt(session?.started_at ?? null);
-    setSessionName(session?.name ?? null);
+  const reload = useCallback(
+    async (id: string) => {
+      const ticket = latestReload.begin();
+      const db = await getExecutor();
+      const { session, exercises: loaded } = await getSessionDetail(db, id);
+      if (!latestReload.isCurrent(ticket)) return loaded;
+      setExercises(loaded);
+      setStartedAt(session?.started_at ?? null);
+      setSessionName(session?.name ?? null);
 
-    // Excluding the current session matters: without it, the sets being typed right now would
-    // come back as their own "last time" the instant they are saved.
-    // What kind of workout this is, resolved once. Every "last time" and every stall verdict
-    // below is scoped to sessions of the same kind, so a push day is not answered for by the
-    // last leg day.
-    const type = await getSessionType(db, id);
-    setTyped(hasType(type));
-    // The latest weigh-in, which is half of the calorie estimate on a cardio effort.
-    setBodyWeightKg((await getLatestWeight(db, userId))?.weight_kg ?? null);
-    // And the age, which is what turns a heart rate into a training zone.
-    const birthDate = (await getProfile(db, userId))?.birth_date ?? null;
-    const birth = birthDate ? new Date(birthDate) : null;
-    setMaxHeartRate(
-      birth && !Number.isNaN(birth.getTime()) ? estimateMaxHeartRate(ageInYears(birth)) : null,
-    );
-
-    const nextPrevious: Record<string, PreviousSet[] | null> = {};
-    const nextStalling: Record<string, boolean> = {};
-    for (const exercise of loaded) {
-      const sets = await getPreviousSessionSets(db, userId, exercise.exercise_key, id, type);
-      nextPrevious[exercise.exercise_key] = sets.length > 0 ? sets : null;
-      // Same exclusion, same reason: today's half-finished sets must not be weighed against
-      // themselves when deciding whether this lift has stopped moving.
-      nextStalling[exercise.exercise_key] = await isExerciseStalling(
-        db,
-        userId,
-        exercise.exercise_key,
-        id,
-        type,
+      // Excluding the current session matters: without it, the sets being typed right now would
+      // come back as their own "last time" the instant they are saved.
+      // What kind of workout this is, resolved once. Every "last time" and every stall verdict
+      // below is scoped to sessions of the same kind, so a push day is not answered for by the
+      // last leg day.
+      const type = await getSessionType(db, id);
+      setTyped(hasType(type));
+      // The latest weigh-in, which is half of the calorie estimate on a cardio effort.
+      setBodyWeightKg((await getLatestWeight(db, userId))?.weight_kg ?? null);
+      // And the age, which is what turns a heart rate into a training zone.
+      const birthDate = (await getProfile(db, userId))?.birth_date ?? null;
+      const birth = birthDate ? new Date(birthDate) : null;
+      setMaxHeartRate(
+        birth && !Number.isNaN(birth.getTime()) ? estimateMaxHeartRate(ageInYears(birth)) : null,
       );
-    }
-    if (!latestReload.isCurrent(ticket)) return loaded;
-    setPrevious(nextPrevious);
-    setStalling(nextStalling);
 
-    // Targets exist only for a session started from a plan day. A freestyle session leaves this
-    // empty and the cards simply show no target badge.
-    const nextTargets: Record<string, ExerciseTarget> = {};
-    // Read from the plan day each time rather than copied onto the session: changing a day's
-    // timing between workouts should change the next one, and there is nothing to migrate when
-    // it does.
-    const planDay = session?.plan_day_id ? await getPlanDay(db, session.plan_day_id) : null;
-    setTiming(planDay ? timingOf(planDay) : null);
-    if (session?.plan_day_id) {
-      for (const prescription of await listPlanDayExercises(db, session.plan_day_id)) {
-        nextTargets[prescription.exercise_key] = {
-          target_sets: prescription.target_sets,
-          target_reps_min: prescription.target_reps_min,
-          target_reps_max: prescription.target_reps_max,
-        };
+      const nextPrevious: Record<string, PreviousSet[] | null> = {};
+      const nextStalling: Record<string, boolean> = {};
+      for (const exercise of loaded) {
+        const sets = await getPreviousSessionSets(db, userId, exercise.exercise_key, id, type);
+        nextPrevious[exercise.exercise_key] = sets.length > 0 ? sets : null;
+        // Same exclusion, same reason: today's half-finished sets must not be weighed against
+        // themselves when deciding whether this lift has stopped moving.
+        nextStalling[exercise.exercise_key] = await isExerciseStalling(
+          db,
+          userId,
+          exercise.exercise_key,
+          id,
+          type,
+        );
       }
-    }
-    if (!latestReload.isCurrent(ticket)) return loaded;
-    setTargets(nextTargets);
-    return loaded;
-  }, [userId, latestReload]);
+      if (!latestReload.isCurrent(ticket)) return loaded;
+      setPrevious(nextPrevious);
+      setStalling(nextStalling);
+
+      // Targets exist only for a session started from a plan day. A freestyle session leaves this
+      // empty and the cards simply show no target badge.
+      const nextTargets: Record<string, ExerciseTarget> = {};
+      // Read from the plan day each time rather than copied onto the session: changing a day's
+      // timing between workouts should change the next one, and there is nothing to migrate when
+      // it does.
+      const planDay = session?.plan_day_id ? await getPlanDay(db, session.plan_day_id) : null;
+      setTiming(planDay ? timingOf(planDay) : null);
+      if (session?.plan_day_id) {
+        for (const prescription of await listPlanDayExercises(db, session.plan_day_id)) {
+          nextTargets[prescription.exercise_key] = {
+            target_sets: prescription.target_sets,
+            target_reps_min: prescription.target_reps_min,
+            target_reps_max: prescription.target_reps_max,
+          };
+        }
+      }
+      if (!latestReload.isCurrent(ticket)) return loaded;
+      setTargets(nextTargets);
+      return loaded;
+    },
+    [userId, latestReload],
+  );
 
   /*
    * On focus, pick up whatever happened while this tab was in the background.
@@ -471,7 +481,6 @@ export default function WorkoutsScreen() {
     // through a useCallback to know that.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reload, reloadHome]);
-
 
   /*
    * The picker navigates back with an exercise name in params, and possibly the id of an
@@ -542,6 +551,11 @@ export default function WorkoutsScreen() {
       const db = await getExecutor();
       await finishSession(db, userId, sessionId, { sessionRpe: null });
       void hapticSuccess();
+      // To the cloud now, not the next time the app happens to be opened. Sync otherwise waits
+      // for the app to come back to the front, and the moment after a workout is exactly when
+      // it is put away — so the newest hour of training was the one thing that existed only on
+      // the phone. Unawaited: it reports for itself, and the trophy does not wait on a network.
+      void syncNow();
       // Out to Health Connect, and from there into Samsung Health and anything else reading it.
       // Deliberately unawaited and allowed to fail: the workout is saved either way, and the
       // trophy is not the place to find out that another app was not listening.
@@ -587,11 +601,12 @@ export default function WorkoutsScreen() {
       // drop set exists to avoid, exactly as with a superset one level up.
       const position = owner?.sets.findIndex((s) => s.id === setId) ?? -1;
       const nextIsDrop = position >= 0 && owner?.sets[position + 1]?.is_drop === 1;
-      const seconds = insideSuperset || nextIsDrop
-        ? 0
-        : set?.is_warmup === 1
-          ? restAfterWarmup()
-          : restSecondsFor(seed?.movementPattern);
+      const seconds =
+        insideSuperset || nextIsDrop
+          ? 0
+          : set?.is_warmup === 1
+            ? restAfterWarmup()
+            : restSecondsFor(seed?.movementPattern);
 
       setRest(seconds > 0 ? { deadline: Date.now() + seconds * 1000, total: seconds } : null);
     },
@@ -689,7 +704,9 @@ export default function WorkoutsScreen() {
               .map((muscle) => t(`muscle.${muscle}`))
               .join(', ')}`
           : null,
-        equipment ? `${t('workout.equipment')}: ${isHebrew ? equipment.nameHe : equipment.nameEn}` : null,
+        equipment
+          ? `${t('workout.equipment')}: ${isHebrew ? equipment.nameHe : equipment.nameEn}`
+          : null,
       ].filter((line): line is string => line !== null);
       void notify({ title: isHebrew ? seed.nameHe : seed.nameEn, message: lines.join('\n') });
     },
@@ -734,7 +751,9 @@ export default function WorkoutsScreen() {
 
         const best = await getPreviousBest(db, userId, exercise.exercise_key, sessionId);
         const isPr =
-          !best || set.weight_kg > best.weight_kg || (set.weight_kg === best.weight_kg && set.reps > best.reps);
+          !best ||
+          set.weight_kg > best.weight_kg ||
+          (set.weight_kg === best.weight_kg && set.reps > best.reps);
         if (!isPr) return;
 
         celebratedSetIds.current.add(setId);
@@ -1096,7 +1115,10 @@ export default function WorkoutsScreen() {
     () =>
       exercises.map((exercise) =>
         isExerciseDone(
-          exercise.sets.map((set) => ({ done: set.done_at !== null, isWarmup: set.is_warmup === 1 })),
+          exercise.sets.map((set) => ({
+            done: set.done_at !== null,
+            isWarmup: set.is_warmup === 1,
+          })),
         ),
       ),
     [exercises],
@@ -1178,8 +1200,7 @@ export default function WorkoutsScreen() {
         const { station, count } = swipeState.current;
         // At either end the card still moves, but grudgingly. A card that refuses to budge reads
         // as a screen that has frozen; one that gives a little says there is nothing over there.
-        const atEnd =
-          (gesture.dx < 0 && station >= count - 1) || (gesture.dx > 0 && station <= 0);
+        const atEnd = (gesture.dx < 0 && station >= count - 1) || (gesture.dx > 0 && station <= 0);
         slideX.setValue(atEnd ? gesture.dx * 0.25 : gesture.dx);
       },
       onPanResponderRelease: (_evt, gesture) => {
@@ -1357,213 +1378,215 @@ export default function WorkoutsScreen() {
   };
 
   const renderExercise = (exercise: SessionExerciseWithSets, dragHandle?: DragHandleProps) => {
-            const seed = EXERCISE_BY_KEY.get(exercise.exercise_key);
-            if (!seed) return null;
-            const prescription = targets[exercise.exercise_key] ?? null;
-            return (
-              <ExercisePanel
-                name={seed.nameHe}
-                // The panel works in positions; the repository works in row ids. Mapped here
-                // rather than pushing ids into the component, so the card stays a view of a
-                // list and knows nothing about how the rows are stored.
-                sets={exercise.sets.map((set) => ({
-                  weightKg: set.weight_kg,
-                  reps: set.reps,
-                  done: set.done_at !== null,
-                  isWarmup: set.is_warmup === 1,
-                  rpe: set.rpe,
-                  toFailure: set.to_failure === 1,
-                  isDrop: set.is_drop === 1,
-                  durationSeconds: set.duration_seconds,
-                  distanceM: set.distance_m,
-                }))}
-                previous={
-                  previous[exercise.exercise_key]?.map((p) => ({
-                    weightKg: p.weight_kg,
-                    reps: p.reps,
-                    durationSeconds: p.duration_seconds,
-                    distanceM: p.distance_m,
-                  })) ?? null
-                }
-                target={
-                  prescription
-                    ? {
-                        sets: prescription.target_sets,
-                        repsMin: prescription.target_reps_min,
-                        repsMax: prescription.target_reps_max,
-                      }
-                    : null
-                }
-                advice={advice[exercise.id] ?? null}
-                onApplyAdvice={
-                  advice[exercise.id] &&
-                  exercise.sets.some((set) => set.done_at === null && set.is_warmup === 0)
-                    ? () => applyAdvice(exercise.id, advice[exercise.id]!)
-                    : undefined
-                }
-                onSetOptions={(i) => openSetOptions(exercise.id, i)}
-                supersetWithNext={exercise.superset_with_next === 1}
-                onChangeWeight={(i, next) => {
-                  const set = exercise.sets[i];
-                  if (set) patchSet(set.id, { weightKg: next });
-                }}
-                onChangeReps={(i, next) => {
-                  const set = exercise.sets[i];
-                  if (set) patchSet(set.id, { reps: next });
-                }}
-                // A walk or a ride: how long and how far, where the weights would be.
-                cardio={seed.loadType === 'cardio'}
-                cardioKey={exercise.id}
-                exerciseKey={exercise.exercise_key}
-                bodyWeightKg={bodyWeightKg}
-                onChangeDuration={(i, seconds) => {
-                  const set = exercise.sets[i];
-                  if (set) patchSet(set.id, { durationSeconds: seconds });
-                }}
-                onChangeDistance={(i, metres) => {
-                  const set = exercise.sets[i];
-                  if (set) patchSet(set.id, { distanceM: metres });
-                }}
-                /*
-                 * A tap on a number opens a field above the phone's numeric keyboard. The field
-                 * is deliberately not this row: a row is rebuilt by every reload, which is what
-                 * used to eat the first digit typed into one, and a row low in the list is where
-                 * the keys draw. See NumberEntryBar. Tapping a second number while the first is
-                 * open hands the same field over, so the keyboard never drops in between.
-                 */
-                onEditValue={(i, field, measure) => {
-                  const set = exercise.sets[i];
-                  if (!set) return;
-                  // How to find the row, for moving it clear of the keyboard. If the keys are
-                  // already up — a second number tapped while the first is open — nothing more
-                  // is going to announce them, so the row is moved now. Otherwise it is moved
-                  // when the list shrinks to make room for them.
-                  editingRow.current = measure ?? null;
-                  if (keyboardEdge.current !== null) revealEditingRow();
-                  const label = `${seed.nameHe} · ${t('workout.setNumber')} ${i + 1}`;
-                  const cardio = seed.loadType === 'cardio';
-                  if (field === 'first') {
-                    setEntry(
-                      cardio
-                        ? {
-                            id: `${set.id}:duration`,
-                            title: `${label} · ${t('workout.duration')}`,
-                            value: set.duration_seconds === null ? null : Math.round(set.duration_seconds / 60),
-                            unit: t('workout.minutesShort'),
-                            decimals: false,
-                            onCommit: (value) =>
-                              patchSet(set.id, {
-                                durationSeconds: Math.max(0, Math.round(value * 60)),
-                              }),
-                          }
-                        : {
-                            id: `${set.id}:weight`,
-                            title: `${label} · ${t(`common.${weightUnitKey(unit)}`)}`,
-                            value: set.weight_kg === null ? null : kgToDisplay(set.weight_kg, unit),
-                            unit: t(`common.${weightUnitKey(unit)}`),
-                            onCommit: (value) => {
-                              const weightKg = displayWeightToKg(value, unit);
-                              const now = liveSet(set.id) ?? set;
-                              patchSet(
-                                set.id,
-                                { weightKg },
-                                {
-                                  complete: shouldAutoComplete({
-                                    done: now.done_at !== null,
-                                    field: 'weight',
-                                    before: { weightKg: now.weight_kg, reps: now.reps },
-                                    after: { weightKg, reps: now.reps },
-                                    loadType: seed.loadType,
-                                  }),
-                                },
-                              );
-                            },
-                          },
-                    );
-                    return;
+    const seed = EXERCISE_BY_KEY.get(exercise.exercise_key);
+    if (!seed) return null;
+    const prescription = targets[exercise.exercise_key] ?? null;
+    return (
+      <ExercisePanel
+        name={seed.nameHe}
+        // The panel works in positions; the repository works in row ids. Mapped here
+        // rather than pushing ids into the component, so the card stays a view of a
+        // list and knows nothing about how the rows are stored.
+        sets={exercise.sets.map((set) => ({
+          weightKg: set.weight_kg,
+          reps: set.reps,
+          done: set.done_at !== null,
+          isWarmup: set.is_warmup === 1,
+          rpe: set.rpe,
+          toFailure: set.to_failure === 1,
+          isDrop: set.is_drop === 1,
+          durationSeconds: set.duration_seconds,
+          distanceM: set.distance_m,
+        }))}
+        previous={
+          previous[exercise.exercise_key]?.map((p) => ({
+            weightKg: p.weight_kg,
+            reps: p.reps,
+            durationSeconds: p.duration_seconds,
+            distanceM: p.distance_m,
+          })) ?? null
+        }
+        target={
+          prescription
+            ? {
+                sets: prescription.target_sets,
+                repsMin: prescription.target_reps_min,
+                repsMax: prescription.target_reps_max,
+              }
+            : null
+        }
+        advice={advice[exercise.id] ?? null}
+        onApplyAdvice={
+          advice[exercise.id] &&
+          exercise.sets.some((set) => set.done_at === null && set.is_warmup === 0)
+            ? () => applyAdvice(exercise.id, advice[exercise.id]!)
+            : undefined
+        }
+        onSetOptions={(i) => openSetOptions(exercise.id, i)}
+        supersetWithNext={exercise.superset_with_next === 1}
+        onChangeWeight={(i, next) => {
+          const set = exercise.sets[i];
+          if (set) patchSet(set.id, { weightKg: next });
+        }}
+        onChangeReps={(i, next) => {
+          const set = exercise.sets[i];
+          if (set) patchSet(set.id, { reps: next });
+        }}
+        // A walk or a ride: how long and how far, where the weights would be.
+        cardio={seed.loadType === 'cardio'}
+        cardioKey={exercise.id}
+        exerciseKey={exercise.exercise_key}
+        bodyWeightKg={bodyWeightKg}
+        onChangeDuration={(i, seconds) => {
+          const set = exercise.sets[i];
+          if (set) patchSet(set.id, { durationSeconds: seconds });
+        }}
+        onChangeDistance={(i, metres) => {
+          const set = exercise.sets[i];
+          if (set) patchSet(set.id, { distanceM: metres });
+        }}
+        /*
+         * A tap on a number opens a field above the phone's numeric keyboard. The field
+         * is deliberately not this row: a row is rebuilt by every reload, which is what
+         * used to eat the first digit typed into one, and a row low in the list is where
+         * the keys draw. See NumberEntryBar. Tapping a second number while the first is
+         * open hands the same field over, so the keyboard never drops in between.
+         */
+        onEditValue={(i, field, measure) => {
+          const set = exercise.sets[i];
+          if (!set) return;
+          // How to find the row, for moving it clear of the keyboard. If the keys are
+          // already up — a second number tapped while the first is open — nothing more
+          // is going to announce them, so the row is moved now. Otherwise it is moved
+          // when the list shrinks to make room for them.
+          editingRow.current = measure ?? null;
+          if (keyboardEdge.current !== null) revealEditingRow();
+          const label = `${seed.nameHe} · ${t('workout.setNumber')} ${i + 1}`;
+          const cardio = seed.loadType === 'cardio';
+          if (field === 'first') {
+            setEntry(
+              cardio
+                ? {
+                    id: `${set.id}:duration`,
+                    title: `${label} · ${t('workout.duration')}`,
+                    value:
+                      set.duration_seconds === null ? null : Math.round(set.duration_seconds / 60),
+                    unit: t('workout.minutesShort'),
+                    decimals: false,
+                    onCommit: (value) =>
+                      patchSet(set.id, {
+                        durationSeconds: Math.max(0, Math.round(value * 60)),
+                      }),
                   }
-                  setEntry(
-                    cardio
-                      ? {
-                          id: `${set.id}:distance`,
-                          title: `${label} · ${t('workout.distance')}`,
-                          value: set.distance_m === null ? null : metresToDisplay(set.distance_m, unit),
-                          unit: t(`common.${distanceUnitKey(unit)}`),
-                          onCommit: (value) =>
-                            patchSet(set.id, {
-                              distanceM: displayDistanceToMetres(value, unit),
-                            }),
-                        }
-                      : {
-                          id: `${set.id}:reps`,
-                          title: `${label} · ${t('workout.reps')}`,
-                          value: set.reps,
-                          decimals: false,
-                          // Typing the reps is, nearly always, the moment the set is over:
-                          // the weight is what you load beforehand and this is what you find
-                          // out. So this is where a set ticks itself — see autoComplete.ts.
-                          onCommit: (value) => {
-                            const reps = Math.round(value);
-                            const now = liveSet(set.id) ?? set;
-                            patchSet(
-                              set.id,
-                              { reps },
-                              {
-                                complete: shouldAutoComplete({
-                                  done: now.done_at !== null,
-                                  field: 'reps',
-                                  before: { weightKg: now.weight_kg, reps: now.reps },
-                                  after: { weightKg: now.weight_kg, reps },
-                                  loadType: seed.loadType,
-                                }),
-                              },
-                            );
-                          },
+                : {
+                    id: `${set.id}:weight`,
+                    title: `${label} · ${t(`common.${weightUnitKey(unit)}`)}`,
+                    value: set.weight_kg === null ? null : kgToDisplay(set.weight_kg, unit),
+                    unit: t(`common.${weightUnitKey(unit)}`),
+                    onCommit: (value) => {
+                      const weightKg = displayWeightToKg(value, unit);
+                      const now = liveSet(set.id) ?? set;
+                      patchSet(
+                        set.id,
+                        { weightKg },
+                        {
+                          complete: shouldAutoComplete({
+                            done: now.done_at !== null,
+                            field: 'weight',
+                            before: { weightKg: now.weight_kg, reps: now.reps },
+                            after: { weightKg, reps: now.reps },
+                            loadType: seed.loadType,
+                          }),
                         },
-                  );
-                }}
-                onToggle={(i) => {
-                  const tapped = exercise.sets[i];
-                  if (!tapped) return;
-                  // The panel exposes a toggle; the repository wants the state to move to. The
-                  // flip happens here so the card never has to know the current value twice —
-                  // and it is read from the live copy, so a tap never argues with a reload that
-                  // landed between the row being drawn and the finger arriving.
-                  const current = liveSet(tapped.id) ?? tapped;
-                  toggleDone(tapped.id, current.done_at === null);
-                }}
-                onAddSet={() => addSet(exercise.id)}
-                onRemoveSet={exercise.sets.length > 0 ? () => removeLastSet(exercise) : undefined}
-                onSwap={() =>
-                  router.push({
-                    pathname: '/exercise-picker',
-                    params: { sessionId, swapExerciseId: exercise.id },
-                  })
+                      );
+                    },
+                  },
+            );
+            return;
+          }
+          setEntry(
+            cardio
+              ? {
+                  id: `${set.id}:distance`,
+                  title: `${label} · ${t('workout.distance')}`,
+                  value: set.distance_m === null ? null : metresToDisplay(set.distance_m, unit),
+                  unit: t(`common.${distanceUnitKey(unit)}`),
+                  onCommit: (value) =>
+                    patchSet(set.id, {
+                      distanceM: displayDistanceToMetres(value, unit),
+                    }),
                 }
-                onShowMuscles={() => showMuscles(seed)}
-                onOpenRecord={() =>
-                  router.push({
-                    pathname: '/exercise/[key]',
-                    params: { key: exercise.exercise_key },
-                  })
-                }
-                subtitle={subtitleFor(seed)}
-                onOptions={() => openExerciseOptions(exercise.id, seed.nameHe)}
-                dragHandle={dragHandle}
-                // Big in focus mode, where it is the fastest way to confirm the machine in
-                // front of you is the one on the screen; a thumbnail in the list, where the
-                // question is only which card is which.
-                visual={<ExerciseVisual exercise={seed} height={focus ? 210 : 52} />}
-                visualLayout={focus ? 'banner' : 'thumb'}
-                onBarbell={seed.equipmentSlug === 'barbell'}
-                onAddWarmup={() => addWarmup(exercise.id, seed.equipmentSlug === 'barbell')}
-                // Offered only with nothing warmed up yet and a working weight to ramp toward.
-                canAddWarmup={
-                  !exercise.sets.some((set) => set.is_warmup === 1) &&
-                  (exercise.sets.find((set) => set.is_warmup === 0)?.weight_kg ?? 0) > 0
-                }
-              />
-            );  };
+              : {
+                  id: `${set.id}:reps`,
+                  title: `${label} · ${t('workout.reps')}`,
+                  value: set.reps,
+                  decimals: false,
+                  // Typing the reps is, nearly always, the moment the set is over:
+                  // the weight is what you load beforehand and this is what you find
+                  // out. So this is where a set ticks itself — see autoComplete.ts.
+                  onCommit: (value) => {
+                    const reps = Math.round(value);
+                    const now = liveSet(set.id) ?? set;
+                    patchSet(
+                      set.id,
+                      { reps },
+                      {
+                        complete: shouldAutoComplete({
+                          done: now.done_at !== null,
+                          field: 'reps',
+                          before: { weightKg: now.weight_kg, reps: now.reps },
+                          after: { weightKg: now.weight_kg, reps },
+                          loadType: seed.loadType,
+                        }),
+                      },
+                    );
+                  },
+                },
+          );
+        }}
+        onToggle={(i) => {
+          const tapped = exercise.sets[i];
+          if (!tapped) return;
+          // The panel exposes a toggle; the repository wants the state to move to. The
+          // flip happens here so the card never has to know the current value twice —
+          // and it is read from the live copy, so a tap never argues with a reload that
+          // landed between the row being drawn and the finger arriving.
+          const current = liveSet(tapped.id) ?? tapped;
+          toggleDone(tapped.id, current.done_at === null);
+        }}
+        onAddSet={() => addSet(exercise.id)}
+        onRemoveSet={exercise.sets.length > 0 ? () => removeLastSet(exercise) : undefined}
+        onSwap={() =>
+          router.push({
+            pathname: '/exercise-picker',
+            params: { sessionId, swapExerciseId: exercise.id },
+          })
+        }
+        onShowMuscles={() => showMuscles(seed)}
+        onOpenRecord={() =>
+          router.push({
+            pathname: '/exercise/[key]',
+            params: { key: exercise.exercise_key },
+          })
+        }
+        subtitle={subtitleFor(seed)}
+        onOptions={() => openExerciseOptions(exercise.id, seed.nameHe)}
+        dragHandle={dragHandle}
+        // Big in focus mode, where it is the fastest way to confirm the machine in
+        // front of you is the one on the screen; a thumbnail in the list, where the
+        // question is only which card is which.
+        visual={<ExerciseVisual exercise={seed} height={focus ? 210 : 52} />}
+        visualLayout={focus ? 'banner' : 'thumb'}
+        onBarbell={seed.equipmentSlug === 'barbell'}
+        onAddWarmup={() => addWarmup(exercise.id, seed.equipmentSlug === 'barbell')}
+        // Offered only with nothing warmed up yet and a working weight to ramp toward.
+        canAddWarmup={
+          !exercise.sets.some((set) => set.is_warmup === 1) &&
+          (exercise.sets.find((set) => set.is_warmup === 0)?.weight_kg ?? 0) > 0
+        }
+      />
+    );
+  };
 
   return (
     <KeyboardSafe style={[styles.screen, { paddingTop: spacing.md }]}>
@@ -1668,12 +1691,19 @@ export default function WorkoutsScreen() {
         }}
       >
         {exercises.length === 0 ? (
-          <EmptyState emoji="➕" title={t('workout.noExercises')} hint={t('workout.noExercisesHint')} />
+          <EmptyState
+            emoji="➕"
+            title={t('workout.noExercises')}
+            hint={t('workout.noExercisesHint')}
+          />
         ) : timing ? (
           <IntervalRunner
             exercises={exercises.map((exercise) => {
               const seed = EXERCISE_BY_KEY.get(exercise.exercise_key);
-              return { name: (isHebrew ? seed?.nameHe : seed?.nameEn) ?? exercise.exercise_key, seed };
+              return {
+                name: (isHebrew ? seed?.nameHe : seed?.nameEn) ?? exercise.exercise_key,
+                seed,
+              };
             })}
             workSeconds={timing.workSeconds}
             restSeconds={timing.restSeconds}
@@ -1715,7 +1745,11 @@ export default function WorkoutsScreen() {
                 together with no rest between them, and showing one of them alone would be the
                 screen arguing with the training. */}
             <Animated.View
-              style={{ transform: [{ translateX: slideX }], gap: spacing.md, marginTop: spacing.md }}
+              style={{
+                transform: [{ translateX: slideX }],
+                gap: spacing.md,
+                marginTop: spacing.md,
+              }}
               {...swipeStation.panHandlers}
             >
               {(groups[activeStation] ?? []).map((index) => {
@@ -1806,104 +1840,104 @@ const createStyles = (colors: ColorPalette) =>
     addExercise: ViewStyle;
     addExerciseText: TextStyle;
   }>({
-  screen: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: spacing.lg },
-  controlsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-    marginTop: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  modeRow: { flexDirection: 'row', gap: 6 },
-  modeChip: {
-    paddingVertical: 4,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surfaceRaised,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-  },
-  modeChipOn: { backgroundColor: colors.accentSoft, borderColor: colors.accentBorder },
-  modeText: { color: colors.textMuted, fontSize: 11 },
-  modeTextOn: { color: colors.accent, fontWeight: '700' },
-  stationNav: {
-    // Pinned against the app's RTL layout on purpose — see the swipe handler for why the strip
-    // runs left to right in every language.
-    direction: 'ltr',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginTop: spacing.md,
-  },
-  stationButton: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surfaceRaised,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stationButtonOff: { opacity: 0.35 },
-  stationGlyph: { color: colors.text, fontSize: 22, lineHeight: 24 },
-  stationMiddle: { flex: 1, alignItems: 'center' },
-  stationCount: {
-    color: colors.textSecondary,
-    fontSize: fontSize.xs,
-    fontVariant: ['tabular-nums'],
-  },
-  stationNext: {
-    color: colors.textFaint,
-    fontSize: 12,
-    marginTop: spacing.md,
-    textAlign: 'center',
-  },
-  pressed: { opacity: 0.7 },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.md,
-  },
-  topMain: { flex: 1, marginEnd: spacing.sm },
-  sessionName: {
-    color: colors.accent,
-    fontSize: fontSize.sm,
-    fontWeight: '700',
-    textAlign: 'auto',
-  },
-  elapsed: { color: colors.text, fontSize: fontSize.xl, fontWeight: '800' },
-  topSub: { color: colors.textMuted, fontSize: fontSize.xs, textAlign: 'auto' },
-  // 4px rail, matching the prototype's sticky header. `sunk` there is the app background, so
-  // the unfilled portion reads as a groove rather than another surface.
-  progressTrack: {
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.bg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    overflow: 'hidden',
-    marginBottom: spacing.md,
-  },
-  progressFill: { height: '100%', backgroundColor: colors.accent, borderRadius: 2 },
-  finishButton: {
-    marginTop: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.accentBorder,
-    backgroundColor: colors.accentSoft,
-    borderRadius: radius.pill,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    alignItems: 'center',
-  },
-  finishButtonText: { color: colors.accent, fontSize: fontSize.md, fontWeight: '700' },
-  addExercise: {
-    marginTop: spacing.sm,
-    paddingVertical: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.accent,
-    alignItems: 'center',
-  },
-  addExerciseText: { color: colors.accent, fontSize: fontSize.md, fontWeight: '700' },
-});
+    screen: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: spacing.lg },
+    controlsRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: spacing.sm,
+      marginTop: spacing.sm,
+      marginBottom: spacing.md,
+    },
+    modeRow: { flexDirection: 'row', gap: 6 },
+    modeChip: {
+      paddingVertical: 4,
+      paddingHorizontal: spacing.md,
+      borderRadius: radius.pill,
+      backgroundColor: colors.surfaceRaised,
+      borderWidth: 1,
+      borderColor: colors.borderSubtle,
+    },
+    modeChipOn: { backgroundColor: colors.accentSoft, borderColor: colors.accentBorder },
+    modeText: { color: colors.textMuted, fontSize: 11 },
+    modeTextOn: { color: colors.accent, fontWeight: '700' },
+    stationNav: {
+      // Pinned against the app's RTL layout on purpose — see the swipe handler for why the strip
+      // runs left to right in every language.
+      direction: 'ltr',
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      marginTop: spacing.md,
+    },
+    stationButton: {
+      width: 44,
+      height: 44,
+      borderRadius: radius.pill,
+      backgroundColor: colors.surfaceRaised,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    stationButtonOff: { opacity: 0.35 },
+    stationGlyph: { color: colors.text, fontSize: 22, lineHeight: 24 },
+    stationMiddle: { flex: 1, alignItems: 'center' },
+    stationCount: {
+      color: colors.textSecondary,
+      fontSize: fontSize.xs,
+      fontVariant: ['tabular-nums'],
+    },
+    stationNext: {
+      color: colors.textFaint,
+      fontSize: 12,
+      marginTop: spacing.md,
+      textAlign: 'center',
+    },
+    pressed: { opacity: 0.7 },
+    topBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: spacing.md,
+    },
+    topMain: { flex: 1, marginEnd: spacing.sm },
+    sessionName: {
+      color: colors.accent,
+      fontSize: fontSize.sm,
+      fontWeight: '700',
+      textAlign: 'auto',
+    },
+    elapsed: { color: colors.text, fontSize: fontSize.xl, fontWeight: '800' },
+    topSub: { color: colors.textMuted, fontSize: fontSize.xs, textAlign: 'auto' },
+    // 4px rail, matching the prototype's sticky header. `sunk` there is the app background, so
+    // the unfilled portion reads as a groove rather than another surface.
+    progressTrack: {
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: colors.bg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      overflow: 'hidden',
+      marginBottom: spacing.md,
+    },
+    progressFill: { height: '100%', backgroundColor: colors.accent, borderRadius: 2 },
+    finishButton: {
+      marginTop: spacing.lg,
+      borderWidth: 1,
+      borderColor: colors.accentBorder,
+      backgroundColor: colors.accentSoft,
+      borderRadius: radius.pill,
+      paddingVertical: spacing.md,
+      paddingHorizontal: spacing.lg,
+      alignItems: 'center',
+    },
+    finishButtonText: { color: colors.accent, fontSize: fontSize.md, fontWeight: '700' },
+    addExercise: {
+      marginTop: spacing.sm,
+      paddingVertical: spacing.md,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.accent,
+      alignItems: 'center',
+    },
+    addExerciseText: { color: colors.accent, fontSize: fontSize.md, fontWeight: '700' },
+  });

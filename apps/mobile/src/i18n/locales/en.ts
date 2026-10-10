@@ -607,6 +607,16 @@ export const en = {
       failed: 'Something went wrong. Nothing was changed — try again.',
     },
   },
+  syncTrouble: {
+    failed:
+      'Syncing with the cloud did not work. Your data is safe on this phone, and the app will try again the next time it is opened.',
+    refused_one:
+      'One item was not saved to the cloud. It is safe on this phone, and the app will try to send it again.',
+    refused_other:
+      '{{count}} items were not saved to the cloud. They are safe on this phone, and the app will try to send them again.',
+    retry: 'Try now',
+    retrying: 'Syncing…',
+  },
   starter: {
     welcomeTitle: 'A programme to start with',
     welcomeSubtitle:
@@ -679,6 +689,9 @@ export const en = {
   },
   history: {
     sessionTitle: 'Workout',
+    share: 'Share',
+    shareMore: 'and {{count}} more exercises',
+    shareFooter: 'Logged with NovaFit',
     period: {
       week: 'Last week',
       month: 'Last month',

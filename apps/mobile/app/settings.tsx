@@ -73,6 +73,7 @@ import {
   scheduleWeeklyReminder,
 } from '../src/notifications.js';
 import { useAvatar } from '../src/profile/useAvatar.js';
+import { SyncTrouble } from '../src/sync/SyncTrouble.js';
 import { useTheme, type ThemePreference } from '../src/ThemeProvider.js';
 import { fontSize, fontWeight, radius, shadow, spacing, type ColorPalette } from '../src/theme.js';
 import { useUnits } from '../src/UnitsProvider.js';
@@ -193,6 +194,10 @@ export default function SettingsScreen() {
       showsVerticalScrollIndicator={false}
     >
       <ScreenHeader title={t('settings.title')} />
+
+      {/* Nothing, unless a sync has failed. The sync card that used to live on this screen
+          said something every day; this says something only on the day it matters. */}
+      <SyncTrouble />
 
       {session ? (
         <FadeSlideIn style={styles.heroShadow}>

@@ -19,6 +19,7 @@ import { useTranslation } from 'react-i18next';
 import {
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -31,9 +32,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
 import { useUnit } from '../../src/UnitsProvider.js';
 import {
+  distanceUnitKey,
   formatVolume,
+  kgToDisplay,
+  metresToDisplay,
   weightUnitKey,
 } from '../../src/units.js';
+import { bestSetIndex, formatSet } from '../../src/workout/setFormat.js';
+import { workoutShareText } from '../../src/workout/shareText.js';
 import { sessionLoad } from '@fit/shared/calculations';
 import { useActionSheet } from '../../src/components/ActionSheetProvider.js';
 import { ExerciseCard, type PreviousSet } from '../../src/components/ExerciseCard.js';
@@ -288,7 +294,10 @@ export default function SessionDetailScreen() {
   /** "Thursday, 17 September · 19:24 · 51 min" — placed, timed and measured in one line. */
   const started = new Date(session.started_at);
   const minutes = session.ended_at
-    ? Math.max(1, Math.round((Date.parse(session.ended_at) - Date.parse(session.started_at)) / 60000))
+    ? Math.max(
+        1,
+        Math.round((Date.parse(session.ended_at) - Date.parse(session.started_at)) / 60000),
+      )
     : null;
   const when = [
     started.toLocaleDateString(i18n.language, { weekday: 'long', day: 'numeric', month: 'long' }),
@@ -306,6 +315,64 @@ export default function SessionDetailScreen() {
         .reduce((v, s) => v + (s.weight_kg ?? 0) * (s.reps ?? 0), 0),
     0,
   );
+
+  /**
+   * Hand the workout to the system's share sheet, as text. See `shareText.ts` for what it says
+   * and why it is text. Each lift is told by its best set, in the units this person reads.
+   */
+  const share = () => {
+    const setLabels = {
+      weight: t(`common.${weightUnitKey(unit)}`),
+      distance: t(`common.${distanceUnitKey(unit)}`),
+      seconds: t('workout.seconds'),
+    };
+    const message = workoutShareText(
+      {
+        title: session.name?.trim() || t('history.sessionTitle'),
+        when: started.toLocaleDateString(i18n.language, {
+          weekday: 'long',
+          day: 'numeric',
+          month: 'long',
+        }),
+        minutes,
+        sets: totalSets,
+        volume:
+          volume > 0 ? `${formatVolume(volume, unit)} ${t(`common.${weightUnitKey(unit)}`)}` : null,
+        exercises: exercises.map((exercise) => {
+          const seed = EXERCISE_BY_KEY.get(exercise.exercise_key);
+          const best = bestSetIndex(exercise.sets);
+          const bestSet = best === null ? undefined : exercise.sets[best];
+          return {
+            name: seed ? (isHebrew ? seed.nameHe : seed.nameEn) : exercise.exercise_key,
+            best: bestSet
+              ? formatSet(
+                  {
+                    ...bestSet,
+                    weight_kg:
+                      bestSet.weight_kg === null ? null : kgToDisplay(bestSet.weight_kg, unit),
+                    distance_m:
+                      bestSet.distance_m === null
+                        ? null
+                        : metresToDisplay(bestSet.distance_m, unit),
+                  },
+                  setLabels,
+                )
+              : null,
+            sets: exercise.sets.filter((set) => set.is_warmup === 0).length,
+          };
+        }),
+      },
+      {
+        minutes: (count) => `${count} ${t('history.minutes')}`,
+        sets: (count) => `${count} ${t('history.sets')}`,
+        more: (count) => t('history.shareMore', { count }),
+        footer: t('history.shareFooter'),
+      },
+    );
+    // Dismissing the sheet is not an error, and a share that could not be opened has nothing
+    // useful to say to someone who only wanted to send a message.
+    void Share.share({ message }).catch(() => undefined);
+  };
 
   return (
     <KeyboardSafe>
@@ -366,8 +433,30 @@ export default function SessionDetailScreen() {
         {/* Only the edit toggle, and only when this was opened to be edited. Repeating lives
             in the history row's own menu now: it starts a new workout rather than changing this
             one, which made it the odd button out on a page about what already happened. */}
+        {/* Sharing is for a workout that is over: one still open has nothing to report yet. */}
+        {session.ended_at && !canEdit ? (
+          <View style={styles.actions}>
+            <Pressable
+              onPress={share}
+              style={({ pressed }) => [styles.action, pressed && styles.pressed]}
+              accessibilityRole="button"
+            >
+              <Text style={styles.actionText}>↗ {t('history.share')}</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
         {canEdit ? (
           <View style={styles.actions}>
+            {session.ended_at ? (
+              <Pressable
+                onPress={share}
+                style={({ pressed }) => [styles.action, pressed && styles.pressed]}
+                accessibilityRole="button"
+              >
+                <Text style={styles.actionText}>↗ {t('history.share')}</Text>
+              </Pressable>
+            ) : null}
             <Pressable
               onPress={() => setEditing((current) => !current)}
               style={({ pressed }) => [
@@ -470,59 +559,63 @@ const createStyles = (colors: ColorPalette) =>
     secondaryButton: ViewStyle;
     secondaryButtonText: TextStyle;
   }>({
-  screen: { flex: 1, backgroundColor: colors.bg },
-  content: { paddingHorizontal: spacing.lg, gap: spacing.md },
-  centered: { flex: 1, backgroundColor: colors.bg, alignItems: 'center' },
-  muted: { color: colors.textMuted, fontSize: fontSize.sm },
-  header: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  back: { color: colors.accent, fontSize: fontSize.xl, fontWeight: '700' },
-  // The name is the heading of the card, and a field only once it is tapped: no box, no border,
-  // the type size of a title. It is read every time this screen opens and edited almost never.
-  nameInput: {
-    color: colors.text,
-    fontSize: fontSize.xl,
-    fontWeight: '700',
-    padding: 0,
-    textAlign: 'auto',
-  },
-  when: { color: colors.textMuted, fontSize: fontSize.sm, marginTop: 2, textAlign: 'auto' },
-  tiles: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
-  effortChip: {
-    alignSelf: 'flex-start',
-    marginTop: spacing.sm,
-    paddingVertical: spacing.xxs,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surfaceRaised,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-  },
-  effortText: { color: colors.textSecondary, fontSize: fontSize.xs, fontVariant: ['tabular-nums'] },
-  actions: { flexDirection: 'row', gap: spacing.sm },
-  action: {
-    flex: 1,
-    paddingVertical: spacing.md,
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    ...shadow(colors.shadow).card,
-    alignItems: 'center',
-  },
-  actionPrimary: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
-  actionText: { color: colors.textSecondary, fontSize: fontSize.sm, fontWeight: '700' },
-  actionPrimaryText: { color: colors.accent, fontSize: fontSize.sm, fontWeight: '700' },
-  pressed: { opacity: 0.7 },
-  addExerciseButton: {
-    marginTop: spacing.md,
-    paddingVertical: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderStyle: 'dashed',
-    alignItems: 'center',
-  },
-  addExerciseText: { color: colors.accent, fontSize: fontSize.sm, fontWeight: '700' },
-  deleteButton: { marginTop: spacing.xl, padding: spacing.md, alignItems: 'center' },
-  deleteButtonText: { color: colors.danger, fontSize: fontSize.sm },
-  secondaryButton: { marginTop: spacing.lg, padding: spacing.md },
-  secondaryButtonText: { color: colors.accent, fontSize: fontSize.md },
-});
+    screen: { flex: 1, backgroundColor: colors.bg },
+    content: { paddingHorizontal: spacing.lg, gap: spacing.md },
+    centered: { flex: 1, backgroundColor: colors.bg, alignItems: 'center' },
+    muted: { color: colors.textMuted, fontSize: fontSize.sm },
+    header: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+    back: { color: colors.accent, fontSize: fontSize.xl, fontWeight: '700' },
+    // The name is the heading of the card, and a field only once it is tapped: no box, no border,
+    // the type size of a title. It is read every time this screen opens and edited almost never.
+    nameInput: {
+      color: colors.text,
+      fontSize: fontSize.xl,
+      fontWeight: '700',
+      padding: 0,
+      textAlign: 'auto',
+    },
+    when: { color: colors.textMuted, fontSize: fontSize.sm, marginTop: 2, textAlign: 'auto' },
+    tiles: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
+    effortChip: {
+      alignSelf: 'flex-start',
+      marginTop: spacing.sm,
+      paddingVertical: spacing.xxs,
+      paddingHorizontal: spacing.sm,
+      borderRadius: radius.pill,
+      backgroundColor: colors.surfaceRaised,
+      borderWidth: 1,
+      borderColor: colors.borderSubtle,
+    },
+    effortText: {
+      color: colors.textSecondary,
+      fontSize: fontSize.xs,
+      fontVariant: ['tabular-nums'],
+    },
+    actions: { flexDirection: 'row', gap: spacing.sm },
+    action: {
+      flex: 1,
+      paddingVertical: spacing.md,
+      backgroundColor: colors.surface,
+      borderRadius: radius.lg,
+      ...shadow(colors.shadow).card,
+      alignItems: 'center',
+    },
+    actionPrimary: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
+    actionText: { color: colors.textSecondary, fontSize: fontSize.sm, fontWeight: '700' },
+    actionPrimaryText: { color: colors.accent, fontSize: fontSize.sm, fontWeight: '700' },
+    pressed: { opacity: 0.7 },
+    addExerciseButton: {
+      marginTop: spacing.md,
+      paddingVertical: spacing.md,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderStyle: 'dashed',
+      alignItems: 'center',
+    },
+    addExerciseText: { color: colors.accent, fontSize: fontSize.sm, fontWeight: '700' },
+    deleteButton: { marginTop: spacing.xl, padding: spacing.md, alignItems: 'center' },
+    deleteButtonText: { color: colors.danger, fontSize: fontSize.sm },
+    secondaryButton: { marginTop: spacing.lg, padding: spacing.md },
+    secondaryButtonText: { color: colors.accent, fontSize: fontSize.md },
+  });
