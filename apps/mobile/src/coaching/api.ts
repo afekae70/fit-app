@@ -20,6 +20,7 @@ import {
   type CoachDay,
   type CoachPlan,
 } from './planDocument.js';
+import { parseSessions, type CoachSession } from './sessionDocument.js';
 
 export type CoachingError =
   /** The functions are not on the server: migration 0007 has not been run on this project. */
@@ -135,7 +136,9 @@ export function parseStatus(raw: unknown): CoachingStatus {
     code: typeof status.code === 'string' && status.code !== '' ? status.code : null,
     isAdmin: status.is_admin === true,
     coach: parsePerson(status.coach),
-    trainees: trainees.map(parsePerson).filter((person): person is CoachingPerson => person !== null),
+    trainees: trainees
+      .map(parsePerson)
+      .filter((person): person is CoachingPerson => person !== null),
   };
 }
 
@@ -226,8 +229,24 @@ export function createCoachingApi(client: RpcClient) {
     deleteDay: (traineeId: string, dayId: string) =>
       call('coach_delete', { p_trainee: traineeId, p_kind: 'day', p_id: dayId }, nothing),
 
+    /**
+     * A trainee's finished workouts that started at or after `from` and before `to` (moments,
+     * as ISO text), newest first. Read-only: there is no call that changes one. Answers
+     * `not_available` on a server that has not been given 0012.
+     */
+    sessions: (
+      traineeId: string,
+      from: string,
+      to: string,
+    ): Promise<CoachingResult<CoachSession[]>> =>
+      call('coach_get_sessions', { p_trainee: traineeId, p_from: from, p_to: to }, parseSessions),
+
     /** A trainee's calendar between two local dates (`YYYY-MM-DD`), inclusive. */
-    schedule: (traineeId: string, from: string, to: string): Promise<CoachingResult<CoachCalendar>> =>
+    schedule: (
+      traineeId: string,
+      from: string,
+      to: string,
+    ): Promise<CoachingResult<CoachCalendar>> =>
       call('coach_get_schedule', { p_trainee: traineeId, p_from: from, p_to: to }, parseSchedule),
     /**
      * Say what one date holds for a trainee, replacing whatever it held: those workouts in that

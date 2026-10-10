@@ -53,6 +53,11 @@ import {
   type DayTiming,
   type OwnWorkout,
 } from '../../src/coaching/planDocument.js';
+import {
+  dayOutcome,
+  sessionsByDay,
+  type CoachSession,
+} from '../../src/coaching/sessionDocument.js';
 import { coachingErrorKey, useCoachingApi } from '../../src/coaching/useCoachingApi.js';
 import { useActionSheet } from '../../src/components/ActionSheetProvider.js';
 import { FadeSlideIn } from '../../src/components/motion.js';
@@ -69,7 +74,14 @@ import {
 import { hapticLight, hapticSuccess } from '../../src/haptics.js';
 import { isRtlLanguage, type Language } from '../../src/i18n/index.js';
 import { useTheme } from '../../src/ThemeProvider.js';
-import { fontSize, fontWeight, radius, shadow, spacing, type ColorPalette } from '../../src/theme.js';
+import {
+  fontSize,
+  fontWeight,
+  radius,
+  shadow,
+  spacing,
+  type ColorPalette,
+} from '../../src/theme.js';
 
 /** One of the coach's own workouts, as listed: which row it is, how to name it, how it is timed. */
 interface OwnWorkoutChoice extends DayTiming {
@@ -96,6 +108,9 @@ export default function TraineeCalendarScreen() {
   const [month, setMonth] = useState(() => monthKey(today));
   const [plans, setPlans] = useState<CoachPlan[] | null>(null);
   const [calendar, setCalendar] = useState<CoachCalendar | null>(null);
+  // The days the trainee trained, for the marks on the grid. Null until known — and it stays
+  // null on a server that cannot say (0012 not run), where the calendar simply has no marks.
+  const [trained, setTrained] = useState<ReadonlyMap<string, readonly CoachSession[]> | null>(null);
   const [mine, setMine] = useState<OwnWorkoutChoice[]>([]);
   const [error, setError] = useState<CoachingError | null>(null);
   // The date being written, so that only its own cell shows it.
@@ -120,6 +135,13 @@ export default function TraineeCalendarScreen() {
     setPlans(planList.value);
     setCalendar(schedule.value);
     setError(null);
+
+    // After the calendar is on screen, and never in its way: what was done is extra, and a
+    // failure to fetch it is not a failure of the calendar.
+    const until = parseLocalDate(last);
+    until.setDate(until.getDate() + 1);
+    const done = await api.sessions(id, parseLocalDate(first).toISOString(), until.toISOString());
+    setTrained(done.ok ? sessionsByDay(done.value) : null);
   }, [api, id, first, last]);
 
   useFocusEffect(
@@ -256,7 +278,9 @@ export default function TraineeCalendarScreen() {
       const choice = await ask({
         title,
         message:
-          held === null ? t('coaching.dayRest') : workouts.map((planDayId) => nameOf(planDayId)).join(' · '),
+          held === null
+            ? t('coaching.dayRest')
+            : workouts.map((planDayId) => nameOf(planDayId)).join(' · '),
         actions,
       });
       if (choice === null) return;
@@ -398,13 +422,27 @@ export default function TraineeCalendarScreen() {
                     : workouts.length > 0
                       ? nameOf(workouts[0]!)
                       : '';
+                const outcome = trained
+                  ? dayOutcome({
+                      date: cell.date,
+                      today,
+                      planned: held,
+                      trained: (trained.get(cell.date)?.length ?? 0) > 0,
+                    })
+                  : null;
+                const mark =
+                  outcome === 'done' || outcome === 'missed' || outcome === 'extra'
+                    ? outcome
+                    : null;
                 return (
                   <Pressable
                     key={cell.date}
                     onPress={() => void pickFor(cell.date)}
                     disabled={saving !== null}
                     accessibilityRole="button"
-                    accessibilityLabel={`${cell.date} ${label}`}
+                    accessibilityLabel={[cell.date, label, mark ? t(`coaching.mark_${mark}`) : null]
+                      .filter(Boolean)
+                      .join(' ')}
                     style={({ pressed }) => [
                       styles.cell,
                       !cell.inMonth && styles.cellOutside,
@@ -431,6 +469,9 @@ export default function TraineeCalendarScreen() {
                         {workouts.length > 1 ? (
                           <Text style={styles.more}>+{workouts.length - 1}</Text>
                         ) : null}
+                        {mark === 'done' ? <Text style={styles.markDone}>✓</Text> : null}
+                        {mark === 'missed' ? <View style={styles.markMissed} /> : null}
+                        {mark === 'extra' ? <View style={styles.markExtra} /> : null}
                       </>
                     )}
                   </Pressable>
@@ -439,6 +480,24 @@ export default function TraineeCalendarScreen() {
             </View>
           ))
         )}
+
+        {/* What the three marks mean, once there are marks to explain. */}
+        {trained ? (
+          <View style={styles.legend}>
+            <View style={styles.legendItem}>
+              <Text style={styles.legendDone}>✓</Text>
+              <Text style={styles.legendText}>{t('coaching.mark_done')}</Text>
+            </View>
+            <View style={styles.legendItem}>
+              <View style={styles.legendMissed} />
+              <Text style={styles.legendText}>{t('coaching.mark_missed')}</Text>
+            </View>
+            <View style={styles.legendItem}>
+              <View style={styles.legendExtra} />
+              <Text style={styles.legendText}>{t('coaching.mark_extra')}</Text>
+            </View>
+          </View>
+        ) : null}
       </FadeSlideIn>
     </ScrollView>
   );
@@ -465,6 +524,15 @@ const createStyles = (colors: ColorPalette) =>
     dayLabel: TextStyle;
     dayLabelPlanned: TextStyle;
     more: TextStyle;
+    markDone: TextStyle;
+    markMissed: ViewStyle;
+    markExtra: ViewStyle;
+    legend: ViewStyle;
+    legendItem: ViewStyle;
+    legendDone: TextStyle;
+    legendMissed: ViewStyle;
+    legendExtra: ViewStyle;
+    legendText: TextStyle;
     pressed: ViewStyle;
   }>({
     screen: { flex: 1 },
@@ -539,5 +607,51 @@ const createStyles = (colors: ColorPalette) =>
       fontSize: 9,
       fontWeight: fontWeight.bold,
     },
+    // In the corner opposite the "+1", so a day with two workouts that was done shows both.
+    markDone: {
+      position: 'absolute',
+      top: 1,
+      start: 4,
+      color: colors.accent,
+      fontSize: 11,
+      fontWeight: fontWeight.bold,
+    },
+    markMissed: {
+      position: 'absolute',
+      top: 5,
+      start: 5,
+      width: 7,
+      height: 7,
+      borderRadius: 4,
+      borderWidth: 1.5,
+      borderColor: colors.danger,
+    },
+    markExtra: {
+      position: 'absolute',
+      top: 5,
+      start: 5,
+      width: 7,
+      height: 7,
+      borderRadius: 4,
+      backgroundColor: colors.warning,
+    },
+    legend: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      justifyContent: 'center',
+      gap: spacing.lg,
+      marginTop: spacing.md,
+    },
+    legendItem: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+    legendDone: { color: colors.accent, fontSize: 12, fontWeight: fontWeight.bold },
+    legendMissed: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      borderWidth: 1.5,
+      borderColor: colors.danger,
+    },
+    legendExtra: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.warning },
+    legendText: { color: colors.textMuted, fontSize: fontSize.xs },
     pressed: { opacity: 0.55 },
   });

@@ -25,6 +25,7 @@ import {
 } from 'react-native';
 import {
   CalendarBlank,
+  ChartLineUp,
   ListChecks,
   PencilSimple,
   Plus,
@@ -177,6 +178,27 @@ export default function TraineeScreen() {
               onPress={() =>
                 router.push({
                   pathname: '/trainee-calendar/[id]',
+                  params: { id, name: name ?? '' },
+                })
+              }
+            />
+          </SettingsSection>
+        ) : null}
+
+        {/* Second: what came of the plan. The calendar says what should happen, this says
+            whether it did. */}
+        {plans ? (
+          <SettingsSection
+            icon={ChartLineUp}
+            title={t('coaching.history')}
+            hint={t('coaching.historyHint')}
+            index={1}
+          >
+            <LinkRow
+              label={t('coaching.open')}
+              onPress={() =>
+                router.push({
+                  pathname: '/trainee-history/[id]',
                   params: { id, name: name ?? '' },
                 })
               }

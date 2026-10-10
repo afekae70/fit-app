@@ -299,3 +299,107 @@ describe('profile pictures in file storage', () => {
     expect(sql).toMatch(/ON CONFLICT \(id\) DO UPDATE\s+SET public = false/);
   });
 });
+
+/**
+ * The functions a coach reaches a trainee's data through.
+ *
+ * These run with their owner's rights and step around row level security entirely — that is
+ * what lets one account read another's rows at all. So the whole of the protection is a single
+ * line at the top of each: `coach_require_link`, which refuses anyone who is not, right now,
+ * the coach that trainee connected to. A function that took a trainee's id and forgot that
+ * line would hand any signed-in account any other account's data, and nothing would look
+ * wrong: it would work perfectly for every real coach.
+ */
+describe('functions that act on a trainee', () => {
+  interface Fn {
+    name: string;
+    params: string;
+    /** From the parameter list to the end of the body: the attributes and the code. */
+    rest: string;
+  }
+
+  /** The definition in force: a function replaced by a later migration is read as replaced. */
+  const functions = new Map<string, Fn>();
+  for (const m of sql.matchAll(
+    /CREATE OR REPLACE FUNCTION public\.([a-z_]+)\s*\(([^)]*)\)([\s\S]*?)\n\$\$;/g,
+  )) {
+    functions.set(m[1]!, { name: m[1]!, params: m[2]!, rest: m[3]! });
+  }
+  // Removed by 0008, which made being a coach the owner's decision.
+  for (const m of sql.matchAll(/DROP FUNCTION IF EXISTS public\.([a-z_]+)/g))
+    functions.delete(m[1]!);
+
+  const onTrainee = [...functions.values()].filter((fn) => /\bp_trainee\s+uuid\b/.test(fn.params));
+
+  it('finds them', () => {
+    expect(onTrainee.map((fn) => fn.name).sort()).toEqual([
+      'coach_delete',
+      'coach_get_plans',
+      'coach_get_schedule',
+      'coach_get_sessions',
+      'coach_remove_trainee',
+      'coach_require_link',
+      'coach_save_day',
+      'coach_save_plan',
+      'coach_set_schedule',
+    ]);
+  });
+
+  it.each(
+    onTrainee
+      // The check itself, and the one function whose whole job is to delete the caller's own
+      // link, which it finds by the caller's id.
+      .filter((fn) => fn.name !== 'coach_require_link' && fn.name !== 'coach_remove_trainee')
+      .map((fn): [string, Fn] => [fn.name, fn]),
+  )('%s checks the link before it does anything else', (_name, fn) => {
+    expect(fn.rest).toMatch(/\nBEGIN\s+PERFORM public\.coach_require_link\(p_trainee\);/);
+  });
+
+  it('removes a trainee only from the caller', () => {
+    const body = functions.get('coach_remove_trainee')?.rest ?? '';
+    expect(body).toMatch(/DELETE FROM public\.coach_links/);
+    expect(body).toMatch(/coach_id = me/);
+    expect(body).toMatch(/trainee_id = p_trainee/);
+  });
+
+  it.each(onTrainee.map((fn): [string, Fn] => [fn.name, fn]))(
+    '%s runs with a fixed search path',
+    (_name, fn) => {
+      // A SECURITY DEFINER function that resolves names through the caller's search path can be
+      // made to run the caller's own function in place of the one it meant.
+      expect(fn.rest).toMatch(/SECURITY DEFINER/);
+      expect(fn.rest).toMatch(/SET search_path = ''/);
+    },
+  );
+
+  describe('reading finished workouts', () => {
+    const fn = functions.get('coach_get_sessions');
+
+    it('only reads', () => {
+      expect(fn?.rest).not.toMatch(/\b(INSERT|UPDATE|DELETE)\b/);
+    });
+
+    it('does not send the body weight or anybody’s notes', () => {
+      // The app tells a trainee their coach sees neither. `bodyweight_kg` is a column of the
+      // very table this reads, one word away from being included.
+      expect(fn?.rest).toMatch(/public\.workout_sessions/);
+      expect(fn?.rest).not.toMatch(/bodyweight/i);
+      expect(fn?.rest).not.toMatch(/\bnotes\b/i);
+      expect(fn?.rest).not.toMatch(/ws\.\*|\bst\.\*|\be\.\*/);
+    });
+
+    it('sends only this trainee’s, only finished, only sets that were done, and not without limit', () => {
+      expect(fn?.rest).toMatch(/ws\.user_id = p_trainee/);
+      expect(fn?.rest).toMatch(/ws\.ended_at IS NOT NULL/);
+      expect(fn?.rest).toMatch(/st\.done_at IS NOT NULL/);
+      expect(fn?.rest).toMatch(/LIMIT \d+/);
+    });
+
+    it('is closed to anyone not signed in', () => {
+      const signature = String.raw`public\.coach_get_sessions\(uuid, timestamptz, timestamptz\)`;
+      expect(sql).toMatch(new RegExp(`REVOKE ALL ON FUNCTION ${signature} FROM PUBLIC;`));
+      expect(sql).toMatch(new RegExp(`REVOKE ALL ON FUNCTION ${signature} FROM anon;`));
+      expect(sql).toMatch(new RegExp(`GRANT EXECUTE ON FUNCTION ${signature} TO authenticated;`));
+    });
+  });
+});

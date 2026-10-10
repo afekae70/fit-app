@@ -482,15 +482,15 @@ export const en = {
     roleAdmin: 'Manager',
     myCoach: 'My coach',
     myCoachHint:
-      'Got a code from a coach? Enter it here and they can see and edit your training plans',
+      'Got a code from a coach? Enter it here and they can build your training plans and see the workouts you do',
     coachCanSee:
-      'Your coach sees and edits your training plans only: the groups, the workouts and the exercises. Not your workout history, not your weight and not your profile.',
+      'Your coach sees and edits your training plans and your training calendar, and sees the workouts you have done: the exercises, sets and weights. They do not see your body weight, your measurements, the notes you write or your profile.',
     codePlaceholder: 'Coach code',
     join: 'Connect to coach',
     leave: 'Disconnect from coach',
     leaveTitle: 'Disconnect from your coach?',
     leaveBody:
-      '{{name}} will no longer be able to see or edit your plans. The plans themselves stay with you.',
+      '{{name}} will no longer be able to see or edit your plans, or see your workouts. The plans themselves stay with you.',
     myTrainees: 'My trainees',
     myTraineesHint: 'Give your code to your trainees. Everyone who enters it appears here',
     manageCoaches: 'Manage coaches',
@@ -513,6 +513,33 @@ export const en = {
     traineeLead:
       "These are this trainee's training plans. Anything you save reaches their phone the next time it syncs.",
     noGroups: 'This trainee has no plans yet. Add a first group below.',
+    history: 'What was done',
+    historyHint: 'The workouts the trainee finished, against what was planned',
+    historyLead:
+      'The workouts the trainee finished in the last two months. Tap one to see its exercises and sets.',
+    historyThisWeek: 'This week',
+    historyPlannedDone: 'planned workouts done',
+    historyNothingPlanned: 'Nothing was planned for this week.',
+    historyMissed_one: 'One planned workout was not done',
+    historyMissed_other: '{{count}} planned workouts were not done',
+    historyExtra_one: 'And one workout outside the plan',
+    historyExtra_other: 'And {{count}} workouts outside the plan',
+    historyEmpty: 'No workouts yet',
+    historyEmptyHint:
+      'A workout appears here once the trainee has finished it and their phone has synced.',
+    historyUnnamed: 'Workout',
+    historyUnnamedExercise: 'Exercise',
+    historyNoSets: 'No sets were logged in this workout.',
+    historyMinutes_one: '1 min',
+    historyMinutes_other: '{{count}} min',
+    historySets_one: '1 set',
+    historySets_other: '{{count}} sets',
+    historyEffort: 'effort {{rpe}}',
+    historyNotAvailable:
+      'Seeing finished workouts needs a small update on the server. Ask whoever runs the app.',
+    mark_done: 'Done',
+    mark_missed: 'Not done',
+    mark_extra: 'Outside the plan',
     calendar: 'Training calendar',
     calendarHint: 'Set which workout the trainee does on each day',
     calendarLead:

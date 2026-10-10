@@ -33,6 +33,24 @@ import {
 import { bestSetIndex, formatSet } from '../../workout/setFormat.js';
 import { ExerciseVisual } from '../ExerciseVisual.js';
 
+/**
+ * What of a set this card reads. Narrower than a whole row on purpose: a coach looking at a
+ * trainee's workout is handed these fields by the server and nothing else, and the card should
+ * be drawable from exactly that.
+ */
+export type SummarySet = Pick<
+  SetRow,
+  | 'id'
+  | 'weight_kg'
+  | 'reps'
+  | 'duration_seconds'
+  | 'distance_m'
+  | 'rpe'
+  | 'is_warmup'
+  | 'is_drop'
+  | 'to_failure'
+>;
+
 export function SessionExerciseSummary({
   seed,
   name,
@@ -40,7 +58,7 @@ export function SessionExerciseSummary({
 }: {
   seed: ExerciseSeed | undefined;
   name: string;
-  sets: readonly SetRow[];
+  sets: readonly SummarySet[];
 }) {
   const { t } = useTranslation();
   const { colors } = useTheme();
