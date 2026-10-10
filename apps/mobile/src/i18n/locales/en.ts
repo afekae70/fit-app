@@ -484,7 +484,7 @@ export const en = {
     myCoachHint:
       'Got a code from a coach? Enter it here and they can build your training plans and see the workouts you do',
     coachCanSee:
-      'Your coach sees and edits your training plans and your training calendar, and sees the workouts you have done: the exercises, sets and weights. They do not see your body weight, your measurements, the notes you write or your profile.',
+      'Your coach sees and edits your training plans and your training calendar, and sees the workouts you have done: the exercises, sets, weights and the note you write on a workout. They do not see your body weight, your measurements or your profile.',
     codePlaceholder: 'Coach code',
     join: 'Connect to coach',
     leave: 'Disconnect from coach',
@@ -528,6 +528,8 @@ export const en = {
     historyEmptyHint:
       'A workout appears here once the trainee has finished it and their phone has synced.',
     historyUnnamed: 'Workout',
+    historyNote: 'The trainee\u2019s note',
+    exerciseNotePlaceholder: 'A note to the trainee about this exercise (optional)',
     historyUnnamedExercise: 'Exercise',
     historyNoSets: 'No sets were logged in this workout.',
     historyMinutes_one: '1 min',
@@ -690,6 +692,9 @@ export const en = {
   history: {
     sessionTitle: 'Workout',
     share: 'Share',
+    note: 'Note on this workout',
+    notePlaceholder: 'How did it go? Anything worth remembering next time',
+    noteHint: 'If you have a coach, they will see this note.',
     shareMore: 'and {{count}} more exercises',
     shareFooter: 'Logged with NovaFit',
     period: {

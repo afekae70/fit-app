@@ -63,6 +63,8 @@ import {
   removeExerciseFromSession,
   removeSet,
   renameSession,
+  SESSION_NOTE_LIMIT,
+  setSessionNotes,
   updateSet,
   type SessionExerciseWithSets,
   type WorkoutSessionRow,
@@ -98,6 +100,7 @@ export default function SessionDetailScreen() {
   const [exercises, setExercises] = useState<SessionExerciseWithSets[]>([]);
   const [previous, setPrevious] = useState<Record<string, PreviousSet[] | null>>({});
   const [nameDraft, setNameDraft] = useState('');
+  const [noteDraft, setNoteDraft] = useState('');
   const [loading, setLoading] = useState(true);
   // Opened to be read unless the history menu said otherwise — see `canEdit`.
   const [editing, setEditing] = useState(false);
@@ -119,6 +122,7 @@ export default function SessionDetailScreen() {
     setSession(detail.session);
     setExercises(detail.exercises);
     setNameDraft(detail.session?.name ?? '');
+    setNoteDraft(detail.session?.notes ?? '');
 
     const nextPrevious: Record<string, PreviousSet[] | null> = {};
     for (const exercise of detail.exercises) {
@@ -255,6 +259,16 @@ export default function SessionDetailScreen() {
     if (!id) return;
     const db = await getExecutor();
     await renameSession(db, userId, id, nameDraft);
+    await load();
+  };
+
+  const saveNote = async () => {
+    if (!id) return;
+    // Only when it differs: leaving the field without typing must not stamp the workout as
+    // changed and send it to the cloud again for nothing.
+    if ((noteDraft.trim() || null) === (session?.notes?.trim() || null)) return;
+    const db = await getExecutor();
+    await setSessionNotes(db, userId, id, noteDraft);
     await load();
   };
 
@@ -473,6 +487,27 @@ export default function SessionDetailScreen() {
           </View>
         ) : null}
 
+        {/* A note on the workout, for whoever reads it later: the person who did it, and their
+            coach if they have one — which the line under the field says, because a note is the
+            one thing here a person might write differently knowing who else will see it. Only
+            once the workout is over: during it, the screen is for logging. */}
+        {session.ended_at ? (
+          <Card>
+            <SectionTitle>{t('history.note')}</SectionTitle>
+            <TextInput
+              value={noteDraft}
+              onChangeText={setNoteDraft}
+              onEndEditing={() => void saveNote()}
+              placeholder={t('history.notePlaceholder')}
+              placeholderTextColor={colors.textMuted}
+              style={styles.noteInput}
+              maxLength={SESSION_NOTE_LIMIT}
+              multiline
+            />
+            <Text style={styles.noteHint}>{t('history.noteHint')}</Text>
+          </Card>
+        ) : null}
+
         <SectionTitle>{t('history.exercises')}</SectionTitle>
 
         {editing
@@ -542,6 +577,8 @@ const createStyles = (colors: ColorPalette) =>
     header: ViewStyle;
     back: TextStyle;
     nameInput: TextStyle;
+    noteInput: TextStyle;
+    noteHint: TextStyle;
     when: TextStyle;
     tiles: ViewStyle;
     effortChip: ViewStyle;
@@ -567,6 +604,23 @@ const createStyles = (colors: ColorPalette) =>
     back: { color: colors.accent, fontSize: fontSize.xl, fontWeight: '700' },
     // The name is the heading of the card, and a field only once it is tapped: no box, no border,
     // the type size of a title. It is read every time this screen opens and edited almost never.
+    noteInput: {
+      color: colors.text,
+      fontSize: fontSize.md,
+      lineHeight: 22,
+      minHeight: 66,
+      textAlign: 'auto',
+      textAlignVertical: 'top',
+      padding: spacing.md,
+      borderRadius: radius.md,
+      backgroundColor: colors.surfaceRaised,
+    },
+    noteHint: {
+      color: colors.textMuted,
+      fontSize: fontSize.xs,
+      textAlign: 'auto',
+      marginTop: spacing.xs,
+    },
     nameInput: {
       color: colors.text,
       fontSize: fontSize.xl,

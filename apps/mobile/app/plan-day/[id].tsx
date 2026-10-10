@@ -318,9 +318,15 @@ export default function PlanDayScreen() {
 
                 return (
                   <View style={[styles.row, dragHandle.active && styles.rowDragging]}>
-                    <Text style={[styles.exerciseName, styles.colName]} numberOfLines={2}>
-                      {label}
-                    </Text>
+                    <View style={styles.colNameBox}>
+                      <Text style={styles.exerciseName} numberOfLines={2}>
+                        {label}
+                      </Text>
+                      {/* An instruction on this exercise — from a coach, when there is one. */}
+                      {prescription.notes ? (
+                        <Text style={styles.exerciseNote}>💬 {prescription.notes}</Text>
+                      ) : null}
+                    </View>
 
                     {timing ? null : (
                       <>
@@ -421,10 +427,12 @@ const createStyles = (colors: ColorPalette) =>
     columnHeader: ViewStyle;
     columnLabel: TextStyle;
     colName: TextStyle;
+    colNameBox: ViewStyle;
     colField: TextStyle;
     colActions: ViewStyle;
     row: ViewStyle;
     exerciseName: TextStyle;
+    exerciseNote: TextStyle;
     input: TextStyle;
     reorder: ViewStyle;
     rowDragging: ViewStyle;
@@ -472,10 +480,19 @@ const createStyles = (colors: ColorPalette) =>
     },
     columnLabel: { color: colors.textMuted, fontSize: fontSize.xxs, textAlign: 'center' },
     colName: { flex: 3, textAlign: 'auto' },
+    // The same share of the row as the heading above it, for a name with a line under it.
+    colNameBox: { flex: 3 },
     colField: { flex: 1 },
     colActions: { width: 28, alignItems: 'center' },
     row: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.xs },
-    exerciseName: { color: colors.text, fontSize: fontSize.sm },
+    exerciseName: { color: colors.text, fontSize: fontSize.sm, textAlign: 'auto' },
+    exerciseNote: {
+      color: colors.textMuted,
+      fontSize: fontSize.xs,
+      lineHeight: 16,
+      textAlign: 'auto',
+      marginTop: 2,
+    },
     input: {
       height: 40,
       backgroundColor: colors.surfaceRaised,

@@ -207,6 +207,8 @@ export default function WorkoutsScreen() {
   const [timing, setTiming] = useState<PlanDayTiming | null>(null);
 
   const [targets, setTargets] = useState<Record<string, ExerciseTarget>>({});
+  // What the plan says about each exercise in words, by exercise — a coach's instruction.
+  const [planNotes, setPlanNotes] = useState<Record<string, string>>({});
   // Keyed by exercise key, like `previous`. Recomputed on reload rather than per render: it is
   // several queries deep and the answer only changes when a session is finished.
   const [stalling, setStalling] = useState<Record<string, boolean>>({});
@@ -399,6 +401,7 @@ export default function WorkoutsScreen() {
       // Targets exist only for a session started from a plan day. A freestyle session leaves this
       // empty and the cards simply show no target badge.
       const nextTargets: Record<string, ExerciseTarget> = {};
+      const nextNotes: Record<string, string> = {};
       // Read from the plan day each time rather than copied onto the session: changing a day's
       // timing between workouts should change the next one, and there is nothing to migrate when
       // it does.
@@ -411,10 +414,12 @@ export default function WorkoutsScreen() {
             target_reps_min: prescription.target_reps_min,
             target_reps_max: prescription.target_reps_max,
           };
+          if (prescription.notes) nextNotes[prescription.exercise_key] = prescription.notes;
         }
       }
       if (!latestReload.isCurrent(ticket)) return loaded;
       setTargets(nextTargets);
+      setPlanNotes(nextNotes);
       return loaded;
     },
     [userId, latestReload],
@@ -1570,6 +1575,7 @@ export default function WorkoutsScreen() {
           })
         }
         subtitle={subtitleFor(seed)}
+        note={planNotes[exercise.exercise_key] ?? null}
         onOptions={() => openExerciseOptions(exercise.id, seed.nameHe)}
         dragHandle={dragHandle}
         // Big in focus mode, where it is the fastest way to confirm the machine in

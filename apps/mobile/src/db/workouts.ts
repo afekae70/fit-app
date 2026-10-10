@@ -126,10 +126,22 @@ export async function finishSession(
   clock: Clock = defaultClock,
 ): Promise<void> {
   const endedAt = clock();
+  // The note is written only when one was passed. Finishing used to set it to "none" every
+  // time, which did not matter while nothing in the app could write a note — and would have
+  // erased, on the tap that ends the workout, whatever had been written during it.
+  const writesNote = 'notes' in options;
   await db.run(
-    `UPDATE workout_sessions SET ended_at = ?, session_rpe = ?, notes = ?, updated_at = ?
+    `UPDATE workout_sessions SET ended_at = ?, session_rpe = ?,
+            notes = ${writesNote ? '?' : 'notes'}, updated_at = ?
       WHERE id = ? AND user_id = ?`,
-    [endedAt, options.sessionRpe ?? null, options.notes ?? null, endedAt, sessionId, userId],
+    [
+      endedAt,
+      options.sessionRpe ?? null,
+      ...(writesNote ? [options.notes ?? null] : []),
+      endedAt,
+      sessionId,
+      userId,
+    ],
   );
   await enqueue(db, 'workout_session', sessionId, 'update', { endedAt }, clock);
 }
@@ -169,13 +181,40 @@ export async function renameSession(
 ): Promise<void> {
   const trimmed = name?.trim() ?? '';
   const value = trimmed === '' ? null : trimmed;
-  await db.run(`UPDATE workout_sessions SET name = ?, updated_at = ? WHERE id = ? AND user_id = ?`, [
-    value,
-    clock(),
-    sessionId,
-    userId,
-  ]);
+  await db.run(
+    `UPDATE workout_sessions SET name = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
+    [value, clock(), sessionId, userId],
+  );
   await enqueue(db, 'workout_session', sessionId, 'update', { name: value }, clock);
+}
+
+/** The longest note a workout keeps. A remark, not a diary — and a bound on what travels. */
+export const SESSION_NOTE_LIMIT = 500;
+
+/**
+ * Write the note on a workout: what the person wants remembered about it, in their own words.
+ *
+ * A note is read by its writer, and — if they have connected to a coach — by that coach, which
+ * is the only way a trainee has of saying "the left shoulder hurt on the last set" to the
+ * person who planned the workout. The screen that takes it says so; see `coach_get_sessions`
+ * (0013) for the other end.
+ *
+ * Empty text clears it, rather than storing a blank that would show the coach an empty remark.
+ */
+export async function setSessionNotes(
+  db: SqlExecutor,
+  userId: string,
+  sessionId: string,
+  notes: string | null,
+  clock: Clock = defaultClock,
+): Promise<void> {
+  const trimmed = (notes ?? '').trim().slice(0, SESSION_NOTE_LIMIT);
+  const value = trimmed === '' ? null : trimmed;
+  await db.run(
+    `UPDATE workout_sessions SET notes = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
+    [value, clock(), sessionId, userId],
+  );
+  await enqueue(db, 'workout_session', sessionId, 'update', { notes: value }, clock);
 }
 
 /**
@@ -240,7 +279,14 @@ export async function addExerciseToSession(
      VALUES (?, ?, ?, ?, ?)`,
     [id, sessionId, exerciseKey, orderIndex, clock()],
   );
-  await enqueue(db, 'session_exercise', id, 'insert', { sessionId, exerciseKey, orderIndex }, clock);
+  await enqueue(
+    db,
+    'session_exercise',
+    id,
+    'insert',
+    { sessionId, exerciseKey, orderIndex },
+    clock,
+  );
   return id;
 }
 
@@ -461,10 +507,11 @@ export async function setSupersetLink(
   }
 
   const at = clock();
-  await db.run(
-    `UPDATE session_exercises SET superset_with_next = ?, updated_at = ? WHERE id = ?`,
-    [linked ? 1 : 0, at, sessionExerciseId],
-  );
+  await db.run(`UPDATE session_exercises SET superset_with_next = ?, updated_at = ? WHERE id = ?`, [
+    linked ? 1 : 0,
+    at,
+    sessionExerciseId,
+  ]);
   await enqueue(db, 'session_exercise', sessionExerciseId, 'update', { linked }, clock);
   return true;
 }
@@ -730,7 +777,11 @@ export async function addDropSet(
 
   for (const [offset, row] of below.entries()) {
     const setIndex = parent.set_index + 2 + offset;
-    await db.run(`UPDATE sets SET set_index = ?, updated_at = ? WHERE id = ?`, [setIndex, at, row.id]);
+    await db.run(`UPDATE sets SET set_index = ?, updated_at = ? WHERE id = ?`, [
+      setIndex,
+      at,
+      row.id,
+    ]);
     await enqueue(db, 'set', row.id, 'update', { setIndex }, clock);
   }
 
@@ -813,10 +864,11 @@ export async function removeSet(
   if (!row) return;
 
   const at = clock();
-  await db.run(
-    `UPDATE sets SET deleted_at = ?, updated_at = ?, set_index = -rowid WHERE id = ?`,
-    [at, at, setId],
-  );
+  await db.run(`UPDATE sets SET deleted_at = ?, updated_at = ?, set_index = -rowid WHERE id = ?`, [
+    at,
+    at,
+    setId,
+  ]);
   await renumberSets(db, row.session_exercise_id, clock);
   await enqueue(db, 'set', setId, 'delete', undefined, clock);
 }
@@ -924,10 +976,7 @@ export async function markSetDone(
   await enqueue(db, 'set', setId, 'update', { doneAt: done ? at : null }, clock);
 }
 
-export async function listSets(
-  db: SqlExecutor,
-  sessionExerciseId: string,
-): Promise<SetRow[]> {
+export async function listSets(db: SqlExecutor, sessionExerciseId: string): Promise<SetRow[]> {
   return db.all<SetRow>(
     `SELECT * FROM sets WHERE session_exercise_id = ? AND deleted_at IS NULL ORDER BY set_index`,
     [sessionExerciseId],

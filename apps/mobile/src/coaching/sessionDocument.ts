@@ -12,9 +12,12 @@
  *
  * ## What is in the document
  *
- * What the server chose to send, which is deliberately less than a workout holds: no body
- * weight, no notes. See 0012 for why. This file does not add a field for either, so there is
- * nowhere on the coach's side for one to land if a later server sent it by mistake.
+ * What the server chose to send, which is deliberately less than a workout holds. No body
+ * weight: a measurement, and trainees are told a coach does not see those. One note — the one
+ * on the workout itself, which the trainee writes on a screen that says their coach will read
+ * it (0013) — and not the notes on an exercise or a set. This file has a field for that one
+ * note and for nothing else of the kind, so there is nowhere on the coach's side for the rest
+ * to land if a later server sent it by mistake.
  */
 
 import { localDate } from '../db/schedule.js';
@@ -55,6 +58,8 @@ export interface CoachSession {
   endedAt: string | null;
   /** How hard the trainee rated the whole workout, 1-10. */
   rpe: number | null;
+  /** What the trainee wrote about the workout, for themselves and for their coach. */
+  note: string | null;
   exercises: CoachSessionExercise[];
 }
 
@@ -138,6 +143,7 @@ export function parseSessions(raw: unknown): CoachSession[] {
       startedAt,
       endedAt: asMoment(row.ended_at),
       rpe: asNumber(row.rpe),
+      note: asText(row.note),
       exercises,
     });
   }

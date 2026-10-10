@@ -32,6 +32,8 @@ import {
   removeExerciseFromSession,
   removeSet,
   reorderSessionExercise,
+  SESSION_NOTE_LIMIT,
+  setSessionNotes,
   setSupersetLink,
   startSession,
   swapSessionExercise,
@@ -107,7 +109,8 @@ describe('dynamic set counts — the core requirement', () => {
     const curl = await addExerciseToSession(db, newId, sessionId, 'Machine Bicep Curl', clock);
 
     for (let i = 0; i < 4; i++) await addSet(db, newId, press, { weightKg: 80, reps: 8 }, clock);
-    for (let i = 0; i < 2; i++) await addSet(db, newId, facePull, { weightKg: 25, reps: 15 }, clock);
+    for (let i = 0; i < 2; i++)
+      await addSet(db, newId, facePull, { weightKg: 25, reps: 15 }, clock);
     for (let i = 0; i < 2; i++) await addSet(db, newId, curl, { weightKg: 30, reps: 12 }, clock);
 
     expect(await listSets(db, press)).toHaveLength(4);
@@ -348,7 +351,8 @@ describe('getSessionDetail', () => {
     const facePull = await addExerciseToSession(db, newId, sessionId, 'Face Pull', clock);
 
     for (let i = 0; i < 4; i++) await addSet(db, newId, press, { weightKg: 80, reps: 8 }, clock);
-    for (let i = 0; i < 2; i++) await addSet(db, newId, facePull, { weightKg: 25, reps: 15 }, clock);
+    for (let i = 0; i < 2; i++)
+      await addSet(db, newId, facePull, { weightKg: 25, reps: 15 }, clock);
 
     const { session, exercises } = await getSessionDetail(db, sessionId);
 
@@ -402,7 +406,7 @@ describe('getPreviousBest', () => {
     expect(await getPreviousBest(db, USER, 'Nordic Hamstring Curl')).toBeNull();
   });
 
-  it('never surfaces another user\'s best as this user\'s reference', async () => {
+  it("never surfaces another user's best as this user's reference", async () => {
     const otherSession = await startSession(db, 'user-2', newId, {}, clock);
     const otherPress = await addExerciseToSession(
       db,
@@ -459,7 +463,7 @@ describe('listRecentExerciseKeys', () => {
     expect(await listRecentExerciseKeys(db, USER)).toEqual([]);
   });
 
-  it('never surfaces another user\'s exercises', async () => {
+  it("never surfaces another user's exercises", async () => {
     const otherSession = await startSession(db, 'user-2', newId, {}, clock);
     await addExerciseToSession(db, newId, otherSession, 'Barbell Bench Press', clock);
     await finishSession(db, 'user-2', otherSession, {}, clock);
@@ -901,7 +905,10 @@ describe('what counts as the same workout', () => {
     const one = await session('plan-a', 100, '2026-06-01T10:00:00.000Z');
     const two = await session('plan-a', 60, '2026-06-03T10:00:00.000Z');
     const today = await session('plan-a', 0, '2026-06-05T10:00:00.000Z');
-    await db.run(`UPDATE workout_sessions SET location_id = 'gym-a' WHERE id IN (?, ?)`, [one, today]);
+    await db.run(`UPDATE workout_sessions SET location_id = 'gym-a' WHERE id IN (?, ?)`, [
+      one,
+      today,
+    ]);
     await db.run(`UPDATE workout_sessions SET location_id = 'gym-b' WHERE id = ?`, [two]);
 
     const type = await getSessionType(db, today);
@@ -1089,5 +1096,72 @@ describe('history filtered by period', () => {
 
     const everything = await listSessionSummaries(db, USER, 100);
     expect(everything).toHaveLength(3);
+  });
+});
+
+describe('a note on a workout', () => {
+  const noteOf = async (sessionId: string) =>
+    (await getSessionDetail(db, sessionId)).session?.notes ?? null;
+
+  it('is kept, trimmed', async () => {
+    const sessionId = await startSession(db, USER, newId, {}, clock);
+    await setSessionNotes(db, USER, sessionId, '  כתף שמאל כאבה בסט האחרון  ', clock);
+    expect(await noteOf(sessionId)).toBe('כתף שמאל כאבה בסט האחרון');
+  });
+
+  it('is cleared by empty text, not stored as a blank', async () => {
+    // A coach reading the workout would otherwise be shown an empty remark.
+    const sessionId = await startSession(db, USER, newId, {}, clock);
+    await setSessionNotes(db, USER, sessionId, 'something', clock);
+    await setSessionNotes(db, USER, sessionId, '   ', clock);
+    expect(await noteOf(sessionId)).toBeNull();
+    await setSessionNotes(db, USER, sessionId, 'something', clock);
+    await setSessionNotes(db, USER, sessionId, null, clock);
+    expect(await noteOf(sessionId)).toBeNull();
+  });
+
+  it('is cut at the limit rather than refused', async () => {
+    const sessionId = await startSession(db, USER, newId, {}, clock);
+    await setSessionNotes(db, USER, sessionId, 'א'.repeat(SESSION_NOTE_LIMIT + 50), clock);
+    expect((await noteOf(sessionId))?.length).toBe(SESSION_NOTE_LIMIT);
+  });
+
+  it('marks the workout as changed, so sync carries it', async () => {
+    const sessionId = await startSession(db, USER, newId, {}, clock);
+    const before = await db.get<{ updated_at: string }>(
+      `SELECT updated_at FROM workout_sessions WHERE id = ?`,
+      [sessionId],
+    );
+    await setSessionNotes(db, USER, sessionId, 'something', clock);
+    const after = await db.get<{ updated_at: string }>(
+      `SELECT updated_at FROM workout_sessions WHERE id = ?`,
+      [sessionId],
+    );
+    expect(after!.updated_at > before!.updated_at).toBe(true);
+  });
+
+  it('cannot be written on someone else’s workout', async () => {
+    const sessionId = await startSession(db, USER, newId, {}, clock);
+    await setSessionNotes(db, 'someone-else', sessionId, 'not mine to write', clock);
+    expect(await noteOf(sessionId)).toBeNull();
+  });
+
+  it('survives the workout being finished', async () => {
+    // Finishing used to write "no note" every time. With nothing able to write a note that
+    // did no harm; with one, it would erase it on the tap that ends the workout.
+    const sessionId = await startSession(db, USER, newId, {}, clock);
+    await setSessionNotes(db, USER, sessionId, 'written during', clock);
+    await finishSession(db, USER, sessionId, { sessionRpe: 7 }, clock);
+    expect(await noteOf(sessionId)).toBe('written during');
+  });
+
+  it('is still written by finishing when finishing is given one', async () => {
+    const sessionId = await startSession(db, USER, newId, {}, clock);
+    await finishSession(db, USER, sessionId, { notes: 'given at the end' }, clock);
+    expect(await noteOf(sessionId)).toBe('given at the end');
+    const other = await startSession(db, USER, newId, {}, clock);
+    await setSessionNotes(db, USER, other, 'to be cleared', clock);
+    await finishSession(db, USER, other, { notes: null }, clock);
+    expect(await noteOf(other)).toBeNull();
   });
 });

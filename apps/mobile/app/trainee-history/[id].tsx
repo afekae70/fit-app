@@ -220,6 +220,8 @@ export default function TraineeHistoryScreen() {
                     t('coaching.historySets', { count: sets }),
                     volume > 0 ? `${formatVolume(volume, unit)} ${weightLabel}` : null,
                     session.rpe !== null ? t('coaching.historyEffort', { rpe: session.rpe }) : null,
+                    // A mark that there is something to read inside, without it being read here.
+                    session.note ? '💬' : null,
                   ]
                     .filter(Boolean)
                     .join(' · ')}
@@ -230,6 +232,12 @@ export default function TraineeHistoryScreen() {
 
             {expanded ? (
               <View style={styles.exercises}>
+                {session.note ? (
+                  <View style={styles.note}>
+                    <Text style={styles.noteCaption}>{t('coaching.historyNote')}</Text>
+                    <Text style={styles.noteText}>{session.note}</Text>
+                  </View>
+                ) : null}
                 {session.exercises.map((exercise, position) => {
                   const seed = exercise.exerciseKey
                     ? EXERCISE_BY_KEY.get(exercise.exerciseKey)
@@ -281,6 +289,9 @@ const createStyles = (colors: ColorPalette) =>
     title: TextStyle;
     meta: TextStyle;
     exercises: ViewStyle;
+    note: ViewStyle;
+    noteCaption: TextStyle;
+    noteText: TextStyle;
   }>({
     screen: { flex: 1 },
     content: { paddingHorizontal: spacing.lg, gap: spacing.lg },
@@ -337,4 +348,19 @@ const createStyles = (colors: ColorPalette) =>
     },
     meta: { color: colors.textMuted, fontSize: fontSize.sm, textAlign: 'auto' },
     exercises: { gap: spacing.md },
+    note: {
+      gap: spacing.xxs,
+      padding: spacing.md,
+      borderRadius: radius.md,
+      backgroundColor: colors.accentSoft,
+      borderWidth: 1,
+      borderColor: colors.accentBorder,
+    },
+    noteCaption: {
+      color: colors.accent,
+      fontSize: fontSize.xs,
+      fontWeight: fontWeight.bold,
+      textAlign: 'auto',
+    },
+    noteText: { color: colors.text, fontSize: fontSize.sm, lineHeight: 20, textAlign: 'auto' },
   });

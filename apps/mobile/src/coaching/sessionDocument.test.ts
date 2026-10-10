@@ -172,20 +172,35 @@ describe('reading what the server sent', () => {
     for (const raw of [null, undefined, {}, 'x', 5]) expect(parseSessions(raw)).toEqual([]);
   });
 
-  it('has nowhere to put a body weight or a note, even if a server sent one', () => {
-    // 0012 does not send them. If some later version did by mistake, the coach's side must
-    // not turn out to have been holding them all along.
+  it('reads the note the trainee wrote on the workout', () => {
+    expect(one({ ...squatDay, note: 'כתף שמאל כאבה בסט האחרון' }).note).toBe(
+      'כתף שמאל כאבה בסט האחרון',
+    );
+  });
+
+  it('has no note when none was written, or only spaces were', () => {
+    expect(one(squatDay).note).toBeNull();
+    expect(one({ ...squatDay, note: '   ' }).note).toBeNull();
+    expect(one({ ...squatDay, note: 5 }).note).toBeNull();
+  });
+
+  it('has nowhere to put a body weight, or a note on an exercise or a set, even if a server sent one', () => {
+    // The server sends one note — the workout's own — and a trainee has been told so. If some
+    // later version sent the rest by mistake, the coach's side must not turn out to have been
+    // holding it all along.
     const session = one({
       ...squatDay,
       bodyweight_kg: 81.4,
-      notes: 'shoulder hurt',
+      note: 'for the coach',
+      notes: 'raw column, not the field',
       exercises: [
         { key: 'Back Squat', notes: 'private', sets: [{ weight_kg: 100, reps: 5, notes: 'x' }] },
       ],
     });
     const text = JSON.stringify(session);
+    expect(session.note).toBe('for the coach');
     expect(text).not.toContain('81.4');
-    expect(text).not.toContain('shoulder');
+    expect(text).not.toContain('raw column');
     expect(text).not.toContain('private');
     expect(text).not.toContain('notes');
   });

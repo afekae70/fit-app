@@ -379,13 +379,22 @@ describe('functions that act on a trainee', () => {
       expect(fn?.rest).not.toMatch(/\b(INSERT|UPDATE|DELETE)\b/);
     });
 
-    it('does not send the body weight or anybody’s notes', () => {
-      // The app tells a trainee their coach sees neither. `bodyweight_kg` is a column of the
-      // very table this reads, one word away from being included.
+    it('does not send the body weight', () => {
+      // The app tells a trainee their coach does not see it. `bodyweight_kg` is a column of
+      // the very table this reads, one word away from being included.
       expect(fn?.rest).toMatch(/public\.workout_sessions/);
       expect(fn?.rest).not.toMatch(/bodyweight/i);
-      expect(fn?.rest).not.toMatch(/\bnotes\b/i);
       expect(fn?.rest).not.toMatch(/ws\.\*|\bst\.\*|\be\.\*/);
+    });
+
+    it('sends the note on the workout itself, and no other note', () => {
+      // Since 0013 a trainee can write a note on a finished workout, on a screen that says
+      // their coach will read it. That one column, read once, under a name of its own — and
+      // not the notes on an exercise or a set, which nobody has been told a coach can see.
+      expect(fn?.rest.match(/\bnotes\b/gi)).toEqual(['notes']);
+      expect(fn?.rest).toMatch(/ws\.notes AS session_note/);
+      expect(fn?.rest).toMatch(/'note', s\.session_note/);
+      expect(fn?.rest).not.toMatch(/\b(e|st)\.notes\b/);
     });
 
     it('sends only this trainee’s, only finished, only sets that were done, and not without limit', () => {

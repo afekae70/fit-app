@@ -124,6 +124,11 @@ export interface ExercisePanelProps {
   visualLayout?: 'thumb' | 'banner';
   /** A quiet line under the name — the equipment and the muscle, in the reader's language. */
   subtitle?: string;
+  /**
+   * What the plan says about this exercise in words: a coach's instruction, usually. Shown
+   * while training, which is the only moment it is of any use.
+   */
+  note?: string | null;
   /** Swap this exercise for another. Shown as its own button in the banner layout. */
   onSwap?: () => void;
   /** Show which muscles this works. */
@@ -181,6 +186,7 @@ export function ExercisePanel({
   visual,
   visualLayout = 'thumb',
   subtitle,
+  note = null,
   onSwap,
   onShowMuscles,
   onRemoveSet,
@@ -270,7 +276,11 @@ export function ExercisePanel({
               <Chip label={`↗ ${t('workout.warmupChip')}`} onPress={onAddWarmup} />
             ) : null}
             {onOptions ? (
-              <Chip label="⋯" onPress={onOptions} accessibilityLabel={t('workout.exerciseOptions')} />
+              <Chip
+                label="⋯"
+                onPress={onOptions}
+                accessibilityLabel={t('workout.exerciseOptions')}
+              />
             ) : null}
           </View>
         </>
@@ -318,7 +328,9 @@ export function ExercisePanel({
               /* Dragging is unusable through a screen reader, so the same move is offered as two
                  named actions. Without this the feature would be sighted-only. */
               accessibilityActions={[
-                ...(dragHandle.canMoveUp ? [{ name: 'moveUp', label: t('plan.moveExerciseUp') }] : []),
+                ...(dragHandle.canMoveUp
+                  ? [{ name: 'moveUp', label: t('plan.moveExerciseUp') }]
+                  : []),
                 ...(dragHandle.canMoveDown
                   ? [{ name: 'moveDown', label: t('plan.moveExerciseDown') }]
                   : []),
@@ -338,6 +350,12 @@ export function ExercisePanel({
         <Text style={s.plateHint}>
           {t('workout.plateHint', { bar: plateHint.bar, plates: plateHint.plates })}
         </Text>
+      ) : null}
+
+      {note ? (
+        <View style={s.note}>
+          <Text style={s.noteText}>💬 {note}</Text>
+        </View>
       ) : null}
 
       {/* What last session says to do today. A `Pressable` only when there is somewhere to write
@@ -366,7 +384,8 @@ export function ExercisePanel({
             {advice.kind === 'add_weight' ? '↑' : advice.kind === 'deload' ? '↓' : '→'}
           </Text>
           <Text style={[s.adviceNumbers, advice.kind === 'deload' && s.adviceGlyphDeload]}>
-            {kgToDisplay(advice.weightKg, unit)} {t(unit === 'imperial' ? 'common.lb' : 'common.kg')}
+            {kgToDisplay(advice.weightKg, unit)}{' '}
+            {t(unit === 'imperial' ? 'common.lb' : 'common.kg')}
             {' × '}
             {advice.reps}
           </Text>
@@ -398,72 +417,80 @@ export function ExercisePanel({
         />
       ) : (
         <>
-        <View style={s.table}>
-        {banner ? (
-          <Text style={s.tablePrevious} numberOfLines={1}>
-            {previousLabel ? `${t('workout.lastTime')} · ${previousLabel}` : t('workout.firstTime')}
-          </Text>
-        ) : null}
-        <View style={s.columns}>
-          <Text style={[s.columnLabel, s.columnIndex]}>#</Text>
-          <Text style={[s.columnLabel, s.columnField]}>
-            {cardio ? t('workout.duration') : t('workout.weight')}
-          </Text>
-          <Text style={[s.columnLabel, s.columnField]}>
-            {cardio ? t('workout.distance') : t('workout.reps')}
-          </Text>
-          <View style={s.columnCheck} />
-        </View>
+          <View style={s.table}>
+            {banner ? (
+              <Text style={s.tablePrevious} numberOfLines={1}>
+                {previousLabel
+                  ? `${t('workout.lastTime')} · ${previousLabel}`
+                  : t('workout.firstTime')}
+              </Text>
+            ) : null}
+            <View style={s.columns}>
+              <Text style={[s.columnLabel, s.columnIndex]}>#</Text>
+              <Text style={[s.columnLabel, s.columnField]}>
+                {cardio ? t('workout.duration') : t('workout.weight')}
+              </Text>
+              <Text style={[s.columnLabel, s.columnField]}>
+                {cardio ? t('workout.distance') : t('workout.reps')}
+              </Text>
+              <View style={s.columnCheck} />
+            </View>
 
-        <View style={s.rows}>
-          {sets.map((set, index) => (
-            <SetRow
-              // Index as key: these rows have no stable id of their own here, and the list only ever
-              // grows at the end — appending never reorders what is above it.
-              key={index}
-              index={labels[index]?.ordinal ?? index + 1}
-              isWarmup={labels[index]?.kind === 'warmup'}
-              isDrop={labels[index]?.kind === 'drop'}
-              rpe={set.rpe}
-              toFailure={set.toFailure}
-              onOptions={onSetOptions ? () => onSetOptions(index) : undefined}
-              weightKg={set.weightKg}
-              reps={set.reps}
-              done={set.done}
-              fields={cardio ? 'cardio' : 'weights'}
-              durationSeconds={set.durationSeconds ?? null}
-              distanceM={set.distanceM ?? null}
-              onChangeWeight={(next) => onChangeWeight(index, next)}
-              onChangeReps={(next) => onChangeReps(index, next)}
-              onChangeDuration={(seconds) => onChangeDuration?.(index, seconds)}
-              onChangeDistance={(metres) => onChangeDistance?.(index, metres)}
-              onEdit={onEditValue ? (field, measure) => onEditValue(index, field, measure) : undefined}
-              onToggle={() => onToggle(index)}
-            />
-          ))}
-        </View>
+            <View style={s.rows}>
+              {sets.map((set, index) => (
+                <SetRow
+                  // Index as key: these rows have no stable id of their own here, and the list only ever
+                  // grows at the end — appending never reorders what is above it.
+                  key={index}
+                  index={labels[index]?.ordinal ?? index + 1}
+                  isWarmup={labels[index]?.kind === 'warmup'}
+                  isDrop={labels[index]?.kind === 'drop'}
+                  rpe={set.rpe}
+                  toFailure={set.toFailure}
+                  onOptions={onSetOptions ? () => onSetOptions(index) : undefined}
+                  weightKg={set.weightKg}
+                  reps={set.reps}
+                  done={set.done}
+                  fields={cardio ? 'cardio' : 'weights'}
+                  durationSeconds={set.durationSeconds ?? null}
+                  distanceM={set.distanceM ?? null}
+                  onChangeWeight={(next) => onChangeWeight(index, next)}
+                  onChangeReps={(next) => onChangeReps(index, next)}
+                  onChangeDuration={(seconds) => onChangeDuration?.(index, seconds)}
+                  onChangeDistance={(metres) => onChangeDistance?.(index, metres)}
+                  onEdit={
+                    onEditValue ? (field, measure) => onEditValue(index, field, measure) : undefined
+                  }
+                  onToggle={() => onToggle(index)}
+                />
+              ))}
+            </View>
 
-        {/* Take one off, put one on — the pair the sets are adjusted with, side by side under them. */}
-        <View style={s.footer}>
-          <Pressable
-            onPress={onRemoveSet}
-            disabled={!onRemoveSet}
-            accessibilityRole="button"
-            accessibilityLabel={t('workout.removeLastSet')}
-            style={({ pressed }) => [s.setButton, !onRemoveSet && s.setButtonOff, pressed && s.pressed]}
-          >
-            <Text style={s.setButtonText}>− {t('workout.setShort')}</Text>
-          </Pressable>
-          <Pressable
-            onPress={onAddSet}
-            accessibilityRole="button"
-            accessibilityLabel={t('workout.addSet')}
-            style={({ pressed }) => [s.setButton, s.setButtonAdd, pressed && s.pressed]}
-          >
-            <Text style={[s.setButtonText, s.setButtonAddText]}>+ {t('workout.setShort')}</Text>
-          </Pressable>
-        </View>
-        </View>
+            {/* Take one off, put one on — the pair the sets are adjusted with, side by side under them. */}
+            <View style={s.footer}>
+              <Pressable
+                onPress={onRemoveSet}
+                disabled={!onRemoveSet}
+                accessibilityRole="button"
+                accessibilityLabel={t('workout.removeLastSet')}
+                style={({ pressed }) => [
+                  s.setButton,
+                  !onRemoveSet && s.setButtonOff,
+                  pressed && s.pressed,
+                ]}
+              >
+                <Text style={s.setButtonText}>− {t('workout.setShort')}</Text>
+              </Pressable>
+              <Pressable
+                onPress={onAddSet}
+                accessibilityRole="button"
+                accessibilityLabel={t('workout.addSet')}
+                style={({ pressed }) => [s.setButton, s.setButtonAdd, pressed && s.pressed]}
+              >
+                <Text style={[s.setButtonText, s.setButtonAddText]}>+ {t('workout.setShort')}</Text>
+              </Pressable>
+            </View>
+          </View>
         </>
       )}
 
@@ -606,6 +633,8 @@ const createStyles = (colors: ColorPalette) =>
     nameTap: ViewStyle;
     nameHint: TextStyle;
     subtitle: TextStyle;
+    note: ViewStyle;
+    noteText: TextStyle;
     chips: ViewStyle;
     chip: ViewStyle;
     chipText: TextStyle;
@@ -631,7 +660,12 @@ const createStyles = (colors: ColorPalette) =>
       gap: 12,
     },
 
-    header: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      gap: 10,
+    },
     headerText: { flex: 1, gap: 3 },
     name: { color: colors.text, fontSize: 16, fontWeight: '500', textAlign: 'auto' },
     previous: { color: colors.textFaint, fontSize: 12, textAlign: 'auto' },
@@ -731,6 +765,15 @@ const createStyles = (colors: ColorPalette) =>
       flexShrink: 1,
     },
     subtitle: { color: colors.textMuted, fontSize: 13, textAlign: 'auto' },
+    // Quieter than the advice strip below it: this is read once, that is acted on.
+    note: {
+      marginTop: 6,
+      paddingVertical: 6,
+      paddingHorizontal: 10,
+      borderRadius: radius.sm,
+      backgroundColor: colors.surfaceRaised,
+    },
+    noteText: { color: colors.textSecondary, fontSize: 13, lineHeight: 18, textAlign: 'auto' },
     nameTap: { flexShrink: 1 },
     nameHint: { color: colors.accent, fontSize: 18 },
     chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },

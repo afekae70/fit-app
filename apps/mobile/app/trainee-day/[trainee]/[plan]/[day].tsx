@@ -138,7 +138,9 @@ export default function TraineeDayScreen() {
   }, [picked, draft]);
 
   const isNew = saved === null;
-  const dirty = draft !== null && (isNew ? draft.exercises.length > 0 || Boolean(draft.name?.trim()) : !sameDay(saved, draft));
+  const dirty =
+    draft !== null &&
+    (isNew ? draft.exercises.length > 0 || Boolean(draft.name?.trim()) : !sameDay(saved, draft));
 
   /*
    * Leaving with unsaved changes asks first.
@@ -203,7 +205,8 @@ export default function TraineeDayScreen() {
   };
 
   const change = useCallback(
-    (next: CoachExercise) => setDraft((current) => (current ? replaceExercise(current, next) : current)),
+    (next: CoachExercise) =>
+      setDraft((current) => (current ? replaceExercise(current, next) : current)),
     [],
   );
 
@@ -297,6 +300,17 @@ export default function TraineeDayScreen() {
                     onStep={(by) => change(stepTarget(exercise, 'repsMax', by))}
                   />
                 </View>
+
+                {/* A line from the coach about this exercise: how to do it, what to watch. The
+                    trainee sees it on the workout, under the exercise's name. */}
+                <Field
+                  value={exercise.notes ?? ''}
+                  onChangeText={(notes) => change({ ...exercise, notes })}
+                  placeholder={t('coaching.exerciseNotePlaceholder')}
+                  editable={!saving}
+                  maxLength={200}
+                  multiline
+                />
               </FadeSlideIn>
             ))}
 
@@ -369,7 +383,11 @@ function IconButton({
       accessibilityState={{ disabled }}
       style={({ pressed }) => [styles.iconButton, (pressed || disabled) && styles.dim]}
     >
-      <IconComponent size={16} color={danger ? colors.danger : colors.textSecondary} weight="bold" />
+      <IconComponent
+        size={16}
+        color={danger ? colors.danger : colors.textSecondary}
+        weight="bold"
+      />
     </Pressable>
   );
 }
@@ -448,7 +466,12 @@ const createStyles = (colors: ColorPalette) =>
     screen: { flex: 1 },
     content: { paddingHorizontal: spacing.lg, gap: spacing.lg },
     loading: { paddingVertical: spacing.xxl, alignItems: 'center' },
-    empty: { color: colors.textMuted, fontSize: fontSize.sm, textAlign: 'center', paddingVertical: spacing.lg },
+    empty: {
+      color: colors.textMuted,
+      fontSize: fontSize.sm,
+      textAlign: 'center',
+      paddingVertical: spacing.lg,
+    },
 
     card: {
       backgroundColor: colors.surface,
