@@ -183,9 +183,12 @@ function createFakeServer(startAt = Date.parse('2026-03-01T00:00:00.000Z')): Fak
   /** What PostgREST answers for a table that is not in its schema cache. */
   const absent = (name: string) => {
     if (!server.missing.has(name)) return;
-    throw Object.assign(new Error(`Could not find the table 'public.${name}' in the schema cache`), {
-      code: 'PGRST205',
-    });
+    throw Object.assign(
+      new Error(`Could not find the table 'public.${name}' in the schema cache`),
+      {
+        code: 'PGRST205',
+      },
+    );
   };
 
   /** What PostgREST answers for a write naming a column that is not in its schema cache. */
@@ -214,12 +217,10 @@ function createFakeServer(startAt = Date.parse('2026-03-01T00:00:00.000Z')): Fak
       table(name).set(row.id as string, { ...row, updated_at: row.updated_at ?? now() });
     },
 
-     
     async ensureProfile() {
       /* the real one guards a foreign key the fake does not model */
     },
 
-     
     async upsert(name, rows) {
       if (server.failNextUpsert) {
         server.failNextUpsert = false;
@@ -264,7 +265,6 @@ function createFakeServer(startAt = Date.parse('2026-03-01T00:00:00.000Z')): Fak
       return rejections;
     },
 
-
     async patch(name, rows) {
       absent(name);
       unheardOf(name, rows);
@@ -277,14 +277,17 @@ function createFakeServer(startAt = Date.parse('2026-03-01T00:00:00.000Z')): Fak
         if (!previous) continue;
         const forced = server.refuse.get(row.id as string);
         if (forced) {
-          rejections.push({ id: row.id as string, code: forced, message: `refused with ${forced}` });
+          rejections.push({
+            id: row.id as string,
+            code: forced,
+            message: `refused with ${forced}`,
+          });
           continue;
         }
         table(name).set(row.id as string, { ...previous, ...row, updated_at: now() });
       }
       return rejections;
     },
-
 
     async fetchByIds(name, ids) {
       absent(name);
@@ -294,7 +297,6 @@ function createFakeServer(startAt = Date.parse('2026-03-01T00:00:00.000Z')): Fak
         return row ? [{ ...row }] : [];
       });
     },
-
 
     async changedSince(name, since, limit, afterId = null) {
       absent(name);
@@ -311,7 +313,6 @@ function createFakeServer(startAt = Date.parse('2026-03-01T00:00:00.000Z')): Fak
         .slice(0, limit);
     },
 
-     
     async fetchById(name, id) {
       return table(name).get(id) ?? null;
     },
@@ -344,7 +345,10 @@ async function seedSession(
 async function seedExerciseWithSet(
   sessionId: string,
   at: string,
-  { exerciseId = 'bbbbbbbb-0000-4000-8000-000000000001', setId = 'cccccccc-0000-4000-8000-000000000001' } = {},
+  {
+    exerciseId = 'bbbbbbbb-0000-4000-8000-000000000001',
+    setId = 'cccccccc-0000-4000-8000-000000000001',
+  } = {},
 ): Promise<{ exerciseId: string; setId: string }> {
   await db.run(
     `INSERT INTO session_exercises (id, session_id, exercise_key, order_index, updated_at)
@@ -391,7 +395,7 @@ describe('push', () => {
     expect(set?.to_failure).toBe(true);
   });
 
-  it('never sends another user\'s rows, including through a parent join', async () => {
+  it("never sends another user's rows, including through a parent join", async () => {
     const at = '2026-02-01T10:00:00.000Z';
     const mine = await seedSession(at);
     const theirs = await seedSession(at, {
@@ -452,7 +456,9 @@ describe('push', () => {
     const server = createFakeServer();
     server.failNextUpsert = true;
 
-    await expect(runSync(db, server, USER, localClock('2026-02-01T11:00:00.000Z'))).rejects.toThrow();
+    await expect(
+      runSync(db, server, USER, localClock('2026-02-01T11:00:00.000Z')),
+    ).rejects.toThrow();
 
     // The row must still be considered dirty. Treating a failed send as sent is how a workout
     // disappears: it never reaches the server and is never offered again.
@@ -569,10 +575,9 @@ describe('conflicts', () => {
 
     await runSync(db, server, USER, localClock('2026-04-02T00:00:00.000Z'));
 
-    const row = await db.get<{ name: string }>(
-      `SELECT name FROM workout_sessions WHERE id = ?`,
-      ['aaaaaaaa-0000-4000-8000-000000000001'],
-    );
+    const row = await db.get<{ name: string }>(`SELECT name FROM workout_sessions WHERE id = ?`, [
+      'aaaaaaaa-0000-4000-8000-000000000001',
+    ]);
     expect(row?.name).toBe('Local name');
   });
 
@@ -591,10 +596,9 @@ describe('conflicts', () => {
 
     await runSync(db, server, USER, localClock('2026-04-02T00:00:00.000Z'));
 
-    const row = await db.get<{ name: string }>(
-      `SELECT name FROM workout_sessions WHERE id = ?`,
-      ['aaaaaaaa-0000-4000-8000-000000000001'],
-    );
+    const row = await db.get<{ name: string }>(`SELECT name FROM workout_sessions WHERE id = ?`, [
+      'aaaaaaaa-0000-4000-8000-000000000001',
+    ]);
     expect(row?.name).toBe('Server name');
   });
 
@@ -621,10 +625,9 @@ describe('conflicts', () => {
     // Server time is 2026 and the local row claims 2027. Compared naively the local row would
     // look newer and this change would be discarded.
     expect(second.pulled).toBe(1);
-    const row = await db.get<{ name: string }>(
-      `SELECT name FROM workout_sessions WHERE id = ?`,
-      ['aaaaaaaa-0000-4000-8000-000000000001'],
-    );
+    const row = await db.get<{ name: string }>(`SELECT name FROM workout_sessions WHERE id = ?`, [
+      'aaaaaaaa-0000-4000-8000-000000000001',
+    ]);
     expect(row?.name).toBe('Written by the other device');
   });
 });
@@ -698,7 +701,9 @@ describe('orphans', () => {
       updated_at: '2026-06-01T00:00:00+00:00',
     });
 
-    expect((await runSync(db, server, USER, localClock('2026-06-02T00:00:00.000Z'))).deferred).toBe(1);
+    expect((await runSync(db, server, USER, localClock('2026-06-02T00:00:00.000Z'))).deferred).toBe(
+      1,
+    );
 
     server.seed('workout_sessions', {
       id: 'dddddddd-0000-4000-8000-000000000001',
@@ -863,11 +868,10 @@ describe('parked indexes on deleted rows', () => {
     await runSync(db, server, USER, localClock('2026-02-01T11:00:00.000Z'));
 
     // Exactly what deleteSession does: park the index so surviving rows can renumber past it.
-    await db.run(`UPDATE sets SET deleted_at = ?, updated_at = ?, set_index = -rowid WHERE id = ?`, [
-      '2026-02-01T12:00:00.000Z',
-      '2026-02-01T12:00:00.000Z',
-      setId,
-    ]);
+    await db.run(
+      `UPDATE sets SET deleted_at = ?, updated_at = ?, set_index = -rowid WHERE id = ?`,
+      ['2026-02-01T12:00:00.000Z', '2026-02-01T12:00:00.000Z', setId],
+    );
     await runSync(db, server, USER, localClock('2026-02-01T13:00:00.000Z'));
 
     const remote = server.rows('sets')[0];
@@ -936,11 +940,10 @@ describe('parked indexes on deleted rows', () => {
     const sessionId = await seedSession(at);
     const { setId } = await seedExerciseWithSet(sessionId, at);
     // Created and deleted before any sync ran.
-    await db.run(`UPDATE sets SET deleted_at = ?, updated_at = ?, set_index = -rowid WHERE id = ?`, [
-      '2026-02-01T10:30:00.000Z',
-      '2026-02-01T10:30:00.000Z',
-      setId,
-    ]);
+    await db.run(
+      `UPDATE sets SET deleted_at = ?, updated_at = ?, set_index = -rowid WHERE id = ?`,
+      ['2026-02-01T10:30:00.000Z', '2026-02-01T10:30:00.000Z', setId],
+    );
     const server = createFakeServer();
 
     await runSync(db, server, USER, localClock('2026-02-01T11:00:00.000Z'));
@@ -994,8 +997,14 @@ describe('reordering, which permutes a unique index', () => {
     const PARK = 100000;
     await db.run(`UPDATE plan_day_exercises SET order_index = ? WHERE id = ?`, [PARK, FIRST]);
     await db.run(`UPDATE plan_day_exercises SET order_index = ? WHERE id = ?`, [PARK + 1, SECOND]);
-    await db.run(`UPDATE plan_day_exercises SET order_index = 1, updated_at = ? WHERE id = ?`, [at, SECOND]);
-    await db.run(`UPDATE plan_day_exercises SET order_index = 2, updated_at = ? WHERE id = ?`, [at, FIRST]);
+    await db.run(`UPDATE plan_day_exercises SET order_index = 1, updated_at = ? WHERE id = ?`, [
+      at,
+      SECOND,
+    ]);
+    await db.run(`UPDATE plan_day_exercises SET order_index = 2, updated_at = ? WHERE id = ?`, [
+      at,
+      FIRST,
+    ]);
   }
 
   it('syncs a swap without tripping the unique index', async () => {
@@ -1079,8 +1088,20 @@ describe('pulling a reorder into a unique index', () => {
 
     // The other phone swapped them. The server holds the finished arrangement; this device
     // still has the old one, and both rows arrive in the same batch.
-    server.seed('plan_days', { id: DAY_A, plan_id: PLAN, day_index: 2, name: 'Push', deleted_at: null });
-    server.seed('plan_days', { id: DAY_B, plan_id: PLAN, day_index: 1, name: 'Pull', deleted_at: null });
+    server.seed('plan_days', {
+      id: DAY_A,
+      plan_id: PLAN,
+      day_index: 2,
+      name: 'Push',
+      deleted_at: null,
+    });
+    server.seed('plan_days', {
+      id: DAY_B,
+      plan_id: PLAN,
+      day_index: 1,
+      name: 'Pull',
+      deleted_at: null,
+    });
 
     await runSync(db, server, USER, localClock('2026-02-01T13:00:00.000Z'));
 
@@ -1100,8 +1121,20 @@ describe('pulling a reorder into a unique index', () => {
     const server = createFakeServer();
     await runSync(db, server, USER, localClock('2026-02-01T11:00:00.000Z'));
 
-    server.seed('plan_days', { id: DAY_A, plan_id: PLAN, day_index: 2, name: 'Push', deleted_at: null });
-    server.seed('plan_days', { id: DAY_B, plan_id: PLAN, day_index: 1, name: 'Pull', deleted_at: null });
+    server.seed('plan_days', {
+      id: DAY_A,
+      plan_id: PLAN,
+      day_index: 2,
+      name: 'Push',
+      deleted_at: null,
+    });
+    server.seed('plan_days', {
+      id: DAY_B,
+      plan_id: PLAN,
+      day_index: 1,
+      name: 'Pull',
+      deleted_at: null,
+    });
     await runSync(db, server, USER, localClock('2026-02-01T13:00:00.000Z'));
 
     const parked = await db.all<{ id: string }>(
@@ -1271,11 +1304,9 @@ describe('a workout edited the way the app edits it', () => {
     expect(result.pushed).toBe(0);
     expect(server.calls.filter((call) => call.op === 'patch')).toEqual([]);
     expect(server.calls.filter((call) => call.op === 'upsert')).toEqual([]);
-    expect(server.calls.filter((call) => call.op === 'fetchByIds').map((call) => call.table)).toEqual([
-      'workout_sessions',
-      'session_exercises',
-      'sets',
-    ]);
+    expect(
+      server.calls.filter((call) => call.op === 'fetchByIds').map((call) => call.table),
+    ).toEqual(['workout_sessions', 'session_exercises', 'sets']);
     expect(server.rows('workout_sessions')).toEqual([]);
   });
 });
@@ -1447,7 +1478,9 @@ describe('a row the server refuses', () => {
     const server = createFakeServer();
     server.failNextUpsert = true;
 
-    await expect(runSync(db, server, USER, localClock('2026-02-01T11:00:00.000Z'))).rejects.toThrow();
+    await expect(
+      runSync(db, server, USER, localClock('2026-02-01T11:00:00.000Z')),
+    ).rejects.toThrow();
 
     const retry = await runSync(db, server, USER, localClock('2026-02-01T12:00:00.000Z'));
     expect(retry.pushed).toBe(4);
@@ -1672,7 +1705,10 @@ describe('the repair: migration 18, then one sync', () => {
     // 4. A run died between its two passes and left two rows parked on the server.
     for (const n of [3, 4]) {
       const row = serverRow(server, id(n));
-      server.seed('session_exercises', { ...row, order_index: (row.order_index as number) + 100_000 });
+      server.seed('session_exercises', {
+        ...row,
+        order_index: (row.order_index as number) + 100_000,
+      });
     }
 
     // 5. And a new exercise, added at the next free position — free on the phone.
@@ -2112,13 +2148,41 @@ describe('a table the server has not been given yet', () => {
     server.missing.add('workout_sessions');
     await seedSession('2026-02-01T10:00:00.000Z');
 
-    await expect(runSync(db, server, USER, at('11:00:00'))).rejects.toThrow(/Could not find the table/);
+    await expect(runSync(db, server, USER, at('11:00:00'))).rejects.toThrow(
+      /Could not find the table/,
+    );
   });
 
-  it('marks only the calendar as allowed to be missing', () => {
+  it('marks only the tables that arrived after launch as allowed to be missing', () => {
+    // The calendar (0009) and the food log (0014): each reached the server by a script run by
+    // hand, after phones were already syncing. The training log itself is never on this list —
+    // a server without `sets` is broken, not behind.
     expect(SYNC_TABLES.filter((entry) => entry.optional).map((entry) => entry.table)).toEqual([
       'scheduled_days',
+      'food_entries',
     ]);
+  });
+
+  it('syncs everything else, and the calendar, while the food log has no table yet', async () => {
+    const server = createFakeServer();
+    server.missing.add('food_entries');
+    await seedSession('2026-02-01T10:00:00.000Z');
+    await db.run(
+      `INSERT INTO food_entries (id, user_id, eaten_on, name, calories, created_at, updated_at)
+       VALUES ('f1', ?, '2026-02-01', 'ביצה', 72, ?, ?)`,
+      [USER, '2026-02-01T10:00:00.000Z', '2026-02-01T10:00:00.000Z'],
+    );
+
+    const first = await runSync(db, server, USER, at('11:00:00'));
+
+    expect(first.refused).toEqual([]);
+    expect(server.rows('workout_sessions')).toHaveLength(1);
+    expect(server.rows('food_entries')).toHaveLength(0);
+
+    // The script is run. What was eaten in the meantime goes up with nothing to repair.
+    server.missing.delete('food_entries');
+    await runSync(db, server, USER, at('12:00:00'));
+    expect(server.rows('food_entries').map((row) => row.id)).toEqual(['f1']);
   });
 });
 
@@ -2180,15 +2244,18 @@ describe('supersets, drop sets and timed workouts', () => {
 
   const held = async (onto: SqlExecutor) => ({
     linked: (
-      await onto.get<{ n: number }>(`SELECT superset_with_next AS n FROM session_exercises WHERE id = ?`, [
-        FIRST,
-      ])
+      await onto.get<{ n: number }>(
+        `SELECT superset_with_next AS n FROM session_exercises WHERE id = ?`,
+        [FIRST],
+      )
     )?.n,
-    drop: (await onto.get<{ n: number }>(`SELECT is_drop AS n FROM sets WHERE id = ?`, [DROP_SET]))?.n,
-    timing: await onto.get<{ work_seconds: number | null; rest_seconds: number | null; rounds: number | null }>(
-      `SELECT work_seconds, rest_seconds, rounds FROM plan_days WHERE id = ?`,
-      [DAY],
-    ),
+    drop: (await onto.get<{ n: number }>(`SELECT is_drop AS n FROM sets WHERE id = ?`, [DROP_SET]))
+      ?.n,
+    timing: await onto.get<{
+      work_seconds: number | null;
+      rest_seconds: number | null;
+      rounds: number | null;
+    }>(`SELECT work_seconds, rest_seconds, rounds FROM plan_days WHERE id = ?`, [DAY]),
   });
 
   /** A server that has not been given the newer columns: migration 0010 not run yet. */
@@ -2206,10 +2273,16 @@ describe('supersets, drop sets and timed workouts', () => {
 
     await runSync(db, server, USER, at('11:00:00'));
 
-    expect(server.rows('session_exercises').find((row) => row.id === FIRST)?.superset_with_next).toBe(true);
+    expect(
+      server.rows('session_exercises').find((row) => row.id === FIRST)?.superset_with_next,
+    ).toBe(true);
     expect(server.rows('sets').find((row) => row.id === DROP_SET)?.is_drop).toBe(true);
     expect(server.rows('sets').find((row) => row.id === TOP_SET)?.is_drop).toBe(false);
-    expect(server.rows('plan_days')[0]).toMatchObject({ work_seconds: 40, rest_seconds: 20, rounds: 3 });
+    expect(server.rows('plan_days')[0]).toMatchObject({
+      work_seconds: 40,
+      rest_seconds: 20,
+      rounds: 3,
+    });
   });
 
   it('reach a second phone', async () => {
@@ -2238,7 +2311,12 @@ describe('supersets, drop sets and timed workouts', () => {
       const result = await runSync(db, server, USER, at('11:00:00'));
 
       expect(result.refused).toEqual([]);
-      expect(server.rows('sets').map((row) => row.id).sort()).toEqual([TOP_SET, DROP_SET]);
+      expect(
+        server
+          .rows('sets')
+          .map((row) => row.id)
+          .sort(),
+      ).toEqual([TOP_SET, DROP_SET]);
       expect(server.rows('session_exercises')).toHaveLength(2);
       expect(server.rows('plan_days')).toHaveLength(1);
     });
@@ -2283,9 +2361,15 @@ describe('supersets, drop sets and timed workouts', () => {
       server.unknownColumns.clear();
       await runSync(db, server, USER, at('13:00:00'));
 
-      expect(server.rows('session_exercises').find((row) => row.id === FIRST)?.superset_with_next).toBe(true);
+      expect(
+        server.rows('session_exercises').find((row) => row.id === FIRST)?.superset_with_next,
+      ).toBe(true);
       expect(server.rows('sets').find((row) => row.id === DROP_SET)?.is_drop).toBe(true);
-      expect(server.rows('plan_days')[0]).toMatchObject({ work_seconds: 40, rest_seconds: 20, rounds: 3 });
+      expect(server.rows('plan_days')[0]).toMatchObject({
+        work_seconds: 40,
+        rest_seconds: 20,
+        rounds: 3,
+      });
     });
 
     it('keeps only the rows that had something to add in the queue', async () => {
@@ -2300,7 +2384,9 @@ describe('supersets, drop sets and timed workouts', () => {
       // everything they had to say the first time, and are not sent again.
       const sent = (name: string) =>
         new Set(
-          server.calls.filter((call) => call.op === 'upsert' && call.table === name).flatMap((call) => call.ids),
+          server.calls
+            .filter((call) => call.op === 'upsert' && call.table === name)
+            .flatMap((call) => call.ids),
         );
       expect([...sent('session_exercises')]).toEqual([FIRST]);
       expect([...sent('sets')]).toEqual([DROP_SET]);

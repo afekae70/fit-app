@@ -150,7 +150,15 @@ export const SYNC_TABLES: readonly SyncTable[] = [
      * ones; nothing is ever updated in place and there is no unique index to trip.
      */
     table: 'scheduled_days',
-    columns: ['id', 'user_id', 'scheduled_on', 'plan_day_id', 'position', 'updated_at', 'deleted_at'],
+    columns: [
+      'id',
+      'user_id',
+      'scheduled_on',
+      'plan_day_id',
+      'position',
+      'updated_at',
+      'deleted_at',
+    ],
     booleans: [],
     json: [],
     scope: { kind: 'column' },
@@ -226,7 +234,8 @@ export const SYNC_TABLES: readonly SyncTable[] = [
     // UI put there to be typed into, and sending it is what the server's own check constraint
     // objects to. Holding it back locally is both the smaller change and the more honest one:
     // an empty row is not training data, and the moment anything is entered it syncs normally.
-    pushWhere: '(t0.reps IS NOT NULL OR t0.duration_seconds IS NOT NULL OR t0.distance_m IS NOT NULL)',
+    pushWhere:
+      '(t0.reps IS NOT NULL OR t0.duration_seconds IS NOT NULL OR t0.distance_m IS NOT NULL)',
     indexColumns: ['set_index'],
     optionalColumns: ['is_drop'],
   },
@@ -251,6 +260,35 @@ export const SYNC_TABLES: readonly SyncTable[] = [
     booleans: [],
     json: ['raw_payload'],
     scope: { kind: 'column' },
+  },
+  {
+    /*
+     * The food log: what was eaten on which day.
+     *
+     * Last, and depending on nothing: a row names no other row. Optional, because the table
+     * reaches the server by a script somebody runs by hand (0014), and until they do the rest
+     * of sync must carry on as if this entry were not here.
+     */
+    table: 'food_entries',
+    columns: [
+      'id',
+      'user_id',
+      'eaten_on',
+      'name',
+      'food_key',
+      'grams',
+      'calories',
+      'protein_g',
+      'carbs_g',
+      'fat_g',
+      'created_at',
+      'updated_at',
+      'deleted_at',
+    ],
+    booleans: [],
+    json: [],
+    scope: { kind: 'column' },
+    optional: true,
   },
 ] as const;
 

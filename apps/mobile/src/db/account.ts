@@ -30,6 +30,7 @@ const USER_TABLES = [
   'sync_state',
   'coach_briefs',
   'scheduled_days',
+  'food_entries',
   'nutrition_targets',
   'body_metrics',
   'locations',
@@ -40,7 +41,12 @@ const USER_TABLES = [
  * Every table with a `user_id` column that the purge deals with — the list the test compares
  * against the schema.
  */
-export const PURGED_TABLES: readonly string[] = [...USER_TABLES, 'workout_sessions', 'plans', 'outbox'];
+export const PURGED_TABLES: readonly string[] = [
+  ...USER_TABLES,
+  'workout_sessions',
+  'plans',
+  'outbox',
+];
 
 /** Delete everything on this device that belongs to `userId`. Other users' rows are untouched. */
 export async function purgeUserData(db: SqlExecutor, userId: string): Promise<void> {
@@ -67,10 +73,9 @@ export async function purgeUserData(db: SqlExecutor, userId: string): Promise<vo
         WHERE p.user_id = ?)`,
     [userId],
   );
-  await db.run(
-    `DELETE FROM plan_days WHERE plan_id IN (SELECT id FROM plans WHERE user_id = ?)`,
-    [userId],
-  );
+  await db.run(`DELETE FROM plan_days WHERE plan_id IN (SELECT id FROM plans WHERE user_id = ?)`, [
+    userId,
+  ]);
   await db.run(`DELETE FROM plans WHERE user_id = ?`, [userId]);
 
   for (const table of USER_TABLES) {

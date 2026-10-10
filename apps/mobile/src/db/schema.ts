@@ -26,7 +26,7 @@
  * TEXT (lexicographically sortable, which is what the history queries rely on).
  */
 
-export const SCHEMA_VERSION = 21;
+export const SCHEMA_VERSION = 22;
 
 /**
  * Incremental migrations, keyed by the version they upgrade TO.
@@ -416,6 +416,40 @@ CREATE INDEX IF NOT EXISTS locations_user_idx ON locations (user_id);
     ALTER TABLE profile ADD COLUMN avatar_version TEXT;
     ALTER TABLE profile ADD COLUMN synced_json TEXT;
   `,
+
+  /*
+   * 22 — a food log.
+   *
+   * The app has always worked out how much someone should eat, and had nowhere to write down
+   * what they did eat. One table: a row per thing eaten, on a local calendar day, holding its
+   * own calories and macros. Synced like the training log, and created with the bookkeeping
+   * column sync needs from the start, so there is no later migration to add it.
+   */
+  22: `
+    CREATE TABLE IF NOT EXISTS food_entries (
+      id          TEXT PRIMARY KEY NOT NULL,
+      user_id     TEXT NOT NULL,
+      -- The local calendar day it was eaten on, YYYY-MM-DD. A day, not a moment: see db/food.ts.
+      eaten_on    TEXT NOT NULL,
+      name        TEXT NOT NULL,
+      -- How the numbers were arrived at, when they came from the built-in list: which food, and
+      -- how much of it. The numbers themselves are stored, so correcting the list later does not
+      -- rewrite what somebody logged.
+      food_key    TEXT,
+      grams       REAL,
+      calories    REAL NOT NULL,
+      protein_g   REAL,
+      carbs_g     REAL,
+      fat_g       REAL,
+      created_at  TEXT NOT NULL,
+      updated_at  TEXT,
+      deleted_at  TEXT,
+      remote_updated_at TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS food_entries_user_day_idx
+      ON food_entries (user_id, eaten_on);
+  `,
 };
 
 export const CREATE_SCHEMA_SQL = `
@@ -691,6 +725,30 @@ CREATE TABLE IF NOT EXISTS scheduled_days (
 
 CREATE INDEX IF NOT EXISTS scheduled_days_user_date_idx
   ON scheduled_days (user_id, scheduled_on);
+
+CREATE TABLE IF NOT EXISTS food_entries (
+  id          TEXT PRIMARY KEY NOT NULL,
+  user_id     TEXT NOT NULL,
+  -- The local calendar day it was eaten on, YYYY-MM-DD. A day, not a moment: see db/food.ts.
+  eaten_on    TEXT NOT NULL,
+  name        TEXT NOT NULL,
+  -- How the numbers were arrived at, when they came from the built-in list: which food, and
+  -- how much of it. The numbers themselves are stored, so correcting the list later does not
+  -- rewrite what somebody logged.
+  food_key    TEXT,
+  grams       REAL,
+  calories    REAL NOT NULL,
+  protein_g   REAL,
+  carbs_g     REAL,
+  fat_g       REAL,
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT,
+  deleted_at  TEXT,
+  remote_updated_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS food_entries_user_day_idx
+  ON food_entries (user_id, eaten_on);
 
 CREATE TABLE IF NOT EXISTS outbox (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,

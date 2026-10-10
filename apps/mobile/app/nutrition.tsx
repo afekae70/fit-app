@@ -11,14 +11,7 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-  type TextStyle,
-  type ViewStyle,
-} from 'react-native';
+import { ScrollView, StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
 
 import {
   ACTIVITY_LEVELS,
@@ -56,6 +49,7 @@ import {
   SectionTitle,
   Stat,
 } from '../src/components/ui.js';
+import { FoodTodayCard } from '../src/components/FoodTodayCard.js';
 import { API_BASE_URL } from '../src/config.js';
 import { getLatestWeight, getProfile, recordBodyMetric, saveProfile } from '../src/db/metrics.js';
 import { getExecutor, newId } from '../src/db/provider.js';
@@ -272,6 +266,10 @@ export default function NutritionScreen() {
         <Text style={styles.appName}>{t('common.appName')}</Text>
       </View>
 
+      {/* What was eaten today, above the targets it is measured against, and the way into the
+          log. See FoodTodayCard. */}
+      <FoodTodayCard userId={userId} />
+
       {streak && streak.currentDays > 0 ? (
         <Card index={0} style={styles.streakCard}>
           <View style={styles.streakRow}>
@@ -415,7 +413,9 @@ export default function NutritionScreen() {
           </Card>
 
           <Card index={4}>
-            <SectionTitle>{t('targets.protein')} · {t('targets.carbs')} · {t('targets.fat')}</SectionTitle>
+            <SectionTitle>
+              {t('targets.protein')} · {t('targets.carbs')} · {t('targets.fat')}
+            </SectionTitle>
             {(() => {
               // Shown as each macro's share of the day's calories, not "progress toward a goal"
               // — there is no food log here, so these three numbers ARE the target, not an
@@ -428,16 +428,30 @@ export default function NutritionScreen() {
 
               return (
                 <>
-                  {renderMacroBar(t('targets.protein'), results.macros.proteinG, share(proteinKcal), colors.protein)}
-                  {renderMacroBar(t('targets.carbs'), results.macros.carbsG, share(carbsKcal), colors.carbs)}
-                  {renderMacroBar(t('targets.fat'), results.macros.fatG, share(fatKcal), colors.fat)}
+                  {renderMacroBar(
+                    t('targets.protein'),
+                    results.macros.proteinG,
+                    share(proteinKcal),
+                    colors.protein,
+                  )}
+                  {renderMacroBar(
+                    t('targets.carbs'),
+                    results.macros.carbsG,
+                    share(carbsKcal),
+                    colors.carbs,
+                  )}
+                  {renderMacroBar(
+                    t('targets.fat'),
+                    results.macros.fatG,
+                    share(fatKcal),
+                    colors.fat,
+                  )}
                 </>
               );
             })()}
           </Card>
         </>
       ) : null}
-
     </ScrollView>
   );
 }
@@ -470,109 +484,114 @@ const createStyles = (colors: ColorPalette) =>
     macroBarTrack: ViewStyle;
     macroBarFill: ViewStyle;
   }>({
-  screen: {
-    flex: 1,
-    backgroundColor: colors.bg,
-  },
-  content: {
-    paddingHorizontal: spacing.lg,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.lg,
-  },
-  appName: {
-    color: colors.text,
-    fontSize: fontSize.xl,
-    fontWeight: '800',
-  },
-  langButton: {
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.md,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  langButtonText: {
-    color: colors.textMuted,
-    fontSize: fontSize.sm,
-  },
-  streakCard: {
-    paddingVertical: spacing.md,
-  },
-  streakRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  streakEmoji: {
-    fontSize: 32,
-  },
-  streakTextCol: {
-    flex: 1,
-  },
-  streakDays: {
-    color: colors.text,
-    fontSize: fontSize.md,
-    fontWeight: '700',
-    textAlign: 'auto',
-  },
-  streakSub: {
-    color: colors.textMuted,
-    fontSize: fontSize.xs,
-    marginTop: spacing.xxs,
-    textAlign: 'auto',
-  },
-  briefCard: {
-    paddingVertical: spacing.md,
-  },
-  briefRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.md,
-  },
-  briefEmoji: {
-    fontSize: 24,
-  },
-  briefTitle: {
-    color: colors.accent,
-    fontSize: fontSize.xs,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    marginBottom: spacing.xxs,
-    textAlign: 'auto',
-  },
-  briefText: {
-    color: colors.text,
-    fontSize: fontSize.sm,
-    lineHeight: 20,
-    textAlign: 'auto',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: colors.border,
-    marginVertical: spacing.md,
-  },
-  macroBarBlock: {
-    marginTop: spacing.md,
-  },
-  macroBarHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: spacing.xs,
-  },
-  macroBarLabel: { color: colors.text, fontSize: fontSize.sm, fontWeight: '600', textAlign: 'auto' },
-  macroBarValue: { color: colors.textMuted, fontSize: fontSize.sm, textAlign: 'auto' },
-  macroBarTrack: {
-    height: 10,
-    borderRadius: 999,
-    backgroundColor: colors.surfaceRaised,
-    overflow: 'hidden',
-  },
-  macroBarFill: {
-    height: '100%',
-    borderRadius: 999,
-  },
-});
+    screen: {
+      flex: 1,
+      backgroundColor: colors.bg,
+    },
+    content: {
+      paddingHorizontal: spacing.lg,
+    },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: spacing.lg,
+    },
+    appName: {
+      color: colors.text,
+      fontSize: fontSize.xl,
+      fontWeight: '800',
+    },
+    langButton: {
+      paddingVertical: spacing.xs,
+      paddingHorizontal: spacing.md,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    langButtonText: {
+      color: colors.textMuted,
+      fontSize: fontSize.sm,
+    },
+    streakCard: {
+      paddingVertical: spacing.md,
+    },
+    streakRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+    },
+    streakEmoji: {
+      fontSize: 32,
+    },
+    streakTextCol: {
+      flex: 1,
+    },
+    streakDays: {
+      color: colors.text,
+      fontSize: fontSize.md,
+      fontWeight: '700',
+      textAlign: 'auto',
+    },
+    streakSub: {
+      color: colors.textMuted,
+      fontSize: fontSize.xs,
+      marginTop: spacing.xxs,
+      textAlign: 'auto',
+    },
+    briefCard: {
+      paddingVertical: spacing.md,
+    },
+    briefRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: spacing.md,
+    },
+    briefEmoji: {
+      fontSize: 24,
+    },
+    briefTitle: {
+      color: colors.accent,
+      fontSize: fontSize.xs,
+      fontWeight: '700',
+      textTransform: 'uppercase',
+      marginBottom: spacing.xxs,
+      textAlign: 'auto',
+    },
+    briefText: {
+      color: colors.text,
+      fontSize: fontSize.sm,
+      lineHeight: 20,
+      textAlign: 'auto',
+    },
+    divider: {
+      height: 1,
+      backgroundColor: colors.border,
+      marginVertical: spacing.md,
+    },
+    macroBarBlock: {
+      marginTop: spacing.md,
+    },
+    macroBarHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginBottom: spacing.xs,
+    },
+    macroBarLabel: {
+      color: colors.text,
+      fontSize: fontSize.sm,
+      fontWeight: '600',
+      textAlign: 'auto',
+    },
+    macroBarValue: { color: colors.textMuted, fontSize: fontSize.sm, textAlign: 'auto' },
+    macroBarTrack: {
+      height: 10,
+      borderRadius: 999,
+      backgroundColor: colors.surfaceRaised,
+      overflow: 'hidden',
+    },
+    macroBarFill: {
+      height: '100%',
+      borderRadius: 999,
+    },
+  });

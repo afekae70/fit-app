@@ -874,6 +874,76 @@ describe('migration 21 — the profile joins the cloud copy', () => {
   });
 });
 
+describe('migration 22 — a food log', () => {
+  /** A phone at version 21: everything it has, and no food table. */
+  function trainedDevice() {
+    const db = new DatabaseSync(':memory:');
+    db.exec(`
+      CREATE TABLE workout_sessions (id TEXT PRIMARY KEY NOT NULL, user_id TEXT NOT NULL, started_at TEXT NOT NULL);
+      INSERT INTO workout_sessions VALUES ('s1', 'u1', '2026-10-01T10:00:00.000Z');
+    `);
+    return db;
+  }
+
+  it('is on the app upgrade path', () => {
+    expect(SCHEMA_VERSION).toBeGreaterThanOrEqual(22);
+    expect(MIGRATIONS[22]).toBeDefined();
+  });
+
+  it('makes the same table a fresh install gets', () => {
+    // An upgraded phone and a new one must end up with one schema, or a query that works on
+    // the developer's fresh database fails on every phone that was already in use.
+    const upgraded = trainedDevice();
+    applyMigration(upgraded, MIGRATIONS[22] ?? '');
+    const fresh = new DatabaseSync(':memory:');
+    fresh.exec(CREATE_SCHEMA_SQL.replace(/PRAGMA journal_mode = WAL;/, ''));
+
+    const columns = (db: typeof upgraded) =>
+      db
+        .prepare(
+          `SELECT name, type, "notnull", pk FROM pragma_table_info('food_entries') ORDER BY cid`,
+        )
+        .all();
+    expect(columns(upgraded)).toEqual(columns(fresh));
+    expect(columns(upgraded).length).toBeGreaterThan(10);
+    upgraded.close();
+    fresh.close();
+  });
+
+  it('carries the column sync keeps its bookkeeping in', () => {
+    const db = trainedDevice();
+    applyMigration(db, MIGRATIONS[22] ?? '');
+    const names = (
+      db.prepare(`SELECT name FROM pragma_table_info('food_entries')`).all() as { name: string }[]
+    ).map((column) => column.name);
+    expect(names).toEqual(
+      expect.arrayContaining(['updated_at', 'deleted_at', 'remote_updated_at']),
+    );
+    db.close();
+  });
+
+  it('touches nothing that was already there', () => {
+    const db = trainedDevice();
+    applyMigration(db, MIGRATIONS[22] ?? '');
+    expect(db.prepare(`SELECT * FROM workout_sessions`).all()).toEqual([
+      { id: 's1', user_id: 'u1', started_at: '2026-10-01T10:00:00.000Z' },
+    ]);
+    db.close();
+  });
+
+  it('is safe to run twice, and on a new install where the table is already there', () => {
+    const db = trainedDevice();
+    applyMigration(db, MIGRATIONS[22] ?? '');
+    expect(() => applyMigration(db, MIGRATIONS[22] ?? '')).not.toThrow();
+    db.close();
+
+    const fresh = new DatabaseSync(':memory:');
+    fresh.exec(CREATE_SCHEMA_SQL.replace(/PRAGMA journal_mode = WAL;/, ''));
+    expect(() => applyMigration(fresh, MIGRATIONS[22] ?? '')).not.toThrow();
+    fresh.close();
+  });
+});
+
 describe('migration 20 — supersets, drop sets and timed workouts join sync', () => {
   const OLD = '2026-09-01T10:00:00.000Z';
 

@@ -45,6 +45,7 @@ const DESTINATIONS: readonly { route: Href; label: string }[] = [
   { route: '/coach', label: 'menu.coach' },
   { route: '/coaching', label: 'menu.coaching' },
   { route: '/nutrition', label: 'menu.nutrition' },
+  { route: '/food', label: 'menu.food' },
   { route: '/metrics', label: 'menu.metrics' },
   { route: '/settings', label: 'menu.settings' },
 ];
@@ -98,7 +99,11 @@ export function MenuButton({ pushToEnd = false }: { pushToEnd?: boolean }) {
       accessibilityRole="button"
       accessibilityLabel={t('menu.open')}
       hitSlop={8}
-      style={({ pressed }) => [styles.button, pushToEnd && styles.pushToEnd, pressed && styles.pressed]}
+      style={({ pressed }) => [
+        styles.button,
+        pushToEnd && styles.pushToEnd,
+        pressed && styles.pressed,
+      ]}
     >
       <List size={22} color={colors.text} weight="regular" />
     </Pressable>
