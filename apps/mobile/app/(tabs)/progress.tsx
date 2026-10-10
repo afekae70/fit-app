@@ -36,6 +36,7 @@ import {
   PersonalRecordList,
   WeeklyVolumeChart,
 } from '../../src/components/ProgressCharts.js';
+import { WorkoutProgressList } from '../../src/components/WorkoutProgressList.js';
 import {
   consistencyHeat,
   personalRecords,
@@ -49,6 +50,8 @@ import {
 } from '../../src/db/progression.js';
 import { MuscleVolumeCard } from '../../src/components/MuscleVolumeCard.js';
 import { getExecutor } from '../../src/db/provider.js';
+import { listWorkoutPoints } from '../../src/db/workoutProgress.js';
+import { groupByWorkout, type WorkoutLine } from '../../src/progress/workoutProgress.js';
 import { useTheme } from '../../src/ThemeProvider.js';
 import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../../src/theme.js';
 
@@ -84,12 +87,15 @@ export default function ProgressScreen() {
   const [volume, setVolume] = useState<WeeklyVolume[]>([]);
   const [heat, setHeat] = useState<TrainingDay[]>([]);
   const [records, setRecords] = useState<PersonalRecord[]>([]);
+  // Every named workout as a line of its sessions. See progress/workoutProgress.ts.
+  const [workouts, setWorkouts] = useState<WorkoutLine[]>([]);
   const [muscles, setMuscles] = useState<MuscleWork[]>([]);
   const [loading, setLoading] = useState(true);
 
   const reload = useCallback(async () => {
     const db = await getExecutor();
     setSummaries(await summariseAllProgress(db, userId));
+    setWorkouts(groupByWorkout(await listWorkoutPoints(db, userId)));
     setVolume(await weeklyVolume(db, userId));
     setHeat(await consistencyHeat(db, userId));
 
@@ -124,10 +130,24 @@ export default function ProgressScreen() {
         { paddingTop: spacing.lg, paddingBottom: insets.bottom + spacing.xxl },
       ]}
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.accent} />
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={handleRefresh}
+          tintColor={colors.accent}
+        />
       }
     >
       <ScreenHeader title={t('progress.title')} />
+
+      {/* First, because it answers the question asked on the way out of the gym: was today's
+          leg day better than the last one? Everything below it is about training as a whole. */}
+      {workouts.length > 0 ? (
+        <Card index={0}>
+          <SectionTitle>{t('progress.byWorkout')}</SectionTitle>
+          <Hint>{t('progress.byWorkoutHint')}</Hint>
+          <WorkoutProgressList lines={workouts} />
+        </Card>
+      ) : null}
 
       {volume.some((w) => w.volumeKg > 0) ? (
         <>
@@ -264,39 +284,44 @@ const createStyles = (colors: ColorPalette) =>
     figureLabel: TextStyle;
     meta: TextStyle;
   }>({
-  screen: { flex: 1, backgroundColor: colors.bg },
-  content: { paddingHorizontal: spacing.lg },
-  centered: { flex: 1, backgroundColor: colors.bg, alignItems: 'center' },
-  muted: { color: colors.textMuted, fontSize: fontSize.sm },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.md,
-    gap: spacing.sm,
-  },
-  exerciseName: {
-    flex: 1,
-    color: colors.text,
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.bold,
-    textAlign: 'auto',
-  },
-  badge: {
-    paddingVertical: spacing.xxs,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-  },
-  badgeText: { fontSize: fontSize.xxs, fontWeight: fontWeight.bold },
-  figures: { flexDirection: 'row', gap: spacing.md },
-  figure: { flex: 1 },
-  figureValue: { color: colors.text, fontSize: fontSize.xl, fontWeight: fontWeight.bold },
-  figureLabel: {
-    color: colors.textMuted,
-    fontSize: fontSize.xxs,
-    marginTop: spacing.xxs,
-    textAlign: 'auto',
-  },
-  meta: { color: colors.textMuted, fontSize: fontSize.xs, marginTop: spacing.md, textAlign: 'auto' },
-});
+    screen: { flex: 1, backgroundColor: colors.bg },
+    content: { paddingHorizontal: spacing.lg },
+    centered: { flex: 1, backgroundColor: colors.bg, alignItems: 'center' },
+    muted: { color: colors.textMuted, fontSize: fontSize.sm },
+    cardHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: spacing.md,
+      gap: spacing.sm,
+    },
+    exerciseName: {
+      flex: 1,
+      color: colors.text,
+      fontSize: fontSize.md,
+      fontWeight: fontWeight.bold,
+      textAlign: 'auto',
+    },
+    badge: {
+      paddingVertical: spacing.xxs,
+      paddingHorizontal: spacing.sm,
+      borderRadius: radius.pill,
+      borderWidth: 1,
+    },
+    badgeText: { fontSize: fontSize.xxs, fontWeight: fontWeight.bold },
+    figures: { flexDirection: 'row', gap: spacing.md },
+    figure: { flex: 1 },
+    figureValue: { color: colors.text, fontSize: fontSize.xl, fontWeight: fontWeight.bold },
+    figureLabel: {
+      color: colors.textMuted,
+      fontSize: fontSize.xxs,
+      marginTop: spacing.xxs,
+      textAlign: 'auto',
+    },
+    meta: {
+      color: colors.textMuted,
+      fontSize: fontSize.xs,
+      marginTop: spacing.md,
+      textAlign: 'auto',
+    },
+  });
