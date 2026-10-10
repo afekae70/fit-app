@@ -90,7 +90,14 @@ import { syncWorkoutReminders } from '../../src/reminders/sync.js';
 import { hapticLight } from '../../src/haptics.js';
 import { isRtlLanguage, type Language } from '../../src/i18n/index.js';
 import { useTheme } from '../../src/ThemeProvider.js';
-import { fontSize, fontWeight, radius, shadow, spacing, type ColorPalette } from '../../src/theme.js';
+import {
+  fontSize,
+  fontWeight,
+  radius,
+  shadow,
+  spacing,
+  type ColorPalette,
+} from '../../src/theme.js';
 
 type DayStatus = {
   id: string;
@@ -557,11 +564,7 @@ export default function PlanScreen() {
   const labelById = new Map(days.map((day) => [day.id, labelFor(day)]));
 
   /** One workout's card, the same in every group. */
-  const renderDay = (
-    day: DayStatus,
-    index: number,
-    dragHandle: DragHandleProps,
-  ) => {
+  const renderDay = (day: DayStatus, index: number, dragHandle: DragHandleProps) => {
     const isNext = day.id === nextDayId;
     const hue = colors[hueById.get(day.id) ?? 'accent'];
     const names = (day.exercise_keys ?? '')
@@ -569,9 +572,7 @@ export default function PlanScreen() {
       .filter(Boolean)
       .map(
         (key) =>
-          (isHebrew
-            ? EXERCISE_BY_KEY.get(key)?.nameHe
-            : EXERCISE_BY_KEY.get(key)?.nameEn) ?? key,
+          (isHebrew ? EXERCISE_BY_KEY.get(key)?.nameHe : EXERCISE_BY_KEY.get(key)?.nameEn) ?? key,
       );
     const shown = names.slice(0, 3);
     const hidden = names.length - shown.length;
@@ -579,9 +580,7 @@ export default function PlanScreen() {
     return (
       <FadeSlideIn index={index}>
         <Pressable
-          onPress={() =>
-            router.push({ pathname: '/plan-day/[id]', params: { id: day.id } })
-          }
+          onPress={() => router.push({ pathname: '/plan-day/[id]', params: { id: day.id } })}
           // The colour this workout wears on the calendar, as the card's own edge: the
           // grid above needs no separate key, and the list reads as the same thing.
           style={[
@@ -607,9 +606,7 @@ export default function PlanScreen() {
               accessibilityRole="adjustable"
               accessibilityLabel={t('plan.dragDay')}
               accessibilityActions={[
-                ...(dragHandle.canMoveUp
-                  ? [{ name: 'moveUp', label: t('plan.moveUp') }]
-                  : []),
+                ...(dragHandle.canMoveUp ? [{ name: 'moveUp', label: t('plan.moveUp') }] : []),
                 ...(dragHandle.canMoveDown
                   ? [{ name: 'moveDown', label: t('plan.moveDown') }]
                   : []),
@@ -619,11 +616,7 @@ export default function PlanScreen() {
                 if (event.nativeEvent.actionName === 'moveDown') dragHandle.moveDown();
               }}
             >
-              <Text
-                style={[styles.handleGlyph, dragHandle.active && styles.handleActive]}
-              >
-                ⠿
-              </Text>
+              <Text style={[styles.handleGlyph, dragHandle.active && styles.handleActive]}>⠿</Text>
             </View>
           </View>
 
@@ -671,10 +664,7 @@ export default function PlanScreen() {
               </Pressable>
               <Pressable
                 onPress={() => openDayOptions(day)}
-                style={({ pressed }) => [
-                  styles.optionsButton,
-                  pressed && styles.pressed,
-                ]}
+                style={({ pressed }) => [styles.optionsButton, pressed && styles.pressed]}
                 accessibilityRole="button"
                 accessibilityLabel={t('workout.exerciseOptions')}
               >
@@ -706,310 +696,324 @@ export default function PlanScreen() {
 
   return (
     <KeyboardSafe>
-    <ScrollView
-      ref={scrollRef}
-      scrollEnabled={!dragging}
-      scrollEventThrottle={16}
-      onScroll={(event) => {
-        scrollY.current = event.nativeEvent.contentOffset.y;
-      }}
-      onLayout={() => {
-        scrollRef.current
-          ?.getNativeScrollRef()
-          ?.measureInWindow((_x: number, top: number, _width: number, height: number) => {
-            viewport.current = { top, height };
-          });
-      }}
-      style={styles.screen}
-      contentContainerStyle={[
-        styles.content,
-        { paddingTop: spacing.lg, paddingBottom: insets.bottom + spacing.xxl },
-      ]}
-      keyboardShouldPersistTaps="handled"
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={handleRefresh}
-          tintColor={colors.accent}
-        />
-      }
-    >
-      <ScreenHeader title={t('plan.title')} />
+      <ScrollView
+        ref={scrollRef}
+        scrollEnabled={!dragging}
+        scrollEventThrottle={16}
+        onScroll={(event) => {
+          scrollY.current = event.nativeEvent.contentOffset.y;
+        }}
+        onLayout={() => {
+          scrollRef.current
+            ?.getNativeScrollRef()
+            ?.measureInWindow((_x: number, top: number, _width: number, height: number) => {
+              viewport.current = { top, height };
+            });
+        }}
+        style={styles.screen}
+        contentContainerStyle={[
+          styles.content,
+          { paddingTop: spacing.lg, paddingBottom: insets.bottom + spacing.xxl },
+        ]}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.accent}
+          />
+        }
+      >
+        <ScreenHeader title={t('plan.title')} />
 
-      {groups.length === 0 ? (
-        <>
-          <EmptyState emoji="🗓️" title={t('plan.empty')} hint={t('plan.emptyHint')} />
-          <Card>
-            <TextInput
-              value={nameDraft}
-              onChangeText={setNameDraft}
-              placeholder={t('plan.namePlaceholder')}
-              placeholderTextColor={colors.textMuted}
-              style={styles.input}
-              returnKeyType="done"
-              onSubmitEditing={create}
-            />
-            <View style={styles.spacer} />
-            <Button label={t('plan.create')} onPress={create} />
-          </Card>
-        </>
-      ) : (
-        <>
-          <Card>
-            <SectionTitle>{t('month.title')}</SectionTitle>
-
-            {/* Previous first: in a right-to-left row it sits on the right, which is where the
-                past is when a Hebrew reader moves through months. The glyphs flip with it. */}
-            <View style={styles.monthNav}>
-              <Pressable
-                onPress={() => switchTo(addMonths(month, -1))}
-                accessibilityRole="button"
-                accessibilityLabel={t('month.prev')}
-                hitSlop={8}
-                style={({ pressed }) => [styles.navButton, pressed && styles.pressed]}
-              >
-                <Text style={styles.navGlyph}>{rtl ? '›' : '‹'}</Text>
-              </Pressable>
-
-              <Pressable
-                onPress={() => switchTo(monthKey(today))}
-                disabled={month === monthKey(today)}
-                accessibilityRole="button"
-                style={styles.monthTitleWrap}
-              >
-                <Text style={styles.monthTitle}>{monthTitle}</Text>
-                {month !== monthKey(today) ? (
-                  <Text style={styles.backToToday}>{t('week.today')}</Text>
-                ) : null}
-              </Pressable>
-
-              <Pressable
-                onPress={() => switchTo(addMonths(month, 1))}
-                accessibilityRole="button"
-                accessibilityLabel={t('month.next')}
-                hitSlop={8}
-                style={({ pressed }) => [styles.navButton, pressed && styles.pressed]}
-              >
-                <Text style={styles.navGlyph}>{rtl ? '‹' : '›'}</Text>
-              </Pressable>
-            </View>
-
-            <View style={styles.row}>
-              {weekdayNames.map((name, index) => (
-                <Text key={index} style={styles.weekday}>
-                  {name}
-                </Text>
-              ))}
-            </View>
-
-            <View style={styles.grid}>
-              {grid.map((week) => (
-                <View key={week[0]?.date} style={styles.row}>
-                  {week.map((cell) => {
-                    const decided = decisions.has(cell.date);
-                    const decision = decisions.get(cell.date);
-                    const workouts = (Array.isArray(decision) ? decision : []).filter((id) =>
-                      labelById.has(id),
-                    );
-                    const labels = workouts.map((id) => labelById.get(id) ?? '');
-                    const isToday = cell.date === today;
-                    // Two tags fit a cell. A third day of training on one date is rare enough to
-                    // be a count rather than a squeeze.
-                    const shown = workouts.length > 2 ? workouts.slice(0, 1) : workouts;
-                    const hidden = workouts.length - shown.length;
-
-                    return (
-                      <Pressable
-                        key={cell.date}
-                        onPress={() => chooseFor(cell.date)}
-                        // Borrowed days belong to the neighbouring months and are edited there;
-                        // tapping one here would change a month nobody is looking at.
-                        disabled={!cell.inMonth}
-                        accessibilityRole="button"
-                        accessibilityLabel={`${longDate(cell.date)}: ${
-                          labels.length > 0
-                            ? labels.join(', ')
-                            : decided
-                              ? t('week.rest')
-                              : t('week.undecided')
-                        }`}
-                        style={({ pressed }) => [
-                          styles.cell,
-                          !cell.inMonth && styles.cellOutside,
-                          cell.inMonth && cell.date < today && styles.cellPast,
-                          isToday && styles.cellToday,
-                          pressed && styles.pressed,
-                        ]}
-                      >
-                        <Text style={[styles.cellNumber, isToday && styles.cellNumberToday]}>
-                          {Number(cell.date.slice(8))}
-                        </Text>
-
-                        {cell.inMonth && workouts.length > 0 ? (
-                          <>
-                            {shown.map((id) => (
-                              <View
-                                key={id}
-                                style={[
-                                  styles.tag,
-                                  { backgroundColor: colors[hueById.get(id) ?? 'accent'] },
-                                ]}
-                              >
-                                <Text style={styles.tagText} numberOfLines={1}>
-                                  {labelById.get(id)}
-                                </Text>
-                              </View>
-                            ))}
-                            {hidden > 0 ? (
-                              <Text style={styles.rest} numberOfLines={1}>
-                                +{hidden}
-                              </Text>
-                            ) : null}
-                          </>
-                        ) : cell.inMonth && decided && decision === null ? (
-                          <Text style={styles.rest} numberOfLines={1}>
-                            {t('week.rest')}
-                          </Text>
-                        ) : null}
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              ))}
-            </View>
-
-            <Hint>{t('month.hint')}</Hint>
-          </Card>
-
-          {groups.map((group) => (
-            <View key={group.plan.id} style={styles.group}>
-              {renaming?.id === group.plan.id ? (
-                <View style={styles.groupHeader}>
-                  <TextInput
-                    value={renaming.draft}
-                    onChangeText={(draft) => setRenaming({ id: group.plan.id, draft })}
-                    onSubmitEditing={saveRename}
-                    onBlur={saveRename}
-                    autoFocus
-                    selectTextOnFocus
-                    returnKeyType="done"
-                    placeholder={t('plan.namePlaceholder')}
-                    placeholderTextColor={colors.textMuted}
-                    style={[styles.input, styles.groupInput]}
-                  />
-                </View>
-              ) : (
-                <View style={styles.groupHeader}>
-                  <Pressable
-                    onPress={() => {
-                      void hapticLight();
-                      setGroupOpen(group.plan.id, !openGroups.has(group.plan.id));
-                    }}
-                    style={({ pressed }) => [styles.groupToggle, pressed && styles.pressed]}
-                    accessibilityRole="button"
-                    accessibilityState={{ expanded: openGroups.has(group.plan.id) }}
-                    hitSlop={6}
-                  >
-                    <Text style={styles.chevron}>
-                      {openGroups.has(group.plan.id) ? '▾' : rtl ? '◂' : '▸'}
-                    </Text>
-                    <Text style={styles.planName} numberOfLines={1}>
-                      {group.plan.name}
-                    </Text>
-                    <Text style={styles.groupCount}>
-                      {t('plan.workoutCount', { count: group.days.length })}
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => openGroupOptions(group.plan)}
-                    hitSlop={8}
-                    style={({ pressed }) => [styles.groupOptions, pressed && styles.pressed]}
-                    accessibilityRole="button"
-                    accessibilityLabel={t('plan.groupOptions')}
-                  >
-                    <Text style={styles.optionsGlyph}>⋯</Text>
-                  </Pressable>
-                </View>
-              )}
-
-              {!openGroups.has(group.plan.id) ? null : group.days.length === 0 ? (
-                <Text style={styles.emptyDayHint}>{t('plan.noDaysHint')}</Text>
-              ) : (
-                <DragReorderList
-                  data={group.days}
-                  keyExtractor={(day) => day.id}
-                  onReorder={(from, to) => move(group.plan.id, group.days, from, to)}
-                  onDragStateChange={setDragging}
-                  onDragMove={autoScroll}
-                  renderItem={renderDay}
-                />
-              )}
-
-              {openGroups.has(group.plan.id) ? (
-              <View style={styles.groupActions}>
-                <Pressable
-                  onPress={() => addDay(group.plan.id)}
-                  style={[styles.addDayButton, styles.groupAction]}
-                  accessibilityRole="button"
-                >
-                  <Text style={styles.addDayText}>+ {t('plan.addDay')}</Text>
-                </Pressable>
-                {days.length > group.days.length ? (
-                  <Pressable
-                    onPress={() => addExisting(group.plan)}
-                    style={[styles.addDayButton, styles.groupAction]}
-                    accessibilityRole="button"
-                  >
-                    <Text style={styles.addDayText}>⇄ {t('plan.addExisting')}</Text>
-                  </Pressable>
-                ) : null}
-              </View>
-              ) : null}
-            </View>
-          ))}
-
-          {/* As many groups as wanted, each under a title of the user's own. */}
-          {creating ? (
+        {groups.length === 0 ? (
+          <>
+            <EmptyState emoji="🗓️" title={t('plan.empty')} hint={t('plan.emptyHint')} />
             <Card>
-              <SectionTitle>{t('plan.newGroup')}</SectionTitle>
               <TextInput
                 value={nameDraft}
                 onChangeText={setNameDraft}
                 placeholder={t('plan.namePlaceholder')}
                 placeholderTextColor={colors.textMuted}
                 style={styles.input}
-                autoFocus
                 returnKeyType="done"
                 onSubmitEditing={create}
               />
               <View style={styles.spacer} />
               <Button label={t('plan.create')} onPress={create} />
+            </Card>
+            {/* The other way to stop looking at an empty plan: take one that is already made. */}
+            <Button
+              label={t('starter.libraryLink')}
+              variant="secondary"
+              onPress={() => router.push('/starter-programs')}
+            />
+          </>
+        ) : (
+          <>
+            <Card>
+              <SectionTitle>{t('month.title')}</SectionTitle>
+
+              {/* Previous first: in a right-to-left row it sits on the right, which is where the
+                past is when a Hebrew reader moves through months. The glyphs flip with it. */}
+              <View style={styles.monthNav}>
+                <Pressable
+                  onPress={() => switchTo(addMonths(month, -1))}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('month.prev')}
+                  hitSlop={8}
+                  style={({ pressed }) => [styles.navButton, pressed && styles.pressed]}
+                >
+                  <Text style={styles.navGlyph}>{rtl ? '›' : '‹'}</Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={() => switchTo(monthKey(today))}
+                  disabled={month === monthKey(today)}
+                  accessibilityRole="button"
+                  style={styles.monthTitleWrap}
+                >
+                  <Text style={styles.monthTitle}>{monthTitle}</Text>
+                  {month !== monthKey(today) ? (
+                    <Text style={styles.backToToday}>{t('week.today')}</Text>
+                  ) : null}
+                </Pressable>
+
+                <Pressable
+                  onPress={() => switchTo(addMonths(month, 1))}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('month.next')}
+                  hitSlop={8}
+                  style={({ pressed }) => [styles.navButton, pressed && styles.pressed]}
+                >
+                  <Text style={styles.navGlyph}>{rtl ? '‹' : '›'}</Text>
+                </Pressable>
+              </View>
+
+              <View style={styles.row}>
+                {weekdayNames.map((name, index) => (
+                  <Text key={index} style={styles.weekday}>
+                    {name}
+                  </Text>
+                ))}
+              </View>
+
+              <View style={styles.grid}>
+                {grid.map((week) => (
+                  <View key={week[0]?.date} style={styles.row}>
+                    {week.map((cell) => {
+                      const decided = decisions.has(cell.date);
+                      const decision = decisions.get(cell.date);
+                      const workouts = (Array.isArray(decision) ? decision : []).filter((id) =>
+                        labelById.has(id),
+                      );
+                      const labels = workouts.map((id) => labelById.get(id) ?? '');
+                      const isToday = cell.date === today;
+                      // Two tags fit a cell. A third day of training on one date is rare enough to
+                      // be a count rather than a squeeze.
+                      const shown = workouts.length > 2 ? workouts.slice(0, 1) : workouts;
+                      const hidden = workouts.length - shown.length;
+
+                      return (
+                        <Pressable
+                          key={cell.date}
+                          onPress={() => chooseFor(cell.date)}
+                          // Borrowed days belong to the neighbouring months and are edited there;
+                          // tapping one here would change a month nobody is looking at.
+                          disabled={!cell.inMonth}
+                          accessibilityRole="button"
+                          accessibilityLabel={`${longDate(cell.date)}: ${
+                            labels.length > 0
+                              ? labels.join(', ')
+                              : decided
+                                ? t('week.rest')
+                                : t('week.undecided')
+                          }`}
+                          style={({ pressed }) => [
+                            styles.cell,
+                            !cell.inMonth && styles.cellOutside,
+                            cell.inMonth && cell.date < today && styles.cellPast,
+                            isToday && styles.cellToday,
+                            pressed && styles.pressed,
+                          ]}
+                        >
+                          <Text style={[styles.cellNumber, isToday && styles.cellNumberToday]}>
+                            {Number(cell.date.slice(8))}
+                          </Text>
+
+                          {cell.inMonth && workouts.length > 0 ? (
+                            <>
+                              {shown.map((id) => (
+                                <View
+                                  key={id}
+                                  style={[
+                                    styles.tag,
+                                    { backgroundColor: colors[hueById.get(id) ?? 'accent'] },
+                                  ]}
+                                >
+                                  <Text style={styles.tagText} numberOfLines={1}>
+                                    {labelById.get(id)}
+                                  </Text>
+                                </View>
+                              ))}
+                              {hidden > 0 ? (
+                                <Text style={styles.rest} numberOfLines={1}>
+                                  +{hidden}
+                                </Text>
+                              ) : null}
+                            </>
+                          ) : cell.inMonth && decided && decision === null ? (
+                            <Text style={styles.rest} numberOfLines={1}>
+                              {t('week.rest')}
+                            </Text>
+                          ) : null}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                ))}
+              </View>
+
+              <Hint>{t('month.hint')}</Hint>
+            </Card>
+
+            {groups.map((group) => (
+              <View key={group.plan.id} style={styles.group}>
+                {renaming?.id === group.plan.id ? (
+                  <View style={styles.groupHeader}>
+                    <TextInput
+                      value={renaming.draft}
+                      onChangeText={(draft) => setRenaming({ id: group.plan.id, draft })}
+                      onSubmitEditing={saveRename}
+                      onBlur={saveRename}
+                      autoFocus
+                      selectTextOnFocus
+                      returnKeyType="done"
+                      placeholder={t('plan.namePlaceholder')}
+                      placeholderTextColor={colors.textMuted}
+                      style={[styles.input, styles.groupInput]}
+                    />
+                  </View>
+                ) : (
+                  <View style={styles.groupHeader}>
+                    <Pressable
+                      onPress={() => {
+                        void hapticLight();
+                        setGroupOpen(group.plan.id, !openGroups.has(group.plan.id));
+                      }}
+                      style={({ pressed }) => [styles.groupToggle, pressed && styles.pressed]}
+                      accessibilityRole="button"
+                      accessibilityState={{ expanded: openGroups.has(group.plan.id) }}
+                      hitSlop={6}
+                    >
+                      <Text style={styles.chevron}>
+                        {openGroups.has(group.plan.id) ? '▾' : rtl ? '◂' : '▸'}
+                      </Text>
+                      <Text style={styles.planName} numberOfLines={1}>
+                        {group.plan.name}
+                      </Text>
+                      <Text style={styles.groupCount}>
+                        {t('plan.workoutCount', { count: group.days.length })}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => openGroupOptions(group.plan)}
+                      hitSlop={8}
+                      style={({ pressed }) => [styles.groupOptions, pressed && styles.pressed]}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('plan.groupOptions')}
+                    >
+                      <Text style={styles.optionsGlyph}>⋯</Text>
+                    </Pressable>
+                  </View>
+                )}
+
+                {!openGroups.has(group.plan.id) ? null : group.days.length === 0 ? (
+                  <Text style={styles.emptyDayHint}>{t('plan.noDaysHint')}</Text>
+                ) : (
+                  <DragReorderList
+                    data={group.days}
+                    keyExtractor={(day) => day.id}
+                    onReorder={(from, to) => move(group.plan.id, group.days, from, to)}
+                    onDragStateChange={setDragging}
+                    onDragMove={autoScroll}
+                    renderItem={renderDay}
+                  />
+                )}
+
+                {openGroups.has(group.plan.id) ? (
+                  <View style={styles.groupActions}>
+                    <Pressable
+                      onPress={() => addDay(group.plan.id)}
+                      style={[styles.addDayButton, styles.groupAction]}
+                      accessibilityRole="button"
+                    >
+                      <Text style={styles.addDayText}>+ {t('plan.addDay')}</Text>
+                    </Pressable>
+                    {days.length > group.days.length ? (
+                      <Pressable
+                        onPress={() => addExisting(group.plan)}
+                        style={[styles.addDayButton, styles.groupAction]}
+                        accessibilityRole="button"
+                      >
+                        <Text style={styles.addDayText}>⇄ {t('plan.addExisting')}</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                ) : null}
+              </View>
+            ))}
+
+            {/* As many groups as wanted, each under a title of the user's own. */}
+            {creating ? (
+              <Card>
+                <SectionTitle>{t('plan.newGroup')}</SectionTitle>
+                <TextInput
+                  value={nameDraft}
+                  onChangeText={setNameDraft}
+                  placeholder={t('plan.namePlaceholder')}
+                  placeholderTextColor={colors.textMuted}
+                  style={styles.input}
+                  autoFocus
+                  returnKeyType="done"
+                  onSubmitEditing={create}
+                />
+                <View style={styles.spacer} />
+                <Button label={t('plan.create')} onPress={create} />
+                <Pressable
+                  onPress={() => {
+                    setCreating(false);
+                    setNameDraft('');
+                  }}
+                  style={styles.cancelCreate}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.cancelCreateText}>{t('common.cancel')}</Text>
+                </Pressable>
+              </Card>
+            ) : (
               <Pressable
-                onPress={() => {
-                  setCreating(false);
-                  setNameDraft('');
-                }}
-                style={styles.cancelCreate}
+                onPress={() => setCreating(true)}
+                style={[styles.addDayButton, styles.newGroupButton]}
                 accessibilityRole="button"
               >
-                <Text style={styles.cancelCreateText}>{t('common.cancel')}</Text>
+                <Text style={styles.addDayText}>＋ {t('plan.newGroup')}</Text>
               </Pressable>
-            </Card>
-          ) : (
-            <Pressable
-              onPress={() => setCreating(true)}
-              style={[styles.addDayButton, styles.newGroupButton]}
-              accessibilityRole="button"
-            >
-              <Text style={styles.addDayText}>＋ {t('plan.newGroup')}</Text>
-            </Pressable>
-          )}
+            )}
+            {creating ? null : (
+              <Pressable
+                onPress={() => router.push('/starter-programs')}
+                style={[styles.addDayButton, styles.newGroupButton]}
+                accessibilityRole="button"
+              >
+                <Text style={styles.addDayText}>{t('starter.libraryLink')}</Text>
+              </Pressable>
+            )}
 
-          <Banner tone="info">{t('plan.prescriptionNote')}</Banner>
-
-        </>
-      )}
-    </ScrollView>
+            <Banner tone="info">{t('plan.prescriptionNote')}</Banner>
+          </>
+        )}
+      </ScrollView>
     </KeyboardSafe>
   );
 }

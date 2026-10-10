@@ -37,13 +37,15 @@ import { ActivityIndicator, View } from 'react-native';
 
 import { LetThroughOnError } from '../components/LetThroughOnError.js';
 import { getProfile } from '../db/metrics.js';
+import { listPlans } from '../db/plans.js';
 import { getExecutor } from '../db/provider.js';
+import { StarterWelcome } from '../plans/StarterProgramPicker.js';
 import { syncProfileNow } from '../sync/profileSyncRunner.js';
 import { useTheme } from '../ThemeProvider.js';
 import { OnboardingFlow } from './OnboardingFlow.js';
 import { hasMetServer, needsProfileSetup } from './profileSetup.js';
 
-type Standing = 'checking' | 'fetching' | 'asking' | 'through';
+type Standing = 'checking' | 'fetching' | 'asking' | 'offering' | 'through';
 
 /** How long the server is given to say what it knows before the questions are asked anyway. */
 const SERVER_WAIT_MS = 8000;
@@ -102,12 +104,29 @@ export function OnboardingGate({ userId, children }: { userId: string; children:
         <OnboardingFlow
           userId={userId}
           onDone={() => {
-            setStanding('through');
             // The answers exist only on this phone at this moment, and they are the one thing
             // a new account has. Sent now rather than whenever the app is next reopened.
             void syncProfileNow(userId);
+            // One more thing before the app, for an account with nothing to train from: a
+            // programme to start with. Someone who already has plans — they answered these
+            // questions on a phone whose plans came down first — is not offered another.
+            void (async () => {
+              try {
+                const plans = await listPlans(await getExecutor(), userId);
+                setStanding(plans.length === 0 ? 'offering' : 'through');
+              } catch {
+                setStanding('through');
+              }
+            })();
           }}
         />
+      </LetThroughOnError>
+    );
+  }
+  if (standing === 'offering') {
+    return (
+      <LetThroughOnError what="The starter programmes" onError={() => setStanding('through')}>
+        <StarterWelcome userId={userId} onDone={() => setStanding('through')} />
       </LetThroughOnError>
     );
   }

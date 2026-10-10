@@ -580,6 +580,25 @@ export const en = {
       failed: 'Something went wrong. Nothing was changed — try again.',
     },
   },
+  starter: {
+    welcomeTitle: 'A programme to start with',
+    welcomeSubtitle:
+      'Pick a ready-made programme and train today. Everything in it can be changed later.',
+    libraryTitle: 'Ready-made programmes',
+    libraryHint:
+      'The programme you pick is added to your plans, and from there it is yours: rename it, swap exercises, delete workouts.',
+    libraryLink: 'Ready-made programmes',
+    place: 'Where do you train?',
+    placeGym: 'Gym',
+    placeHome: 'At home, no equipment',
+    days: 'How many days a week?',
+    daysOption: '{{count}} days a week',
+    recommended: 'Recommended',
+    add: 'Add this programme',
+    adding: 'Adding…',
+    failed: 'The programme could not be added. Try again.',
+    skip: 'I will build my own',
+  },
   plan: {
     dragDay: 'Drag to reorder the workout',
     title: 'Weekly plan',
