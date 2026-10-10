@@ -66,6 +66,8 @@ function withinTime(work: Promise<unknown>, ms: number): Promise<void> {
 export function OnboardingGate({ userId, children }: { userId: string; children: ReactNode }) {
   // The pseudo-user of a build with no accounts has nobody to ask and nowhere to sign up from.
   const [standing, setStanding] = useState<Standing>(userId === 'local' ? 'through' : 'checking');
+  // How many days a week they said they train, for the programmes offered next.
+  const [trainingDays, setTrainingDays] = useState<number | undefined>(undefined);
   const { colors } = useTheme();
 
   useEffect(() => {
@@ -103,13 +105,18 @@ export function OnboardingGate({ userId, children }: { userId: string; children:
       <LetThroughOnError what="Profile setup" onError={() => setStanding('through')}>
         <OnboardingFlow
           userId={userId}
-          onDone={() => {
+          onDone={(training) => {
             // The answers exist only on this phone at this moment, and they are the one thing
             // a new account has. Sent now rather than whenever the app is next reopened.
             void syncProfileNow(userId);
-            // One more thing before the app, for an account with nothing to train from: a
-            // programme to start with. Someone who already has plans — they answered these
-            // questions on a phone whose plans came down first — is not offered another.
+            // They were asked whether they want a programme, and said no: straight in.
+            if (!training.wantsProgram) {
+              setStanding('through');
+              return;
+            }
+            setTrainingDays(training.daysPerWeek);
+            // Yes — unless they turn out to have plans already, having answered the questions
+            // on a phone whose plans came down first. Those are not offered another.
             void (async () => {
               try {
                 const plans = await listPlans(await getExecutor(), userId);
@@ -126,7 +133,11 @@ export function OnboardingGate({ userId, children }: { userId: string; children:
   if (standing === 'offering') {
     return (
       <LetThroughOnError what="The starter programmes" onError={() => setStanding('through')}>
-        <StarterWelcome userId={userId} onDone={() => setStanding('through')} />
+        <StarterWelcome
+          userId={userId}
+          daysPerWeek={trainingDays}
+          onDone={() => setStanding('through')}
+        />
       </LetThroughOnError>
     );
   }

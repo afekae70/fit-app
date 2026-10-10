@@ -47,9 +47,12 @@ import {
   ArrowRight,
   Barbell,
   Cake,
+  CalendarCheck,
   Check,
   Equals,
   Lightning,
+  ListChecks,
+  PencilSimple,
   PersonSimpleBike,
   PersonSimpleRun,
   PersonSimpleWalk,
@@ -105,6 +108,9 @@ import {
   weightRange,
   type SetupSex,
   type SetupStep,
+  DEFAULT_TRAINING_DAYS,
+  TRAINING_DAYS,
+  type TrainingAnswer,
 } from './profileSetup.js';
 import { RulerPicker } from './RulerPicker.js';
 import { StepArt } from './StepArt.js';
@@ -115,6 +121,7 @@ const STEP_ICON: Record<SetupStep, Icon> = {
   age: Cake,
   activity: PersonSimpleRun,
   goal: Target,
+  training: CalendarCheck,
   done: Sparkle,
 };
 
@@ -132,7 +139,14 @@ const GOAL_ICON: Record<Goal, Icon> = {
   bulk: Barbell,
 };
 
-export function OnboardingFlow({ userId, onDone }: { userId: string; onDone: () => void }) {
+export function OnboardingFlow({
+  userId,
+  onDone,
+}: {
+  userId: string;
+  /** Called once the answers are saved, with what the last question learned. */
+  onDone: (training: TrainingAnswer) => void;
+}) {
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
@@ -150,6 +164,10 @@ export function OnboardingFlow({ userId, onDone }: { userId: string; onDone: () 
   const [sex, setSex] = useState<SetupSex>('male');
   const [activityLevel, setActivityLevel] = useState<ActivityLevel>('moderate');
   const [goal, setGoal] = useState<Goal>('maintain');
+  const [trainingDays, setTrainingDays] = useState<number>(DEFAULT_TRAINING_DAYS);
+  // Yes until told otherwise: an account with no plan is better served by being handed one,
+  // and the people who arrive with their own are the ones who will know to say no.
+  const [wantsProgram, setWantsProgram] = useState(true);
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState(false);
 
@@ -175,7 +193,8 @@ export function OnboardingFlow({ userId, onDone }: { userId: string; onDone: () 
           getLatestWeight(db, userId),
         ]);
         if (cancelled) return;
-        if (latest?.weight_kg) setWeight(ontoScale(weights, bodyKgToDisplay(latest.weight_kg, unit)));
+        if (latest?.weight_kg)
+          setWeight(ontoScale(weights, bodyKgToDisplay(latest.weight_kg, unit)));
         if (profile?.height_cm) setHeight(ontoScale(heights, cmToDisplay(profile.height_cm, unit)));
         if (profile?.birth_date) setAge(ontoScale(AGE_RANGE, ageFromBirthDate(profile.birth_date)));
         if (profile?.sex === 'male' || profile?.sex === 'female') setSex(profile.sex);
@@ -255,7 +274,7 @@ export function OnboardingFlow({ userId, onDone }: { userId: string; onDone: () 
           });
         }
         hapticSuccess();
-        onDone();
+        onDone({ daysPerWeek: trainingDays, wantsProgram });
       } catch {
         // Still on this screen, with every answer intact and the button live again.
         setFailed(true);
@@ -418,6 +437,48 @@ export function OnboardingFlow({ userId, onDone }: { userId: string; onDone: () 
             </View>
           ) : null}
 
+          {step === 'training' ? (
+            <>
+              <View style={styles.pills}>
+                {TRAINING_DAYS.map((days) => (
+                  <Pressable
+                    key={days}
+                    onPress={() => {
+                      hapticLight();
+                      setTrainingDays(days);
+                    }}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: trainingDays === days }}
+                    accessibilityLabel={t('setup.trainingDays', { count: days })}
+                    style={[styles.pill, trainingDays === days && styles.pillOn]}
+                  >
+                    <Text style={[styles.pillText, trainingDays === days && styles.pillTextOn]}>
+                      {days}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              <Text style={styles.subQuestion}>{t('setup.programQuestion')}</Text>
+              <View style={styles.choices}>
+                <Choice
+                  icon={ListChecks}
+                  title={t('setup.programYes')}
+                  detail={t('setup.programYesDetail')}
+                  selected={wantsProgram}
+                  onPress={() => setWantsProgram(true)}
+                />
+                <Choice
+                  icon={PencilSimple}
+                  title={t('setup.programNo')}
+                  detail={t('setup.programNoDetail')}
+                  selected={!wantsProgram}
+                  onPress={() => setWantsProgram(false)}
+                />
+              </View>
+            </>
+          ) : null}
+
           {step === 'done' && targets ? (
             <View style={styles.totals}>
               <View style={[styles.total, styles.totalWide]}>
@@ -541,6 +602,7 @@ const createStyles = (colors: ColorPalette) =>
     hint: TextStyle;
     panel: ViewStyle;
     pills: ViewStyle;
+    subQuestion: TextStyle;
     pill: ViewStyle;
     pillOn: ViewStyle;
     pillText: TextStyle;
@@ -621,6 +683,15 @@ const createStyles = (colors: ColorPalette) =>
     },
 
     pills: { flexDirection: 'row', gap: spacing.md },
+    // The second question on the one step that has two: smaller than the step's own title,
+    // which it sits under, and clear of the row of numbers above it.
+    subQuestion: {
+      color: colors.text,
+      fontSize: fontSize.lg,
+      fontWeight: fontWeight.bold,
+      textAlign: 'center',
+      marginTop: spacing.md,
+    },
     pill: {
       flex: 1,
       minHeight: 50,
@@ -664,7 +735,12 @@ const createStyles = (colors: ColorPalette) =>
       fontWeight: fontWeight.bold,
       textAlign: 'auto',
     },
-    choiceDetail: { color: colors.textMuted, fontSize: fontSize.xs, lineHeight: 18, textAlign: 'auto' },
+    choiceDetail: {
+      color: colors.textMuted,
+      fontSize: fontSize.xs,
+      lineHeight: 18,
+      textAlign: 'auto',
+    },
     choiceTick: {
       width: 24,
       height: 24,

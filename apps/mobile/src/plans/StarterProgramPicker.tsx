@@ -47,10 +47,17 @@ import {
 export function StarterProgramPicker({
   userId,
   onAdded,
+  daysPerWeek,
 }: {
   userId: string;
   /** Called once the programme is in the account's plans, with the new plan's id. */
   onAdded: (planId: string) => void;
+  /**
+   * How many days a week, when that has already been asked. The question is then left out:
+   * someone who answered it on the previous screen should not be shown it again as if they
+   * had not.
+   */
+  daysPerWeek?: number;
 }) {
   const { t, i18n } = useTranslation();
   const { colors } = useTheme();
@@ -59,7 +66,7 @@ export function StarterProgramPicker({
   const language = i18n.language === 'he' ? 'he' : 'en';
 
   const [place, setPlace] = useState<StarterPlace>('gym');
-  const [days, setDays] = useState<number>(3);
+  const [days, setDays] = useState<number>(daysPerWeek ?? 3);
   /** The programme being added, so its button can show it and the others can wait. */
   const [adding, setAdding] = useState<string | null>(null);
 
@@ -100,7 +107,7 @@ export function StarterProgramPicker({
         />
         {/* At home there is one programme and it suits any number of days, so the question
             would be one whose answer changes nothing. */}
-        {place === 'gym' ? (
+        {place === 'gym' && daysPerWeek === undefined ? (
           <View style={styles.daysBlock}>
             <Text style={styles.label}>{t('starter.days')}</Text>
             <View style={styles.daysRow}>
@@ -194,9 +201,12 @@ export function StarterProgramPicker({
 export function StarterWelcome({
   userId,
   onDone,
+  daysPerWeek,
 }: {
   userId: string;
   onDone: () => void;
+  /** The answer to "how many times a week", from the setup questions just before this. */
+  daysPerWeek?: number;
 }): ReactNode {
   const { t } = useTranslation();
   const { colors } = useTheme();
@@ -219,7 +229,7 @@ export function StarterWelcome({
         <Text style={styles.subtitle}>{t('starter.welcomeSubtitle')}</Text>
       </Rise>
 
-      <StarterProgramPicker userId={userId} onAdded={onDone} />
+      <StarterProgramPicker userId={userId} onAdded={onDone} daysPerWeek={daysPerWeek} />
 
       <Pressable
         onPress={() => {

@@ -71,13 +71,16 @@ describe('who is asked', () => {
 
 describe('the step count the sign-up form and the questions share', () => {
   it('counts the form and every question, and not the arrival', () => {
-    expect(SETUP_TOTAL).toBe(6);
+    expect(SETUP_TOTAL).toBe(7);
     expect(SETUP_STEPS.at(-1)).toBe('done');
   });
 
   it('puts the first question straight after the form', () => {
     expect(setupPosition('weight')).toBe(2);
-    expect(setupPosition('goal')).toBe(SETUP_TOTAL);
+    expect(setupPosition('goal')).toBe(SETUP_TOTAL - 1);
+    // The last question is the one about training, and the bar is full on it.
+    expect(setupPosition('training')).toBe(SETUP_TOTAL);
+    expect(SETUP_STEPS.at(-2)).toBe('training');
   });
 });
 

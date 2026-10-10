@@ -25,7 +25,21 @@ import {
 import type { UnitPreference } from '@fit/shared';
 
 /** In the order they are asked. `done` is not a question: it shows what the answers add up to. */
-export const SETUP_STEPS = ['weight', 'height', 'age', 'activity', 'goal', 'done'] as const;
+/**
+ * `training` is the one question that is not about the body: how many times a week the person
+ * trains, and whether they want a programme handed to them. Nothing in the nutrition targets
+ * uses it — it decides what the account is offered next, and it is asked last so that the
+ * targets screen that follows it is still the arrival.
+ */
+export const SETUP_STEPS = [
+  'weight',
+  'height',
+  'age',
+  'activity',
+  'goal',
+  'training',
+  'done',
+] as const;
 export type SetupStep = (typeof SETUP_STEPS)[number];
 
 /**
@@ -36,6 +50,16 @@ export type SetupStep = (typeof SETUP_STEPS)[number];
  * step, and is not counted.
  */
 export const SETUP_TOTAL = 1 + (SETUP_STEPS.length - 1);
+
+/** What the `training` step learned, handed on to whatever comes after setup. */
+export interface TrainingAnswer {
+  daysPerWeek: number;
+  wantsProgram: boolean;
+}
+
+/** The choices the `training` step offers, and the one it starts on. */
+export const TRAINING_DAYS = [2, 3, 4, 5, 6] as const;
+export const DEFAULT_TRAINING_DAYS = 3;
 
 /** Where a setup step sits in that count. The sign-up form is 1, so the first question is 2. */
 export function setupPosition(step: SetupStep): number {
