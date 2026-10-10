@@ -32,9 +32,10 @@
  * is answered then is kept, like anything else typed on this phone.
  */
 
-import { Component, useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 
+import { LetThroughOnError } from '../components/LetThroughOnError.js';
 import { getProfile } from '../db/metrics.js';
 import { getExecutor } from '../db/provider.js';
 import { syncProfileNow } from '../sync/profileSyncRunner.js';
@@ -58,34 +59,6 @@ function withinTime(work: Promise<unknown>, ms: number): Promise<void> {
         resolve();
       });
   });
-}
-
-/**
- * Failing open has to cover a crash as well as a failed read.
- *
- * The app's own error boundary sits inside what this gate lets through, so a fault while the
- * questions are on screen would have nothing above it to catch it. A setup screen that will not
- * draw must cost the questions, not the app: this lets the account straight in, exactly as if
- * the profile could not be read.
- */
-class LetThroughOnError extends Component<
-  { onError: () => void; children: ReactNode },
-  { failed: boolean }
-> {
-  state = { failed: false };
-
-  static getDerivedStateFromError(): { failed: boolean } {
-    return { failed: true };
-  }
-
-  componentDidCatch(error: Error) {
-    console.error('Profile setup could not be shown, so it was skipped:', error);
-    this.props.onError();
-  }
-
-  render() {
-    return this.state.failed ? null : this.props.children;
-  }
 }
 
 export function OnboardingGate({ userId, children }: { userId: string; children: ReactNode }) {
@@ -125,7 +98,7 @@ export function OnboardingGate({ userId, children }: { userId: string; children:
   }
   if (standing === 'asking') {
     return (
-      <LetThroughOnError onError={() => setStanding('through')}>
+      <LetThroughOnError what="Profile setup" onError={() => setStanding('through')}>
         <OnboardingFlow
           userId={userId}
           onDone={() => {

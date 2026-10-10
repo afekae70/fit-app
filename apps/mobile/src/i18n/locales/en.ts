@@ -73,7 +73,8 @@ export const en = {
       'No new best for several sessions — consider a deload, a different rep range, or swapping the exercise',
     aiNote: 'This analysis is exactly what the AI coach will receive in the next phase',
     byMuscle: 'Volume by muscle',
-    byMuscleHint: 'Sets in the last seven days. A helper muscle counts as half a set; the number in brackets is the direct sets.',
+    byMuscleHint:
+      'Sets in the last seven days. A helper muscle counts as half a set; the number in brackets is the direct sets.',
     untrained: 'Not trained this week',
     weeklyVolume: 'Weekly volume',
     tonnes: 't',
@@ -128,8 +129,7 @@ export const en = {
     protein: 'Protein',
     carbs: 'Carbs',
     fat: 'Fat',
-    clampedWarning:
-      'Target raised to your BMR. A deficit larger than this is unsafe to sustain.',
+    clampedWarning: 'Target raised to your BMR. A deficit larger than this is unsafe to sustain.',
     bmiMuscleCaveat: 'BMI cannot tell muscle from fat — it is often misleading for lifters.',
     needSexForBmr: 'Choose which formula to use (male/female) to see your targets.',
   },
@@ -141,7 +141,8 @@ export const en = {
     autoIntro:
       'Press once. The app scans, sets aside anything it recognises as a television or a light, then connects to each remaining candidate in turn. All that is left to you is standing on the scale.',
     autoRun: 'Find my scale',
-    autoStandOn: 'Step on the scale now and stay on it. This takes about a minute and a half — no need to touch the screen.',
+    autoStandOn:
+      'Step on the scale now and stay on it. This takes about a minute and a half — no need to touch the screen.',
     charCount: '{{count}} channels, none pushed data',
     sweep: {
       scanning: 'Scanning the room…',
@@ -153,7 +154,8 @@ export const en = {
     stop: 'Stop scanning',
     live: 'Scanning… {{count}} devices so far',
     scanning: 'Scanning… step on the scale now',
-    standOn: 'Press scan, then step on the scale and stay on until the number locks. A scale nobody is standing on switches off and broadcasts nothing. A device with a bar down its side changed its broadcast while we watched — that is where to look.',
+    standOn:
+      'Press scan, then step on the scale and stay on until the number locks. A scale nobody is standing on switches off and broadcasts nothing. A device with a bar down its side changed its broadcast while we watched — that is where to look.',
     found: '{{count}} devices found',
     none: 'Nothing found. Check that Bluetooth is on and the scale is awake.',
     unnamed: '(no name)',
@@ -168,8 +170,10 @@ export const en = {
       reading: 'Connected — reading services…',
       listening: 'Listening — step on the scale',
     },
-    wakeItUp: 'The scale is asleep. Step on it now — the connection completes by itself the moment its radio comes on. No need to press again.',
-    standOnNow: 'Step on the scale now and stay until the number locks. Every channel capable of pushing data is being watched at once.',
+    wakeItUp:
+      'The scale is asleep. Step on it now — the connection completes by itself the moment its radio comes on. No need to press again.',
+    standOnNow:
+      'Step on the scale now and stay until the number locks. Every channel capable of pushing data is being watched at once.',
     share: 'Share the output',
   },
   record: {
@@ -246,7 +250,8 @@ export const en = {
     rpe9: '9 · 1 rep left',
     rpe10: '10 · nothing left',
     rpeClear: 'No rating',
-    untypedComparison: 'This workout has no name and no plan, so "last time" and the suggestions are read from every session. Name it to compare against its own kind.',
+    untypedComparison:
+      'This workout has no name and no plan, so "last time" and the suggestions are read from every session. Name it to compare against its own kind.',
     setOptions: 'Options for set {{index}}',
     markAsWarmup: 'Mark as a warm-up set',
     markAsWorking: 'Mark as a working set',
@@ -308,7 +313,8 @@ export const en = {
     open: 'Ask the coach',
     openHint: 'Questions about your progress, answered from your real numbers',
     empty: 'Ask anything about your training',
-    emptyHint: 'The coach can see your progression, weight and targets — no need to explain your history',
+    emptyHint:
+      'The coach can see your progression, weight and targets — no need to explain your history',
     suggest1: 'Where am I stalling, and what should I do about it?',
     suggest2: 'Is my rate of weight loss right for my goal?',
     suggest3: 'What should I change about my push day?',
@@ -372,14 +378,24 @@ export const en = {
     startAnother: 'Start another workout',
     minutes: 'min',
     restTitle: 'Rest day',
-    restBody: 'Rest is part of the plan, not a break from it. Muscle is built today, not in the session.',
+    restBody:
+      'Rest is part of the plan, not a break from it. Muscle is built today, not in the session.',
     emptyTitle: 'No workouts yet',
-    emptyBody: 'The first workout you log shows up here. Start from a ready-made plan, or just open an empty one.',
+    emptyBody:
+      'The first workout you log shows up here. Start from a ready-made plan, or just open an empty one.',
     startEmpty: 'Start an empty workout',
     pickPlan: 'Choose a plan',
     errorTitle: 'We could not load your workout',
     errorBody: 'Your data is safe on this device — only the read failed.',
     nutritionMissing: 'Complete your profile to get calorie and macro targets',
+  },
+  lock: {
+    welcomeBack: 'Welcome back',
+    unlock: 'Unlock with fingerprint',
+    otherUser: 'Sign in as someone else',
+    prompt: 'Unlock NovaFit',
+    failed: 'The fingerprint was not recognised. Try again.',
+    lockedOut: 'Too many attempts. Try again in a moment, or sign in with your password.',
   },
   auth: {
     subtitle: 'Your account keeps your training in the cloud and in sync across devices',
@@ -438,7 +454,8 @@ export const en = {
     goalTitle: 'What are you training for?',
     goalHint: 'You can change it at any time',
     doneTitle: 'All set',
-    doneHint: 'This is the daily target we worked out. You can adjust it on the nutrition screen whenever you like.',
+    doneHint:
+      'This is the daily target we worked out. You can adjust it on the nutrition screen whenever you like.',
     caloriesPerDay: 'calories a day',
     proteinPerDay: 'grams of protein a day',
     activityDetail: {
@@ -462,18 +479,21 @@ export const en = {
     roleTrainee: 'Trainee',
     roleAdmin: 'Manager',
     myCoach: 'My coach',
-    myCoachHint: 'Got a code from a coach? Enter it here and they can see and edit your training plans',
+    myCoachHint:
+      'Got a code from a coach? Enter it here and they can see and edit your training plans',
     coachCanSee:
       'Your coach sees and edits your training plans only: the groups, the workouts and the exercises. Not your workout history, not your weight and not your profile.',
     codePlaceholder: 'Coach code',
     join: 'Connect to coach',
     leave: 'Disconnect from coach',
     leaveTitle: 'Disconnect from your coach?',
-    leaveBody: '{{name}} will no longer be able to see or edit your plans. The plans themselves stay with you.',
+    leaveBody:
+      '{{name}} will no longer be able to see or edit your plans. The plans themselves stay with you.',
     myTrainees: 'My trainees',
     myTraineesHint: 'Give your code to your trainees. Everyone who enters it appears here',
     manageCoaches: 'Manage coaches',
-    manageCoachesHint: 'Only the people you add here are coaches. Enter the email they signed up with',
+    manageCoachesHint:
+      'Only the people you add here are coaches. Enter the email they signed up with',
     coachEmailPlaceholder: "The user's email",
     appoint: 'Make a coach',
     noCoaches: 'You have not appointed any coaches yet.',
@@ -484,10 +504,12 @@ export const en = {
       '{{name}} will stop being a coach, and all {{count}} of their trainees will be disconnected. The plans they built stay with the trainees.',
     yourCode: 'Your code',
     shareCode: 'Share the code',
-    shareMessage: 'My NovaFit code: {{code}}\nOpen the menu → Personal coach and enter it, so I can build your training plan.',
+    shareMessage:
+      'My NovaFit code: {{code}}\nOpen the menu → Personal coach and enter it, so I can build your training plan.',
     noTrainees: 'No trainees yet. Share your code, and whoever enters it appears here.',
     trainee: 'Trainee',
-    traineeLead: "These are this trainee's training plans. Anything you save reaches their phone the next time it syncs.",
+    traineeLead:
+      "These are this trainee's training plans. Anything you save reaches their phone the next time it syncs.",
     noGroups: 'This trainee has no plans yet. Add a first group below.',
     calendar: 'Training calendar',
     calendarHint: 'Set which workout the trainee does on each day',
@@ -503,7 +525,8 @@ export const en = {
     dayClear: 'Clear the day',
     fromMine: 'From my workouts',
     searchWorkout: 'Search workouts',
-    noWorkoutsToAssign: 'There are no workouts to choose from yet — neither the trainee\'s nor yours. Build a workout first.',
+    noWorkoutsToAssign:
+      "There are no workouts to choose from yet — neither the trainee's nor yours. Build a workout first.",
     unnamedGroup: 'Unnamed group',
     workoutCount: '{{count}} workouts',
     exerciseCount: '{{count}} exercises',
@@ -512,14 +535,16 @@ export const en = {
     renameGroup: 'Rename group',
     deleteGroup: 'Delete group',
     deleteGroupTitle: 'Delete this group?',
-    deleteGroupBody: 'The group "{{name}}" and all {{count}} of its workouts will be deleted for the trainee.',
+    deleteGroupBody:
+      'The group "{{name}}" and all {{count}} of its workouts will be deleted for the trainee.',
     newGroup: 'New group',
     newGroupHint: 'A group holds several workouts. For example: Gym',
     groupNamePlaceholder: 'Group name',
     addGroup: 'Add group',
     removeTrainee: 'Remove trainee',
     removeTraineeTitle: 'Remove this trainee?',
-    removeTraineeBody: "You will no longer be able to see or edit {{name}}'s plans. The plans stay with them.",
+    removeTraineeBody:
+      "You will no longer be able to see or edit {{name}}'s plans. The plans stay with them.",
     newWorkout: 'New workout',
     editWorkout: 'Edit workout',
     workoutNamePlaceholder: 'Workout name. For example: Chest and shoulders',
@@ -540,7 +565,8 @@ export const en = {
     discard: 'Leave without saving',
     error: {
       not_available: 'Personal coaching has not been switched on at the server yet.',
-      offline: 'Could not reach the server. Nothing was changed — try again when you have a connection.',
+      offline:
+        'Could not reach the server. Nothing was changed — try again when you have a connection.',
       not_signed_in: 'Your session has expired. Sign in again and retry.',
       no_such_code: 'No coach has that code. Check it with your coach and try again.',
       own_code: 'That is your own code. A coach cannot connect to themselves.',
@@ -587,7 +613,8 @@ export const en = {
     daysAgo: 'days ago',
     neverTrained: 'never trained',
     deletePlan: 'Delete group',
-    confirmDeletePlan: 'Delete this group and every workout in it? Workouts you already did stay in your history.',
+    confirmDeletePlan:
+      'Delete this group and every workout in it? Workouts you already did stay in your history.',
     newGroup: 'New workout group',
     addExisting: 'Add existing workout',
     addExistingTo: 'Which workout to add to {{name}}?',
@@ -739,7 +766,8 @@ export const en = {
     bodyFatMeasured: 'Measured by your scale',
     bodyFatEstimated: 'Calculated estimate — your scale does not measure fat',
     leanMass: 'Lean mass',
-    leanMassHint: 'Everything that is not fat: muscle, bone, organs and water. Skeletal muscle is roughly half of it.',
+    leanMassHint:
+      'Everything that is not fat: muscle, bone, organs and water. Skeletal muscle is roughly half of it.',
     compositionNeedsSex: 'Choose male or female in your profile to get a body-fat estimate.',
     compositionCaveat:
       'Calculated from height, weight and age — not measured. It tends to read high for people who lift. Follow the direction it moves over months, not the number itself.',
@@ -766,7 +794,8 @@ export const en = {
     bleUnavailable: 'Not available in Expo Go',
     bleExplain:
       'Bluetooth requires a development build — it does not work in Expo Go at all. The scale parsers are already written and tested.',
-    bleSupported: 'Supported: nameless broadcast scale (OKOK), Mi Body Composition Scale 2, and any standard scale (0x181D)',
+    bleSupported:
+      'Supported: nameless broadcast scale (OKOK), Mi Body Composition Scale 2, and any standard scale (0x181D)',
     bleDiagnostics: 'Scale not found? Bluetooth diagnostics',
     bleScan: 'Scan for scale',
     bleScanning: 'Looking for a scale…',
@@ -820,7 +849,8 @@ export const en = {
     voiceHint:
       'The next exercise is announced in English because the phone’s speech engine has no Hebrew voice. For Hebrew, in the phone’s settings: General management → Text-to-speech output → Preferred engine → Google.',
     title: 'Timed workout',
-    toggleHint: 'Each exercise runs for a set time, with rest between exercises and a sound at the end of each phase. No sets or reps to type.',
+    toggleHint:
+      'Each exercise runs for a set time, with rest between exercises and a sound at the end of each phase. No sets or reps to type.',
     work: 'Work',
     rest: 'Rest',
     seconds_one: '1 sec',
@@ -851,7 +881,8 @@ export const en = {
     next: 'Next month',
     hint: 'Tap a day to choose its workout. A day left undecided stays with the rotation.',
     repeat: 'Fill the month from a planned week',
-    repeatHint: 'Takes your fullest planned week and fills every day not yet decided, from today on. Nothing you already set is overwritten.',
+    repeatHint:
+      'Takes your fullest planned week and fills every day not yet decided, from today on. Nothing you already set is overwritten.',
     repeated_one: '1 day scheduled',
     repeated_other: '{{count}} days scheduled',
     nothingToRepeat: 'No planned week to copy from, or every day is already decided.',
@@ -875,7 +906,8 @@ export const en = {
   },
   settings: {
     workoutReminderTitle: 'Workout-day reminder',
-    workoutReminderHint: 'A notification on each day with a workout planned on the calendar, naming it. Never on rest days, and not once you have already trained that day.',
+    workoutReminderHint:
+      'A notification on each day with a workout planned on the calendar, naming it. Never on rest days, and not once you have already trained that day.',
     workoutReminderNotification: 'Workout today',
     workoutReminderTime: 'Reminder time',
     workoutReminderPerDay: 'Time per day',
@@ -903,6 +935,9 @@ export const en = {
     reminderDenied: 'Notification permission was denied. You can change it in device settings.',
     account: 'Account',
     signedInAs: 'Signed in as',
+    appLock: 'Unlock with fingerprint',
+    appLockHint:
+      'The app asks for your fingerprint when you open it, and again after a few minutes away. Not during a workout.',
     signOutTitle: 'Sign out?',
     signOutBody: 'Your training is saved in your account and will be here when you sign back in.',
     deleteAccount: 'Delete account',
@@ -912,12 +947,16 @@ export const en = {
       'Everything in the account is deleted for good: workouts, plans, weigh-ins and your profile — from the server and from this device. It cannot be brought back afterwards.',
     deleteAccountContinue: 'Continue to delete',
     deleteAccountFinalTitle: 'This is final',
-    deleteAccountFinalBody: 'The account {{email}} and all of its data will be deleted now. There is no undo.',
+    deleteAccountFinalBody:
+      'The account {{email}} and all of its data will be deleted now. There is no undo.',
     deleteAccountFinalConfirm: 'Delete permanently',
     deleteAccountFailedTitle: 'The account was not deleted',
-    deleteAccountOffline: 'The server could not be reached. Nothing was deleted — try again when you are online.',
-    deleteAccountNotSignedIn: 'Your sign-in has expired. Sign in again and retry. Nothing was deleted.',
-    deleteAccountNotAvailable: 'Account deletion has not been switched on for the server yet. Nothing was deleted.',
+    deleteAccountOffline:
+      'The server could not be reached. Nothing was deleted — try again when you are online.',
+    deleteAccountNotSignedIn:
+      'Your sign-in has expired. Sign in again and retry. Nothing was deleted.',
+    deleteAccountNotAvailable:
+      'Account deletion has not been switched on for the server yet. Nothing was deleted.',
     deleteAccountFailed: 'The server refused the request. Nothing was deleted — try again later.',
   },
   errorBoundary: {

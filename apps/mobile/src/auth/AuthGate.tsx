@@ -26,7 +26,7 @@
  * the opposite of what it would assume.
  */
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Animated,
@@ -51,7 +51,7 @@ import { BrandButton } from '../components/BrandButton.js';
 import { Field } from '../components/Field.js';
 import { KeyboardSafe } from '../components/KeyboardSafe.js';
 import { FadeSlideIn, useReduceMotion } from '../components/motion.js';
-import { splashTimeLeft } from '../components/SplashOverlay.js';
+import { Rise } from '../components/Rise.js';
 import { Banner } from '../components/ui.js';
 import { hapticLight } from '../haptics.js';
 import { SETUP_TOTAL } from '../onboarding/profileSetup.js';
@@ -121,7 +121,9 @@ export function AuthGate() {
 
     void (async () => {
       const result =
-        mode === 'signIn' ? await signIn(trimmedEmail, password) : await signUp(trimmedEmail, password);
+        mode === 'signIn'
+          ? await signIn(trimmedEmail, password)
+          : await signUp(trimmedEmail, password);
       // On success nothing here changes: `AuthProvider`'s subscription sets the session, and
       // the gate above this component renders past it. The button keeps spinning until then,
       // which is the honest state for the half second it takes.
@@ -161,7 +163,9 @@ export function AuthGate() {
   };
 
   const error = errorKey ? (
-    <Banner tone="warning">{t(AUTH_ERROR_I18N_KEY[errorKey] ?? AUTH_ERROR_I18N_KEY.unknown!)}</Banner>
+    <Banner tone="warning">
+      {t(AUTH_ERROR_I18N_KEY[errorKey] ?? AUTH_ERROR_I18N_KEY.unknown!)}
+    </Banner>
   ) : null;
 
   return (
@@ -227,7 +231,9 @@ export function AuthGate() {
                       onPress={() => setShowPassword((current) => !current)}
                       hitSlop={10}
                       accessibilityRole="button"
-                      accessibilityLabel={t(showPassword ? 'auth.hidePassword' : 'auth.showPassword')}
+                      accessibilityLabel={t(
+                        showPassword ? 'auth.hidePassword' : 'auth.showPassword',
+                      )}
                     >
                       {showPassword ? (
                         <EyeSlash size={20} color={colors.textMuted} />
@@ -395,70 +401,6 @@ function Brand() {
         <Text style={styles.slogan}>{t('common.slogan')}</Text>
       </Rise>
     </View>
-  );
-}
-
-/**
- * One piece of the entrance: it fades in and rises, `order` places behind the first.
- *
- * Waits for the launch splash to lift before starting. The splash sits over everything for its
- * first couple of seconds, and an entrance played underneath it is an entrance nobody saw —
- * the screen would simply be there, finished, when the splash left.
- */
-function Rise({
-  order,
-  spring = false,
-  style,
-  children,
-}: {
-  order: number;
-  /** For the logo: arrives with a small overshoot instead of easing to a stop. */
-  spring?: boolean;
-  style?: ViewStyle;
-  children: ReactNode;
-}) {
-  const reduceMotion = useReduceMotion();
-  const progress = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    if (reduceMotion) {
-      progress.setValue(1);
-      return;
-    }
-    const delay = splashTimeLeft() + order * 110;
-    const animation = spring
-      ? Animated.spring(progress, {
-          toValue: 1,
-          friction: 6,
-          tension: 60,
-          delay,
-          useNativeDriver: true,
-        })
-      : Animated.timing(progress, {
-          toValue: 1,
-          duration: duration.slow + 120,
-          delay,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        });
-    animation.start();
-    return () => animation.stop();
-  }, [progress, order, spring, reduceMotion]);
-
-  return (
-    <Animated.View
-      style={[
-        style,
-        {
-          opacity: progress,
-          transform: spring
-            ? [{ scale: progress.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }) }]
-            : [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [18, 0] }) }],
-        },
-      ]}
-    >
-      {children}
-    </Animated.View>
   );
 }
 

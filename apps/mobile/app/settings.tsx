@@ -55,6 +55,7 @@ import { useActionSheet } from '../src/components/ActionSheetProvider.js';
 import { HealthSyncCard } from '../src/components/HealthSyncCard.js';
 import { FadeSlideIn } from '../src/components/motion.js';
 import { RoleBadge } from '../src/components/RoleBadge.js';
+import { AppLockRow } from '../src/components/settings/AppLockRow.js';
 import {
   Choice,
   LinkRow,
@@ -299,6 +300,7 @@ export default function SettingsScreen() {
 
       {session ? (
         <SettingsSection icon={UserCircle} title={t('settings.account')} index={6}>
+          <AppLockRow userId={userId} />
           <LinkRow icon={SignOut} label={t('auth.signOut')} onPress={signOut} chevron={false} />
           <RowDivider />
           {/* Last on the screen and in the colour of a warning. Leaving for good is something

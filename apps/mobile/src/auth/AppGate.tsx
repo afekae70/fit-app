@@ -23,7 +23,7 @@
  */
 
 import { usePathname } from 'expo-router';
-import type { ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { ErrorBoundary } from '../components/ErrorBoundary.js';
@@ -31,6 +31,7 @@ import { useTheme } from '../ThemeProvider.js';
 import { AuthGate } from './AuthGate.js';
 import { useAuth } from './AuthProvider.js';
 import { CurrentUserProvider } from './CurrentUserProvider.js';
+import { LockGate } from './LockGate.js';
 import { OnboardingGate } from '../onboarding/OnboardingGate.js';
 import { SyncProvider } from '../sync/SyncProvider.js';
 import { UnitsProvider } from '../UnitsProvider.js';
@@ -41,6 +42,10 @@ export function AppGate({ children }: { children: ReactNode }) {
   const { session, isConfigured } = useAuth();
   const pathname = usePathname();
   const { colors } = useTheme();
+  // Whether the sign-in screen has been up during this run of the app. A session that follows
+  // it came from a password typed a moment ago, and is not asked for a fingerprint as well.
+  const sawSignedOut = useRef(false);
+  if (isConfigured && session === null) sawSignedOut.current = true;
 
   if (pathname.startsWith('/auth/')) {
     return <>{children}</>;
@@ -81,7 +86,12 @@ export function AppGate({ children }: { children: ReactNode }) {
           {/* Innermost, so the questions can use everything above: whose answers they are,
               which units to ask in — and so the first sync is already running behind them,
               bringing down the history of someone who is signing in on a new phone. */}
-          <OnboardingGate userId={userId}>{children}</OnboardingGate>
+          {/* The door, outside the setup questions and inside sync: the training data can be
+              coming down while the fingerprint is asked for, and nothing of the account is
+              drawn until it has been given. See LockGate. */}
+          <LockGate userId={userId} signedInJustNow={sawSignedOut.current}>
+            <OnboardingGate userId={userId}>{children}</OnboardingGate>
+          </LockGate>
         </UnitsProvider>
       </SyncProvider>
     </CurrentUserProvider>
