@@ -63,10 +63,17 @@ describe('coming back to the app', () => {
 });
 
 describe('the stored choice', () => {
-  it('is on for an account that has never chosen', () => {
-    expect(parseLockSetting(null)).toBe(true);
-    expect(parseLockSetting(undefined)).toBe(true);
-    expect(parseLockSetting('')).toBe(true);
+  it('is off for an account that has never chosen', () => {
+    // Nobody is asked for a fingerprint by an app that never offered them the choice.
+    expect(parseLockSetting(null)).toBe(false);
+    expect(parseLockSetting(undefined)).toBe(false);
+    expect(parseLockSetting('')).toBe(false);
+  });
+
+  it('is off for anything it does not recognise', () => {
+    expect(parseLockSetting('yes')).toBe(false);
+    expect(parseLockSetting('ON')).toBe(false);
+    expect(parseLockSetting('1')).toBe(false);
   });
 
   it('reads back what was stored', () => {

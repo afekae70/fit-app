@@ -13,6 +13,12 @@
  * fingerprint is not on this phone, the owner with wet hands included: it leads to the ordinary
  * sign-in screen, and signing in there is not followed by this one.
  *
+ * It signs out at once, without the "are you sure?" that signing out has everywhere else in
+ * the app. The owner asked for that, and here it is the right call: the button says what it
+ * does, there is nothing on this screen to lose, and whoever presses it is by definition about
+ * to type a password anyway. Nothing is lost by it either — what has not synced yet stays on
+ * the phone under this account and goes up the next time it signs in.
+ *
  * ## How it looks
  *
  * The sign-in screen's own vocabulary: the same halo, breathing behind an emblem; the same
@@ -50,7 +56,6 @@ import { fontSize, fontWeight, radius, shadow, spacing, type ColorPalette } from
 import { unlockWithBiometrics } from './appLock.js';
 import { useAuth } from './AuthProvider.js';
 import { lockGreetingName, type UnlockFailure } from './lockPolicy.js';
-import { useSignOut } from './useSignOut.js';
 
 /** After the entrance has had time to be seen, and not before. */
 const ASK_AFTER_MS = 650;
@@ -73,8 +78,8 @@ export function LockScreen({
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
-  const { session } = useAuth();
-  const signOut = useSignOut();
+  const { session, signOut } = useAuth();
+  const [leaving, setLeaving] = useState(false);
 
   const [asking, setAsking] = useState(false);
   const [trouble, setTrouble] = useState<Exclude<UnlockFailure, 'cancelled'> | null>(null);
@@ -152,10 +157,17 @@ export function LockScreen({
           <Pressable
             onPress={() => {
               hapticLight();
-              signOut();
+              setLeaving(true);
+              // Straight to the sign-in screen: the gate above swaps this screen for it the
+              // moment the session is gone. With no connection the server cannot be told and
+              // the session stays, so the button is given back rather than left dead.
+              void signOut()
+                .catch(() => undefined)
+                .finally(() => setLeaving(false));
             }}
+            disabled={leaving}
             accessibilityRole="button"
-            style={({ pressed }) => [styles.other, pressed && styles.otherPressed]}
+            style={({ pressed }) => [styles.other, (pressed || leaving) && styles.otherPressed]}
           >
             <Text style={styles.otherText}>{t('lock.otherUser')}</Text>
           </Pressable>

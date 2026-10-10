@@ -21,8 +21,8 @@
  *    between sets is exactly when the phone is put down for longer than a few minutes and
  *    picked up by a hand that has just been holding a bar. Being kept out of the workout in
  *    progress is a worse failure than the door being open for the hour it lasts.
- *  - **Only where it can work.** No fingerprint enrolled on the phone means no lock; a switch
- *    in settings turns it off for an account that does not want it.
+ *  - **Only for an account that asked for it**, with the switch in settings, and only where it
+ *    can work: no fingerprint enrolled on the phone means no lock and no switch.
  */
 
 /** How long the app can be out of sight before coming back to it asks again. */
@@ -36,11 +36,15 @@ export function appLockKey(userId: string): string {
 }
 
 /**
- * The stored choice, read back. On unless it was turned off: an account that has never been
- * asked gets the door, which is the point of having one.
+ * The stored choice, read back. Off until it has been turned on.
+ *
+ * It began as on by default, and the owner changed that the day it shipped: being asked for a
+ * fingerprint by an app that never mentioned one is a surprise, and for most people a training
+ * log is not something to lock. So it is offered in settings and waits to be chosen. Anything
+ * that is not exactly "on" — nothing stored, or a value some other version wrote — is off.
  */
 export function parseLockSetting(raw: string | null | undefined): boolean {
-  return raw !== 'off';
+  return raw === 'on';
 }
 
 export function serialiseLockSetting(on: boolean): string {

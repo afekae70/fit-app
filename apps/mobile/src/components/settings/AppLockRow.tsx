@@ -1,6 +1,9 @@
 /**
  * The switch for the fingerprint door (see `auth/lockPolicy.ts`), as a row in settings.
  *
+ * This switch is the only way the lock comes into being: it is off until someone turns it on
+ * here. Nobody is met at the door by a fingerprint prompt they did not ask for.
+ *
  * Draws nothing on a phone with no fingerprint enrolled. A switch that could only ever say
  * "cannot be turned on" is clutter, and the row would otherwise advertise a feature the phone
  * does not offer.
