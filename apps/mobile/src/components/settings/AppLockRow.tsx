@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next';
 
 import {
   biometricsAvailable,
+  LOCK_READS,
   loadLockEnabled,
   saveLockEnabled,
   unlockWithBiometrics,
@@ -50,6 +51,9 @@ export function AppLockRow({ userId }: { userId: string }) {
 
   if (!available) return null;
 
+  const face = LOCK_READS === 'face';
+  const failed = face ? 'lock.failedFace' : 'lock.failed';
+
   const change = (next: boolean) => {
     if (changing) return;
     setChanging(true);
@@ -62,11 +66,11 @@ export function AppLockRow({ userId }: { userId: string }) {
         } else if (outcome !== 'cancelled') {
           // The switch stays where it was, and they are told why it did not move.
           await notify({
-            message: t(outcome === 'locked_out' ? 'lock.lockedOut' : 'lock.failed'),
+            message: t(outcome === 'locked_out' ? 'lock.lockedOut' : failed),
           });
         }
       } catch {
-        await notify({ message: t('lock.failed') });
+        await notify({ message: t(failed) });
       } finally {
         setChanging(false);
       }
@@ -76,8 +80,8 @@ export function AppLockRow({ userId }: { userId: string }) {
   return (
     <>
       <ToggleRow
-        label={t('settings.appLock')}
-        hint={t('settings.appLockHint')}
+        label={t(face ? 'settings.appLockFace' : 'settings.appLock')}
+        hint={t(face ? 'settings.appLockHintFace' : 'settings.appLockHint')}
         value={on}
         onChange={change}
         disabled={changing}

@@ -10,11 +10,15 @@
     "userInterfaceStyle": "automatic",
     "scheme": "fitapp",
     "ios": {
-      "supportsTablet": true,
+      "//supportsTablet": "iPhone only, for now. An app released with iPad support can never drop it, and Apple reviews it on an iPad; one released without it can add it later. It still runs on an iPad, as a phone app.",
+      "supportsTablet": false,
       "bundleIdentifier": "com.afeka.fitapp",
+      "//infoPlist": "ITSAppUsesNonExemptEncryption: the app uses only the HTTPS the system provides, and saying so here stops App Store Connect asking about export compliance on every upload. CFBundleLocalizations: tells iOS the app speaks Hebrew - without it a Hebrew phone treats the app as English-only, so the system dialogs it shows come up in English and the layout does not start right-to-left.",
       "infoPlist": {
         "NSBluetoothAlwaysUsageDescription": "Connect to a smart scale to record your weight automatically.",
-        "NSBluetoothPeripheralUsageDescription": "Connect to a smart scale to record your weight automatically."
+        "NSBluetoothPeripheralUsageDescription": "Connect to a smart scale to record your weight automatically.",
+        "ITSAppUsesNonExemptEncryption": false,
+        "CFBundleLocalizations": ["he", "en"]
       }
     },
     "android": {
@@ -57,9 +61,8 @@
         "react-native-ble-plx",
         {
           "isBackgroundEnabled": false,
-          "modes": [
-            "peripheral"
-          ],
+          "//modes": "None. This lists what the app may do over Bluetooth on iOS while it is NOT on screen. It only ever talks to a scale while the weigh-in screen is open, and it is the one connecting, never the one advertising - so the \"peripheral\" that used to be here declared a background mode the app has no use for, which is a standard reason for App Store review to reject a build.",
+          "modes": [],
           "bluetoothAlwaysPermission": "Connect to a smart scale to record your weight automatically.",
           "neverForLocation": true
         }
@@ -78,12 +81,27 @@
           }
         }
       ],
-      "expo-secure-store",
+      [
+        "expo-secure-store",
+        {
+          "//": "The sentence iOS shows the first time the entry lock (auth/appLock.ts) asks for Face ID. Without one the system ends the app instead of asking.",
+          "faceIDPermission": "Unlock NovaFit with Face ID instead of typing your password."
+        }
+      ],
       [
         "expo-audio",
         {
           "//": "Playback only: the timed-workout beeps. Nothing in this app records, so it does not ask for the microphone.",
           "recordAudioAndroid": false,
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "//": "Only ever used to choose a profile picture from the gallery. Listed here to say so in the app's own words on iOS, and to switch off the camera and microphone the library would otherwise declare on both platforms - it can take photos and record video, and this app does neither.",
+          "photosPermission": "Choose a profile picture from your photos.",
+          "cameraPermission": false,
           "microphonePermission": false
         }
       ]

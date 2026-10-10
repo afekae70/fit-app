@@ -41,7 +41,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
-import { Fingerprint } from 'phosphor-react-native';
+import { Fingerprint, ScanSmiley } from 'phosphor-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BrandButton } from '../components/BrandButton.js';
@@ -53,7 +53,7 @@ import { getExecutor } from '../db/provider.js';
 import { hapticLight } from '../haptics.js';
 import { useTheme } from '../ThemeProvider.js';
 import { fontSize, fontWeight, radius, shadow, spacing, type ColorPalette } from '../theme.js';
-import { unlockWithBiometrics } from './appLock.js';
+import { LOCK_READS, unlockWithBiometrics } from './appLock.js';
 import { useAuth } from './AuthProvider.js';
 import { lockGreetingName, type UnlockFailure } from './lockPolicy.js';
 
@@ -153,7 +153,11 @@ export function LockScreen({
         ) : null}
 
         <Rise order={3} style={styles.actions}>
-          <BrandButton label={t('lock.unlock')} onPress={() => void ask()} busy={asking} />
+          <BrandButton
+            label={t(LOCK_READS === 'face' ? 'lock.unlockFace' : 'lock.unlock')}
+            onPress={() => void ask()}
+            busy={asking}
+          />
           <Pressable
             onPress={() => {
               hapticLight();
@@ -173,7 +177,15 @@ export function LockScreen({
           </Pressable>
           {/* Always a line tall, so a message arriving does not push the buttons about. */}
           <Text style={styles.trouble} accessibilityLiveRegion="polite">
-            {trouble ? t(trouble === 'locked_out' ? 'lock.lockedOut' : 'lock.failed') : ' '}
+            {trouble
+              ? t(
+                  trouble === 'locked_out'
+                    ? 'lock.lockedOut'
+                    : LOCK_READS === 'face'
+                      ? 'lock.failedFace'
+                      : 'lock.failed',
+                )
+              : ' '}
           </Text>
         </Rise>
       </View>
@@ -229,7 +241,11 @@ function Emblem() {
         ]}
       />
       <View style={styles.disc}>
-        <Fingerprint size={58} color={colors.accent} weight="regular" />
+        {LOCK_READS === 'face' ? (
+          <ScanSmiley size={58} color={colors.accent} weight="regular" />
+        ) : (
+          <Fingerprint size={58} color={colors.accent} weight="regular" />
+        )}
       </View>
     </Rise>
   );

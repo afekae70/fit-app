@@ -380,9 +380,11 @@ export const he = {
   lock: {
     welcomeBack: 'ברוך שובך',
     unlock: 'כניסה עם טביעת אצבע',
+    unlockFace: 'כניסה עם Face ID',
     otherUser: 'כניסה עם משתמש אחר',
     prompt: 'כניסה ל-NovaFit',
     failed: 'לא הצלחנו לזהות את טביעת האצבע. נסה שוב.',
+    failedFace: 'הזיהוי לא הצליח. נסה שוב.',
     lockedOut: 'יותר מדי ניסיונות. נסה שוב בעוד רגע, או היכנס עם הסיסמה.',
   },
   auth: {
@@ -924,6 +926,9 @@ export const he = {
     account: 'חשבון',
     signedInAs: 'מחובר בתור',
     appLock: 'כניסה עם טביעת אצבע',
+    appLockFace: 'כניסה עם Face ID',
+    appLockHintFace:
+      'האפליקציה תבקש Face ID (או Touch ID) בכניסה, ושוב אחרי כמה דקות מחוץ לה. לא באמצע אימון.',
     appLockHint: 'האפליקציה תבקש טביעת אצבע בכניסה, ושוב אחרי כמה דקות מחוץ לה. לא באמצע אימון.',
     signOutTitle: 'להתנתק?',
     signOutBody: 'האימונים שלך שמורים בחשבון, ויחכו לך כשתתחבר שוב.',

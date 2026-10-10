@@ -392,9 +392,11 @@ export const en = {
   lock: {
     welcomeBack: 'Welcome back',
     unlock: 'Unlock with fingerprint',
+    unlockFace: 'Unlock with Face ID',
     otherUser: 'Sign in as someone else',
     prompt: 'Unlock NovaFit',
     failed: 'The fingerprint was not recognised. Try again.',
+    failedFace: 'That was not recognised. Try again.',
     lockedOut: 'Too many attempts. Try again in a moment, or sign in with your password.',
   },
   auth: {
@@ -936,6 +938,9 @@ export const en = {
     account: 'Account',
     signedInAs: 'Signed in as',
     appLock: 'Unlock with fingerprint',
+    appLockFace: 'Unlock with Face ID',
+    appLockHintFace:
+      'The app asks for Face ID (or Touch ID) when you open it, and again after a few minutes away. Not during a workout.',
     appLockHint:
       'The app asks for your fingerprint when you open it, and again after a few minutes away. Not during a workout.',
     signOutTitle: 'Sign out?',

@@ -19,9 +19,18 @@
  *    then comes back empty rather than failing, and it is simply stored again — which also
  *    prompts. Either way, getting in takes one successful fingerprint.
  *
- * Android only for now. On iOS the same call would use Face ID, which needs a usage
- * description declared in the app's configuration that this project does not have yet; without
- * it the system ends the app instead of prompting.
+ * ## iOS
+ *
+ * The same library, the same call, and there it is Face ID (Touch ID on the phones that still
+ * have a home button). Two differences from Android, both handled below:
+ *
+ *  - It needs a sentence in the app's configuration saying why it wants Face ID — app.json
+ *    gives the library one. Without it the system ends the app instead of asking.
+ *  - Storing a protected value asks for nothing; only reading it does. So the first unlock on
+ *    a phone, which has to store the value, reads it straight back. Otherwise the very first
+ *    "unlock" would open the door without anyone having been looked at.
+ *
+ * The iOS side had not run on a device when this was written.
  */
 
 import { AppState, Platform } from 'react-native';
@@ -38,9 +47,15 @@ import {
 /** The one protected value. Device-wide: it identifies nobody and holds nothing. */
 const PROOF_KEY = 'app-lock-proof';
 
-/** Can this phone ask for a fingerprint right now? False if none is enrolled. */
+/**
+ * What the lock is called on this phone, for the words and the picture on screen: a
+ * fingerprint on Android, a face on iOS.
+ */
+export const LOCK_READS: 'fingerprint' | 'face' = Platform.OS === 'ios' ? 'face' : 'fingerprint';
+
+/** Can this phone ask for a fingerprint or a face right now? False if none is enrolled. */
 export function biometricsAvailable(): boolean {
-  if (Platform.OS !== 'android') return false;
+  if (Platform.OS !== 'android' && Platform.OS !== 'ios') return false;
   try {
     return SecureStore.canUseBiometricAuthentication();
   } catch {
@@ -48,7 +63,7 @@ export function biometricsAvailable(): boolean {
   }
 }
 
-/** Whether this account wants the lock. On unless it was turned off. */
+/** Whether this account wants the lock. Off until it has been turned on in settings. */
 export async function loadLockEnabled(userId: string): Promise<boolean> {
   try {
     return parseLockSetting(await SecureStore.getItemAsync(appLockKey(userId)));
@@ -82,8 +97,15 @@ export async function unlockWithBiometrics(prompt: string): Promise<UnlockOutcom
   try {
     const proof = await SecureStore.getItemAsync(PROOF_KEY, options);
     // Nothing there: the first time on this phone, or its fingerprints have changed since.
-    // Storing it asks for a fingerprint exactly as reading it would have.
-    if (proof === null) await SecureStore.setItemAsync(PROOF_KEY, '1', options);
+    if (proof === null) {
+      // On Android storing it asks for a fingerprint exactly as reading it would have.
+      await SecureStore.setItemAsync(PROOF_KEY, '1', options);
+      // On iOS it does not, so it is read back, which does. A value that cannot be read back
+      // is a door that was never checked.
+      if (Platform.OS === 'ios' && (await SecureStore.getItemAsync(PROOF_KEY, options)) === null) {
+        return 'failed';
+      }
+    }
     return 'unlocked';
   } catch (error) {
     return interpretUnlockError(error instanceof Error ? error.message : String(error));
