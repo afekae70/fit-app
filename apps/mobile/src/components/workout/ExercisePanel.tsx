@@ -25,6 +25,7 @@ import { formatVolume, kgToDisplay, metresToDisplay, weightUnitKey } from '../..
 import type { ProgressionAdvice } from '@fit/shared/calculations';
 import { radius, shadow, type ColorPalette } from '../../theme.js';
 import type { DragHandleProps } from '../DragReorderList.js';
+import type { Ghost } from '../../workout/ghost.js';
 import type { MeasureRow } from '../../workout/revealRow.js';
 import { CardioSession } from './CardioSession.js';
 import { SetRow } from './SetRow.js';
@@ -46,6 +47,13 @@ export interface ExercisePanelProps {
   name: string;
   sets: readonly DerivedSet[];
   previous: readonly PreviousSet[] | null;
+  /**
+   * What each set was last time, row for row — the watermark an empty field shows.
+   *
+   * Lined up by the caller (`workout/ghost.ts`), because which of last time's sets answers for
+   * which of today's is a decision about warm-ups and working sets, not about drawing.
+   */
+  ghosts?: readonly (Ghost | null)[];
   target: ExerciseTarget | null;
   onChangeWeight: (setIndex: number, next: number) => void;
   onChangeReps: (setIndex: number, next: number) => void;
@@ -169,6 +177,7 @@ export function ExercisePanel({
   name,
   sets,
   previous,
+  ghosts,
   target,
   onChangeWeight,
   onChangeReps,
@@ -218,16 +227,21 @@ export function ExercisePanel({
    */
   const plateHint = useMemo(() => {
     if (!onBarbell) return null;
-    const next = sets.find((set) => !set.done) ?? sets[sets.length - 1];
-    if (!next?.weightKg) return null;
+    const open = sets.findIndex((set) => !set.done);
+    const at = open >= 0 ? open : sets.length - 1;
+    const next = sets[at];
+    // An open set with no weight of its own is about to be done at the weight it shows, which
+    // is last time's. A ticked one shows only what it holds.
+    const weightKg = next?.weightKg ?? (next && !next.done ? ghosts?.[at]?.weightKg : null);
+    if (!weightKg) return null;
 
     const bar = unit === 'imperial' ? OLYMPIC_BAR_LB : OLYMPIC_BAR;
-    const load = platesPerSide(kgToDisplay(next.weightKg, unit), bar);
+    const load = platesPerSide(kgToDisplay(weightKg, unit), bar);
     const plates = formatPlates(load);
     // Nothing to hang, or a target these plates cannot make — either way a hint would mislead
     // more than it helps, and `remainder` is what makes the difference visible.
     return plates && load.remainder === 0 ? { bar: bar.kg, plates } : null;
-  }, [onBarbell, sets, unit]);
+  }, [onBarbell, sets, ghosts, unit]);
   const targetLabel = target ? formatTarget(target, t) : null;
   const previousLabel =
     previous && previous.length > 0 ? formatPrevious(previous, unit, cardio) : null;
@@ -450,6 +464,8 @@ export function ExercisePanel({
                   onOptions={onSetOptions ? () => onSetOptions(index) : undefined}
                   weightKg={set.weightKg}
                   reps={set.reps}
+                  ghostWeightKg={ghosts?.[index]?.weightKg ?? null}
+                  ghostReps={ghosts?.[index]?.reps ?? null}
                   done={set.done}
                   fields={cardio ? 'cardio' : 'weights'}
                   durationSeconds={set.durationSeconds ?? null}

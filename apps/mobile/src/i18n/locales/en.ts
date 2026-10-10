@@ -302,6 +302,7 @@ export const en = {
     exerciseOptions: 'Exercise options',
     removeExercise: 'Remove exercise',
     lastTime: 'Last time',
+    ghostValue: 'Last time: {{value}}. Not recorded yet',
     noHistory: 'No history',
     newPr: 'New PR!',
     elapsed: 'Elapsed',

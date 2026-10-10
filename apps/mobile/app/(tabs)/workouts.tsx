@@ -124,6 +124,7 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 
 import { setWorkoutActive } from '../../src/workout/activeWorkout.js';
 import { shouldAutoComplete } from '../../src/workout/autoComplete.js';
+import { adoptGhost, ghostsFor } from '../../src/workout/ghost.js';
 import { scrollToReveal, type MeasureRow } from '../../src/workout/revealRow.js';
 import { toScreenY, windowTopFor } from '../../src/keyboardInset.js';
 import { estimateMaxHeartRate, heartRateZone } from '../../src/workout/heartRate.js';
@@ -726,9 +727,16 @@ export default function WorkoutsScreen() {
     // `complete` ticks the set as part of the same edit: the numbers and the tick are written one
     // after the other and the screen reloads once, after both. Two separate writes would each
     // reload, and a reload that lands between them is the one that used to make a tick vanish.
-    (setId: string, patch: SetInput, { complete = false }: { complete?: boolean } = {}) => {
+    //
+    // `felt` says the tick has already been answered in the hand: the row buzzes for its own
+    // tick, and a second buzz from here would make one set feel like two.
+    (
+      setId: string,
+      patch: SetInput,
+      { complete = false, felt = false }: { complete?: boolean; felt?: boolean } = {},
+    ) => {
       if (complete) {
-        void hapticSetDone();
+        if (!felt) void hapticSetDone();
         startRestAfter(setId);
       }
       void (async () => {
@@ -967,15 +975,14 @@ export default function WorkoutsScreen() {
    * Build a ramp toward the first working set and put it in front.
    *
    * The weight comes from the first set that is not already a warm-up, which is what the
-   * session is actually building toward. A bar-loaded lift ramps against the bare bar as its
-   * floor; anything else has no bar to fall back on and ramps in plain increments.
+   * session is actually building toward — its own number, or while it is still empty the one it
+   * shows from last time. The card works that out, since it is the one drawing it. A bar-loaded
+   * lift ramps against the bare bar as its floor; anything else has no bar to fall back on and
+   * ramps in plain increments.
    */
   const addWarmup = useCallback(
-    (sessionExerciseId: string, onBarbell: boolean) => {
-      if (!sessionId) return;
-      const exercise = exercises.find((e) => e.id === sessionExerciseId);
-      const working = exercise?.sets.find((set) => set.is_warmup === 0)?.weight_kg;
-      if (!working) return;
+    (sessionExerciseId: string, onBarbell: boolean, working: number | null) => {
+      if (!sessionId || !working) return;
 
       const ramp = warmupRamp(working, { bar: onBarbell ? OLYMPIC_BAR : null });
       if (ramp.length === 0) return;
@@ -992,7 +999,7 @@ export default function WorkoutsScreen() {
         await reload(sessionId);
       })();
     },
-    [sessionId, exercises, reload],
+    [sessionId, reload],
   );
 
   /**
@@ -1386,6 +1393,26 @@ export default function WorkoutsScreen() {
     const seed = EXERCISE_BY_KEY.get(exercise.exercise_key);
     if (!seed) return null;
     const prescription = targets[exercise.exercise_key] ?? null;
+    // What each empty set shows: the same set from the last workout of this kind. Worked out
+    // here, once per card, because three things below have to agree on it — the row that draws
+    // it, the tick that records it, and the warm-up that ramps toward it. A walk or a ride has
+    // no rows of this sort.
+    const ghosts =
+      seed.loadType === 'cardio'
+        ? []
+        : ghostsFor(
+            exercise.sets.map((set) => ({ isWarmup: set.is_warmup === 1 })),
+            previous[exercise.exercise_key]?.map((p) => ({
+              weightKg: p.weight_kg,
+              reps: p.reps,
+              isWarmup: p.is_warmup === 1,
+            })),
+          );
+    const firstWorking = exercise.sets.findIndex((set) => set.is_warmup === 0);
+    const workingWeightKg =
+      firstWorking < 0
+        ? null
+        : (exercise.sets[firstWorking]!.weight_kg ?? ghosts[firstWorking]?.weightKg ?? null);
     return (
       <ExercisePanel
         name={seed.nameHe}
@@ -1411,6 +1438,7 @@ export default function WorkoutsScreen() {
             distanceM: p.distance_m,
           })) ?? null
         }
+        ghosts={ghosts}
         target={
           prescription
             ? {
@@ -1468,6 +1496,9 @@ export default function WorkoutsScreen() {
           if (keyboardEdge.current !== null) revealEditingRow();
           const label = `${seed.nameHe} · ${t('workout.setNumber')} ${i + 1}`;
           const cardio = seed.loadType === 'cardio';
+          // Behind the empty field, what the row itself is showing. A ticked set shows none.
+          const ghost = set.done_at === null ? ghosts[i] : null;
+          const ghostWeightKg = ghost?.weightKg ?? null;
           if (field === 'first') {
             setEntry(
               cardio
@@ -1487,6 +1518,7 @@ export default function WorkoutsScreen() {
                     id: `${set.id}:weight`,
                     title: `${label} · ${t(`common.${weightUnitKey(unit)}`)}`,
                     value: set.weight_kg === null ? null : kgToDisplay(set.weight_kg, unit),
+                    hint: ghostWeightKg === null ? null : kgToDisplay(ghostWeightKg, unit),
                     unit: t(`common.${weightUnitKey(unit)}`),
                     onCommit: (value) => {
                       const weightKg = displayWeightToKg(value, unit);
@@ -1525,6 +1557,7 @@ export default function WorkoutsScreen() {
                   id: `${set.id}:reps`,
                   title: `${label} · ${t('workout.reps')}`,
                   value: set.reps,
+                  hint: ghost?.reps ?? null,
                   decimals: false,
                   // Typing the reps is, nearly always, the moment the set is over:
                   // the weight is what you load beforehand and this is what you find
@@ -1532,19 +1565,19 @@ export default function WorkoutsScreen() {
                   onCommit: (value) => {
                     const reps = Math.round(value);
                     const now = liveSet(set.id) ?? set;
-                    patchSet(
-                      set.id,
-                      { reps },
-                      {
-                        complete: shouldAutoComplete({
-                          done: now.done_at !== null,
-                          field: 'reps',
-                          before: { weightKg: now.weight_kg, reps: now.reps },
-                          after: { weightKg: now.weight_kg, reps },
-                          loadType: seed.loadType,
-                        }),
-                      },
-                    );
+                    // A weight still showing as last time's is the weight these reps were
+                    // done at: nobody types what they got without having looked at what
+                    // was on the bar. It is written only if this entry is what finishes
+                    // the set — the same moment the tick would have written it.
+                    const fill = adoptGhost({ weightKg: now.weight_kg, reps }, ghosts[i]);
+                    const complete = shouldAutoComplete({
+                      done: now.done_at !== null,
+                      field: 'reps',
+                      before: { weightKg: now.weight_kg, reps: now.reps },
+                      after: { weightKg: fill?.weightKg ?? now.weight_kg, reps },
+                      loadType: seed.loadType,
+                    });
+                    patchSet(set.id, complete ? { reps, ...fill } : { reps }, { complete });
                   },
                 },
           );
@@ -1557,7 +1590,16 @@ export default function WorkoutsScreen() {
           // and it is read from the live copy, so a tap never argues with a reload that
           // landed between the row being drawn and the finger arriving.
           const current = liveSet(tapped.id) ?? tapped;
-          toggleDone(tapped.id, current.done_at === null);
+          const ticking = current.done_at === null;
+          // Ticking a set that still shows last time's numbers is saying "that, again", so
+          // they are written before the tick — by the path a typed number takes, which is
+          // also the one that notices a record. Only into fields still empty, and never on
+          // the way back: unticking leaves the numbers where they are.
+          const fill = ticking
+            ? adoptGhost({ weightKg: current.weight_kg, reps: current.reps }, ghosts[i])
+            : null;
+          if (fill) patchSet(tapped.id, fill, { complete: true, felt: true });
+          else toggleDone(tapped.id, ticking);
         }}
         onAddSet={() => addSet(exercise.id)}
         onRemoveSet={exercise.sets.length > 0 ? () => removeLastSet(exercise) : undefined}
@@ -1584,11 +1626,12 @@ export default function WorkoutsScreen() {
         visual={<ExerciseVisual exercise={seed} height={focus ? 210 : 52} />}
         visualLayout={focus ? 'banner' : 'thumb'}
         onBarbell={seed.equipmentSlug === 'barbell'}
-        onAddWarmup={() => addWarmup(exercise.id, seed.equipmentSlug === 'barbell')}
+        onAddWarmup={() =>
+          addWarmup(exercise.id, seed.equipmentSlug === 'barbell', workingWeightKg)
+        }
         // Offered only with nothing warmed up yet and a working weight to ramp toward.
         canAddWarmup={
-          !exercise.sets.some((set) => set.is_warmup === 1) &&
-          (exercise.sets.find((set) => set.is_warmup === 0)?.weight_kg ?? 0) > 0
+          !exercise.sets.some((set) => set.is_warmup === 1) && (workingWeightKg ?? 0) > 0
         }
       />
     );

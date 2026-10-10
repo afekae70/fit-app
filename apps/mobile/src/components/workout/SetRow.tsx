@@ -2,9 +2,15 @@
  * One set: `[ # ] [ − weight + ] [ − reps + ] [ ✓ ]`, 48px tall.
  *
  * The core control of the whole app, and the handoff is emphatic about why it looks like this:
- * it is operated by one thumb, mid-set, possibly sweaty. **No keyboard is ever required.** Values
- * pre-fill from the previous session and the steppers move them in the units plates actually come
- * in, so a normal set is one tap or none.
+ * it is operated by one thumb, mid-set, possibly sweaty. **No keyboard is ever required.** An
+ * empty field shows what the set was last time and the steppers move it in the units plates
+ * actually come in, so a normal set is one tap.
+ *
+ * ## The watermark
+ *
+ * A number nobody has entered is drawn faint: it is last time's, shown where today's will go.
+ * It is not stored and counts toward nothing until the set is ticked, which is what writes it —
+ * see `workout/ghost.ts`. A ticked set never shows one: what is recorded is what is shown.
  *
  * Ticking a set produces feedback in three places at once — this row, the header progress bar and
  * the rest timer opening. Only the first is this component's business; the other two follow from
@@ -76,6 +82,14 @@ export interface SetRowProps {
   onChangeReps: (next: number) => void;
   onToggle: () => void;
   /**
+   * What this set was last time, shown faint in a field that is still empty.
+   *
+   * Not values: the row never reports them as its own. The steppers start from them, because
+   * "a little more than last time" is the usual next number.
+   */
+  ghostWeightKg?: number | null;
+  ghostReps?: number | null;
+  /**
    * What the two fields hold.
    *
    * `weights` is the row this component was built for. `cardio` is a walk or a ride: minutes and
@@ -133,6 +147,8 @@ export function SetRow({
   onChangeWeight,
   onChangeReps,
   onToggle,
+  ghostWeightKg = null,
+  ghostReps = null,
   fields = 'weights',
   durationSeconds = null,
   distanceM = null,
@@ -192,6 +208,13 @@ export function SetRow({
     }),
   };
   const numeralColor = done ? colors.accentLift : colors.text;
+
+  // What each field draws, and where its steppers start: the row's own number, or failing that
+  // last time's. Never last time's on a ticked set — that one is a record.
+  const weightGhost = weightKg === null && !done ? ghostWeightKg : null;
+  const repsGhost = reps === null && !done ? ghostReps : null;
+  const shownWeightKg = weightKg ?? weightGhost;
+  const shownReps = reps ?? repsGhost;
 
   /*
    * The fields save when an edit ends, and an edit does not reliably end: tapping the tick right
@@ -313,7 +336,7 @@ export function SetRow({
       ) : (
         <>
       <Animated.View style={[s.field, fieldStyle]}>
-        <Stepper label="−" onPress={() => onChangeWeight(stepWeight(weightKg, -1, unit))} />
+        <Stepper label="−" onPress={() => onChangeWeight(stepWeight(shownWeightKg, -1, unit))} />
         <View style={s.value}>
           {/* Editable as well as steppable. The steppers cover the common nudge, but a weight
               two plates away is a lot of taps — and a number you cannot type into reads as a
@@ -323,35 +346,51 @@ export function SetRow({
             onPress={() => edit('first')}
             disabled={!onEdit}
             accessibilityRole="button"
+            // Read out as what it is. A bare "100" would say the set already holds it.
+            accessibilityLabel={
+              weightGhost !== null
+                ? t('workout.ghostValue', { value: kgToDisplay(weightGhost, unit) })
+                : undefined
+            }
             style={s.valueTap}
           >
-            <Text style={[s.numeral, { color: numeralColor }]}>
-              {formatEntry(weightKg === null ? null : kgToDisplay(weightKg, unit))}
+            <Text
+              style={[
+                s.numeral,
+                weightGhost !== null ? s.numeralGhost : { color: numeralColor },
+              ]}
+            >
+              {formatEntry(shownWeightKg === null ? null : kgToDisplay(shownWeightKg, unit))}
             </Text>
           </Pressable>
           <Text style={s.unit}>{t(`common.${weightUnitKey(unit)}`)}</Text>
         </View>
-        <Stepper label="+" onPress={() => onChangeWeight(stepWeight(weightKg, 1, unit))} />
+        <Stepper label="+" onPress={() => onChangeWeight(stepWeight(shownWeightKg, 1, unit))} />
       </Animated.View>
 
       <Animated.View style={[s.field, fieldStyle]}>
-        <Stepper label="−" onPress={() => onChangeReps(stepReps(reps, -1))} />
+        <Stepper label="−" onPress={() => onChangeReps(stepReps(shownReps, -1))} />
         <View style={s.value}>
           <Pressable
             onPress={() => edit('second')}
             disabled={!onEdit}
             accessibilityRole="button"
+            accessibilityLabel={
+              repsGhost !== null ? t('workout.ghostValue', { value: repsGhost }) : undefined
+            }
             style={s.valueTap}
           >
-            <Text style={[s.numeral, { color: numeralColor }]}>
-              {formatEntry(reps)}
+            <Text
+              style={[s.numeral, repsGhost !== null ? s.numeralGhost : { color: numeralColor }]}
+            >
+              {formatEntry(shownReps)}
             </Text>
           </Pressable>
           {/* The slot the weight field spends on its unit, which the reps field never used.
               `@8` is how a rating is written on paper, and it costs the row no new space. */}
           {rpe !== null ? <Text style={s.rpe}>@{rpe}</Text> : null}
         </View>
-        <Stepper label="+" onPress={() => onChangeReps(stepReps(reps, 1))} />
+        <Stepper label="+" onPress={() => onChangeReps(stepReps(shownReps, 1))} />
       </Animated.View>
 
         </>
@@ -422,6 +461,7 @@ const createStyles = (colors: ColorPalette) =>
     field: ViewStyle;
     value: ViewStyle;
     numeral: TextStyle;
+    numeralGhost: TextStyle;
     valueTap: ViewStyle;
     numeralInput: TextStyle;
     unit: TextStyle;
@@ -481,6 +521,10 @@ const createStyles = (colors: ColorPalette) =>
     value: { flex: 1, flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center', gap: 2 },
     // Tabular so the row does not shift as the number ticks between 8 and 10.
     numeral: { fontSize: 26, fontWeight: '600', fontVariant: ['tabular-nums'] },
+    // Last time's number in an empty field. The same size and place as an entered one, so the
+    // row does not move when it is replaced — told apart by weight and colour alone, and by
+    // enough of both that it cannot be mistaken for something that was typed.
+    numeralGhost: { color: colors.textFaint, fontWeight: '400', opacity: 0.6 },
     // The number is the target: a tap anywhere on it opens the keyboard, a far bigger thing
     // to hit mid-set than the glyphs themselves.
     valueTap: { flex: 1, height: 56, alignItems: 'center', justifyContent: 'center' },

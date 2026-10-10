@@ -70,6 +70,12 @@ export interface NumberEntryRequest {
   title: string;
   /** What is recorded now. Shown behind the field until something is typed over it. */
   value: number | null;
+  /**
+   * What to show behind an empty field instead of a dash: last time's number, for a set that
+   * has none of its own yet. Unlike `value` it is not recorded, and leaving the field keeps
+   * nothing — so it is drawn fainter than `value` is.
+   */
+  hint?: number | null;
   /** The unit, shown beside the number. */
   unit?: string;
   decimals?: boolean;
@@ -209,8 +215,16 @@ export function NumberEntryBar({
           maxLength={entryMaxLength({ decimals })}
           // What is recorded now, shown until it is typed over. Stronger than a hint usually is,
           // because it is not a hint: it is the value, and leaving the field keeps it.
-          placeholder={request.value === null ? '—' : entryText(request.value)}
-          placeholderTextColor={colors.textMuted}
+          placeholder={
+            request.value !== null
+              ? entryText(request.value)
+              : request.hint != null
+                ? entryText(request.hint)
+                : '—'
+          }
+          placeholderTextColor={
+            request.value === null && request.hint != null ? colors.textFaint : colors.textMuted
+          }
           selectionColor={colors.accent}
           underlineColorAndroid="transparent"
           autoCorrect={false}

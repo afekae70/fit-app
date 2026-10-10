@@ -290,6 +290,7 @@ export const he = {
     exerciseOptions: 'אפשרויות לתרגיל',
     removeExercise: 'הסר תרגיל',
     lastTime: 'פעם קודמת',
+    ghostValue: 'פעם קודמת: {{value}}. עדיין לא נרשם',
     noHistory: 'אין היסטוריה',
     newPr: 'שיא אישי חדש!',
     elapsed: 'זמן שחלף',
