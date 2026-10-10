@@ -57,11 +57,26 @@ describe('what an empty set shows', () => {
     expect(ghostsFor(rows('w'), [work(null, 15)])).toEqual([{ weightKg: null, reps: 15 }]);
   });
 
-  it('does not offer a set that held nothing', () => {
+  it('does not count a set left blank last time as a set that was there', () => {
+    // A blank row is a set that did not happen. It takes no place in the line, so the first
+    // row today shows the first set that was actually done.
     expect(ghostsFor(rows('w', 'w'), [work(null, null), work(100, 8)])).toEqual([
+      { weightKg: 100, reps: 8 },
       null,
+    ]);
+  });
+
+  it('shows a warm-up row the warm-up that was done, past one that was skipped', () => {
+    // The case a workout that opens with last time's warm-up rows depends on: it adds one
+    // row per warm-up that held something, and that row has to be the one that shows it.
+    expect(ghostsFor(rows('u', 'w'), [warm(null, null), warm(40, 10), work(100, 8)])).toEqual([
+      { weightKg: 40, reps: 10 },
       { weightKg: 100, reps: 8 },
     ]);
+  });
+
+  it('shows nothing when everything last time was left blank', () => {
+    expect(ghostsFor(rows('u', 'w'), [warm(null, null), work(null, null)])).toEqual([null, null]);
   });
 
   it('has an answer for every row, and no more', () => {

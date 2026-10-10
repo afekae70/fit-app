@@ -97,6 +97,7 @@ import {
   addSet as insertSet,
   addSetCopyingPrevious,
   addDropSet,
+  addWarmupRowsFromLastTime,
   addWarmupSets,
   setSupersetLink,
   finishSession,
@@ -512,6 +513,20 @@ export default function WorkoutsScreen() {
         await swapSessionExercise(db, newId, swapId, key);
       } else {
         const exerciseId = await addExerciseToSession(db, newId, sessionId, key);
+        // The warm-ups it had last time first, so they sit above the work — the same thing a
+        // workout started from a plan does for every exercise in it. Not for a walk or a
+        // ride, whose card is one effort and reads its first row as that effort.
+        if (EXERCISE_BY_KEY.get(key)?.loadType !== 'cardio') {
+          await addWarmupRowsFromLastTime(
+            db,
+            userId,
+            newId,
+            sessionId,
+            exerciseId,
+            key,
+            await getSessionType(db, sessionId),
+          );
+        }
         // Seed one blank set: an exercise with zero sets is never what the user wanted, and it
         // saves a tap on the overwhelmingly common path.
         await addSetCopyingPrevious(db, newId, exerciseId);
@@ -519,7 +534,7 @@ export default function WorkoutsScreen() {
       await reload(sessionId);
       router.setParams({ addExercise: '', swapExerciseId: '' });
     })();
-  }, [params.addExercise, params.swapExerciseId, sessionId, reload]);
+  }, [params.addExercise, params.swapExerciseId, sessionId, userId, reload]);
 
   const begin = async () => {
     const db = await getExecutor();
@@ -1338,7 +1353,17 @@ export default function WorkoutsScreen() {
   /** The first set still untouched, as "Exercise · set N" — the prototype's `nextSetLabel`. */
   const nextSetLabel = useMemo(() => {
     for (const exercise of exercises) {
-      const index = exercise.sets.findIndex((set) => set.done_at === null);
+      // A warm-up with work already ticked below it was skipped, not left for later. Rows for
+      // last time's warm-ups now arrive on their own, so skipping one is ordinary, and it
+      // should not be announced as what is coming next for the rest of the workout.
+      const index = exercise.sets.findIndex(
+        (set, at) =>
+          set.done_at === null &&
+          !(
+            set.is_warmup === 1 &&
+            exercise.sets.slice(at + 1).some((later) => later.done_at !== null)
+          ),
+      );
       if (index >= 0) {
         const seed = EXERCISE_BY_KEY.get(exercise.exercise_key);
         const name = seed ? (isHebrew ? seed.nameHe : seed.nameEn) : exercise.exercise_key;

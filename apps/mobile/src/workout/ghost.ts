@@ -38,23 +38,27 @@ export interface Ghost {
  * The second working set shows what the second working set was, however many warm-ups came
  * before either. Warm-ups line up with warm-ups in the same way. A row with no counterpart —
  * a fourth set, when last time there were three — has no watermark: there is nothing it was.
+ *
+ * Only sets that held something count as having been there. A row left blank last time was a
+ * set that did not happen, and it must not take a place in the line: a warm-up skipped last
+ * week would otherwise sit between today's warm-up row and the one that was actually done.
+ * This is the same rule `countPreviousWarmups` uses to decide how many warm-up rows a new
+ * workout opens with, so every row it adds has something to show.
  */
 export function ghostsFor(
   rows: readonly { isWarmup: boolean }[],
   previous: readonly GhostSource[] | null | undefined,
 ): (Ghost | null)[] {
-  if (!previous || previous.length === 0) return rows.map(() => null);
-  const working = previous.filter((set) => !set.isWarmup);
-  const warmups = previous.filter((set) => set.isWarmup);
+  const held = (previous ?? []).filter((set) => set.weightKg !== null || set.reps !== null);
+  if (held.length === 0) return rows.map(() => null);
+  const working = held.filter((set) => !set.isWarmup);
+  const warmups = held.filter((set) => set.isWarmup);
 
   let workingSeen = 0;
   let warmupSeen = 0;
   return rows.map((row) => {
     const source = row.isWarmup ? warmups[warmupSeen++] : working[workingSeen++];
-    if (!source) return null;
-    // A set that held nothing last time has nothing to offer either.
-    if (source.weightKg === null && source.reps === null) return null;
-    return { weightKg: source.weightKg, reps: source.reps };
+    return source ? { weightKg: source.weightKg, reps: source.reps } : null;
   });
 }
 

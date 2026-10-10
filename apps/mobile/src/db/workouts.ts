@@ -1249,6 +1249,72 @@ export async function getPreviousSessionSets(
 }
 
 /**
+ * How many warm-up sets an exercise was actually given last time, in a workout of this kind.
+ *
+ * Only warm-ups that held something. A warm-up row left blank is one that was skipped, and
+ * counting it would hand the same empty row to every workout after it: skip the warm-up once
+ * and it would follow the exercise around for good, with nothing in it. Counted this way, a
+ * warm-up that stops being done stops being offered the very next time.
+ *
+ * The same rule as `ghostsFor` (workout/ghost.ts), which is what makes each row this count
+ * produces line up with the warm-up it stands for.
+ */
+export async function countPreviousWarmups(
+  db: SqlExecutor,
+  userId: string,
+  exerciseKey: string,
+  excludeSessionId?: string,
+  sameType?: SessionType | null,
+): Promise<number> {
+  const sets = await getPreviousSessionSets(db, userId, exerciseKey, excludeSessionId, sameType);
+  return sets.filter(
+    (set) =>
+      set.is_warmup === 1 &&
+      (set.weight_kg !== null ||
+        set.reps !== null ||
+        set.duration_seconds !== null ||
+        set.distance_m !== null),
+  ).length;
+}
+
+/**
+ * Open an exercise with the warm-up rows it had last time: blank, and already marked as
+ * warm-ups.
+ *
+ * Blank for the reason every row of a new workout is blank — nothing has been lifted yet. What
+ * the warm-up was is shown in the row as a watermark, and is written only if the row is ticked.
+ * Marked from the start, because a ramp that has to be re-flagged by hand every week is a ramp
+ * that gets logged as work the week somebody forgets, and then volume, records and the
+ * progression advice all count it.
+ *
+ * For an exercise that has no sets yet, and only then: rows are appended, so warm-ups added to
+ * an exercise that already has its working sets would land underneath them. Call it before
+ * the working sets are created. Returns how many rows it added.
+ */
+export async function addWarmupRowsFromLastTime(
+  db: SqlExecutor,
+  userId: string,
+  newId: IdFactory,
+  sessionId: string,
+  sessionExerciseId: string,
+  exerciseKey: string,
+  sameType: SessionType | null | undefined,
+  clock: Clock = defaultClock,
+): Promise<number> {
+  const existing = await db.get<{ n: number }>(
+    `SELECT COUNT(*) AS n FROM sets WHERE session_exercise_id = ? AND deleted_at IS NULL`,
+    [sessionExerciseId],
+  );
+  if ((existing?.n ?? 0) > 0) return 0;
+
+  const count = await countPreviousWarmups(db, userId, exerciseKey, sessionId, sameType);
+  for (let i = 0; i < count; i += 1) {
+    await addSet(db, newId, sessionExerciseId, { isWarmup: true }, clock);
+  }
+  return count;
+}
+
+/**
  * The heaviest working set previously recorded for an exercise, excluding the current session.
  * Drives the "last time you did X" hint next to each exercise while logging.
  */

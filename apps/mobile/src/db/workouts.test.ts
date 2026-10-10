@@ -17,7 +17,9 @@ import {
   addSet,
   addSetCopyingPrevious,
   addDropSet,
+  addWarmupRowsFromLastTime,
   addWarmupSets,
+  countPreviousWarmups,
   finishSession,
   getActiveSession,
   getPreviousBest,
@@ -31,6 +33,7 @@ import {
   markSetDone,
   removeExerciseFromSession,
   removeSet,
+  renameSession,
   reorderSessionExercise,
   SESSION_NOTE_LIMIT,
   setSessionNotes,
@@ -1163,5 +1166,136 @@ describe('a note on a workout', () => {
     await setSessionNotes(db, USER, other, 'to be cleared', clock);
     await finishSession(db, USER, other, { notes: null }, clock);
     expect(await noteOf(other)).toBeNull();
+  });
+});
+
+describe('an exercise opens with the warm-ups it had last time', () => {
+  /** A finished workout called `name`, holding one exercise with the sets given. */
+  async function trained(
+    name: string,
+    sets: { weightKg?: number | null; reps?: number | null; isWarmup?: boolean }[],
+  ) {
+    const sessionId = await startSession(db, USER, newId, {}, clock);
+    await renameSession(db, USER, sessionId, name, clock);
+    const exerciseId = await addExerciseToSession(db, newId, sessionId, 'Leg Press', clock);
+    for (const set of sets) await addSet(db, newId, exerciseId, set, clock);
+    await finishSession(db, USER, sessionId, {}, clock);
+  }
+
+  /** A new workout called `name` with the exercise just added and nothing under it. */
+  async function opened(name: string) {
+    const sessionId = await startSession(db, USER, newId, {}, clock);
+    await renameSession(db, USER, sessionId, name, clock);
+    const exerciseId = await addExerciseToSession(db, newId, sessionId, 'Leg Press', clock);
+    return { sessionId, exerciseId, type: await getSessionType(db, sessionId) };
+  }
+
+  it('counts the warm-ups that were done, and not the work', async () => {
+    await trained('Legs', [
+      { weightKg: 40, reps: 10, isWarmup: true },
+      { weightKg: 80, reps: 5, isWarmup: true },
+      { weightKg: 140, reps: 8 },
+    ]);
+    const { sessionId, type } = await opened('Legs');
+    expect(await countPreviousWarmups(db, USER, 'Leg Press', sessionId, type)).toBe(2);
+  });
+
+  it('does not count a warm-up row that was left blank', async () => {
+    await trained('Legs', [{ isWarmup: true }, { weightKg: 40, reps: 10, isWarmup: true }]);
+    const { sessionId, type } = await opened('Legs');
+    expect(await countPreviousWarmups(db, USER, 'Leg Press', sessionId, type)).toBe(1);
+  });
+
+  it('adds the rows blank and marked, ahead of the working set that follows', async () => {
+    await trained('Legs', [
+      { weightKg: 40, reps: 10, isWarmup: true },
+      { weightKg: 140, reps: 8 },
+    ]);
+    const { sessionId, exerciseId, type } = await opened('Legs');
+
+    expect(
+      await addWarmupRowsFromLastTime(
+        db,
+        USER,
+        newId,
+        sessionId,
+        exerciseId,
+        'Leg Press',
+        type,
+        clock,
+      ),
+    ).toBe(1);
+    // What the screen does next: one blank working set under whatever is there.
+    await addSetCopyingPrevious(db, newId, exerciseId, clock);
+
+    const sets = await listSets(db, exerciseId);
+    expect(sets.map((set) => [set.set_index, set.is_warmup, set.weight_kg, set.reps])).toEqual([
+      [1, 1, null, null],
+      // Not a second warm-up: copying the row above does not copy what kind of row it is.
+      [2, 0, null, null],
+    ]);
+  });
+
+  it('follows the workout’s name, not the last time the exercise was done anywhere', async () => {
+    await trained('Legs', [{ weightKg: 140, reps: 8 }]);
+    // More recent, and warmed up — but a different workout.
+    await trained('Full body', [
+      { weightKg: 40, reps: 10, isWarmup: true },
+      { weightKg: 120, reps: 8 },
+    ]);
+
+    const { sessionId, exerciseId, type } = await opened('Legs');
+    expect(
+      await addWarmupRowsFromLastTime(
+        db,
+        USER,
+        newId,
+        sessionId,
+        exerciseId,
+        'Leg Press',
+        type,
+        clock,
+      ),
+    ).toBe(0);
+    expect(await listSets(db, exerciseId)).toHaveLength(0);
+  });
+
+  it('adds nothing to an exercise that already has sets, where they would land underneath', async () => {
+    await trained('Legs', [
+      { weightKg: 40, reps: 10, isWarmup: true },
+      { weightKg: 140, reps: 8 },
+    ]);
+    const { sessionId, exerciseId, type } = await opened('Legs');
+    await addSet(db, newId, exerciseId, {}, clock);
+
+    expect(
+      await addWarmupRowsFromLastTime(
+        db,
+        USER,
+        newId,
+        sessionId,
+        exerciseId,
+        'Leg Press',
+        type,
+        clock,
+      ),
+    ).toBe(0);
+    expect((await listSets(db, exerciseId)).map((set) => set.is_warmup)).toEqual([0]);
+  });
+
+  it('adds nothing the first time an exercise is done', async () => {
+    const { sessionId, exerciseId, type } = await opened('Legs');
+    expect(
+      await addWarmupRowsFromLastTime(
+        db,
+        USER,
+        newId,
+        sessionId,
+        exerciseId,
+        'Leg Press',
+        type,
+        clock,
+      ),
+    ).toBe(0);
   });
 });

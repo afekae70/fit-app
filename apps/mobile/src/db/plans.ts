@@ -14,7 +14,14 @@
  */
 
 import type { SqlExecutor } from './executor.js';
-import { addExerciseToSession, addSet, startSession, type Clock, type IdFactory } from './workouts.js';
+import {
+  addExerciseToSession,
+  addSet,
+  addWarmupRowsFromLastTime,
+  startSession,
+  type Clock,
+  type IdFactory,
+} from './workouts.js';
 
 const defaultClock: Clock = () => new Date().toISOString();
 
@@ -632,6 +639,17 @@ export async function listPlanDayExercises(
  *
  * The session records `plan_day_id`, which is what makes adherence — prescribed sets vs. sets
  * actually logged — answerable later.
+ *
+ * ## Warm-ups come along
+ *
+ * A plan prescribes the work, not the ramp up to it, so `target_sets` never included a
+ * warm-up and every session of a day used to open without one — to be added and flagged by
+ * hand, each time. An exercise now also opens with as many warm-up rows as it was given the
+ * last time this day was trained, above the working sets and already marked. Blank like the
+ * rest; the row shows what the warm-up was. See `addWarmupRowsFromLastTime`.
+ *
+ * Not on a timed day: that screen is a countdown with no rows on it, and a warm-up row there
+ * would be one nobody could see, tick or delete.
  */
 export async function startSessionFromPlanDay(
   db: SqlExecutor,
@@ -648,6 +666,11 @@ export async function startSessionFromPlanDay(
     await db.run(`UPDATE workout_sessions SET name = ? WHERE id = ?`, [day.name, sessionId]);
   }
 
+  // "Last time" for a planned session is the last session of this plan day — the same rule
+  // the workout screen compares by (sessionType.ts), stated here rather than read back.
+  const kind = { planDayId, name: day.name };
+  const timed = timingOf(day) !== null;
+
   for (const prescription of day.exercises) {
     const exerciseId = await addExerciseToSession(
       db,
@@ -656,6 +679,20 @@ export async function startSessionFromPlanDay(
       prescription.exercise_key,
       clock,
     );
+
+    // Before the working sets, so they sit above them.
+    if (!timed) {
+      await addWarmupRowsFromLastTime(
+        db,
+        userId,
+        newId,
+        sessionId,
+        exerciseId,
+        prescription.exercise_key,
+        kind,
+        clock,
+      );
+    }
 
     // At least one set even when the prescription says none, since an exercise with no rows
     // gives the user nothing to type into and reads as a bug.
