@@ -1,10 +1,11 @@
 /**
  * A finished workout as a few lines of text, for sending to someone.
  *
- * Text, not a picture, and that is a decision rather than a gap. A picture of a card would
- * need a library that captures a view as an image — native code, which means a new build for
- * every user before the feature exists at all (see CLAUDE.md). The system's own share sheet
- * takes text with nothing added to the app, and text is what a chat wants anyway: it can be
+ * Text is one of two ways to send a workout; the other is a picture (`shareCard.ts`). It was
+ * the only one for a while, because a picture needs a library that photographs a view —
+ * native code, and a new build for every user before the feature exists at all. The picture
+ * has since been asked for and added. Text stays, and stays the fallback: the system's share
+ * sheet takes it with nothing added to the app, and it is what a chat wants anyway — it can be
  * read in the notification, quoted, and answered.
  *
  * What it says is what someone would say: what the workout was, how long, how much — and the

@@ -774,6 +774,9 @@ export const en = {
     noteHint: 'If you have a coach, they will see this note.',
     shareMore: 'and {{count}} more exercises',
     shareFooter: 'Logged with NovaFit',
+    shareImage: 'Share as a picture',
+    shareAsText: 'Share as text',
+    shareImageFailed: 'The picture could not be made. You can share it as text.',
     period: {
       week: 'Last week',
       month: 'Last month',

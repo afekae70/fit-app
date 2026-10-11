@@ -38,7 +38,9 @@ import {
   weightUnitKey,
 } from '../../src/units.js';
 import { bestSetIndex, formatSet } from '../../src/workout/setFormat.js';
-import { workoutShareText } from '../../src/workout/shareText.js';
+import { shareCardModel } from '../../src/workout/shareCard.js';
+import { workoutShareText, type ShareExercise } from '../../src/workout/shareText.js';
+import { ShareCardModal } from '../../src/components/workout/ShareCardModal.js';
 import { sessionLoad } from '@fit/shared/calculations';
 import { useActionSheet } from '../../src/components/ActionSheetProvider.js';
 import { ExerciseCard, type PreviousSet } from '../../src/components/ExerciseCard.js';
@@ -105,6 +107,8 @@ export default function SessionDetailScreen() {
   const [loading, setLoading] = useState(true);
   // Opened to be read unless the history menu said otherwise — see `canEdit`.
   const [editing, setEditing] = useState(false);
+  /** The picture of this workout is up, to be looked at and sent. */
+  const [sharing, setSharing] = useState(false);
 
   /**
    * Minutes from the recorded start and end rather than a stored duration — there isn't one,
@@ -331,51 +335,62 @@ export default function SessionDetailScreen() {
     0,
   );
 
+  /** The words a set is written in, in the units this person reads. */
+  const setLabels = {
+    weight: t(`common.${weightUnitKey(unit)}`),
+    distance: t(`common.${distanceUnitKey(unit)}`),
+    seconds: t('workout.seconds'),
+  };
+
   /**
-   * Hand the workout to the system's share sheet, as text. See `shareText.ts` for what it says
-   * and why it is text. Each lift is told by its best set, in the units this person reads.
+   * Each lift as it is told to someone else: by its best set. The message and the picture are
+   * the same workout, so they are told from the same list.
    */
-  const share = () => {
-    const setLabels = {
-      weight: t(`common.${weightUnitKey(unit)}`),
-      distance: t(`common.${distanceUnitKey(unit)}`),
-      seconds: t('workout.seconds'),
-    };
+  const sharedExercises = (): ShareExercise[] =>
+    exercises.map((exercise) => {
+      const seed = EXERCISE_BY_KEY.get(exercise.exercise_key);
+      const best = bestSetIndex(exercise.sets);
+      const bestSet = best === null ? undefined : exercise.sets[best];
+      return {
+        name: seed ? (isHebrew ? seed.nameHe : seed.nameEn) : exercise.exercise_key,
+        best: bestSet
+          ? formatSet(
+              {
+                ...bestSet,
+                weight_kg:
+                  bestSet.weight_kg === null ? null : kgToDisplay(bestSet.weight_kg, unit),
+                distance_m:
+                  bestSet.distance_m === null
+                    ? null
+                    : metresToDisplay(bestSet.distance_m, unit),
+              },
+              setLabels,
+            )
+          : null,
+        sets: exercise.sets.filter((set) => set.is_warmup === 0).length,
+      };
+    });
+
+  const shareTitle = session.name?.trim() || t('history.sessionTitle');
+  const shareWhen = started.toLocaleDateString(i18n.language, {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  });
+
+  /**
+   * Hand the workout to the system's share sheet, as text. See `shareText.ts` for what it says.
+   */
+  const shareAsText = () => {
     const message = workoutShareText(
       {
-        title: session.name?.trim() || t('history.sessionTitle'),
-        when: started.toLocaleDateString(i18n.language, {
-          weekday: 'long',
-          day: 'numeric',
-          month: 'long',
-        }),
+        title: shareTitle,
+        when: shareWhen,
         minutes,
         sets: totalSets,
         volume:
           volume > 0 ? `${formatVolume(volume, unit)} ${t(`common.${weightUnitKey(unit)}`)}` : null,
-        exercises: exercises.map((exercise) => {
-          const seed = EXERCISE_BY_KEY.get(exercise.exercise_key);
-          const best = bestSetIndex(exercise.sets);
-          const bestSet = best === null ? undefined : exercise.sets[best];
-          return {
-            name: seed ? (isHebrew ? seed.nameHe : seed.nameEn) : exercise.exercise_key,
-            best: bestSet
-              ? formatSet(
-                  {
-                    ...bestSet,
-                    weight_kg:
-                      bestSet.weight_kg === null ? null : kgToDisplay(bestSet.weight_kg, unit),
-                    distance_m:
-                      bestSet.distance_m === null
-                        ? null
-                        : metresToDisplay(bestSet.distance_m, unit),
-                  },
-                  setLabels,
-                )
-              : null,
-            sets: exercise.sets.filter((set) => set.is_warmup === 0).length,
-          };
-        }),
+        exercises: sharedExercises(),
       },
       {
         minutes: (count) => `${count} ${t('history.minutes')}`,
@@ -388,6 +403,30 @@ export default function SessionDetailScreen() {
     // useful to say to someone who only wanted to send a message.
     void Share.share({ message }).catch(() => undefined);
   };
+
+  /**
+   * The workout as a picture — what the share button opens. Built only while the card is up:
+   * it is a list walked and formatted, and nobody is looking at it the rest of the time.
+   */
+  const shareCard = sharing
+    ? shareCardModel(
+        {
+          title: shareTitle,
+          when: shareWhen,
+          minutes,
+          sets: totalSets,
+          volume: volume > 0 ? formatVolume(volume, unit) : null,
+          exercises: sharedExercises(),
+        },
+        {
+          minutes: t('history.minutes'),
+          sets: t('history.sets'),
+          volumeUnit: t(`common.${weightUnitKey(unit)}`),
+          setCount: (count) => `${count} ${t('history.sets')}`,
+          more: (count) => t('history.shareMore', { count }),
+        },
+      )
+    : null;
 
   return (
     <KeyboardSafe>
@@ -452,7 +491,7 @@ export default function SessionDetailScreen() {
         {session.ended_at && !canEdit ? (
           <View style={styles.actions}>
             <Pressable
-              onPress={share}
+              onPress={() => setSharing(true)}
               style={({ pressed }) => [styles.action, pressed && styles.pressed]}
               accessibilityRole="button"
             >
@@ -467,7 +506,7 @@ export default function SessionDetailScreen() {
           <View style={styles.actions}>
             {session.ended_at ? (
               <Pressable
-                onPress={share}
+                onPress={() => setSharing(true)}
                 style={({ pressed }) => [styles.action, pressed && styles.pressed]}
                 accessibilityRole="button"
               >
@@ -572,6 +611,13 @@ export default function SessionDetailScreen() {
           </Pressable>
         ) : null}
       </ScrollView>
+      <ShareCardModal
+        visible={sharing}
+        model={shareCard}
+        footer={t('history.shareFooter')}
+        onClose={() => setSharing(false)}
+        onShareText={shareAsText}
+      />
     </KeyboardSafe>
   );
 }

@@ -746,6 +746,9 @@ export const he = {
     noteHint: 'אם יש לך מאמן, הוא יראה את ההערה הזו.',
     shareMore: 'ועוד {{count}} תרגילים',
     shareFooter: 'נרשם ב-NovaFit',
+    shareImage: 'שתף כתמונה',
+    shareAsText: 'שתף כטקסט',
+    shareImageFailed: 'לא הצלחנו ליצור את התמונה. אפשר לשתף כטקסט.',
     period: {
       week: 'שבוע אחרון',
       month: 'חודש אחרון',
