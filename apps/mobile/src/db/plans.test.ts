@@ -37,7 +37,15 @@ import {
   updatePlanDayExercise,
 } from './plans.js';
 import { createTestExecutor } from './testUtils.js';
-import { addSet, finishSession, getSessionDetail, removeSet, updateSet } from './workouts.js';
+import {
+  addDropSet,
+  addSet,
+  addWarmupSets,
+  finishSession,
+  getSessionDetail,
+  removeSet,
+  updateSet,
+} from './workouts.js';
 
 const USER = 'user-1';
 
@@ -412,105 +420,169 @@ describe('starting a session from a plan day', () => {
   });
 });
 
-describe('a session from a plan day opens with last time’s warm-ups', () => {
-  /** One exercise, three working sets, and a session of it already trained. */
-  async function trainedOnce(warmups: { weightKg: number | null; reps: number | null }[]) {
+describe('a session from a plan day opens with the sets it had last time', () => {
+  /** A plan day holding one exercise with `targetSets` prescribed. */
+  async function planOf(targetSets: number | null) {
     const tick = tickingClock();
     const plan = await createPlan(db, USER, newId, 'PPL', tick);
     const day = await addPlanDay(db, newId, plan, 'Push');
-    await addPlanDayExercise(db, newId, day, 'Barbell Bench Press', { targetSets: 3 });
-
-    const first = (await startSessionFromPlanDay(db, USER, newId, day, tick)) as string;
-    const press = (await getSessionDetail(db, first)).exercises[0]!;
-    // The warm-ups are added by hand this first time, as they always had to be.
-    for (const warmup of warmups) {
-      await addSet(db, newId, press.id, { ...warmup, isWarmup: true }, tick);
-    }
-    await updateSet(db, press.sets[0]!.id, { weightKg: 100, reps: 8 }, tick);
-    await finishSession(db, USER, first, {}, tick);
+    await addPlanDayExercise(db, newId, day, 'Barbell Bench Press', { targetSets });
     return { plan, day, tick };
   }
 
-  const shape = async (sessionId: string) =>
-    (await getSessionDetail(db, sessionId)).exercises[0]!.sets.map((set) => ({
-      warmup: set.is_warmup === 1,
-      weight: set.weight_kg,
-      reps: set.reps,
-    }));
+  /** Start the day, hand the one exercise to `train`, and finish. */
+  async function session(
+    day: string,
+    tick: () => string,
+    train: (press: Awaited<ReturnType<typeof getSessionDetail>>['exercises'][number]) => Promise<void>,
+  ) {
+    const id = (await startSessionFromPlanDay(db, USER, newId, day, tick)) as string;
+    await train((await getSessionDetail(db, id)).exercises[0]!);
+    await finishSession(db, USER, id, {}, tick);
+  }
 
-  it('adds the warm-up row above the working sets, marked and blank', async () => {
-    const { day, tick } = await trainedOnce([{ weightKg: 40, reps: 10 }]);
+  /** What the next session of the day opens with: `u` warm-up, `w` working, `d` drop. */
+  async function opens(day: string, tick: () => string) {
+    const id = (await startSessionFromPlanDay(db, USER, newId, day, tick)) as string;
+    const sets = (await getSessionDetail(db, id)).exercises[0]!.sets;
+    // Whatever kind a row is, it starts with nothing in it.
+    expect(sets.every((set) => set.weight_kg === null && set.reps === null)).toBe(true);
+    expect(sets.every((set) => set.done_at === null)).toBe(true);
+    return sets.map((set) => (set.is_warmup === 1 ? 'u' : set.is_drop === 1 ? 'd' : 'w')).join('');
+  }
 
-    const second = (await startSessionFromPlanDay(db, USER, newId, day, tick)) as string;
-    expect(await shape(second)).toEqual([
-      // Marked as a warm-up from the start; the number is shown by the row, not stored in it.
-      { warmup: true, weight: null, reps: null },
-      { warmup: false, weight: null, reps: null },
-      { warmup: false, weight: null, reps: null },
-      { warmup: false, weight: null, reps: null },
-    ]);
+  it('opens with the plan’s sets the first time', async () => {
+    const { day, tick } = await planOf(4);
+    expect(await opens(day, tick)).toBe('wwww');
   });
 
-  it('adds as many as were done', async () => {
-    const { day, tick } = await trainedOnce([
-      { weightKg: 40, reps: 10 },
-      { weightKg: 70, reps: 5 },
-    ]);
+  it('keeps a warm-up as one of the sets, not as a set on top of them', async () => {
+    // The plan says four. The first of the four was used as a warm-up.
+    const { day, tick } = await planOf(4);
+    await session(day, tick, async (press) => {
+      await updateSet(db, press.sets[0]!.id, { weightKg: 40, reps: 10, isWarmup: true }, tick);
+      for (const set of press.sets.slice(1)) {
+        await updateSet(db, set.id, { weightKg: 100, reps: 8 }, tick);
+      }
+    });
 
-    const second = (await startSessionFromPlanDay(db, USER, newId, day, tick)) as string;
-    expect((await shape(second)).map((set) => set.warmup)).toEqual([
-      true,
-      true,
-      false,
-      false,
-      false,
-    ]);
+    // A warm-up and three: four rows. Not a warm-up and four.
+    expect(await opens(day, tick)).toBe('uwww');
   });
 
-  it('adds none the first time, or when last time had none', async () => {
-    const { day, tick } = await trainedOnce([]);
-    const second = (await startSessionFromPlanDay(db, USER, newId, day, tick)) as string;
-    expect((await shape(second)).map((set) => set.warmup)).toEqual([false, false, false]);
+  it('keeps a warm-up that was done as well as the plan’s sets', async () => {
+    const { day, tick } = await planOf(3);
+    await session(day, tick, async (press) => {
+      await addWarmupSets(
+        db,
+        newId,
+        press.id,
+        [
+          { weightKg: 40, reps: 10 },
+          { weightKg: 70, reps: 5 },
+        ],
+        tick,
+      );
+      for (const set of press.sets) await updateSet(db, set.id, { weightKg: 100, reps: 8 }, tick);
+    });
+
+    // Five were done, so five it is.
+    expect(await opens(day, tick)).toBe('uuwww');
   });
 
-  it('stops offering a warm-up the time after it was skipped', async () => {
-    const { day, tick } = await trainedOnce([{ weightKg: 40, reps: 10 }]);
+  it('keeps a set that was added beyond the plan', async () => {
+    const { day, tick } = await planOf(3);
+    await session(day, tick, async (press) => {
+      for (const set of press.sets) await updateSet(db, set.id, { weightKg: 100, reps: 8 }, tick);
+      await addSet(db, newId, press.id, { weightKg: 90, reps: 10 }, tick);
+    });
 
-    // Second time: the row is there, and is left untouched.
-    const second = (await startSessionFromPlanDay(db, USER, newId, day, tick)) as string;
-    const press = (await getSessionDetail(db, second)).exercises[0]!;
-    expect(press.sets[0]?.is_warmup).toBe(1);
-    await updateSet(db, press.sets[1]!.id, { weightKg: 100, reps: 8 }, tick);
-    await finishSession(db, USER, second, {}, tick);
-
-    // Third time: a blank warm-up is not a warm-up that happened, and is not handed on.
-    const third = (await startSessionFromPlanDay(db, USER, newId, day, tick)) as string;
-    expect((await shape(third)).map((set) => set.warmup)).toEqual([false, false, false]);
+    expect(await opens(day, tick)).toBe('wwww');
   });
 
-  it('takes the warm-up from this plan day, not from another day with the same exercise', async () => {
-    const { plan, day, tick } = await trainedOnce([]);
+  it('fills a session that was cut short back up to the plan', async () => {
+    const { day, tick } = await planOf(4);
+    await session(day, tick, async (press) => {
+      // Two of the four, and then out of time.
+      await updateSet(db, press.sets[0]!.id, { weightKg: 100, reps: 8 }, tick);
+      await updateSet(db, press.sets[1]!.id, { weightKg: 100, reps: 7 }, tick);
+    });
 
-    // A heavier day in the same plan, where the same lift is warmed up.
+    expect(await opens(day, tick)).toBe('wwww');
+  });
+
+  it('does not hand on a warm-up that was skipped', async () => {
+    const { day, tick } = await planOf(4);
+    await session(day, tick, async (press) => {
+      await updateSet(db, press.sets[0]!.id, { weightKg: 40, reps: 10, isWarmup: true }, tick);
+      for (const set of press.sets.slice(1)) {
+        await updateSet(db, set.id, { weightKg: 100, reps: 8 }, tick);
+      }
+    });
+    // The next time the warm-up row is there and is left empty.
+    await session(day, tick, async (press) => {
+      expect(press.sets[0]?.is_warmup).toBe(1);
+      for (const set of press.sets.slice(1)) {
+        await updateSet(db, set.id, { weightKg: 100, reps: 8 }, tick);
+      }
+    });
+
+    // A blank warm-up is not a warm-up that happened; the plan's four working sets are back.
+    expect(await opens(day, tick)).toBe('wwww');
+  });
+
+  it('keeps a drop set as a drop set', async () => {
+    const { day, tick } = await planOf(2);
+    await session(day, tick, async (press) => {
+      for (const set of press.sets) await updateSet(db, set.id, { weightKg: 100, reps: 8 }, tick);
+      await addDropSet(db, newId, press.sets[1]!.id, { weightKg: 70, reps: 10 }, tick);
+    });
+
+    expect(await opens(day, tick)).toBe('wwd');
+  });
+
+  it('never opens an exercise with no working set', async () => {
+    const { day, tick } = await planOf(1);
+    await session(day, tick, async (press) => {
+      // The only set was marked as a warm-up, so no work was recorded at all.
+      await updateSet(db, press.sets[0]!.id, { weightKg: 40, reps: 10, isWarmup: true }, tick);
+    });
+
+    expect(await opens(day, tick)).toBe('uw');
+  });
+
+  it('mirrors this plan day, not another day with the same exercise', async () => {
+    const { plan, day, tick } = await planOf(3);
+    await session(day, tick, async (press) => {
+      for (const set of press.sets) await updateSet(db, set.id, { weightKg: 100, reps: 8 }, tick);
+    });
+
+    // A heavier day in the same plan: warmed up, and five sets long. More recent, too.
     const heavy = await addPlanDay(db, newId, plan, 'Heavy');
-    await addPlanDayExercise(db, newId, heavy, 'Barbell Bench Press', { targetSets: 1 });
-    const other = (await startSessionFromPlanDay(db, USER, newId, heavy, tick)) as string;
-    const press = (await getSessionDetail(db, other)).exercises[0]!;
-    await addSet(db, newId, press.id, { weightKg: 60, reps: 5, isWarmup: true }, tick);
-    await updateSet(db, press.sets[0]!.id, { weightKg: 120, reps: 3 }, tick);
-    await finishSession(db, USER, other, {}, tick);
+    await addPlanDayExercise(db, newId, heavy, 'Barbell Bench Press', { targetSets: 5 });
+    await session(heavy, tick, async (press) => {
+      await updateSet(db, press.sets[0]!.id, { weightKg: 60, reps: 5, isWarmup: true }, tick);
+      for (const set of press.sets.slice(1)) {
+        await updateSet(db, set.id, { weightKg: 120, reps: 3 }, tick);
+      }
+    });
 
-    // Push was never warmed up, and the more recent Heavy session does not change that.
-    const again = (await startSessionFromPlanDay(db, USER, newId, day, tick)) as string;
-    expect((await shape(again)).map((set) => set.warmup)).toEqual([false, false, false]);
+    expect(await opens(day, tick)).toBe('www');
   });
 
-  it('adds none on a timed day, where there are no rows to see them in', async () => {
-    const { day, tick } = await trainedOnce([{ weightKg: 40, reps: 10 }]);
+  it('opens a timed day with the plan’s rows alone', async () => {
+    const { day, tick } = await planOf(3);
+    await session(day, tick, async (press) => {
+      await updateSet(db, press.sets[0]!.id, { weightKg: 40, reps: 10, isWarmup: true }, tick);
+      await updateSet(db, press.sets[1]!.id, { weightKg: 100, reps: 8 }, tick);
+      await updateSet(db, press.sets[2]!.id, { weightKg: 100, reps: 8 }, tick);
+      await addSet(db, newId, press.id, { weightKg: 100, reps: 8 }, tick);
+      await addSet(db, newId, press.id, { weightKg: 100, reps: 8 }, tick);
+    });
     await setPlanDayTiming(db, day, { workSeconds: 40, restSeconds: 20, rounds: 3 }, tick);
 
-    const second = (await startSessionFromPlanDay(db, USER, newId, day, tick)) as string;
-    expect((await shape(second)).every((set) => !set.warmup)).toBe(true);
+    // Untimed this would be a warm-up and four. A countdown has no rows to show them in.
+    expect(await opens(day, tick)).toBe('www');
   });
 });
 

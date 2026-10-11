@@ -97,7 +97,7 @@ import {
   addSet as insertSet,
   addSetCopyingPrevious,
   addDropSet,
-  addWarmupRowsFromLastTime,
+  addOpeningSets,
   addWarmupSets,
   setSupersetLink,
   finishSession,
@@ -513,23 +513,15 @@ export default function WorkoutsScreen() {
         await swapSessionExercise(db, newId, swapId, key);
       } else {
         const exerciseId = await addExerciseToSession(db, newId, sessionId, key);
-        // The warm-ups it had last time first, so they sit above the work — the same thing a
-        // workout started from a plan does for every exercise in it. Not for a walk or a
-        // ride, whose card is one effort and reads its first row as that effort.
-        if (EXERCISE_BY_KEY.get(key)?.loadType !== 'cardio') {
-          await addWarmupRowsFromLastTime(
-            db,
-            userId,
-            newId,
-            sessionId,
-            exerciseId,
-            key,
-            await getSessionType(db, sessionId),
-          );
-        }
-        // Seed one blank set: an exercise with zero sets is never what the user wanted, and it
-        // saves a tap on the overwhelmingly common path.
-        await addSetCopyingPrevious(db, newId, exerciseId);
+        // The sets it had last time, blank — warm-up included and already marked — which is
+        // what a workout started from a plan does for every exercise in it. The first time
+        // there is nothing to mirror and this is one blank set: an exercise with zero sets is
+        // never what the user wanted, and it saves a tap on the overwhelmingly common path.
+        // A walk or a ride always gets the one row; its card reads the first row as the effort.
+        await addOpeningSets(db, userId, newId, sessionId, exerciseId, key, {
+          sameType: await getSessionType(db, sessionId),
+          fromLastTime: EXERCISE_BY_KEY.get(key)?.loadType !== 'cardio',
+        });
       }
       await reload(sessionId);
       router.setParams({ addExercise: '', swapExerciseId: '' });
@@ -1430,6 +1422,8 @@ export default function WorkoutsScreen() {
             previous[exercise.exercise_key]?.map((p) => ({
               weightKg: p.weight_kg,
               reps: p.reps,
+              durationSeconds: p.duration_seconds,
+              distanceM: p.distance_m,
               isWarmup: p.is_warmup === 1,
             })),
           );

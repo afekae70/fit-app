@@ -16,8 +16,7 @@
 import type { SqlExecutor } from './executor.js';
 import {
   addExerciseToSession,
-  addSet,
-  addWarmupRowsFromLastTime,
+  addOpeningSets,
   startSession,
   type Clock,
   type IdFactory,
@@ -640,13 +639,20 @@ export async function listPlanDayExercises(
  * The session records `plan_day_id`, which is what makes adherence — prescribed sets vs. sets
  * actually logged — answerable later.
  *
- * ## Warm-ups come along
+ * ## The same sets as last time
  *
- * A plan prescribes the work, not the ramp up to it, so `target_sets` never included a
- * warm-up and every session of a day used to open without one — to be added and flagged by
- * hand, each time. An exercise now also opens with as many warm-up rows as it was given the
- * last time this day was trained, above the working sets and already marked. Blank like the
- * rest; the row shows what the warm-up was. See `addWarmupRowsFromLastTime`.
+ * Once a day has been trained, `target_sets` blank rows is no longer the best guess at what
+ * this session is. The lifter has shown what it is: the sets they actually did. So an
+ * exercise opens with those — the same number, a warm-up where there was a warm-up and
+ * already marked as one, a drop set where there was a drop set — and each row shows what it
+ * was last time as a watermark. See `addOpeningSets`.
+ *
+ * The warm-up is one of the sets, not an extra one. A plan that says four, trained as a
+ * warm-up and three, opens as a warm-up and three: four rows, not five.
+ *
+ * The plan still decides the minimum. A session cut short does not shrink the next one —
+ * rows are added back up to `target_sets` — and the first session of a day has nothing to
+ * mirror, so it opens with the plan's rows exactly as before.
  *
  * Not on a timed day: that screen is a countdown with no rows on it, and a warm-up row there
  * would be one nobody could see, tick or delete.
@@ -680,26 +686,19 @@ export async function startSessionFromPlanDay(
       clock,
     );
 
-    // Before the working sets, so they sit above them.
-    if (!timed) {
-      await addWarmupRowsFromLastTime(
-        db,
-        userId,
-        newId,
-        sessionId,
-        exerciseId,
-        prescription.exercise_key,
-        kind,
-        clock,
-      );
-    }
-
-    // At least one set even when the prescription says none, since an exercise with no rows
-    // gives the user nothing to type into and reads as a bug.
-    const count = Math.max(1, prescription.target_sets ?? 1);
-    for (let i = 0; i < count; i += 1) {
-      await addSet(db, newId, exerciseId, {}, clock);
-    }
+    // Last time's sets, filled up to the plan's number. With nothing to mirror this is
+    // `target_sets` blank rows, and at least one even when the prescription says none: an
+    // exercise with no rows gives the user nothing to type into and reads as a bug.
+    await addOpeningSets(
+      db,
+      userId,
+      newId,
+      sessionId,
+      exerciseId,
+      prescription.exercise_key,
+      { sameType: kind, targetSets: prescription.target_sets, fromLastTime: !timed },
+      clock,
+    );
   }
 
   return sessionId;

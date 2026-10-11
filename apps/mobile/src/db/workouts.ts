@@ -5,6 +5,8 @@
  * code runs on device and under test against a real SQLite engine (see executor.ts).
  */
 
+import { happened, openingRows, type RowKind } from '../workout/ghost.js';
+
 import type { SqlExecutor } from './executor.js';
 import { sameTypeClause, type SessionType } from './sessionType.js';
 
@@ -1208,15 +1210,20 @@ export async function getPreviousSessionSets(
     duration_seconds: number | null;
     distance_m: number | null;
     is_warmup: number;
+    is_drop: number;
     rpe: number | null;
     started_at: string;
+    /** Which card of that workout the set was on, for a workout that had the exercise twice. */
+    session_exercise_id: string;
+    exercise_order: number;
   }[]
 > {
   const exclude = excludeSessionId ?? null;
   const type = sameTypeClause('prev_ws', sameType);
   return db.all(
     `SELECT s.set_index, s.weight_kg, s.reps, s.duration_seconds, s.distance_m,
-            s.is_warmup, s.rpe, ws.started_at
+            s.is_warmup, s.is_drop, s.rpe, ws.started_at,
+            se.id AS session_exercise_id, se.order_index AS exercise_order
        FROM sets s
        JOIN session_exercises se ON se.id = s.session_exercise_id AND se.deleted_at IS NULL
        JOIN workout_sessions ws  ON ws.id = se.session_id AND ws.deleted_at IS NULL
@@ -1249,56 +1256,70 @@ export async function getPreviousSessionSets(
 }
 
 /**
- * How many warm-up sets an exercise was actually given last time, in a workout of this kind.
+ * The sets an exercise actually had last time, in a workout of this kind: what kind of row
+ * each one was, in the order they were done.
  *
- * Only warm-ups that held something. A warm-up row left blank is one that was skipped, and
- * counting it would hand the same empty row to every workout after it: skip the warm-up once
- * and it would follow the exercise around for good, with nothing in it. Counted this way, a
- * warm-up that stops being done stops being offered the very next time.
+ * Only sets that happened — see `happened` (workout/ghost.ts), which is also what decides
+ * which of them the watermark counts, so the two cannot disagree about a row.
  *
- * The same rule as `ghostsFor` (workout/ghost.ts), which is what makes each row this count
- * produces line up with the warm-up it stands for.
+ * From one card only. A workout that had the same exercise twice returns both cards' sets
+ * from `getPreviousSessionSets`, and mirroring all of them would open each of today's cards
+ * with the sets of both — which, filled in, is what the next workout would then double again.
+ * The first card answers for the exercise.
  */
-export async function countPreviousWarmups(
+export async function getPreviousSetKinds(
   db: SqlExecutor,
   userId: string,
   exerciseKey: string,
   excludeSessionId?: string,
   sameType?: SessionType | null,
-): Promise<number> {
+): Promise<RowKind[]> {
   const sets = await getPreviousSessionSets(db, userId, exerciseKey, excludeSessionId, sameType);
-  return sets.filter(
-    (set) =>
-      set.is_warmup === 1 &&
-      (set.weight_kg !== null ||
-        set.reps !== null ||
-        set.duration_seconds !== null ||
-        set.distance_m !== null),
-  ).length;
+  const firstCard = Math.min(...sets.map((set) => set.exercise_order));
+  return sets
+    .filter((set) => set.exercise_order === firstCard)
+    .filter((set) =>
+      happened({
+        weightKg: set.weight_kg,
+        reps: set.reps,
+        durationSeconds: set.duration_seconds,
+        distanceM: set.distance_m,
+      }),
+    )
+    .map((set) => ({ isWarmup: set.is_warmup === 1, isDrop: set.is_drop === 1 }));
 }
 
 /**
- * Open an exercise with the warm-up rows it had last time: blank, and already marked as
- * warm-ups.
+ * Give an exercise that has just been added its rows: the same sets it had last time.
  *
- * Blank for the reason every row of a new workout is blank — nothing has been lifted yet. What
- * the warm-up was is shown in the row as a watermark, and is written only if the row is ticked.
- * Marked from the start, because a ramp that has to be re-flagged by hand every week is a ramp
- * that gets logged as work the week somebody forgets, and then volume, records and the
+ * Warm-ups where they were and already marked as warm-ups, drop sets as drop sets, and as
+ * many working sets as were done — see `openingRows` for the rule, and for what the plan's
+ * own number of sets still decides. Every row is blank, for the reason every row of a new
+ * workout is blank: nothing has been lifted yet. What each set was is shown in its row as a
+ * watermark and written only when the row is ticked.
+ *
+ * Marked from the start, because a warm-up that has to be re-flagged by hand every week is one
+ * that gets logged as work the week somebody forgets — and then volume, records and the
  * progression advice all count it.
  *
- * For an exercise that has no sets yet, and only then: rows are appended, so warm-ups added to
- * an exercise that already has its working sets would land underneath them. Call it before
- * the working sets are created. Returns how many rows it added.
+ * `fromLastTime: false` opens with the plan's rows alone, for the screens where a mirrored
+ * warm-up would be a row nobody could see: a timed day, a walk or a ride.
+ *
+ * For an exercise with no sets yet, and only then: the rows are appended, so this is not a
+ * way to repair an exercise that already has some. Returns how many rows it added.
  */
-export async function addWarmupRowsFromLastTime(
+export async function addOpeningSets(
   db: SqlExecutor,
   userId: string,
   newId: IdFactory,
   sessionId: string,
   sessionExerciseId: string,
   exerciseKey: string,
-  sameType: SessionType | null | undefined,
+  options: {
+    sameType?: SessionType | null;
+    targetSets?: number | null;
+    fromLastTime?: boolean;
+  } = {},
   clock: Clock = defaultClock,
 ): Promise<number> {
   const existing = await db.get<{ n: number }>(
@@ -1307,11 +1328,23 @@ export async function addWarmupRowsFromLastTime(
   );
   if ((existing?.n ?? 0) > 0) return 0;
 
-  const count = await countPreviousWarmups(db, userId, exerciseKey, sessionId, sameType);
-  for (let i = 0; i < count; i += 1) {
-    await addSet(db, newId, sessionExerciseId, { isWarmup: true }, clock);
+  const last =
+    options.fromLastTime === false
+      ? []
+      : await getPreviousSetKinds(db, userId, exerciseKey, sessionId, options.sameType);
+  const rows = openingRows(last, options.targetSets);
+
+  for (const row of rows) {
+    const setId = await addSet(
+      db,
+      newId,
+      sessionExerciseId,
+      row.isWarmup ? { isWarmup: true } : {},
+      clock,
+    );
+    if (row.isDrop) await updateSet(db, setId, { isDrop: true }, clock);
   }
-  return count;
+  return rows.length;
 }
 
 /**
