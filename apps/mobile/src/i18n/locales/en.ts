@@ -106,6 +106,8 @@ export const en = {
     tonnes: 't',
     thousandLb: 'k lb',
     weeks: 'weeks',
+    weekOf: 'Week of {{date}}',
+    weekEmpty: 'no workouts',
     consistency: 'Consistency',
     consistencyHint: 'Last 16 weeks',
     less: 'Less',

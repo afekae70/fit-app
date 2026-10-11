@@ -13,14 +13,15 @@
 
 import type { PersonalRecord, TrainingDay, WeeklyVolume } from '../db/progression.js';
 import { EXERCISE_SEED, type ExerciseSeed } from '@fit/shared/catalog';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { StyleSheet, View, type TextStyle, type ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, View, type TextStyle, type ViewStyle } from 'react-native';
+import { ChartBar } from './ChartBar.js';
 import { Text } from './Text.js';
 
 import { useTheme } from '../ThemeProvider.js';
 import { useUnit } from '../UnitsProvider.js';
-import { kgToDisplay, weightUnitKey } from '../units.js';
+import { formatVolume, kgToDisplay, weightUnitKey } from '../units.js';
 import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../theme.js';
 
 const EXERCISE_BY_KEY = new Map<string, ExerciseSeed>(
@@ -29,35 +30,70 @@ const EXERCISE_BY_KEY = new Map<string, ExerciseSeed>(
 
 const CHART_HEIGHT = 96;
 
-/** Volume per week as bars, in tonnes — the design's unit, and the only one that stays short. */
+/**
+ * Volume per week as bars, in tonnes — the design's unit, and the only one that stays short.
+ *
+ * The bars alone say "more than last week" and not how much. Touching one reads it out above
+ * the chart: which week, and its volume in full. With nothing touched the line reads the
+ * latest week, which is the number someone opens this screen for; touching the same bar again
+ * goes back to it.
+ */
 export function WeeklyVolumeChart({ weeks }: { weeks: readonly WeeklyVolume[] }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { colors } = useTheme();
   const unit = useUnit();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const [chosen, setChosen] = useState<number | null>(null);
 
   const peak = Math.max(...weeks.map((w) => w.volumeKg), 1);
+  // A week that has since scrolled off the end of the chart cannot stay chosen.
+  const picked = chosen !== null && chosen < weeks.length ? chosen : null;
+  const shown = weeks[picked ?? weeks.length - 1];
+
+  const readout = (week: WeeklyVolume) => {
+    const date = new Date(`${week.weekStart}T12:00:00`).toLocaleDateString(i18n.language, {
+      day: 'numeric',
+      month: 'short',
+    });
+    const volume =
+      week.volumeKg > 0
+        ? `${formatVolume(week.volumeKg, unit)} ${t(`common.${weightUnitKey(unit)}`)}`
+        : t('progress.weekEmpty');
+    return `${t('progress.weekOf', { date })} · ${volume}`;
+  };
 
   return (
     <View>
+      {shown ? (
+        <Text style={[styles.readout, picked !== null && styles.readoutPicked]}>
+          {readout(shown)}
+        </Text>
+      ) : null}
       <View style={[styles.bars, { height: CHART_HEIGHT }]}>
-        {weeks.map((week) => {
+        {weeks.map((week, index) => {
           const ratio = week.volumeKg / peak;
           return (
-            <View key={week.weekStart} style={styles.barSlot}>
+            <Pressable
+              key={week.weekStart}
+              onPress={() => setChosen(picked === index ? null : index)}
+              accessibilityRole="button"
+              accessibilityLabel={readout(week)}
+              accessibilityState={{ selected: picked === index }}
+              style={styles.barSlot}
+            >
               {/* The track is the full height of the chart, so a light week reads as a small
-                  part of something rather than as a lonely stub in white space. */}
+                  part of something rather than as a lonely stub in white space. It is also
+                  what makes the whole column the target, and not only the bar in it. */}
               <View style={styles.barTrack} />
-              <View
-                style={[
-                  styles.bar,
-                  // A trained week always keeps a visible stub: a 3px sliver still reads as
-                  // "trained, lightly", where a zero-height bar is indistinguishable from a
-                  // week off — which is the one thing this chart must never blur.
-                  { height: week.volumeKg > 0 ? Math.max(6, ratio * CHART_HEIGHT) : 0 },
-                ]}
+              <ChartBar
+                index={index}
+                dimmed={picked !== null && picked !== index}
+                // A trained week always keeps a visible stub: a 3px sliver still reads as
+                // "trained, lightly", where a zero-height bar is indistinguishable from a
+                // week off — which is the one thing this chart must never blur.
+                height={week.volumeKg > 0 ? Math.max(6, ratio * CHART_HEIGHT) : 0}
               />
-            </View>
+            </Pressable>
           );
         })}
       </View>
@@ -179,7 +215,8 @@ const createStyles = (colors: ColorPalette) =>
     bars: ViewStyle;
     barSlot: ViewStyle;
     barTrack: ViewStyle;
-    bar: ViewStyle;
+    readout: TextStyle;
+    readoutPicked: TextStyle;
     axis: ViewStyle;
     axisLabel: TextStyle;
     grid: ViewStyle;
@@ -196,13 +233,25 @@ const createStyles = (colors: ColorPalette) =>
     prUnit: TextStyle;
   }>({
     bars: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm },
-    barSlot: { flex: 1, justifyContent: 'flex-end' },
+    // Stretched to the chart's height, whatever the bar's: the row lays its children out at
+    // the bottom, which would otherwise make a column exactly as tall as its bar — a track
+    // nobody could see behind it, and for a week off, nothing to touch at all.
+    barSlot: { flex: 1, alignSelf: 'stretch', justifyContent: 'flex-end' },
     barTrack: {
       ...StyleSheet.absoluteFillObject,
       borderRadius: radius.pill,
       backgroundColor: colors.surfaceRaised,
     },
-    bar: { borderRadius: radius.pill, backgroundColor: colors.accent },
+    // The week being read. Quiet while it is only the latest; the accent once it is one
+    // somebody chose, so the line and the bar it speaks for are visibly the same thing.
+    readout: {
+      color: colors.textSecondary,
+      fontSize: fontSize.xs,
+      fontVariant: ['tabular-nums'],
+      textAlign: 'auto',
+      marginBottom: spacing.sm,
+    },
+    readoutPicked: { color: colors.accent, fontWeight: fontWeight.bold },
     axis: {
       flexDirection: 'row',
       alignItems: 'center',

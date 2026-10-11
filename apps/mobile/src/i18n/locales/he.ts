@@ -96,6 +96,8 @@ export const he = {
     tonnes: 'טון',
     thousandLb: 'אלף ליבר',
     weeks: 'שבועות',
+    weekOf: 'שבוע של {{date}}',
+    weekEmpty: 'בלי אימונים',
     consistency: 'עקביות',
     consistencyHint: '16 שבועות אחרונים',
     less: 'פחות',

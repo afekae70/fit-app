@@ -54,6 +54,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Animated,
+  Easing,
   PanResponder,
   StyleSheet,
   View,
@@ -69,6 +70,7 @@ import { useTheme } from '../ThemeProvider.js';
 import { useUnit } from '../UnitsProvider.js';
 import { formatBodyWeight, weightUnitKey } from '../units.js';
 import { duration, fontSize, fontWeight, radius, spacing, type ColorPalette } from '../theme.js';
+import { useReduceMotion } from './motion.js';
 import { Segmented } from './ui.js';
 
 interface WeightPoint {
@@ -208,6 +210,16 @@ export function WeightSparkline({
   // from one shape to another. Opacity only, on the native driver, on a node that animates
   // nothing else.
   const appear = useRef(new Animated.Value(0)).current;
+  /*
+   * And it is drawn, from the oldest weigh-in to the newest: a window over the plot that opens
+   * from the left. The chart is laid out left-to-right in both languages (`direction: 'ltr'`
+   * on the chart), so the left edge is the oldest reading in Hebrew too.
+   *
+   * A width, so the JS driver — on its own node, inside the one that fades. The fade above is
+   * native-driven, and the two never share a node (see CLAUDE.md).
+   */
+  const reveal = useRef(new Animated.Value(0)).current;
+  const reduceMotion = useReduceMotion();
   const signature = `${geometry.line}|${geometry.dots.length}`;
   useEffect(() => {
     if (geometry.line === '') return;
@@ -217,10 +229,21 @@ export function WeightSparkline({
       duration: duration.slow,
       useNativeDriver: true,
     }).start();
+    if (reduceMotion) {
+      reveal.setValue(1);
+    } else {
+      reveal.setValue(0);
+      Animated.timing(reveal, {
+        toValue: 1,
+        duration: 620,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }).start();
+    }
     // `signature` stands for the geometry: the effect should re-run when what is drawn changes,
     // not on every render that rebuilds an identical object.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appear, signature]);
+  }, [appear, reveal, reduceMotion, signature]);
 
   if (points.length < 2) return null;
 
@@ -283,6 +306,12 @@ export function WeightSparkline({
 
         {width > 0 ? (
           <Animated.View style={[StyleSheet.absoluteFill, { opacity: appear }]} pointerEvents="none">
+            <Animated.View
+              style={[
+                styles.reveal,
+                { height, width: reveal.interpolate({ inputRange: [0, 1], outputRange: [0, width] }) },
+              ]}
+            >
             <Svg width={width} height={height}>
               <Defs>
                 <LinearGradient id="weightFill" x1="0" y1="0" x2="0" y2="1">
@@ -364,6 +393,7 @@ export function WeightSparkline({
                 </>
               ) : null}
             </Svg>
+            </Animated.View>
           </Animated.View>
         ) : null}
 
@@ -413,6 +443,7 @@ export function WeightSparkline({
 const createStyles = (colors: ColorPalette) =>
   StyleSheet.create<{
     chart: ViewStyle;
+    reveal: ViewStyle;
     tick: TextStyle;
     axis: ViewStyle;
     axisLabel: TextStyle;
@@ -426,6 +457,8 @@ const createStyles = (colors: ColorPalette) =>
   }>({
     // Left to right whatever the language — see the note at the top of the file.
     chart: { marginTop: spacing.sm, direction: 'ltr' },
+    // The window the line is drawn through. Clips the drawing to however far it has opened.
+    reveal: { overflow: 'hidden' },
     tick: {
       position: 'absolute',
       start: 0,

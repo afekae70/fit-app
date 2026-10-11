@@ -53,6 +53,7 @@ import {
 } from '../src/progress/workoutProgress.js';
 import { useTheme } from '../src/ThemeProvider.js';
 import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../src/theme.js';
+import { ChartBar } from '../src/components/ChartBar.js';
 import { useUnit } from '../src/UnitsProvider.js';
 import { kgToDisplay, weightUnitKey } from '../src/units.js';
 import { ChartLineUp } from 'phosphor-react-native';
@@ -73,6 +74,8 @@ export default function WorkoutProgressScreen() {
 
   const [line, setLine] = useState<WorkoutLine | null | undefined>(undefined);
   const [lifts, setLifts] = useState<ExerciseChange[]>([]);
+  /** The month whose bar was touched, by position; null reads the latest. */
+  const [chosenMonth, setChosenMonth] = useState<number | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -128,6 +131,18 @@ export default function WorkoutProgressScreen() {
   };
 
   const tallest = Math.max(1, ...months.map((month) => month.average));
+  // Which month the summary line reads. A month that is no longer there falls back to the
+  // latest, as does choosing nothing.
+  const shownMonth =
+    chosenMonth !== null && chosenMonth < months.length ? chosenMonth : months.length - 1;
+  const monthLine = (month: (typeof months)[number]) =>
+    comparison
+      ? t('progress.monthSummary', {
+          month: monthName(month.month),
+          value: metricText(month.average, comparison.metric),
+          count: month.sessions,
+        })
+      : '';
 
   return (
     <ScrollView
@@ -244,35 +259,36 @@ export default function WorkoutProgressScreen() {
             <Hint>{t('progress.monthByMonthHint')}</Hint>
             <View style={styles.bars}>
               {months.map((month, index) => {
-                const current = index === months.length - 1;
+                // The month the line underneath is about: the latest, until one is touched.
+                const current = index === shownMonth;
                 return (
-                  <View key={month.month} style={styles.barColumn}>
+                  <Pressable
+                    key={month.month}
+                    onPress={() => setChosenMonth(index === months.length - 1 ? null : index)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: current }}
+                    accessibilityLabel={monthLine(month)}
+                    style={styles.barColumn}
+                  >
                     <ChangeChip change={month.change} />
                     <View style={styles.barTrack}>
-                      <View
-                        style={[
-                          styles.bar,
-                          current && styles.barCurrent,
-                          { height: Math.max(4, (month.average / tallest) * BAR_HEIGHT) },
-                        ]}
+                      <ChartBar
+                        index={index}
+                        muted={!current}
+                        corner={radius.sm}
+                        height={Math.max(4, (month.average / tallest) * BAR_HEIGHT)}
                       />
                     </View>
                     <Text style={[styles.barMonth, current && styles.barMonthCurrent]}>
                       {monthName(month.month)}
                     </Text>
                     <Text style={styles.barCount}>×{month.sessions}</Text>
-                  </View>
+                  </Pressable>
                 );
               })}
             </View>
-            {months.length > 0 ? (
-              <Text style={styles.monthLine}>
-                {t('progress.monthSummary', {
-                  month: monthName(months.at(-1)!.month),
-                  value: metricText(months.at(-1)!.average, comparison.metric),
-                  count: months.at(-1)!.sessions,
-                })}
-              </Text>
+            {months[shownMonth] ? (
+              <Text style={styles.monthLine}>{monthLine(months[shownMonth])}</Text>
             ) : null}
           </Card>
 
@@ -347,8 +363,6 @@ const createStyles = (colors: ColorPalette) =>
     bars: ViewStyle;
     barColumn: ViewStyle;
     barTrack: ViewStyle;
-    bar: ViewStyle;
-    barCurrent: ViewStyle;
     barMonth: TextStyle;
     barMonthCurrent: TextStyle;
     barCount: TextStyle;
@@ -415,8 +429,6 @@ const createStyles = (colors: ColorPalette) =>
     bars: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm, marginTop: spacing.md },
     barColumn: { flex: 1, alignItems: 'center', gap: spacing.xxs },
     barTrack: { height: BAR_HEIGHT, justifyContent: 'flex-end', alignSelf: 'stretch' },
-    bar: { borderRadius: radius.sm, backgroundColor: colors.accentBorder },
-    barCurrent: { backgroundColor: colors.accent },
     barMonth: { color: colors.textMuted, fontSize: fontSize.xs },
     barMonthCurrent: { color: colors.text, fontWeight: fontWeight.bold },
     barCount: { color: colors.textFaint, fontSize: 10, fontVariant: ['tabular-nums'] },

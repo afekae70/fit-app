@@ -13,14 +13,22 @@
  * colour carries the comparison to the target instead.
  */
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { StyleSheet, View, type TextStyle, type ViewStyle } from 'react-native';
+import {
+  Animated,
+  Easing,
+  StyleSheet,
+  View,
+  type TextStyle,
+  type ViewStyle,
+} from 'react-native';
 import { Text } from './Text.js';
 
 import { volumeVerdict, type MuscleWork } from '@fit/shared/calculations';
 
 import { useTheme } from '../ThemeProvider.js';
+import { useReduceMotion } from './motion.js';
 import { fontSize, radius, spacing, type ColorPalette } from '../theme.js';
 
 export interface MuscleVolumeCardProps {
@@ -33,13 +41,41 @@ export function MuscleVolumeCard({ worked, untrained }: MuscleVolumeCardProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
+  /*
+   * The bars sweep out from the start edge when the card appears, each a beat behind the one
+   * above it.
+   *
+   * Width, so on the JS driver: a bar's length is a share of its track, and a percentage is a
+   * layout value the native driver cannot animate. One value for the whole card, read at a
+   * different offset by each row — and the only thing animated on these nodes.
+   */
+  const reduceMotion = useReduceMotion();
+  const sweep = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (reduceMotion) {
+      sweep.setValue(1);
+      return;
+    }
+    const animation = Animated.timing(sweep, {
+      toValue: 1,
+      duration: 520,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [sweep, reduceMotion]);
+
   const busiest = worked[0]?.total ?? 0;
   if (worked.length === 0) return null;
 
   return (
     <View style={styles.wrap}>
-      {worked.map((entry) => {
+      {worked.map((entry, index) => {
         const verdict = volumeVerdict(entry.total);
+        // Each row starts a little later and all finish together-ish; past ten rows the offsets
+        // stop growing, so a long list does not make its last bar wait.
+        const from = Math.min(index, 10) * 0.04;
         // Guarded: every muscle at zero would divide by zero, and a NaN width renders as a
         // zero-width bar that looks correct by accident.
         const fraction = busiest > 0 ? entry.total / busiest : 0;
@@ -51,12 +87,18 @@ export function MuscleVolumeCard({ worked, untrained }: MuscleVolumeCardProps) {
             </Text>
 
             <View style={styles.track}>
-              <View
+              <Animated.View
                 style={[
                   styles.fill,
                   verdict === 'low' && styles.fillLow,
                   verdict === 'high' && styles.fillHigh,
-                  { width: `${Math.max(2, fraction * 100)}%` },
+                  {
+                    width: sweep.interpolate({
+                      inputRange: [from, 1],
+                      outputRange: ['0%', `${Math.max(2, fraction * 100)}%`],
+                      extrapolate: 'clamp',
+                    }),
+                  },
                 ]}
               />
             </View>

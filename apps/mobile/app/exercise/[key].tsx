@@ -34,6 +34,7 @@ import { useTheme } from '../../src/ThemeProvider.js';
 import { useUnit } from '../../src/UnitsProvider.js';
 import { formatVolume, kgToDisplay, weightUnitKey } from '../../src/units.js';
 import { radius, shadow, spacing, type ColorPalette } from '../../src/theme.js';
+import { ChartBar } from '../../src/components/ChartBar.js';
 import { ChartLineUp } from 'phosphor-react-native';
 
 const CHART_HEIGHT = 110;
@@ -50,6 +51,8 @@ export default function ExerciseRecordScreen() {
 
   const [sessions, setSessions] = useState<ExerciseSessionBest[] | null>(null);
   const [summary, setSummary] = useState<ExerciseProgressSummary | null>(null);
+  /** The session whose bar was touched, by position; null reads the latest. */
+  const [chosen, setChosen] = useState<number | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -78,6 +81,14 @@ export default function ExerciseRecordScreen() {
   // the query is the one that knows which way it came.
   const newestFirst = [...sessions].reverse();
   const peak = Math.max(...sessions.map((session) => session.best_e1rm_kg), 1);
+  const picked = chosen !== null && chosen < sessions.length ? chosen : null;
+  const shownSession = sessions[picked ?? sessions.length - 1];
+  /** One session in a line: when, and the set the bar was drawn from. */
+  const readout = (session: ExerciseSessionBest) =>
+    `${new Date(session.started_at).toLocaleDateString(i18n.language, {
+      day: 'numeric',
+      month: 'short',
+    })} · ${kgToDisplay(session.top_weight_kg, unit)} ${unitLabel} × ${session.top_reps}`;
   const heaviest = sessions.reduce<ExerciseSessionBest | null>(
     (best, session) => (best === null || session.top_weight_kg > best.top_weight_kg ? session : best),
     null,
@@ -128,17 +139,29 @@ export default function ExerciseRecordScreen() {
             <Hint>{t('record.trendHint')}</Hint>
             {/* One column per session, oldest at the start: the shape is the point, and the
                 numbers themselves are in the list below. */}
+            {/* Touching a column reads that session out; untouched, the line is the latest. */}
+            {shownSession ? (
+              <Text style={[s.readout, picked !== null && s.readoutPicked]}>
+                {readout(shownSession)}
+              </Text>
+            ) : null}
             <View style={[s.chart, { height: CHART_HEIGHT }]}>
-              {sessions.map((session) => (
-                <View key={session.session_id} style={s.barSlot}>
+              {sessions.map((session, index) => (
+                <Pressable
+                  key={session.session_id}
+                  onPress={() => setChosen(picked === index ? null : index)}
+                  accessibilityRole="button"
+                  accessibilityLabel={readout(session)}
+                  accessibilityState={{ selected: picked === index }}
+                  style={s.barSlot}
+                >
                   <View style={s.barTrack} />
-                  <View
-                    style={[
-                      s.bar,
-                      { height: Math.max(6, (session.best_e1rm_kg / peak) * CHART_HEIGHT) },
-                    ]}
+                  <ChartBar
+                    index={index}
+                    dimmed={picked !== null && picked !== index}
+                    height={Math.max(6, (session.best_e1rm_kg / peak) * CHART_HEIGHT)}
                   />
-                </View>
+                </Pressable>
               ))}
             </View>
           </Card>
@@ -215,7 +238,8 @@ const createStyles = (colors: ColorPalette) =>
     chart: ViewStyle;
     barSlot: ViewStyle;
     barTrack: ViewStyle;
-    bar: ViewStyle;
+    readout: TextStyle;
+    readoutPicked: TextStyle;
     row: ViewStyle;
     rowMain: ViewStyle;
     rowDate: TextStyle;
@@ -253,13 +277,21 @@ const createStyles = (colors: ColorPalette) =>
     tileLabel: { color: colors.textFaint, fontSize: 11, textAlign: 'auto' },
 
     chart: { flexDirection: 'row', alignItems: 'flex-end', gap: 6, marginTop: 10 },
-    barSlot: { flex: 1, justifyContent: 'flex-end' },
+    // The full height of the chart, so the whole column answers to a finger.
+    barSlot: { flex: 1, alignSelf: 'stretch', justifyContent: 'flex-end' },
     barTrack: {
       ...StyleSheet.absoluteFillObject,
       borderRadius: radius.pill,
       backgroundColor: colors.surfaceRaised,
     },
-    bar: { borderRadius: radius.pill, backgroundColor: colors.accent },
+    readout: {
+      color: colors.textSecondary,
+      fontSize: 12,
+      fontVariant: ['tabular-nums'],
+      textAlign: 'auto',
+      marginTop: 10,
+    },
+    readoutPicked: { color: colors.accent, fontWeight: '700' },
 
     row: {
       flexDirection: 'row',
