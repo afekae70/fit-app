@@ -12,7 +12,8 @@
  */
 
 import { useEffect, useRef } from 'react';
-import { TextInput, type StyleProp, type TextStyle } from 'react-native';
+import { type StyleProp, type TextStyle } from 'react-native';
+import { TextInput } from '../Text.js';
 
 import { valueOrClearToCommit } from '../../workout/typedEntry.js';
 

@@ -12,7 +12,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
+import { StyleSheet, View, type TextStyle, type ViewStyle } from 'react-native';
+import { Text } from './Text.js';
 import { Heartbeat } from 'phosphor-react-native';
 
 import { getExecutor } from '../db/provider.js';

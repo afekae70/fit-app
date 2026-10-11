@@ -18,13 +18,12 @@ import {
   Animated,
   Pressable,
   StyleSheet,
-  Text,
-  TextInput,
   View,
   type StyleProp,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { AnimatedText, Text, TextInput } from './Text.js';
 
 import { FadeSlideIn } from './motion.js';
 import { useTheme } from '../ThemeProvider.js';
@@ -311,7 +310,7 @@ function SegmentButton<T extends string>({
             },
           ]}
         >
-          <Animated.Text
+          <AnimatedText
             style={[
               styles.segmentText,
               {
@@ -324,7 +323,7 @@ function SegmentButton<T extends string>({
             ]}
           >
             {option.label}
-          </Animated.Text>
+          </AnimatedText>
         </Animated.View>
       </Animated.View>
     </Pressable>

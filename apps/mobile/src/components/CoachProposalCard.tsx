@@ -13,7 +13,8 @@ import { EXERCISE_SEED, type ExerciseSeed } from '@fit/shared/catalog';
 import type { AiNutritionMenu, AiWorkoutPlan } from '@fit/shared/schemas';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
+import { StyleSheet, View, type TextStyle, type ViewStyle } from 'react-native';
+import { Text } from './Text.js';
 
 import { hapticMedium } from '../haptics.js';
 import { useTheme } from '../ThemeProvider.js';

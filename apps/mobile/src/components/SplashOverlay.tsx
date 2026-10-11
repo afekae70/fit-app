@@ -28,6 +28,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { AnimatedText } from './Text.js';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import appIcon from '../../assets/icon.png';
@@ -205,7 +206,7 @@ export function SplashOverlay() {
           </Animated.View>
         </View>
 
-        <Animated.Text
+        <AnimatedText
           style={[
             styles.name,
             {
@@ -218,9 +219,9 @@ export function SplashOverlay() {
           ]}
         >
           {t('common.appName')}
-        </Animated.Text>
+        </AnimatedText>
 
-        <Animated.Text
+        <AnimatedText
           style={[
             styles.slogan,
             {
@@ -233,7 +234,7 @@ export function SplashOverlay() {
           ]}
         >
           {t('common.slogan')}
-        </Animated.Text>
+        </AnimatedText>
 
         <Animated.View style={{ opacity: slogan }}>
           <Dots color={colors.accentBorder} />

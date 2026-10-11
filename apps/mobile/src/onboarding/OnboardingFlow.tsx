@@ -36,11 +36,11 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   View,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Text } from '../components/Text.js';
 import {
   Armchair,
   ArrowLeft,

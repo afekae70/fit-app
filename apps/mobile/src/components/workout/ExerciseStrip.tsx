@@ -24,12 +24,12 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   View,
   useWindowDimensions,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Text } from '../Text.js';
 
 import { hapticLight, hapticSuccess } from '../../haptics.js';
 import { useTheme } from '../../ThemeProvider.js';

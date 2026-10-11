@@ -14,12 +14,12 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import {
   StyleSheet,
-  TextInput,
   View,
   type TextInputProps,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { TextInput } from './Text.js';
 import type { Icon } from 'phosphor-react-native';
 
 import { useTheme } from '../ThemeProvider.js';

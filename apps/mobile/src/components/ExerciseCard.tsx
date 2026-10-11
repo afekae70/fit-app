@@ -18,13 +18,12 @@ import {
   Easing,
   Pressable,
   StyleSheet,
-  Text,
-  TextInput,
   View,
   type StyleProp,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { AnimatedText, Text, TextInput } from './Text.js';
 
 import type { SetRow } from '../db/workouts.js';
 import { hapticLight } from '../haptics.js';
@@ -231,14 +230,14 @@ function DoneMark({ done, style }: { done: boolean; style: StyleProp<TextStyle> 
   }, [done, pop]);
 
   return (
-    <Animated.Text
+    <AnimatedText
       style={[
         style,
         { transform: [{ scale: done ? pop.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }) : 1 }] },
       ]}
     >
       ✓
-    </Animated.Text>
+    </AnimatedText>
   );
 }
 

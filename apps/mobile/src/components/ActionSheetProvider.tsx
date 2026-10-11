@@ -50,13 +50,12 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   useWindowDimensions,
   View,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Text, TextInput } from './Text.js';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { hapticLight } from '../haptics.js';

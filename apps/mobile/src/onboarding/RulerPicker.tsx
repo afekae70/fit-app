@@ -39,8 +39,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   View,
   type LayoutChangeEvent,
   type NativeScrollEvent,
@@ -48,6 +46,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Text, TextInput } from '../components/Text.js';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Minus, PencilSimple, Plus } from 'phosphor-react-native';
 

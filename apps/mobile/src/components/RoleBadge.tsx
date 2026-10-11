@@ -11,7 +11,8 @@
 
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { StyleSheet, Text, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
+import { StyleSheet, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
+import { Text } from './Text.js';
 import { ChalkboardTeacher, IdentificationBadge, PersonSimpleRun } from 'phosphor-react-native';
 
 import type { AccountRole } from '../coaching/accountRole.js';

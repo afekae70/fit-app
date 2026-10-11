@@ -12,7 +12,8 @@
  */
 
 import { useMemo, useRef } from 'react';
-import { Animated, Pressable, StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
+import { Animated, Pressable, StyleSheet, View, type TextStyle, type ViewStyle } from 'react-native';
+import { Text } from '../Text.js';
 import type { Icon } from 'phosphor-react-native';
 
 import { hapticLight } from '../../haptics.js';

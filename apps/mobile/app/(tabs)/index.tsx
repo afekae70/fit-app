@@ -15,7 +15,8 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Barbell, CalendarBlank, ForkKnife, Scales, Sparkle } from 'phosphor-react-native';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '../../src/components/Text.js';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '../../src/auth/AuthProvider.js';

@@ -36,11 +36,11 @@ import {
   Easing,
   Pressable,
   StyleSheet,
-  Text,
   View,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Text } from '../components/Text.js';
 import { Fingerprint, ScanSmiley } from 'phosphor-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 

@@ -9,7 +9,8 @@
 
 import { useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Animated, Easing, StyleSheet, Text, type TextStyle, type ViewStyle } from 'react-native';
+import { Animated, Easing, StyleSheet, type TextStyle, type ViewStyle } from 'react-native';
+import { Text } from './Text.js';
 
 import { useTheme } from '../ThemeProvider.js';
 import { useUnit } from '../UnitsProvider.js';

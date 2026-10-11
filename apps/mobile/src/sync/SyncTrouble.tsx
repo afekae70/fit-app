@@ -13,7 +13,8 @@
 
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, View, type TextStyle, type ViewStyle } from 'react-native';
+import { Text } from '../components/Text.js';
 import { CloudWarning } from 'phosphor-react-native';
 
 import { hapticLight } from '../haptics.js';

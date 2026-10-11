@@ -15,11 +15,11 @@ import {
   Pressable,
   StyleSheet,
   Switch,
-  Text,
   View,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Text } from '../Text.js';
 
 import type { PlanDayTiming } from '../../db/plans.js';
 import { useTheme } from '../../ThemeProvider.js';

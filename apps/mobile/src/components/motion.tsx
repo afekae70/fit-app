@@ -29,11 +29,11 @@ import {
   AccessibilityInfo,
   Animated,
   Easing,
-  Text,
   type StyleProp,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Text } from './Text.js';
 
 import { duration, stagger } from '../theme.js';
 

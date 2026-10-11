@@ -16,11 +16,11 @@ import {
   Animated,
   Pressable,
   StyleSheet,
-  Text,
   type StyleProp,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Text } from './Text.js';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { hapticLight } from '../haptics.js';

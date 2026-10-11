@@ -20,7 +20,8 @@
  */
 
 import { useEffect, useMemo, useRef } from 'react';
-import { Animated, Easing, StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
+import { Animated, Easing, StyleSheet, View, type TextStyle, type ViewStyle } from 'react-native';
+import { Text } from './Text.js';
 
 import { duration } from '../theme.js';
 

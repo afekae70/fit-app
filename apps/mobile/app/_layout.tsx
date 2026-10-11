@@ -27,6 +27,7 @@ import { SplashOverlay } from '../src/components/SplashOverlay.js';
 import { initI18n, isRtlLanguage, loadStoredLanguage, type Language } from '../src/i18n/index.js';
 import { ActionSheetProvider } from '../src/components/ActionSheetProvider.js';
 import { ThemeProvider, useTheme } from '../src/ThemeProvider.js';
+import { useAppFonts } from '../src/typography/loadFonts.js';
 
 initI18n();
 
@@ -105,6 +106,12 @@ function RootLayoutInner() {
 }
 
 export default function RootLayout() {
+  // The typeface, before anything is drawn — a few dozen milliseconds of the launch
+  // background, ahead of the splash that covers the rest of start-up. Never for long, and
+  // never for good: see `useAppFonts`.
+  const fontsReady = useAppFonts();
+  if (!fontsReady) return null;
+
   return (
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>

@@ -27,12 +27,12 @@ import {
   Pressable,
   StyleSheet,
   Switch,
-  Text,
   View,
   type StyleProp,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Text } from '../Text.js';
 import { CaretLeft, CaretRight, type Icon } from 'phosphor-react-native';
 
 import { hapticLight } from '../../haptics.js';

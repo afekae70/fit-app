@@ -46,11 +46,11 @@ import {
   Easing,
   Pressable,
   StyleSheet,
-  Text,
   View,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { AnimatedText, Text } from '../Text.js';
 
 import { stepReps, stepWeight } from '../../workout/derived.js';
 import type { MeasureRow } from '../../workout/revealRow.js';
@@ -403,7 +403,7 @@ export function SetRow({
         accessibilityLabel={t('workout.setDone', { index })}
         style={[s.check, done && s.checkDone]}
       >
-        <Animated.Text
+        <AnimatedText
           style={[
             s.checkGlyph,
             done && s.checkGlyphDone,
@@ -420,7 +420,7 @@ export function SetRow({
           ]}
         >
           ✓
-        </Animated.Text>
+        </AnimatedText>
       </Pressable>
     </Animated.View>
   );

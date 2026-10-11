@@ -20,12 +20,11 @@ import { useTranslation } from 'react-i18next';
 import {
   Pressable,
   StyleSheet,
-  Text,
-  TextInput,
   View,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Text, TextInput } from '../Text.js';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import * as SecureStore from 'expo-secure-store';
 

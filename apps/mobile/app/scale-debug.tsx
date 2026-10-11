@@ -13,7 +13,8 @@
 
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, Share, StyleSheet, View } from 'react-native';
+import { Text } from '../src/components/Text.js';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BLE_REASON_MESSAGE } from '../src/ble/messages.js';

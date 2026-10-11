@@ -39,11 +39,11 @@ import {
   Animated,
   Pressable,
   StyleSheet,
-  Text,
   View,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Text } from './Text.js';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { Barbell, CalendarBlank, ChartBar, House, type Icon } from 'phosphor-react-native';

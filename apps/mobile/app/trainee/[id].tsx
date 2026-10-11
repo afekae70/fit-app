@@ -18,11 +18,11 @@ import {
   ActivityIndicator,
   ScrollView,
   StyleSheet,
-  Text,
   View,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Text } from '../../src/components/Text.js';
 import {
   CalendarBlank,
   ChartLineUp,

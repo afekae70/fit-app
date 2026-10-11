@@ -14,7 +14,8 @@
 
 import { useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Animated, Easing, StyleSheet, Text, type TextStyle, type ViewStyle } from 'react-native';
+import { Animated, Easing, StyleSheet, type TextStyle, type ViewStyle } from 'react-native';
+import { AnimatedText, Text } from '../Text.js';
 
 import { ProgressRing } from '../ProgressRing.js';
 import { useTheme } from '../../ThemeProvider.js';
@@ -70,7 +71,7 @@ export function FinishedBurst({ onDone }: { onDone: () => void }) {
       </Animated.View>
 
       {/* Said out loud. The trophy is the feeling; the line is what actually happened. */}
-      <Animated.Text
+      <AnimatedText
         style={[
           s.line,
           {
@@ -82,7 +83,7 @@ export function FinishedBurst({ onDone }: { onDone: () => void }) {
         ]}
       >
         {t('workout.finishedLine')}
-      </Animated.Text>
+      </AnimatedText>
     </Animated.View>
   );
 }

@@ -56,12 +56,12 @@ import {
   Animated,
   PanResponder,
   StyleSheet,
-  Text,
   View,
   type LayoutChangeEvent,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Text } from './Text.js';
 import Svg, { Circle, Defs, Line, LinearGradient, Path, Stop } from 'react-native-svg';
 
 import { areaPath, nearestIndex, placeTrend, smoothPath, trendDomain } from '../chart/curve.js';

@@ -5,7 +5,8 @@
 
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
+import { StyleSheet, View, type TextStyle, type ViewStyle } from 'react-native';
+import { Text } from './Text.js';
 
 import { useTheme } from '../ThemeProvider.js';
 import { fontSize, fontWeight, spacing, type ColorPalette } from '../theme.js';

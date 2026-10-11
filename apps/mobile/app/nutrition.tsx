@@ -11,7 +11,8 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ScrollView, StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
+import { ScrollView, StyleSheet, View, type TextStyle, type ViewStyle } from 'react-native';
+import { Text } from '../src/components/Text.js';
 
 import {
   ACTIVITY_LEVELS,

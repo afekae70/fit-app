@@ -24,11 +24,11 @@ import {
   Easing,
   Pressable,
   StyleSheet,
-  Text,
   View,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Text } from '../Text.js';
 
 import { ProgressRing } from '../ProgressRing.js';
 import { RollingNumber } from '../RollingNumber.js';

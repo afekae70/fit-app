@@ -18,11 +18,11 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
-  Text,
   View,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Text } from './Text.js';
 
 import type { SessionSummaryRow } from '../db/workouts.js';
 import { HISTORY_PERIODS, type HistoryPeriod } from '../workout/historyPeriod.js';

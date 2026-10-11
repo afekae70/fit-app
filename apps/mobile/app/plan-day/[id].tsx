@@ -16,12 +16,11 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   View,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Text, TextInput } from '../../src/components/Text.js';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useActionSheet } from '../../src/components/ActionSheetProvider.js';

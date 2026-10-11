@@ -17,10 +17,10 @@ import {
   Easing,
   Pressable,
   StyleSheet,
-  Text,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Text } from './Text.js';
 
 import { useTheme } from '../ThemeProvider.js';
 import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../theme.js';

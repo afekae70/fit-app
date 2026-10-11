@@ -17,7 +17,8 @@
 import type { ExerciseSeed } from '@fit/shared/catalog';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
+import { StyleSheet, View, type TextStyle, type ViewStyle } from 'react-native';
+import { Text } from '../Text.js';
 
 import type { SetRow } from '../../db/workouts.js';
 import { useTheme } from '../../ThemeProvider.js';

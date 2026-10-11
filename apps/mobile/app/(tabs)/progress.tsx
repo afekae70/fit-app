@@ -14,11 +14,11 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
-  Text,
   View,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Text } from '../../src/components/Text.js';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';

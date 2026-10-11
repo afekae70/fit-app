@@ -20,12 +20,12 @@ import { useTranslation } from 'react-i18next';
 import {
   Pressable,
   StyleSheet,
-  Text,
   View,
   type TextStyle,
   type ImageStyle,
   type ViewStyle,
 } from 'react-native';
+import { Text } from '../Text.js';
 
 import {
   macroShares,

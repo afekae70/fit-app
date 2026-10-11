@@ -14,7 +14,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, View, type TextStyle, type ViewStyle } from 'react-native';
+import { Text } from './Text.js';
 import { CalendarCheck } from 'phosphor-react-native';
 
 import { getExecutor } from '../db/provider.js';

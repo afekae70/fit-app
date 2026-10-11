@@ -12,7 +12,8 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, View, type TextStyle, type ViewStyle } from 'react-native';
+import { Text } from './Text.js';
 import { CaretLeft, CaretRight, ForkKnife } from 'phosphor-react-native';
 
 import { listFoodEntries } from '../db/food.js';

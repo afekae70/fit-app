@@ -26,12 +26,12 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   View,
   type ImageStyle,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Text } from '../src/components/Text.js';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   BellRinging,

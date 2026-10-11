@@ -13,7 +13,8 @@
 
 import { useMemo, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, View, type TextStyle, type ViewStyle } from 'react-native';
+import { Text } from '../Text.js';
 
 import { exerciseVolume, labelSets, type DerivedSet } from '../../workout/derived.js';
 import { useTheme } from '../../ThemeProvider.js';

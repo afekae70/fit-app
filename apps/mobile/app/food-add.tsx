@@ -22,11 +22,11 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   View,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Text } from '../src/components/Text.js';
 import { MagnifyingGlass } from 'phosphor-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 

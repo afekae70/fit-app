@@ -17,11 +17,11 @@ import {
   Animated,
   PanResponder,
   StyleSheet,
-  Text,
   View,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Text } from './Text.js';
 
 import { isRtlLanguage, type Language } from '../i18n/index.js';
 import { useTheme } from '../ThemeProvider.js';

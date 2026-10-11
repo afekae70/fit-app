@@ -50,13 +50,12 @@ import {
   Keyboard,
   Pressable,
   StyleSheet,
-  Text,
-  TextInput,
   View,
   type LayoutChangeEvent,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Text, TextInput } from '../Text.js';
 
 import { hapticLight } from '../../haptics.js';
 import { useTheme } from '../../ThemeProvider.js';

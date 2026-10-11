@@ -4,7 +4,8 @@
  */
 
 import { useMemo } from 'react';
-import { StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
+import { StyleSheet, View, type TextStyle, type ViewStyle } from 'react-native';
+import { Text } from './Text.js';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTheme } from '../ThemeProvider.js';

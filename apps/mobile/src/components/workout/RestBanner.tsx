@@ -42,11 +42,11 @@ import {
   I18nManager,
   Pressable,
   StyleSheet,
-  Text,
   View,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Text } from '../Text.js';
 import Svg, { Circle } from 'react-native-svg';
 
 import { formatRemaining, restRingOffset } from '../../workout/derived.js';

@@ -36,12 +36,12 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   View,
   type ImageStyle,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Text } from '../components/Text.js';
 import { EnvelopeSimple, Eye, EyeSlash, LockSimple } from 'phosphor-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 

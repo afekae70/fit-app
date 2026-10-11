@@ -20,12 +20,12 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   View,
   type ImageStyle,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Text } from '../src/components/Text.js';
 import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { I18nManager } from 'react-native';
