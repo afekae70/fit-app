@@ -76,7 +76,7 @@ export function BrandButton({
       >
         {disabled ? null : (
           <LinearGradient
-            colors={[colors.accent, colors.accentPair]}
+            colors={[colors.accent, colors.info]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={StyleSheet.absoluteFill}

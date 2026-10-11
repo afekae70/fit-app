@@ -43,11 +43,6 @@ export interface ColorPalette {
   accentSoft: string;
   accentBorder: string;
   accentLift: string;
-  /**
-   * What the accent fades into across a gradient button. The logo's violet runs into its pink;
-   * another accent runs into a neighbour of its own, because green into pink is two brands.
-   */
-  accentPair: string;
   warning: string;
   warningSoft: string;
   danger: string;
@@ -101,7 +96,6 @@ export const darkColors: ColorPalette = {
   accentSoft: '#2A2150',
   accentBorder: '#4B3E87',
   accentLift: '#C7B4FF',
-  accentPair: '#DD93CE',
 
   /* Status — `info` is the pink the logo fades into, which keeps the pair on brand. */
   warning: '#E0B45F',
@@ -146,7 +140,6 @@ export const lightColors: ColorPalette = {
   accentSoft: '#EDE7FB',
   accentBorder: '#C9B8F2',
   accentLift: '#5B3FB0',
-  accentPair: '#B4559E',
 
   /* Status */
   warning: '#B07C1C',
@@ -167,115 +160,6 @@ export const lightColors: ColorPalette = {
   glass: 'rgba(255, 255, 255, 0.88)',
   glassEdge: 'rgba(124, 92, 214, 0.18)',
 };
-
-/* -------------------------------------------------------------------------- */
-/* Accent                                                                      */
-/* -------------------------------------------------------------------------- */
-
-/**
- * The accent is the one colour in the palette that is a choice.
- *
- * Everything else here is the app's — the ground, the cards, the status colours — and stays
- * put. The accent is what the app points with: the primary button, a ticked set, the live
- * number. Violet is the logo's and the default; the others are for someone who simply wants
- * their own colour on the thing they look at every day.
- *
- * Each alternative is three hand-picked tones per scheme, held to the bar the violet sets:
- * type on the accent, and the accent as type on a card, must contrast at least as well as
- * they do in violet (`theme.test.ts` checks every one). The tones that are only the accent
- * thinned over the ground — the soft fill, the border, the glass edge — are mixed from it
- * here, the same way the violet ones were mixed by hand, so a new accent cannot forget one.
- *
- * `protein` does not follow. It is a data colour that happens to be the logo's violet; if it
- * moved with the accent, an orange accent would put protein beside amber carbs.
- */
-export type AccentName = 'violet' | 'blue' | 'green' | 'orange';
-
-export const ACCENT_NAMES: readonly AccentName[] = ['violet', 'blue', 'green', 'orange'];
-
-export const DEFAULT_ACCENT: AccentName = 'violet';
-
-export type ColorSchemeName = 'dark' | 'light';
-
-interface AccentTones {
-  accent: string;
-  /** Brighter than the accent after dark, deeper in daylight — the same step `accentLift` is. */
-  lift: string;
-  /** What the accent fades into on a gradient button. */
-  pair: string;
-}
-
-const ACCENT_TONES: Record<Exclude<AccentName, 'violet'>, Record<ColorSchemeName, AccentTones>> = {
-  blue: {
-    dark: { accent: '#7FB3FF', lift: '#B5D3FF', pair: '#7FDDF0' },
-    light: { accent: '#2F6BD6', lift: '#1F4FA8', pair: '#167A9F' },
-  },
-  green: {
-    dark: { accent: '#5ED3A2', lift: '#9BE6C6', pair: '#9ADB6E' },
-    light: { accent: '#12805A', lift: '#0B6143', pair: '#3E7F1C' },
-  },
-  orange: {
-    dark: { accent: '#FFA366', lift: '#FFC8A0', pair: '#FF8FA3' },
-    light: { accent: '#B85008', lift: '#8A3903', pair: '#C23B58' },
-  },
-};
-
-const channels = (hex: string): [number, number, number] => [
-  Number.parseInt(hex.slice(1, 3), 16),
-  Number.parseInt(hex.slice(3, 5), 16),
-  Number.parseInt(hex.slice(5, 7), 16),
-];
-
-/**
- * `over` at `amount` opacity on top of `under`, as the solid colour that makes.
- *
- * React Native has no `color-mix`, which is why this palette is solid hexes throughout — see
- * the note at the top of the file.
- */
-export function mixHex(over: string, under: string, amount: number): string {
-  const top = channels(over);
-  const bottom = channels(under);
-  return `#${top
-    .map((value, index) => Math.round(bottom[index]! + (value - bottom[index]!) * amount))
-    .map((value) => value.toString(16).padStart(2, '0'))
-    .join('')}`.toUpperCase();
-}
-
-const paletteCache = new Map<string, ColorPalette>();
-
-/**
- * The palette for a scheme and an accent.
- *
- * The same object every time it is asked for: components rebuild their styles when `colors`
- * changes identity, and a new object per render would be a new stylesheet per render.
- */
-export function paletteFor(scheme: ColorSchemeName, accent: AccentName): ColorPalette {
-  const base = scheme === 'dark' ? darkColors : lightColors;
-  if (accent === 'violet') return base;
-
-  const key = `${scheme}:${accent}`;
-  const cached = paletteCache.get(key);
-  if (cached) return cached;
-
-  const tones = ACCENT_TONES[accent][scheme];
-  const [red, green, blue] = channels(tones.accent);
-  const palette: ColorPalette = {
-    ...base,
-    accent: tones.accent,
-    accentLift: tones.lift,
-    accentPair: tones.pair,
-    // After dark the soft fill is the accent thinned over the ground; in daylight, over the
-    // white card it sits on — which is how the two violet ones differ, too.
-    accentSoft:
-      scheme === 'dark'
-        ? mixHex(tones.accent, base.bg, 0.16)
-        : mixHex(tones.accent, base.surface, 0.13),
-    accentBorder: mixHex(tones.accent, base.bg, scheme === 'dark' ? 0.4 : 0.33),
-    glassEdge: `rgba(${red}, ${green}, ${blue}, ${scheme === 'dark' ? 0.22 : 0.18})`,
-  };
-  paletteCache.set(key, palette);
-  return palette;
-}
 
 /** Default export for the rare theme-agnostic case. Components should use `useTheme()`. */
 export const colors = darkColors;

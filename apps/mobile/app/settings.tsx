@@ -64,7 +64,6 @@ import {
   SettingsSection,
   ToggleRow,
 } from '../src/components/settings/kit.js';
-import { AccentPicker } from '../src/components/settings/AccentPicker.js';
 import { Banner, ScreenHeader } from '../src/components/ui.js';
 import { WorkoutReminderCard } from '../src/components/WorkoutReminderCard.js';
 import { isRtlLanguage, setAppLanguage, type Language } from '../src/i18n/index.js';
@@ -254,10 +253,6 @@ export default function SettingsScreen() {
               { value: 'dark', label: t('settings.themeDark') },
             ]}
           />
-        </SettingRow>
-        <RowDivider />
-        <SettingRow label={t('settings.accent')} hint={t('settings.accentHint')} stacked>
-          <AccentPicker />
         </SettingRow>
         <RowDivider />
         <SettingRow label={t('settings.language')} stacked>

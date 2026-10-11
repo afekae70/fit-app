@@ -22,20 +22,13 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { Appearance } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 
-import {
-  ACCENT_NAMES,
-  DEFAULT_ACCENT,
-  paletteFor,
-  type AccentName,
-  type ColorPalette,
-} from './theme.js';
+import { darkColors, lightColors, type ColorPalette } from './theme.js';
 
 export type ColorScheme = 'dark' | 'light';
 /** What the user asked for, which may be "whatever the phone is doing". */
 export type ThemePreference = ColorScheme | 'system';
 
 const STORAGE_KEY = 'fit_app_color_scheme';
-const ACCENT_STORAGE_KEY = 'fit_app_accent';
 
 interface ThemeContextValue {
   /** The palette actually in use — resolved, never "system". */
@@ -44,9 +37,6 @@ interface ThemeContextValue {
   /** What was chosen: a fixed scheme, or following the device. */
   preference: ThemePreference;
   setPreference: (preference: ThemePreference) => void;
-  /** The colour the app points with. Independent of light and dark: it is kept across both. */
-  accent: AccentName;
-  setAccent: (accent: AccentName) => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -56,7 +46,6 @@ const systemScheme = (): ColorScheme => (Appearance.getColorScheme() === 'light'
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [preference, setStoredPreference] = useState<ThemePreference>('system');
   const [deviceScheme, setDeviceScheme] = useState<ColorScheme>(systemScheme);
-  const [accent, setStoredAccent] = useState<AccentName>(DEFAULT_ACCENT);
 
   useEffect(() => {
     void SecureStore.getItemAsync(STORAGE_KEY)
@@ -65,14 +54,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       })
       // A saved preference is a nice-to-have, not a requirement — following the device, the
       // default set above, stays in place if the keystore read fails for any reason.
-      .catch(() => {});
-    void SecureStore.getItemAsync(ACCENT_STORAGE_KEY)
-      .then((saved) => {
-        // Checked against the list rather than trusted: a name this build does not know — one
-        // removed since, or written by a newer build — would otherwise index an empty palette.
-        const known = ACCENT_NAMES.find((name) => name === saved);
-        if (known) setStoredAccent(known);
-      })
       .catch(() => {});
   }, []);
 
@@ -98,17 +79,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     void SecureStore.setItemAsync(STORAGE_KEY, next).catch(() => {});
   }, []);
 
-  const setAccent = useCallback((next: AccentName) => {
-    setStoredAccent(next);
-    void SecureStore.setItemAsync(ACCENT_STORAGE_KEY, next).catch(() => {});
-  }, []);
-
   const scheme: ColorScheme = preference === 'system' ? deviceScheme : preference;
-  // `paletteFor` returns the same object for the same pair, so this is stable across renders.
-  const colors = paletteFor(scheme, accent);
+  const colors = scheme === 'dark' ? darkColors : lightColors;
   const value = useMemo(
-    () => ({ scheme, colors, preference, setPreference, accent, setAccent }),
-    [scheme, colors, preference, setPreference, accent, setAccent],
+    () => ({ scheme, colors, preference, setPreference }),
+    [scheme, colors, preference, setPreference],
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

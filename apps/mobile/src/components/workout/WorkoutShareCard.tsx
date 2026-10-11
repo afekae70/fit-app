@@ -43,7 +43,7 @@ export function WorkoutShareCard({
     // tree, and a view that is not there cannot be photographed.
     <View ref={ref} collapsable={false} style={s.card}>
       <LinearGradient
-        colors={[colors.accent, colors.accentPair]}
+        colors={[colors.accent, colors.info]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFill}
