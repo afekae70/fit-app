@@ -35,6 +35,8 @@ import { summariseAllProgress } from '../src/db/progression.js';
 import { listRecentExerciseKeys } from '../src/db/workouts.js';
 import { useTheme } from '../src/ThemeProvider.js';
 import { fontSize, radius, spacing, type ColorPalette } from '../src/theme.js';
+import { X } from 'phosphor-react-native';
+import { Glyph } from '../src/components/Glyph.js';
 
 const EXERCISE_BY_KEY = new Map<string, ExerciseSeed>(
   EXERCISE_SEED.map((exercise) => [exercise.nameEn, exercise]),
@@ -148,7 +150,7 @@ export default function ExercisePickerScreen() {
       <View style={styles.header}>
         <Text style={styles.title}>{t('picker.title')}</Text>
         <Pressable onPress={() => router.back()} style={styles.closeButton} accessibilityRole="button">
-          <Text style={styles.closeText}>✕</Text>
+          <Glyph icon={X} style={styles.closeText} />
         </Pressable>
       </View>
 

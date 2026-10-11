@@ -14,7 +14,7 @@ import { router } from 'expo-router';
 
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CaretLeft, CaretRight } from 'phosphor-react-native';
+import { Camera, CaretLeft, CaretRight } from 'phosphor-react-native';
 import {
   Image,
   Pressable,
@@ -45,6 +45,7 @@ import { getWorkoutStreak } from '../src/db/workouts.js';
 import { personalRecords } from '../src/db/progression.js';
 import { useTheme } from '../src/ThemeProvider.js';
 import { radius, shadow, type ColorPalette } from '../src/theme.js';
+import { Glyph } from '../src/components/Glyph.js';
 
 const WEEKLY_TARGET = 4;
 
@@ -134,7 +135,7 @@ export default function ProfileScreen() {
           )}
           {/* A small camera badge, so the picture reads as something that can be changed. */}
           <View style={styles.avatarBadge}>
-            <Text style={styles.avatarBadgeGlyph}>📷</Text>
+            <Glyph icon={Camera} style={styles.avatarBadgeGlyph} weight="fill" />
           </View>
         </Pressable>
         <Text style={styles.name}>{name}</Text>
@@ -258,7 +259,7 @@ const createStyles = (colors: ColorPalette) =>
       alignItems: 'center',
       justifyContent: 'center',
     },
-    avatarBadgeGlyph: { fontSize: 13 },
+    avatarBadgeGlyph: { fontSize: 15, color: colors.textSecondary },
     name: { color: colors.text, fontSize: 20, fontWeight: '500' },
     subtitle: { color: colors.textMuted, fontSize: 13 },
 

@@ -55,6 +55,7 @@ import { useTheme } from '../src/ThemeProvider.js';
 import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../src/theme.js';
 import { useUnit } from '../src/UnitsProvider.js';
 import { kgToDisplay, weightUnitKey } from '../src/units.js';
+import { ChartLineUp } from 'phosphor-react-native';
 
 /** How tall the tallest month's bar is drawn. */
 const BAR_HEIGHT = 110;
@@ -141,7 +142,7 @@ export default function WorkoutProgressScreen() {
 
       {line === null ? (
         <EmptyState
-          emoji="📈"
+          icon={ChartLineUp}
           title={t('progress.workoutGone')}
           hint={t('progress.workoutGoneHint')}
         />

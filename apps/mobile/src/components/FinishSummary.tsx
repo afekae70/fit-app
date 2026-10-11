@@ -31,7 +31,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
-import { AnimatedText, Text, TextInput } from './Text.js';
+import { Text, TextInput } from './Text.js';
 
 import { SESSION_EFFORT_CHOICES, sessionLoad } from '@fit/shared/calculations';
 
@@ -41,6 +41,8 @@ import { formatVolume, weightUnitKey } from '../units.js';
 import { hapticSuccess } from '../haptics.js';
 import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../theme.js';
 import { Banner, Button } from './ui.js';
+import { Trophy } from 'phosphor-react-native';
+import { Glyph } from './Glyph.js';
 
 export interface FinishSummaryProps {
   visible: boolean;
@@ -67,7 +69,7 @@ function formatDuration(minutes: number, hoursLabel: string, minutesLabel: strin
  * A stat tile whose number counts up from 0 on mount rather than appearing instantly — the
  * count itself is what makes the total land with some weight, the way an odometer does.
  *
- * Deliberately plain `useState`, not an `AnimatedText`: the value must render as arbitrary
+ * Deliberately plain `useState`, not an animated text: the value must render as arbitrary
  * formatted text (`formatDuration`'s "1h 20m", thousands separators), and reading an animated
  * value's live number back out for text formatting means a JS-side listener either way — so
  * there is nothing an Animated-driven style would buy here, only another driver mode to keep
@@ -191,9 +193,8 @@ export function FinishSummary({
           {/* The ring sweeps to full as the sheet opens: the workout's own progress ring,
               finished. The trophy lands inside it. */}
           <ProgressRing fraction={1} size={116} thickness={8} style={styles.ring}>
-          <AnimatedText
+          <Animated.View
             style={[
-              styles.trophy,
               {
                 transform: [
                   { scale: trophy.interpolate({ inputRange: [0, 1], outputRange: [0, 1] }) },
@@ -207,8 +208,8 @@ export function FinishSummary({
               },
             ]}
           >
-            🏆
-          </AnimatedText>
+            <Glyph icon={Trophy} style={styles.trophy} weight="fill" />
+          </Animated.View>
           </ProgressRing>
           <Text style={styles.title}>{t('workout.summaryTitle')}</Text>
 
@@ -348,7 +349,7 @@ const createStyles = (colors: ColorPalette) =>
     marginBottom: spacing.lg,
   },
   ring: { alignSelf: 'center', marginBottom: spacing.sm },
-  trophy: { fontSize: 44, textAlign: 'center' },
+  trophy: { fontSize: 44, color: colors.accent },
   title: {
     color: colors.text,
     fontSize: fontSize.xl,

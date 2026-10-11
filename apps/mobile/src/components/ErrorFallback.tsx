@@ -11,6 +11,8 @@ import { Text } from './Text.js';
 import { useTheme } from '../ThemeProvider.js';
 import { fontSize, fontWeight, spacing, type ColorPalette } from '../theme.js';
 import { Button } from './ui.js';
+import { Warning } from 'phosphor-react-native';
+import { Glyph } from './Glyph.js';
 
 export function ErrorFallback({ onReset }: { onReset: () => void }) {
   const { t } = useTranslation();
@@ -19,7 +21,7 @@ export function ErrorFallback({ onReset }: { onReset: () => void }) {
 
   return (
     <View style={styles.screen}>
-      <Text style={styles.emoji}>⚠️</Text>
+      <Glyph icon={Warning} style={styles.emoji} weight="duotone" />
       <Text style={styles.title}>{t('errorBoundary.title')}</Text>
       <Text style={styles.hint}>{t('errorBoundary.hint')}</Text>
       <View style={styles.buttonWrap}>
@@ -44,7 +46,7 @@ const createStyles = (colors: ColorPalette) =>
       justifyContent: 'center',
       paddingHorizontal: spacing.xl,
     },
-    emoji: { fontSize: 56, marginBottom: spacing.lg },
+    emoji: { fontSize: 56, marginBottom: spacing.lg, color: colors.warning },
     title: {
       color: colors.text,
       fontSize: fontSize.lg,

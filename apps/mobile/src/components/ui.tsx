@@ -23,6 +23,8 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import type { Icon } from 'phosphor-react-native';
+
 import { AnimatedText, Text, TextInput } from './Text.js';
 
 import { FadeSlideIn } from './motion.js';
@@ -552,12 +554,19 @@ export function SkeletonScreen({ paddingTop }: { paddingTop: number }) {
   );
 }
 
+/**
+ * A screen with nothing on it yet: what would be here, and how to put it there.
+ *
+ * Led by an icon from the app's own set, on a soft disc of the accent. It used to be an emoji,
+ * which every phone maker draws differently and in full colour — the one part of an otherwise
+ * two-tone screen the app did not draw itself.
+ */
 export function EmptyState({
-  emoji,
+  icon: IconComponent,
   title,
   hint,
 }: {
-  emoji: string;
+  icon: Icon;
   title: string;
   hint?: string;
 }) {
@@ -565,7 +574,9 @@ export function EmptyState({
   const styles = useMemo(() => createStyles(colors), [colors]);
   return (
     <FadeIn style={styles.empty}>
-      <Text style={styles.emptyEmoji}>{emoji}</Text>
+      <View style={styles.emptyIcon}>
+        <IconComponent size={34} color={colors.accent} weight="duotone" />
+      </View>
       <Text style={styles.emptyTitle}>{title}</Text>
       {hint ? <Text style={styles.emptyHint}>{hint}</Text> : null}
     </FadeIn>
@@ -623,7 +634,7 @@ const createStyles = (colors: ColorPalette) =>
     bannerTextWarning: TextStyle;
     bannerTextSuccess: TextStyle;
     empty: ViewStyle;
-    emptyEmoji: TextStyle;
+    emptyIcon: ViewStyle;
     emptyTitle: TextStyle;
     emptyHint: TextStyle;
     skeletonBar: ViewStyle;
@@ -850,7 +861,15 @@ const createStyles = (colors: ColorPalette) =>
     bannerTextSuccess: { color: colors.accent },
 
     empty: { alignItems: 'center', paddingVertical: spacing.xxl },
-    emptyEmoji: { fontSize: 44, marginBottom: spacing.md },
+    emptyIcon: {
+      width: 72,
+      height: 72,
+      borderRadius: radius.pill,
+      backgroundColor: colors.accentSoft,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: spacing.md,
+    },
     emptyTitle: {
       color: colors.textSecondary,
       fontSize: fontSize.md,

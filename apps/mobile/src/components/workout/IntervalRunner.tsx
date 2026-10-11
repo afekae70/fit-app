@@ -50,6 +50,8 @@ import {
 } from '../../workout/sounds.js';
 import { announceNext, prepareSpeech, stopSpeech } from '../../workout/speech.js';
 import { ExerciseVisual } from '../ExerciseVisual.js';
+import { Pause, Play, SkipForward } from 'phosphor-react-native';
+import { IconText } from '../Glyph.js';
 
 export interface IntervalExercise {
   name: string;
@@ -257,7 +259,9 @@ export function IntervalRunner({
           accessibilityRole="button"
           style={({ pressed }) => [s.startButton, pressed && s.pressed]}
         >
-          <Text style={s.startText}>▶ {t('interval.start')}</Text>
+          <IconText icon={Play} style={s.startText} weight="fill">
+            {t('interval.start')}
+          </IconText>
         </Pressable>
       </View>
     );
@@ -330,16 +334,18 @@ export function IntervalRunner({
           accessibilityRole="button"
           style={({ pressed }) => [s.control, s.controlPrimary, pressed && s.pressed]}
         >
-          <Text style={s.controlPrimaryText}>
-            {running ? `❚❚ ${t('interval.pause')}` : `▶ ${t('interval.resume')}`}
-          </Text>
+          <IconText icon={running ? Pause : Play} style={s.controlPrimaryText} weight="fill">
+            {running ? t('interval.pause') : t('interval.resume')}
+          </IconText>
         </Pressable>
         <Pressable
           onPress={skipPhase}
           accessibilityRole="button"
           style={({ pressed }) => [s.control, pressed && s.pressed]}
         >
-          <Text style={s.controlText}>{t('interval.skip')} ⏭</Text>
+          <IconText icon={SkipForward} style={s.controlText} weight="fill">
+            {t('interval.skip')}
+          </IconText>
         </Pressable>
       </View>
     </View>

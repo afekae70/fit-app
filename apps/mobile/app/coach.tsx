@@ -43,6 +43,8 @@ import { getExecutor, newId } from '../src/db/provider.js';
 import { KeyboardSafe } from '../src/components/KeyboardSafe.js';
 import { useTheme } from '../src/ThemeProvider.js';
 import { fontSize, fontWeight, radius, shadow, spacing, type ColorPalette } from '../src/theme.js';
+import { Brain, ChartLineUp, LockKey, Plug } from 'phosphor-react-native';
+import { IconText } from '../src/components/Glyph.js';
 
 /** Placeholder shown from send() until the first token, tool call, or error arrives. */
 interface PendingBubble {
@@ -303,7 +305,9 @@ export default function CoachChatScreen() {
       <View style={[styles.header, { paddingTop: spacing.md }]}>
         <Text style={styles.title}>{t('coach.title')}</Text>
         <Pressable onPress={() => router.push('/(tabs)/progress')} accessibilityRole="button" hitSlop={8}>
-          <Text style={styles.viewProgress}>📈 {t('coach.viewProgress')}</Text>
+          <IconText icon={ChartLineUp} style={styles.viewProgress}>
+            {t('coach.viewProgress')}
+          </IconText>
         </Pressable>
       </View>
 
@@ -316,16 +320,16 @@ export default function CoachChatScreen() {
       >
         {!API_BASE_URL ? (
           <>
-            <EmptyState emoji="🔌" title={t('coach.notConfigured')} hint={t('coach.notConfiguredHint')} />
+            <EmptyState icon={Plug} title={t('coach.notConfigured')} hint={t('coach.notConfiguredHint')} />
             <Banner tone="info">{t('coach.keyNote')}</Banner>
           </>
         ) : !isConfigured ? (
           // Distinct from the API-not-configured state above: the server is reachable, but
           // there is no Supabase project wired up yet to mint a token it would accept.
-          <EmptyState emoji="🔐" title={t('coach.authNotConfigured')} hint={t('coach.authNotConfiguredHint')} />
+          <EmptyState icon={LockKey} title={t('coach.authNotConfigured')} hint={t('coach.authNotConfiguredHint')} />
         ) : bubbles.length === 0 ? (
           <>
-            <EmptyState emoji="🧠" title={t('coach.empty')} hint={t('coach.emptyHint')} />
+            <EmptyState icon={Brain} title={t('coach.empty')} hint={t('coach.emptyHint')} />
             {[t('coach.suggest1'), t('coach.suggest2'), t('coach.suggest3')].map((suggestion) => (
               <Pressable
                 key={suggestion}

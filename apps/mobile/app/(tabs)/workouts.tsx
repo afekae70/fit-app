@@ -139,6 +139,7 @@ import { syncWorkoutReminders } from '../../src/reminders/sync.js';
 import { stationMove } from '../../src/workout/stripReorder.js';
 import { useTheme } from '../../src/ThemeProvider.js';
 import { fontSize, radius, spacing, type ColorPalette } from '../../src/theme.js';
+import { Plus } from 'phosphor-react-native';
 
 /** Held while a workout is open — see the effect that takes it. */
 const WORKOUT_AWAKE_TAG = 'workout-open';
@@ -1759,7 +1760,7 @@ export default function WorkoutsScreen() {
       >
         {exercises.length === 0 ? (
           <EmptyState
-            emoji="➕"
+            icon={Plus}
             title={t('workout.noExercises')}
             hint={t('workout.noExercisesHint')}
           />

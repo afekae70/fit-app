@@ -54,6 +54,7 @@ import { listWorkoutPoints } from '../../src/db/workoutProgress.js';
 import { groupByWorkout, type WorkoutLine } from '../../src/progress/workoutProgress.js';
 import { useTheme } from '../../src/ThemeProvider.js';
 import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../../src/theme.js';
+import { ChartLineUp } from 'phosphor-react-native';
 
 const EXERCISE_BY_KEY = new Map<string, ExerciseSeed>(
   EXERCISE_SEED.map((exercise) => [exercise.nameEn, exercise]),
@@ -180,7 +181,7 @@ export default function ProgressScreen() {
       ) : null}
 
       {summaries.length === 0 ? (
-        <EmptyState emoji="📈" title={t('progress.empty')} hint={t('progress.emptyHint')} />
+        <EmptyState icon={ChartLineUp} title={t('progress.empty')} hint={t('progress.emptyHint')} />
       ) : (
         <>
           <Hint>{t('progress.subtitle')}</Hint>

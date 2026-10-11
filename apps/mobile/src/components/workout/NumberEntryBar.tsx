@@ -61,6 +61,8 @@ import { hapticLight } from '../../haptics.js';
 import { useTheme } from '../../ThemeProvider.js';
 import { radius, shadow, type ColorPalette } from '../../theme.js';
 import { entryMaxLength, entryText, parseEntry } from '../../workout/numberEntry.js';
+import { Check } from 'phosphor-react-native';
+import { Glyph } from '../Glyph.js';
 
 export interface NumberEntryRequest {
   /** Which number this is. A different id is a different number, and the last one is saved. */
@@ -243,7 +245,7 @@ export function NumberEntryBar({
           hitSlop={8}
           style={({ pressed }) => [s.done, pressed && s.pressed]}
         >
-          <Text style={s.doneGlyph}>✓</Text>
+          <Glyph icon={Check} style={s.doneGlyph} />
         </Pressable>
       </View>
     </View>

@@ -31,6 +31,7 @@ import { useUnit } from '../UnitsProvider.js';
 import { formatVolume, weightUnitKey } from '../units.js';
 import { fontSize, radius, shadow, spacing, type ColorPalette } from '../theme.js';
 import { EmptyState, ScreenHeader } from './ui.js';
+import { Barbell, CalendarBlank } from 'phosphor-react-native';
 
 export interface WorkoutHomeProps {
   history: SessionSummaryRow[];
@@ -155,11 +156,11 @@ export function WorkoutHome({
 
         {history.length === 0 ? (
           period === 'all' ? (
-            <EmptyState emoji="🏋️" title={t('history.empty')} hint={t('history.emptyHint')} />
+            <EmptyState icon={Barbell} title={t('history.empty')} hint={t('history.emptyHint')} />
           ) : (
             // Not the first-run message: there is history, just none in this window, and saying
             // "no workouts yet" here would read as history lost.
-            <EmptyState emoji="🗓️" title={t('history.emptyPeriod')} hint={t('history.emptyPeriodHint')} />
+            <EmptyState icon={CalendarBlank} title={t('history.emptyPeriod')} hint={t('history.emptyPeriodHint')} />
           )
         ) : (
           groupByMonth(history).map((group) => (

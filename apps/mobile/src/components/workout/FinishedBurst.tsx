@@ -15,11 +15,13 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Animated, Easing, StyleSheet, type TextStyle, type ViewStyle } from 'react-native';
-import { AnimatedText, Text } from '../Text.js';
+import { AnimatedText } from '../Text.js';
 
 import { ProgressRing } from '../ProgressRing.js';
 import { useTheme } from '../../ThemeProvider.js';
 import { radius, shadow, type ColorPalette } from '../../theme.js';
+import { Trophy } from 'phosphor-react-native';
+import { Glyph } from '../Glyph.js';
 
 /** Long enough to register as a moment, short enough that nobody waits it out. */
 const HOLD_MS = 1900;
@@ -66,7 +68,7 @@ export function FinishedBurst({ onDone }: { onDone: () => void }) {
       >
         {/* The workout's own ring, swept to full — the same shape the header counts sets in. */}
         <ProgressRing fraction={1} size={132} thickness={9}>
-          <Text style={s.trophy}>🏆</Text>
+          <Glyph icon={Trophy} style={s.trophy} weight="fill" />
         </ProgressRing>
       </Animated.View>
 
@@ -105,7 +107,7 @@ const createStyles = (colors: ColorPalette) =>
       backgroundColor: colors.surface,
       ...shadow(colors.shadow).hero,
     },
-    trophy: { fontSize: 54 },
+    trophy: { fontSize: 58, color: colors.accent },
     line: {
       marginTop: 18,
       color: colors.text,

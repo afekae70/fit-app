@@ -58,6 +58,8 @@ import { ageFromBirthDate, birthDateFromAge } from '../src/onboarding/profileSet
 import { getWorkoutStreak, type WorkoutStreak } from '../src/db/workouts.js';
 import { useTheme } from '../src/ThemeProvider.js';
 import { fontSize, spacing, type ColorPalette } from '../src/theme.js';
+import { Brain, Fire } from 'phosphor-react-native';
+import { Glyph } from '../src/components/Glyph.js';
 
 type SexChoice = 'male' | 'female';
 
@@ -274,7 +276,7 @@ export default function NutritionScreen() {
       {streak && streak.currentDays > 0 ? (
         <Card index={0} style={styles.streakCard}>
           <View style={styles.streakRow}>
-            <Text style={styles.streakEmoji}>🔥</Text>
+            <Glyph icon={Fire} style={styles.streakEmoji} weight="fill" />
             <View style={styles.streakTextCol}>
               <Text style={styles.streakDays}>
                 {t('streak.days', { count: streak.currentDays })}
@@ -290,7 +292,7 @@ export default function NutritionScreen() {
       {brief ? (
         <Card index={1} tone="accent" style={styles.briefCard}>
           <View style={styles.briefRow}>
-            <Text style={styles.briefEmoji}>🧠</Text>
+            <Glyph icon={Brain} style={styles.briefEmoji} weight="duotone" />
             <View style={styles.streakTextCol}>
               <Text style={styles.briefTitle}>{t('coach.dailyBriefTitle')}</Text>
               <Text style={styles.briefText}>{brief}</Text>
@@ -522,8 +524,10 @@ const createStyles = (colors: ColorPalette) =>
       alignItems: 'center',
       gap: spacing.md,
     },
+    // A flame is warm; it takes the one warm colour the palette has.
     streakEmoji: {
       fontSize: 32,
+      color: colors.warning,
     },
     streakTextCol: {
       flex: 1,
@@ -550,6 +554,7 @@ const createStyles = (colors: ColorPalette) =>
     },
     briefEmoji: {
       fontSize: 24,
+      color: colors.accent,
     },
     briefTitle: {
       color: colors.accent,

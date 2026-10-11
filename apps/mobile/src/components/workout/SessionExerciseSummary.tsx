@@ -33,6 +33,8 @@ import {
 } from '../../units.js';
 import { bestSetIndex, formatSet } from '../../workout/setFormat.js';
 import { ExerciseVisual } from '../ExerciseVisual.js';
+import { X } from 'phosphor-react-native';
+import { Glyph } from '../Glyph.js';
 
 /**
  * What of a set this card reads. Narrower than a whole row on purpose: a coach looking at a
@@ -138,7 +140,7 @@ export function SessionExerciseSummary({
                 )}
               </Text>
               {set.rpe !== null ? <Text style={s.rpe}>@{set.rpe}</Text> : null}
-              {set.to_failure === 1 ? <Text style={s.failure}>✗</Text> : null}
+              {set.to_failure === 1 ? <Glyph icon={X} style={s.failure} /> : null}
             </View>
           );
         })}

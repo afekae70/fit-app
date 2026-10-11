@@ -23,7 +23,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
-import { AnimatedText, Text, TextInput } from './Text.js';
+import { Text, TextInput } from './Text.js';
 
 import type { SetRow } from '../db/workouts.js';
 import { hapticLight } from '../haptics.js';
@@ -42,6 +42,8 @@ import {
 import { WEIGHT_STEP_KG, WEIGHT_STEP_LB } from '../workout/derived.js';
 import { valueOrClearToCommit } from '../workout/typedEntry.js';
 import { duration, fontSize, radius, shadow, spacing, type ColorPalette } from '../theme.js';
+import { Check, X } from 'phosphor-react-native';
+import { Glyph } from './Glyph.js';
 
 export interface PreviousSet {
   set_index: number;
@@ -230,14 +232,13 @@ function DoneMark({ done, style }: { done: boolean; style: StyleProp<TextStyle> 
   }, [done, pop]);
 
   return (
-    <AnimatedText
-      style={[
-        style,
-        { transform: [{ scale: done ? pop.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }) : 1 }] },
-      ]}
+    <Animated.View
+      style={{
+        transform: [{ scale: done ? pop.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }) : 1 }],
+      }}
     >
-      ✓
-    </AnimatedText>
+      <Glyph icon={Check} style={style} />
+    </Animated.View>
   );
 }
 
@@ -333,7 +334,7 @@ function ExerciseCardImpl({
           accessibilityRole="button"
           accessibilityLabel={t('workout.removeExercise')}
         >
-          <Text style={styles.removeExerciseText}>✕</Text>
+          <Glyph icon={X} style={styles.removeExerciseText} />
         </Pressable>
       </View>
 

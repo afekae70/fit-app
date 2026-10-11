@@ -41,6 +41,8 @@ import { radius, shadow, type ColorPalette } from '../../theme.js';
 import { useUnit } from '../../UnitsProvider.js';
 import { formatBodyWeight, kgToDisplay, weightUnitKey } from '../../units.js';
 import { WeightSparkline } from '../WeightSparkline.js';
+import { CalendarBlank, Check, Moon, Play } from 'phosphor-react-native';
+import { Glyph } from '../Glyph.js';
 
 /** Hebrew day initials, Sunday first — the order `Date#getDay` returns. */
 const DAY_INITIALS = ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'] as const;
@@ -193,7 +195,7 @@ export function TodayWorkoutCard({
         accessibilityLabel={t('home.startWorkout')}
         style={({ pressed }) => [s.cta, pressed && s.ctaPressed]}
       >
-        <Text style={s.ctaGlyph}>▶</Text>
+        <Glyph icon={Play} style={s.ctaGlyph} weight="fill" />
         <Text style={s.ctaLabel}>{t('home.startWorkout')}</Text>
       </Pressable>
     </View>
@@ -218,7 +220,7 @@ export function RestDayCard() {
 
   return (
     <View style={s.restCard}>
-      <Text style={s.restGlyph}>🌙</Text>
+      <Glyph icon={Moon} style={s.restGlyph} weight="duotone" />
       <Text style={s.restTitle}>{t('home.restTitle')}</Text>
       <Text style={s.restBody}>{t('home.restBody')}</Text>
     </View>
@@ -251,7 +253,7 @@ export function UnplannedDayCard({
 
   return (
     <View style={s.restCard}>
-      <Text style={s.restGlyph}>📅</Text>
+      <Glyph icon={CalendarBlank} style={s.restGlyph} weight="duotone" />
       <Text style={s.restTitle}>{t('home.unplannedTitle')}</Text>
       <Text style={s.restBody}>{t('home.unplannedBody')}</Text>
       <Pressable
@@ -849,7 +851,7 @@ const createStyles = (colors: ColorPalette) =>
     // The rest card centres its children, which would shrink a button to its label. This one
     // spans the card, the way the same button does on the trained-today card.
     unplannedAction: { alignSelf: 'stretch' },
-    restGlyph: { fontSize: 30 },
+    restGlyph: { fontSize: 34, color: colors.accent },
     restTitle: { color: colors.text, fontSize: 20, fontWeight: '500', textAlign: 'center' },
     restBody: {
       color: colors.textMuted,
@@ -961,7 +963,7 @@ export function TrainedTodayCard({
   return (
     <View style={s.doneCard}>
       <View style={s.doneHeader}>
-        <Text style={s.doneMark}>✓</Text>
+        <Glyph icon={Check} style={s.doneMark} />
         <Text style={s.doneTitle}>
           {trained.finished ? t('home.trainedToday') : t('home.trainingNow')}
         </Text>

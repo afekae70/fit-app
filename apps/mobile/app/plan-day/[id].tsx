@@ -45,6 +45,8 @@ import { KeyboardSafe } from '../../src/components/KeyboardSafe.js';
 import { TimingCard } from '../../src/components/workout/TimingCard.js';
 import { useTheme } from '../../src/ThemeProvider.js';
 import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../../src/theme.js';
+import { ChatCircleText, DotsSixVertical, X } from 'phosphor-react-native';
+import { Glyph, IconText } from '../../src/components/Glyph.js';
 
 const EXERCISE_BY_KEY = new Map<string, ExerciseSeed>(
   EXERCISE_SEED.map((exercise) => [exercise.nameEn, exercise]),
@@ -323,7 +325,14 @@ export default function PlanDayScreen() {
                       </Text>
                       {/* An instruction on this exercise — from a coach, when there is one. */}
                       {prescription.notes ? (
-                        <Text style={styles.exerciseNote}>💬 {prescription.notes}</Text>
+                        <IconText
+                          icon={ChatCircleText}
+                          style={styles.exerciseNote}
+                          weight="regular"
+                          multiline
+                        >
+                          {prescription.notes}
+                        </IconText>
                       ) : null}
                     </View>
 
@@ -370,9 +379,10 @@ export default function PlanDayScreen() {
                         if (event.nativeEvent.actionName === 'moveDown') dragHandle.moveDown();
                       }}
                     >
-                      <Text style={[styles.moveText, dragHandle.active && styles.handleActive]}>
-                        ⠿
-                      </Text>
+                      <Glyph
+                        icon={DotsSixVertical}
+                        style={[styles.moveText, dragHandle.active && styles.handleActive]}
+                      />
                     </View>
 
                     <Pressable
@@ -382,7 +392,7 @@ export default function PlanDayScreen() {
                       accessibilityLabel={t('workout.removeExercise')}
                       hitSlop={8}
                     >
-                      <Text style={styles.deleteText}>✕</Text>
+                      <Glyph icon={X} style={styles.deleteText} />
                     </Pressable>
                   </View>
                 );

@@ -70,6 +70,8 @@ import {
 } from '../../src/db/workouts.js';
 import { useTheme } from '../../src/ThemeProvider.js';
 import { fontSize, radius, shadow, spacing, type ColorPalette } from '../../src/theme.js';
+import { Check, PencilSimple, ShareNetwork } from 'phosphor-react-native';
+import { IconText } from '../../src/components/Glyph.js';
 
 const EXERCISE_BY_KEY = new Map<string, ExerciseSeed>(
   EXERCISE_SEED.map((exercise) => [exercise.nameEn, exercise]),
@@ -454,7 +456,9 @@ export default function SessionDetailScreen() {
               style={({ pressed }) => [styles.action, pressed && styles.pressed]}
               accessibilityRole="button"
             >
-              <Text style={styles.actionText}>↗ {t('history.share')}</Text>
+              <IconText icon={ShareNetwork} style={styles.actionText}>
+                {t('history.share')}
+              </IconText>
             </Pressable>
           </View>
         ) : null}
@@ -467,7 +471,9 @@ export default function SessionDetailScreen() {
                 style={({ pressed }) => [styles.action, pressed && styles.pressed]}
                 accessibilityRole="button"
               >
-                <Text style={styles.actionText}>↗ {t('history.share')}</Text>
+                <IconText icon={ShareNetwork} style={styles.actionText}>
+                  {t('history.share')}
+                </IconText>
               </Pressable>
             ) : null}
             <Pressable
@@ -479,9 +485,12 @@ export default function SessionDetailScreen() {
               ]}
               accessibilityRole="button"
             >
-              <Text style={[styles.actionText, editing && styles.actionPrimaryText]}>
-                {editing ? `✓ ${t('history.editDone')}` : `✎ ${t('history.edit')}`}
-              </Text>
+              <IconText
+                icon={editing ? Check : PencilSimple}
+                style={[styles.actionText, editing && styles.actionPrimaryText]}
+              >
+                {editing ? t('history.editDone') : t('history.edit')}
+              </IconText>
             </Pressable>
           </View>
         ) : null}

@@ -557,6 +557,7 @@ export const he = {
     historySets_one: 'סט אחד',
     historySets_other: '{{count}} סטים',
     historyEffort: 'מאמץ {{rpe}}',
+    historyHasNote: 'יש הערה',
     historyNotAvailable: 'כדי לראות אימונים שבוצעו צריך עדכון קטן בשרת. פנה למנהל האפליקציה.',
     mark_done: 'בוצע',
     mark_missed: 'לא בוצע',
@@ -995,7 +996,7 @@ export const he = {
   month: {
     searchPlaceholder: 'חיפוש אימון לפי שם',
     addWorkout: '+ הוסף {{name}}',
-    removeWorkout: '✕ הסר את {{name}}',
+    removeWorkout: 'הסר את {{name}}',
     onThisDay: 'ביום הזה: {{names}}',
     title: 'לוח חודשי',
     prev: 'החודש הקודם',

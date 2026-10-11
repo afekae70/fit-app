@@ -38,7 +38,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { Text } from '../../src/components/Text.js';
-import { CaretLeft, CaretRight } from 'phosphor-react-native';
+import { CaretLeft, CaretRight, Check } from 'phosphor-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
@@ -82,6 +82,7 @@ import {
   spacing,
   type ColorPalette,
 } from '../../src/theme.js';
+import { Glyph } from '../../src/components/Glyph.js';
 
 /** One of the coach's own workouts, as listed: which row it is, how to name it, how it is timed. */
 interface OwnWorkoutChoice extends DayTiming {
@@ -469,7 +470,7 @@ export default function TraineeCalendarScreen() {
                         {workouts.length > 1 ? (
                           <Text style={styles.more}>+{workouts.length - 1}</Text>
                         ) : null}
-                        {mark === 'done' ? <Text style={styles.markDone}>✓</Text> : null}
+                        {mark === 'done' ? <Glyph icon={Check} style={styles.markDone} /> : null}
                         {mark === 'missed' ? <View style={styles.markMissed} /> : null}
                         {mark === 'extra' ? <View style={styles.markExtra} /> : null}
                       </>
@@ -485,7 +486,7 @@ export default function TraineeCalendarScreen() {
         {trained ? (
           <View style={styles.legend}>
             <View style={styles.legendItem}>
-              <Text style={styles.legendDone}>✓</Text>
+              <Glyph icon={Check} style={styles.legendDone} />
               <Text style={styles.legendText}>{t('coaching.mark_done')}</Text>
             </View>
             <View style={styles.legendItem}>

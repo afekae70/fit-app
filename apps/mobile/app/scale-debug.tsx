@@ -211,12 +211,12 @@ export default function ScaleDebugScreen() {
         >
           <Text style={styles.buttonText}>
             {sweepProgress
-              ? `⏳ ${t(`scaleDebug.sweep.${sweepProgress.phase}`, {
+              ? t(`scaleDebug.sweep.${sweepProgress.phase}`, {
                   index: sweepProgress.index,
                   total: sweepProgress.total,
                   name: sweepProgress.deviceName ?? t('scaleDebug.unnamed'),
-                })}`
-              : `⚖ ${t('scaleDebug.autoRun')}`}
+                })
+              : t('scaleDebug.autoRun')}
           </Text>
         </Pressable>
         {sweepProgress ? <Hint>{t('scaleDebug.autoStandOn')}</Hint> : null}
@@ -275,7 +275,7 @@ export default function ScaleDebugScreen() {
           style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
         >
           <Text style={styles.buttonText}>
-            {scanning ? `■ ${t('scaleDebug.stop')}` : `📡 ${t('scaleDebug.scan')}`}
+            {scanning ? t('scaleDebug.stop') : t('scaleDebug.scan')}
           </Text>
         </Pressable>
         {/* Said before the scan rather than after: the whole point is to capture a scale while

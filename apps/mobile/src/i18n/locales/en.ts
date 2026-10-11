@@ -577,6 +577,7 @@ export const en = {
     historySets_one: '1 set',
     historySets_other: '{{count}} sets',
     historyEffort: 'effort {{rpe}}',
+    historyHasNote: 'has a note',
     historyNotAvailable:
       'Seeing finished workouts needs a small update on the server. Ask whoever runs the app.',
     mark_done: 'Done',
@@ -1014,7 +1015,7 @@ export const en = {
   month: {
     searchPlaceholder: 'Search workouts by name',
     addWorkout: '+ Add {{name}}',
-    removeWorkout: '✕ Remove {{name}}',
+    removeWorkout: 'Remove {{name}}',
     onThisDay: 'On this day: {{names}}',
     title: 'Monthly calendar',
     prev: 'Previous month',

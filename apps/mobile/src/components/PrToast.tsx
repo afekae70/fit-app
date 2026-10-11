@@ -16,6 +16,8 @@ import { useTheme } from '../ThemeProvider.js';
 import { useUnit } from '../UnitsProvider.js';
 import { kgToDisplay } from '../units.js';
 import { duration, fontSize, fontWeight, radius, spacing, type ColorPalette } from '../theme.js';
+import { Trophy } from 'phosphor-react-native';
+import { Glyph } from './Glyph.js';
 
 export interface PrToastData {
   exerciseLabel: string;
@@ -84,7 +86,7 @@ export function PrToast({ data, onDone }: { data: PrToastData | null; onDone: ()
         },
       ]}
     >
-      <Text style={styles.emoji}>🏆</Text>
+      <Glyph icon={Trophy} style={styles.emoji} weight="fill" />
       <Text style={styles.text} numberOfLines={1}>
         {t('workout.newPr')} {data.exerciseLabel} {kgToDisplay(data.weightKg, unit)}×{data.reps}
       </Text>
@@ -114,7 +116,7 @@ const createStyles = (colors: ColorPalette) =>
       paddingHorizontal: spacing.lg,
       zIndex: 10,
     },
-    emoji: { fontSize: fontSize.lg },
+    emoji: { fontSize: fontSize.lg, color: colors.accent },
     text: {
       flex: 1,
       color: colors.accent,

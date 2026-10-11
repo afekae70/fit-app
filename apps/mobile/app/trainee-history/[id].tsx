@@ -28,7 +28,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { Text } from '../../src/components/Text.js';
-import { CaretDown, CaretUp } from 'phosphor-react-native';
+import { Barbell, CaretDown, CaretUp } from 'phosphor-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { EXERCISE_BY_KEY } from '@fit/shared';
 
@@ -183,7 +183,7 @@ export default function TraineeHistoryScreen() {
 
       {sessions?.length === 0 ? (
         <EmptyState
-          emoji="🏋️"
+          icon={Barbell}
           title={t('coaching.historyEmpty')}
           hint={t('coaching.historyEmptyHint')}
         />
@@ -221,7 +221,7 @@ export default function TraineeHistoryScreen() {
                     volume > 0 ? `${formatVolume(volume, unit)} ${weightLabel}` : null,
                     session.rpe !== null ? t('coaching.historyEffort', { rpe: session.rpe }) : null,
                     // A mark that there is something to read inside, without it being read here.
-                    session.note ? '💬' : null,
+                    session.note ? t('coaching.historyHasNote') : null,
                   ]
                     .filter(Boolean)
                     .join(' · ')}

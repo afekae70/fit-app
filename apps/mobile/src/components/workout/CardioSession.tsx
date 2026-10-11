@@ -46,6 +46,8 @@ import {
   startRun,
   type CardioRun,
 } from '../../workout/cardioTimer.js';
+import { Check, Pause, Play } from 'phosphor-react-native';
+import { IconText } from '../Glyph.js';
 
 const KEEP_AWAKE_TAG = 'cardio-session';
 
@@ -167,13 +169,17 @@ export function CardioSession({
           accessibilityRole="button"
           style={({ pressed }) => [s.primary, running && s.primaryRunning, pressed && s.pressed]}
         >
-          <Text style={[s.primaryText, running && s.primaryTextRunning]}>
+          <IconText
+            icon={running ? Pause : Play}
+            style={[s.primaryText, running && s.primaryTextRunning]}
+            weight="fill"
+          >
             {running
-              ? `⏸ ${t('cardio.pause')}`
+              ? t('cardio.pause')
               : seconds > 0
-                ? `▶ ${t('cardio.resume')}`
-                : `▶ ${t('cardio.start')}`}
-          </Text>
+                ? t('cardio.resume')
+                : t('cardio.start')}
+          </IconText>
         </Pressable>
 
         {/* Finishing writes the clock into the effort and ticks it off. Offered once there is
@@ -190,9 +196,9 @@ export function CardioSession({
             accessibilityState={{ checked: done }}
             style={({ pressed }) => [s.finish, done && s.finishDone, pressed && s.pressed]}
           >
-            <Text style={[s.finishText, done && s.finishTextDone]}>
-              ✓ {done ? t('cardio.finished') : t('cardio.finish')}
-            </Text>
+            <IconText icon={Check} style={[s.finishText, done && s.finishTextDone]}>
+              {done ? t('cardio.finished') : t('cardio.finish')}
+            </IconText>
           </Pressable>
         ) : null}
       </View>

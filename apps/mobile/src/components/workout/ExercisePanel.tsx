@@ -30,6 +30,16 @@ import type { Ghost } from '../../workout/ghost.js';
 import type { MeasureRow } from '../../workout/revealRow.js';
 import { CardioSession } from './CardioSession.js';
 import { SetRow } from './SetRow.js';
+import {
+  ChatCircleText,
+  DotsSixVertical,
+  DotsThree,
+  type Icon,
+  Swap,
+  Target,
+  TrendUp,
+} from 'phosphor-react-native';
+import { Glyph, IconText } from '../Glyph.js';
 
 export interface PreviousSet {
   weightKg: number | null;
@@ -283,16 +293,16 @@ export function ExercisePanel({
           {/* The things one does to an exercise mid-workout, each a named button rather than an
               entry in a menu — the menu keeps only what is rarely needed. */}
           <View style={s.chips}>
-            {onSwap ? <Chip label={`⇄ ${t('workout.swapShort')}`} onPress={onSwap} /> : null}
+            {onSwap ? <Chip icon={Swap} label={t('workout.swapShort')} onPress={onSwap} /> : null}
             {onShowMuscles ? (
-              <Chip label={`◎ ${t('workout.musclesShort')}`} onPress={onShowMuscles} />
+              <Chip icon={Target} label={t('workout.musclesShort')} onPress={onShowMuscles} />
             ) : null}
             {onAddWarmup && canAddWarmup ? (
-              <Chip label={`↗ ${t('workout.warmupChip')}`} onPress={onAddWarmup} />
+              <Chip icon={TrendUp} label={t('workout.warmupChip')} onPress={onAddWarmup} />
             ) : null}
             {onOptions ? (
               <Chip
-                label="⋯"
+                icon={DotsThree}
                 onPress={onOptions}
                 accessibilityLabel={t('workout.exerciseOptions')}
               />
@@ -328,7 +338,7 @@ export function ExercisePanel({
               hitSlop={6}
               style={({ pressed }) => [s.options, pressed && s.pressed]}
             >
-              <Text style={s.optionsGlyph}>⋯</Text>
+              <Glyph icon={DotsThree} style={s.optionsGlyph} scale={1.2} />
             </Pressable>
           ) : null}
 
@@ -355,7 +365,10 @@ export function ExercisePanel({
                 if (event.nativeEvent.actionName === 'moveDown') dragHandle.moveDown();
               }}
             >
-              <Text style={[s.handleGlyph, dragHandle.active && s.handleGlyphActive]}>⠿</Text>
+              <Glyph
+                icon={DotsSixVertical}
+                style={[s.handleGlyph, dragHandle.active && s.handleGlyphActive]}
+              />
             </View>
           ) : null}
         </View>
@@ -369,7 +382,9 @@ export function ExercisePanel({
 
       {note ? (
         <View style={s.note}>
-          <Text style={s.noteText}>💬 {note}</Text>
+          <IconText icon={ChatCircleText} style={s.noteText} weight="regular" multiline>
+            {note}
+          </IconText>
         </View>
       ) : null}
 
@@ -541,11 +556,14 @@ export function ExercisePanel({
 
 /** One of the buttons under the exercise's name. */
 function Chip({
+  icon,
   label,
   onPress,
   accessibilityLabel,
 }: {
-  label: string;
+  icon: Icon;
+  /** Left out for a chip that is its icon alone — the menu — which is named for a reader instead. */
+  label?: string;
   onPress: () => void;
   accessibilityLabel?: string;
 }) {
@@ -559,7 +577,13 @@ function Chip({
       hitSlop={4}
       style={({ pressed }) => [s.chip, pressed && s.pressed]}
     >
-      <Text style={s.chipText}>{label}</Text>
+      {label === undefined ? (
+        <Glyph icon={icon} style={s.chipText} scale={1.5} />
+      ) : (
+        <IconText icon={icon} style={s.chipText} weight="regular">
+          {label}
+        </IconText>
+      )}
     </Pressable>
   );
 }

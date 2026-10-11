@@ -62,6 +62,7 @@ import { syncWorkoutReminders } from '../../src/reminders/sync.js';
 import { hapticLight } from '../../src/haptics.js';
 import { useTheme } from '../../src/ThemeProvider.js';
 import { radius, type ColorPalette } from '../../src/theme.js';
+import { Glyph } from '../../src/components/Glyph.js';
 
 interface HomeData {
   workout: TodayWorkout | null;
@@ -425,7 +426,7 @@ function EmptyPanel({
   return (
     <View style={styles.stateGroup}>
       <View style={styles.emptyPanel}>
-        <Text style={styles.emptyGlyph}>🏋</Text>
+        <Glyph icon={Barbell} style={styles.emptyGlyph} weight="duotone" />
         <Text style={styles.emptyTitle}>{t('home.emptyTitle')}</Text>
         <Text style={styles.emptyBody}>{t('home.emptyBody')}</Text>
       </View>

@@ -34,6 +34,7 @@ import { useTheme } from '../../src/ThemeProvider.js';
 import { useUnit } from '../../src/UnitsProvider.js';
 import { formatVolume, kgToDisplay, weightUnitKey } from '../../src/units.js';
 import { radius, shadow, spacing, type ColorPalette } from '../../src/theme.js';
+import { ChartLineUp } from 'phosphor-react-native';
 
 const CHART_HEIGHT = 110;
 
@@ -104,7 +105,7 @@ export default function ExerciseRecordScreen() {
       </Card>
 
       {sessions.length === 0 ? (
-        <EmptyState emoji="📈" title={t('record.emptyTitle')} hint={t('record.emptyHint')} />
+        <EmptyState icon={ChartLineUp} title={t('record.emptyTitle')} hint={t('record.emptyHint')} />
       ) : (
         <>
           <View style={s.tiles}>

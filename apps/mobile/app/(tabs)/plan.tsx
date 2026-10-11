@@ -97,6 +97,15 @@ import {
   spacing,
   type ColorPalette,
 } from '../../src/theme.js';
+import {
+  CalendarBlank,
+  DotsSixVertical,
+  DotsThree,
+  Play,
+  Swap,
+  Timer,
+} from 'phosphor-react-native';
+import { Glyph, IconText } from '../../src/components/Glyph.js';
 
 type DayStatus = {
   id: string;
@@ -615,7 +624,10 @@ export default function PlanScreen() {
                 if (event.nativeEvent.actionName === 'moveDown') dragHandle.moveDown();
               }}
             >
-              <Text style={[styles.handleGlyph, dragHandle.active && styles.handleActive]}>⠿</Text>
+              <Glyph
+                icon={DotsSixVertical}
+                style={[styles.handleGlyph, dragHandle.active && styles.handleActive]}
+              />
             </View>
           </View>
 
@@ -638,9 +650,13 @@ export default function PlanScreen() {
             </View>
             {day.work_seconds ? (
               <View style={[styles.chip, styles.chipAccent]}>
-                <Text style={[styles.chipText, styles.chipTextAccent]}>
-                  ⏱ {day.work_seconds}/{day.rest_seconds ?? 0}
-                </Text>
+                <IconText
+                  icon={Timer}
+                  style={[styles.chipText, styles.chipTextAccent]}
+                  weight="regular"
+                >
+                  {day.work_seconds}/{day.rest_seconds ?? 0}
+                </IconText>
               </View>
             ) : null}
             <View style={styles.chip}>
@@ -659,7 +675,9 @@ export default function PlanScreen() {
                 style={({ pressed }) => [styles.startButton, pressed && styles.pressed]}
                 accessibilityRole="button"
               >
-                <Text style={styles.startButtonText}>▶ {t('plan.startDay')}</Text>
+                <IconText icon={Play} style={styles.startButtonText} weight="fill">
+                  {t('plan.startDay')}
+                </IconText>
               </Pressable>
               <Pressable
                 onPress={() => openDayOptions(day)}
@@ -667,7 +685,7 @@ export default function PlanScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={t('workout.exerciseOptions')}
               >
-                <Text style={styles.optionsGlyph}>⋯</Text>
+                <Glyph icon={DotsThree} style={styles.optionsGlyph} scale={1.5} />
               </Pressable>
             </View>
           ) : (
@@ -677,7 +695,7 @@ export default function PlanScreen() {
               accessibilityRole="button"
               accessibilityLabel={t('workout.exerciseOptions')}
             >
-              <Text style={styles.optionsGlyph}>⋯</Text>
+              <Glyph icon={DotsThree} style={styles.optionsGlyph} scale={1.5} />
             </Pressable>
           )}
         </Pressable>
@@ -727,7 +745,7 @@ export default function PlanScreen() {
 
         {groups.length === 0 ? (
           <>
-            <EmptyState emoji="🗓️" title={t('plan.empty')} hint={t('plan.emptyHint')} />
+            <EmptyState icon={CalendarBlank} title={t('plan.empty')} hint={t('plan.emptyHint')} />
             <Card>
               <TextInput
                 value={nameDraft}
@@ -922,7 +940,7 @@ export default function PlanScreen() {
                       accessibilityRole="button"
                       accessibilityLabel={t('plan.groupOptions')}
                     >
-                      <Text style={styles.optionsGlyph}>⋯</Text>
+                      <Glyph icon={DotsThree} style={styles.optionsGlyph} scale={1.5} />
                     </Pressable>
                   </View>
                 )}
@@ -955,7 +973,9 @@ export default function PlanScreen() {
                         style={[styles.addDayButton, styles.groupAction]}
                         accessibilityRole="button"
                       >
-                        <Text style={styles.addDayText}>⇄ {t('plan.addExisting')}</Text>
+                        <IconText icon={Swap} style={styles.addDayText}>
+                          {t('plan.addExisting')}
+                        </IconText>
                       </Pressable>
                     ) : null}
                   </View>

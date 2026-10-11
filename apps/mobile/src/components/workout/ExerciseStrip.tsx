@@ -36,6 +36,8 @@ import { useTheme } from '../../ThemeProvider.js';
 import { radius, type ColorPalette } from '../../theme.js';
 import { stripDropTarget } from '../../workout/stripReorder.js';
 import { ExerciseVisual } from '../ExerciseVisual.js';
+import { Check } from 'phosphor-react-native';
+import { Glyph } from '../Glyph.js';
 
 export interface StripStation {
   key: string;
@@ -228,7 +230,7 @@ export function ExerciseStrip({
                   </View>
                   {station.done ? (
                     <View style={s.tick}>
-                      <Text style={s.tickGlyph}>✓</Text>
+                      <Glyph icon={Check} style={s.tickGlyph} />
                     </View>
                   ) : null}
                 </Pressable>

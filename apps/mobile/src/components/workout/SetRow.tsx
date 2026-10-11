@@ -50,7 +50,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
-import { AnimatedText, Text } from '../Text.js';
+import { Text } from '../Text.js';
 
 import { stepReps, stepWeight } from '../../workout/derived.js';
 import type { MeasureRow } from '../../workout/revealRow.js';
@@ -66,6 +66,8 @@ import {
   weightUnitKey,
 } from '../../units.js';
 import { duration, radius, type ColorPalette } from '../../theme.js';
+import { Check } from 'phosphor-react-native';
+import { Glyph } from '../Glyph.js';
 
 /** The handoff's timings. The tint settles before the glyph finishes popping, which is the point. */
 // On the shared scale (theme.ts) rather than picked here: a tint responding at one speed on
@@ -403,10 +405,8 @@ export function SetRow({
         accessibilityLabel={t('workout.setDone', { index })}
         style={[s.check, done && s.checkDone]}
       >
-        <AnimatedText
+        <Animated.View
           style={[
-            s.checkGlyph,
-            done && s.checkGlyphDone,
             {
               transform: [
                 {
@@ -419,8 +419,8 @@ export function SetRow({
             },
           ]}
         >
-          ✓
-        </AnimatedText>
+          <Glyph icon={Check} style={[s.checkGlyph, done && s.checkGlyphDone]} scale={1.2} />
+        </Animated.View>
       </Pressable>
     </Animated.View>
   );

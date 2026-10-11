@@ -33,7 +33,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { Text } from '../src/components/Text.js';
-import { CaretLeft, CaretRight } from 'phosphor-react-native';
+import { CaretLeft, CaretRight, ForkKnife } from 'phosphor-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useCurrentUserId } from '../src/auth/CurrentUserProvider.js';
@@ -227,7 +227,7 @@ export default function FoodLogScreen() {
       />
 
       {entries.length === 0 ? (
-        <EmptyState emoji="🍽️" title={t('food.empty')} hint={t('food.emptyHint')} />
+        <EmptyState icon={ForkKnife} title={t('food.empty')} hint={t('food.emptyHint')} />
       ) : (
         <View style={styles.list}>
           {entries.map((entry) => (

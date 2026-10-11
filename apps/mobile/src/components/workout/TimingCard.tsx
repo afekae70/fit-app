@@ -32,6 +32,8 @@ import {
   DEFAULT_WORK_SECONDS,
   type PhaseKind,
 } from '../../workout/interval.js';
+import { Timer } from 'phosphor-react-native';
+import { IconText } from '../Glyph.js';
 
 const STEP = 5;
 
@@ -103,7 +105,9 @@ export function TimingCard({
   return (
     <View style={[s.card, timing && s.cardOn]}>
       <View style={s.headerRow}>
-        <Text style={s.title}>⏱ {t('interval.title')}</Text>
+        <IconText icon={Timer} style={s.title} weight="regular">
+          {t('interval.title')}
+        </IconText>
         <Switch
           value={timing !== null}
           onValueChange={(on) =>

@@ -75,6 +75,8 @@ import {
 import { getExecutor, newId } from '../src/db/provider.js';
 import { useTheme } from '../src/ThemeProvider.js';
 import { fontSize, radius, spacing, type ColorPalette } from '../src/theme.js';
+import { X } from 'phosphor-react-native';
+import { Glyph } from '../src/components/Glyph.js';
 
 const GAP_MESSAGE: Record<TargetsGap, string> = {
   no_weight: 'metrics.noDataHint',
@@ -505,8 +507,8 @@ export default function MetricsScreen() {
             <Button
               label={
                 bleState === 'scanning'
-                  ? `⏳ ${t('metrics.bleScanning')}`
-                  : `⚖ ${t('metrics.bleScan')}`
+                  ? t('metrics.bleScanning')
+                  : t('metrics.bleScan')
               }
               onPress={scanForScale}
               disabled={bleState === 'scanning'}
@@ -561,7 +563,7 @@ export default function MetricsScreen() {
                     hitSlop={8}
                     style={({ pressed }) => [styles.historyDelete, pressed && styles.pressed]}
                   >
-                    <Text style={styles.historyDeleteGlyph}>✕</Text>
+                    <Glyph icon={X} style={styles.historyDeleteGlyph} />
                   </Pressable>
                 </View>
               </SwipeableRow>

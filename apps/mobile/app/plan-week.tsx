@@ -56,6 +56,7 @@ import {
 } from '../src/db/schedule.js';
 import { useTheme } from '../src/ThemeProvider.js';
 import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../src/theme.js';
+import { CalendarBlank } from 'phosphor-react-native';
 
 interface PlanDayOption {
   id: string;
@@ -202,7 +203,7 @@ export default function PlanWeekScreen() {
       </View>
 
       {options.length === 0 ? (
-        <EmptyState emoji="🗓️" title={t('week.noPlan')} hint={t('week.noPlanHint')} />
+        <EmptyState icon={CalendarBlank} title={t('week.noPlan')} hint={t('week.noPlanHint')} />
       ) : (
         <>
           <Hint>{t('week.hint')}</Hint>
