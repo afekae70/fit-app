@@ -129,7 +129,7 @@ export function StepArt({ icon: IconComponent }: { icon: Icon }) {
           >
             <View style={styles.discShadow}>
               <LinearGradient
-                colors={[colors.accent, colors.info]}
+                colors={[colors.accent, colors.accentPair]}
                 start={{ x: 0.1, y: 0 }}
                 end={{ x: 0.9, y: 1 }}
                 style={styles.disc}
