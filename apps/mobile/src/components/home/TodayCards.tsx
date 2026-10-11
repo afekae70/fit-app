@@ -225,6 +225,53 @@ export function RestDayCard() {
   );
 }
 
+/**
+ * Today was left empty on a calendar that is otherwise in use.
+ *
+ * Says exactly that, and nothing the person did not decide. It used to show the next workout
+ * of the plan's rotation here — a workout on precisely the day they had chosen not to put one
+ * on. It is not the rest card either: nobody chose to rest, so it does not congratulate them
+ * on resting.
+ *
+ * Unlike the rest card it has buttons, because an empty day is unfinished business in a way a
+ * rest day is not: either a workout was meant to go here, or today is being trained off the
+ * plan. Both are one tap away, and neither is assumed.
+ */
+export function UnplannedDayCard({
+  onPlan,
+  onStartEmpty,
+}: {
+  /** Open the calendar, to put a workout on today. */
+  onPlan: () => void;
+  onStartEmpty: () => void;
+}) {
+  const { t } = useTranslation();
+  const { colors } = useTheme();
+  const s = useMemo(() => createStyles(colors), [colors]);
+
+  return (
+    <View style={s.restCard}>
+      <Text style={s.restGlyph}>📅</Text>
+      <Text style={s.restTitle}>{t('home.unplannedTitle')}</Text>
+      <Text style={s.restBody}>{t('home.unplannedBody')}</Text>
+      <Pressable
+        onPress={onPlan}
+        accessibilityRole="button"
+        style={({ pressed }) => [s.doneLink, s.unplannedAction, pressed && { opacity: 0.7 }]}
+      >
+        <Text style={s.doneLinkText}>{t('home.unplannedPlan')}</Text>
+      </Pressable>
+      <Pressable
+        onPress={onStartEmpty}
+        accessibilityRole="button"
+        style={({ pressed }) => [s.doneSecondary, pressed && { opacity: 0.7 }]}
+      >
+        <Text style={s.doneSecondaryText}>{t('home.startEmpty')}</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 /* -------------------------------------------------------------------------- */
 
 export function StreakCard({
@@ -604,6 +651,7 @@ const createStyles = (colors: ColorPalette) =>
     doneSecondary: ViewStyle;
     doneSecondaryText: TextStyle;
     restCard: ViewStyle;
+    unplannedAction: ViewStyle;
     restGlyph: TextStyle;
     restTitle: TextStyle;
     restBody: TextStyle;
@@ -798,6 +846,9 @@ const createStyles = (colors: ColorPalette) =>
       alignItems: 'center',
       gap: 8,
     },
+    // The rest card centres its children, which would shrink a button to its label. This one
+    // spans the card, the way the same button does on the trained-today card.
+    unplannedAction: { alignSelf: 'stretch' },
     restGlyph: { fontSize: 30 },
     restTitle: { color: colors.text, fontSize: 20, fontWeight: '500', textAlign: 'center' },
     restBody: {

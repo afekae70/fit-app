@@ -29,6 +29,7 @@ import {
   GreetingRow,
   NutritionCard,
   RestDayCard,
+  UnplannedDayCard,
   StreakCard,
   TodayWorkoutCard,
   WeekSummaryRow,
@@ -42,6 +43,7 @@ import {
   getTodayWorkout,
   getTrainedToday,
   isScheduledRestDay,
+  isUnplannedDay,
   weekStrip,
   weekSummary,
   type HomeNutrition,
@@ -73,6 +75,11 @@ interface HomeData {
    * working, the other is an invitation to make one.
    */
   restDay: boolean;
+  /**
+   * Today was left empty on a calendar that is otherwise in use — the third reason there is no
+   * workout to show, and the only one of the three that is nobody's decision.
+   */
+  unplanned: boolean;
   trained: TrainedToday | null;
 }
 
@@ -95,7 +102,7 @@ export default function TodayScreen() {
   const load = useCallback(async () => {
     try {
       const db = await getExecutor();
-      const [workout, strip, summary, weeks, nutrition, restDay, trained, streak] =
+      const [workout, strip, summary, weeks, nutrition, restDay, unplanned, trained, streak] =
         await Promise.all([
           getTodayWorkout(db, userId),
           weekStrip(db, userId),
@@ -103,11 +110,21 @@ export default function TodayScreen() {
           monthWeeks(db, userId),
           getHomeNutrition(db, userId),
           isScheduledRestDay(db, userId),
+          isUnplannedDay(db, userId),
           getTrainedToday(db, userId),
           // Only the widget shows this; the strip above says the same thing in a way you can count.
           getWorkoutStreak(db, userId),
         ]);
-      setData({ workout, strip, summary, monthWeeks: weeks, nutrition, restDay, trained });
+      setData({
+        workout,
+        strip,
+        summary,
+        monthWeeks: weeks,
+        nutrition,
+        restDay,
+        unplanned,
+        trained,
+      });
       setFailed(false);
 
       // Leave the home-screen widget something to show. Not awaited: a launcher label must never
@@ -267,6 +284,24 @@ export default function TodayScreen() {
             <>
               <FadeSlideIn index={0}>
                 <RestDayCard />
+              </FadeSlideIn>
+              <FadeSlideIn index={1}>
+                <StreakCard days={data.strip} monthWeeks={data.monthWeeks} />
+              </FadeSlideIn>
+              <FadeSlideIn index={2}>
+                <WeekSummaryRow summary={data.summary} />
+              </FadeSlideIn>
+            </>
+          ) : data.unplanned ? (
+            /* Nothing was put on today. Said as that, with the week's numbers kept — the same
+               shape as a rest day, because like a rest day it is an ordinary day in a plan that
+               exists, not the first screen of someone who has no plan. */
+            <>
+              <FadeSlideIn index={0}>
+                <UnplannedDayCard
+                  onPlan={() => router.push('/(tabs)/plan')}
+                  onStartEmpty={startWorkout}
+                />
               </FadeSlideIn>
               <FadeSlideIn index={1}>
                 <StreakCard days={data.strip} monthWeeks={data.monthWeeks} />

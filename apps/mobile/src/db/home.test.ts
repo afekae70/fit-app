@@ -1,18 +1,27 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
+  CALENDAR_IN_USE_DAYS,
   DEFAULT_WEEKLY_TARGET,
   monthWeeks,
   getHomeNutrition,
   getTodayWorkout,
   getTrainedToday,
   isScheduledRestDay,
+  isUnplannedDay,
   macroShares,
+  usesCalendar,
   weekStrip,
   weekSummary,
 } from './home.js';
 import { saveProfile } from './metrics.js';
-import { setScheduledDay, setScheduledWorkouts, weeksOfMonth } from './schedule.js';
+import {
+  addDays,
+  clearScheduledDay,
+  setScheduledDay,
+  setScheduledWorkouts,
+  weeksOfMonth,
+} from './schedule.js';
 import type { SqlExecutor } from './executor.js';
 import { localDate } from './schedule.js';
 import { createTestExecutor } from './testUtils.js';
@@ -213,16 +222,15 @@ describe('getTodayWorkout — the weekly calendar', () => {
     expect(await isScheduledRestDay(db, USER, NOW)).toBe(true);
   });
 
-  it('leaves the rotation in charge of a date nobody decided', async () => {
+  it('leaves the rotation in charge for someone who has never used the calendar', async () => {
     await seedPlan([
       { name: 'דחיפה A', exercises: [['Barbell Bench Press', 4]] },
       { name: 'משיכה A', exercises: [['Barbell Row', 4]] },
     ]);
-    // Committing a different date must not affect today.
-    await setScheduledDay(db, USER, () => id('sched'), '2026-08-06', null);
 
     expect((await getTodayWorkout(db, USER, NOW))?.dayName).toBe('דחיפה A');
     expect(await isScheduledRestDay(db, USER, NOW)).toBe(false);
+    expect(await isUnplannedDay(db, USER, NOW)).toBe(false);
   });
 
   it('falls back to the rotation when the committed day was deleted from the plan', async () => {
@@ -231,6 +239,104 @@ describe('getTodayWorkout — the weekly calendar', () => {
 
     // Stranded rather than silently blank: showing nothing would read as "you have no plan".
     expect((await getTodayWorkout(db, USER, NOW))?.dayName).toBe('דחיפה A');
+  });
+});
+
+describe('a day left empty on a calendar that is in use', () => {
+  // NOW is 2026-08-05, a Wednesday.
+  const TODAY = '2026-08-05';
+  const sched = () => id('sched');
+
+  /** Two workouts, with push trained on Monday — so the rotation has an opinion about today. */
+  async function planWithHistory() {
+    const [push, pull] = await seedPlan([
+      { name: 'דחיפה A', exercises: [['Barbell Bench Press', 4]] },
+      { name: 'משיכה A', exercises: [['Barbell Row', 4]] },
+    ]);
+    await logWorkout(
+      '2026-08-03T09:00:00',
+      [{ exercise: 'Barbell Bench Press', weight: 80, reps: 5 }],
+      { planDayId: push },
+    );
+    return { push: push!, pull: pull! };
+  }
+
+  it('shows no workout, where the rotation used to put one', async () => {
+    const { pull } = await planWithHistory();
+    // Tomorrow is planned. Today was left alone.
+    await setScheduledDay(db, USER, sched, '2026-08-06', pull);
+
+    expect(await getTodayWorkout(db, USER, NOW)).toBeNull();
+    expect(await isUnplannedDay(db, USER, NOW)).toBe(true);
+    // Not a rest day: nobody chose to rest.
+    expect(await isScheduledRestDay(db, USER, NOW)).toBe(false);
+  });
+
+  it('counts a week that was planned and then not planned again', async () => {
+    const { pull } = await planWithHistory();
+    // Last week was on the calendar; this week nobody sat down to plan.
+    await setScheduledDay(db, USER, sched, '2026-07-28', pull);
+
+    expect(await usesCalendar(db, USER, NOW)).toBe(true);
+    expect(await getTodayWorkout(db, USER, NOW)).toBeNull();
+    expect(await isUnplannedDay(db, USER, NOW)).toBe(true);
+  });
+
+  it('counts a rest day as using the calendar', async () => {
+    await planWithHistory();
+    await setScheduledDay(db, USER, sched, '2026-08-07', null);
+
+    expect(await getTodayWorkout(db, USER, NOW)).toBeNull();
+    expect(await isUnplannedDay(db, USER, NOW)).toBe(true);
+  });
+
+  it('reaches back two weeks and no further', async () => {
+    const { pull } = await planWithHistory();
+    const edge = addDays(TODAY, -CALENDAR_IN_USE_DAYS);
+
+    await setScheduledDay(db, USER, sched, addDays(edge, -1), pull);
+    // Longer ago than that is someone who tried the calendar once. They get the rotation back.
+    expect(await usesCalendar(db, USER, NOW)).toBe(false);
+    expect((await getTodayWorkout(db, USER, NOW))?.dayName).toBe('דחיפה A');
+    expect(await isUnplannedDay(db, USER, NOW)).toBe(false);
+
+    await setScheduledDay(db, USER, sched, edge, pull);
+    expect(await usesCalendar(db, USER, NOW)).toBe(true);
+    expect(await getTodayWorkout(db, USER, NOW)).toBeNull();
+  });
+
+  it('does not count a day that was planned and then cleared', async () => {
+    const { pull } = await planWithHistory();
+    await setScheduledDay(db, USER, sched, '2026-08-06', pull);
+    await clearScheduledDay(db, USER, '2026-08-06');
+
+    expect(await usesCalendar(db, USER, NOW)).toBe(false);
+    expect(await isUnplannedDay(db, USER, NOW)).toBe(false);
+    expect(await getTodayWorkout(db, USER, NOW)).not.toBeNull();
+  });
+
+  it('does not count someone else’s calendar', async () => {
+    const { pull } = await planWithHistory();
+    await setScheduledDay(db, OTHER, sched, '2026-08-06', pull);
+
+    expect(await usesCalendar(db, USER, NOW)).toBe(false);
+    expect(await getTodayWorkout(db, USER, NOW)).not.toBeNull();
+  });
+
+  it('is not what a day with a workout on it is', async () => {
+    const { pull } = await planWithHistory();
+    await setScheduledDay(db, USER, sched, TODAY, pull);
+
+    expect(await isUnplannedDay(db, USER, NOW)).toBe(false);
+    expect((await getTodayWorkout(db, USER, NOW))?.dayName).toBe('משיכה A');
+  });
+
+  it('is not what a rest day is', async () => {
+    await planWithHistory();
+    await setScheduledDay(db, USER, sched, TODAY, null);
+
+    expect(await isUnplannedDay(db, USER, NOW)).toBe(false);
+    expect(await isScheduledRestDay(db, USER, NOW)).toBe(true);
   });
 });
 

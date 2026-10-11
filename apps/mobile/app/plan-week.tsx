@@ -11,8 +11,8 @@
  * half-finished leaves a half-finished week, which is exactly what the user chose.
  *
  * A day is one of three things, and the difference matters: a workout, a rest the user picked,
- * or undecided. Undecided hands the date back to the rotation in home.ts — so clearing a day is
- * not the same as resting it, and the chips say so.
+ * or undecided. Undecided is a day with nothing on it, which the home screen reports as exactly
+ * that — so clearing a day is not the same as resting it, and the chips say so.
  */
 
 import { useFocusEffect } from 'expo-router';

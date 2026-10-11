@@ -407,6 +407,10 @@ export const en = {
     restTitle: 'Rest day',
     restBody:
       'Rest is part of the plan, not a break from it. Muscle is built today, not in the session.',
+    unplannedTitle: 'No workout set for today',
+    unplannedBody:
+      'You did not put a workout on this day in the calendar. Set one now, or just start training.',
+    unplannedPlan: 'Set a workout for today',
     emptyTitle: 'No workouts yet',
     emptyBody:
       'The first workout you log shows up here. Start from a ready-made plan, or just open an empty one.',
@@ -1015,7 +1019,7 @@ export const en = {
     title: 'Monthly calendar',
     prev: 'Previous month',
     next: 'Next month',
-    hint: 'Tap a day to choose its workout. A day left undecided stays with the rotation.',
+    hint: 'Tap a day to choose its workout. A day left undecided stays empty, and the home screen says no workout was set for it.',
     repeat: 'Fill the month from a planned week',
     repeatHint:
       'Takes your fullest planned week and fills every day not yet decided, from today on. Nothing you already set is overwritten.',
@@ -1027,12 +1031,12 @@ export const en = {
     title: 'Plan the week',
     next: 'Next week',
     current: 'This week',
-    hint: 'Pick a workout for each day. A day left undecided stays with the automatic rotation.',
+    hint: 'Pick a workout for each day. A day left undecided stays empty.',
     seeded: 'Pre-filled from last week — change what differs.',
     today: 'Today',
     rest: 'Rest',
     clear: 'Clear',
-    undecided: 'Undecided — follows the rotation',
+    undecided: 'Undecided',
     noPlan: 'No plan yet',
     noPlanHint: 'Create a plan with training days before scheduling them',
     planNext: 'Plan next week',

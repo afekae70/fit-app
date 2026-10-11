@@ -7,8 +7,10 @@
  *
  * This sits alongside the rotation in `home.ts`, not instead of it. The rotation answers "what
  * comes next if you simply train"; the calendar answers "what did you sit down on Saturday and
- * commit to for this week". Where a date has a row, the calendar wins. Where it has none, the
- * rotation still decides — so a user who never opens the week editor sees no change at all.
+ * commit to for this week". Where a date has a row, the calendar wins. Where it has none, it
+ * depends on whether the calendar is in use at all: for someone who plans by it, an empty date
+ * is a day with nothing on it, and the home screen says so; for someone who never opens it, the
+ * rotation still decides, and they see no change at all. See `usesCalendar` in home.ts.
  *
  * Everything here works in LOCAL dates as `YYYY-MM-DD` strings, never `Date` objects crossing a
  * boundary. A workout planned for Sunday is planned for the user's Sunday; storing an instant
@@ -35,7 +37,7 @@ export interface ScheduledDayRow {
 /**
  * What a date holds.
  *
- *   undefined  nothing decided — the rotation owns it
+ *   undefined  nothing decided — an empty day, or the rotation's, for someone with no calendar
  *   null       a rest day the user chose
  *   string[]   one or more workouts, in the order they are done — never empty
  *

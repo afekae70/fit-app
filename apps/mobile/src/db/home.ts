@@ -156,7 +156,8 @@ export interface TodayWorkout {
 
 /**
  * The next workout still to do today, or null when there is none — no active plan, a rest day,
- * or everything scheduled for today already trained.
+ * a day left empty on a calendar that is in use, or everything scheduled for today already
+ * trained.
  *
  * With several workouts on one date this walks them in order and skips the ones trained today,
  * so finishing the morning session turns the card into the evening one. A day counts as done
@@ -191,11 +192,14 @@ export async function getTodayWorkout(
   const planNameOf = new Map(everyDay.map((d) => [d.id, d.plan_name]));
 
   /*
-   * The weekly calendar outranks the rotation, but only where a decision exists.
+   * The calendar outranks the rotation.
    *
    *   a plan day  -> that workout, regardless of where the rotation had drifted to
    *   null        -> a rest day the user chose; today has no workout
-   *   undefined   -> nothing decided, so the rotation below still owns the date
+   *   undefined   -> nothing decided for today. For someone who plans by the calendar that is
+   *                  the answer — today has nothing on it — and the rotation is not asked.
+   *                  Only for someone who does not use the calendar does the rotation below
+   *                  still own the date. See `usesCalendar`.
    *
    * Which is why `scheduledFor` distinguishes null from undefined: folding them together would
    * either refill a rest day or ignore the calendar entirely.
@@ -203,6 +207,7 @@ export async function getTodayWorkout(
   const today = localDate(now);
   const committed = await scheduledFor(db, userId, today);
   if (committed === null) return null;
+  if (committed === undefined && (await usesCalendar(db, userId, now))) return null;
 
   let candidates: PlanDayRow[] = [];
   let missedPosition: number | null = null;
@@ -271,6 +276,58 @@ export async function isScheduledRestDay(
   now = new Date(),
 ): Promise<boolean> {
   return (await scheduledFor(db, userId, localDate(now))) === null;
+}
+
+/**
+ * How far back a decision on the calendar still says "this person plans by the calendar".
+ *
+ * Two weeks: long enough that forgetting to plan one week does not hand the days back to the
+ * rotation, short enough that someone who tried the calendar once and went back to simply
+ * training is not told "nothing planned" every day from then on.
+ */
+export const CALENDAR_IN_USE_DAYS = 14;
+
+/**
+ * Whether the calendar is how this person plans their training.
+ *
+ * True when any date from two weeks back onward — the future included — holds a decision, a
+ * workout or a rest.
+ *
+ * It exists because an empty date means two different things. For someone who puts workouts
+ * on days, a day with nothing on it is a day they put nothing on, and offering them the next
+ * workout of the rotation there is the app overruling the plan they made: the card showed a
+ * workout on exactly the days they had chosen not to schedule one. For someone who has never
+ * opened the calendar every date is empty, and the rotation is the only thing that knows what
+ * comes next — taking it away would leave their home screen permanently blank.
+ */
+export async function usesCalendar(
+  db: SqlExecutor,
+  userId: string,
+  now = new Date(),
+): Promise<boolean> {
+  const row = await db.get<{ found: number }>(
+    `SELECT 1 AS found FROM scheduled_days
+      WHERE user_id = ? AND deleted_at IS NULL AND scheduled_on >= ?
+      LIMIT 1`,
+    [userId, addDays(localDate(now), -CALENDAR_IN_USE_DAYS)],
+  );
+  return row !== null && row !== undefined;
+}
+
+/**
+ * Whether today is a day this person left empty on a calendar they otherwise use.
+ *
+ * The third answer beside "a workout" and "a rest day", and the screen says it in its own
+ * words: nothing was planned for today. Not a rest day — nobody chose to rest — and not the
+ * invitation to build a plan, which they already have.
+ */
+export async function isUnplannedDay(
+  db: SqlExecutor,
+  userId: string,
+  now = new Date(),
+): Promise<boolean> {
+  if ((await scheduledFor(db, userId, localDate(now))) !== undefined) return false;
+  return usesCalendar(db, userId, now);
 }
 
 const dayLabel = (day: { day_index: number; name: string | null }): string =>
