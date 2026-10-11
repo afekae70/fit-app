@@ -514,10 +514,10 @@ const createStyles = (colors: ColorPalette) =>
       gap: 10,
     },
     emptyGlyph: { fontSize: 34, color: colors.accent },
-    emptyTitle: { color: colors.text, fontSize: 17, fontWeight: '500', textAlign: 'center' },
+    emptyTitle: { color: colors.text, fontSize: 18, fontWeight: '500', textAlign: 'center' },
     emptyBody: {
       color: colors.textMuted,
-      fontSize: 13,
+      fontSize: 14,
       lineHeight: 21,
       textAlign: 'center',
       maxWidth: 320,
@@ -532,7 +532,7 @@ const createStyles = (colors: ColorPalette) =>
       alignItems: 'center',
       justifyContent: 'center',
     },
-    primaryLabel: { color: colors.accent, fontSize: 17, fontWeight: '500' },
+    primaryLabel: { color: colors.accent, fontSize: 16, fontWeight: '500' },
     secondaryButton: {
       minHeight: 48,
       borderRadius: radius.sm,
@@ -541,7 +541,7 @@ const createStyles = (colors: ColorPalette) =>
       alignItems: 'center',
       justifyContent: 'center',
     },
-    secondaryLabel: { color: colors.text, fontSize: 15 },
+    secondaryLabel: { color: colors.text, fontSize: 16 },
     pressed: { opacity: 0.7 },
 
     errorPanel: {
@@ -553,7 +553,7 @@ const createStyles = (colors: ColorPalette) =>
       gap: 10,
     },
     errorTitle: { color: colors.danger, fontSize: 16, fontWeight: '500', textAlign: 'auto' },
-    errorBody: { color: colors.textMuted, fontSize: 13, lineHeight: 21, textAlign: 'auto' },
+    errorBody: { color: colors.textMuted, fontSize: 14, lineHeight: 21, textAlign: 'auto' },
     retryButton: {
       alignSelf: 'flex-start',
       minHeight: 44,

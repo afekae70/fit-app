@@ -337,7 +337,7 @@ const createStyles = (colors: ColorPalette) =>
       backgroundColor: colors.accent,
     },
     primaryRunning: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.accent },
-    primaryText: { color: colors.bg, fontSize: 15, fontWeight: '700' },
+    primaryText: { color: colors.bg, fontSize: 16, fontWeight: '700' },
     primaryTextRunning: { color: colors.accent },
     finish: {
       flex: 1,
@@ -350,7 +350,7 @@ const createStyles = (colors: ColorPalette) =>
       backgroundColor: colors.surface,
     },
     finishDone: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
-    finishText: { color: colors.textSecondary, fontSize: 15, fontWeight: '600' },
+    finishText: { color: colors.textSecondary, fontSize: 16, fontWeight: '600' },
     finishTextDone: { color: colors.accent },
 
     distanceRow: { alignSelf: 'stretch', gap: 6 },
@@ -366,7 +366,7 @@ const createStyles = (colors: ColorPalette) =>
       overflow: 'hidden',
     },
     step: { width: 44, height: 48, alignItems: 'center', justifyContent: 'center' },
-    stepGlyph: { color: colors.textSecondary, fontSize: 20 },
+    stepGlyph: { color: colors.textSecondary, fontSize: 22 },
     input: {
       flex: 1,
       color: colors.text,

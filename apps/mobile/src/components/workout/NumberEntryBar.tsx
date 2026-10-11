@@ -276,7 +276,7 @@ const createStyles = (colors: ColorPalette) =>
       borderColor: colors.border,
       ...shadow(colors.shadow).floating,
     },
-    title: { color: colors.textMuted, fontSize: 13, textAlign: 'auto', marginBottom: 4 },
+    title: { color: colors.textMuted, fontSize: 14, textAlign: 'auto', marginBottom: 4 },
     row: { flexDirection: 'row', alignItems: 'center', gap: 10 },
     // Large, because this is read from a bench with the phone at arm's length. Left to right
     // whatever the language: a number is written the same way in Hebrew.
@@ -294,7 +294,7 @@ const createStyles = (colors: ColorPalette) =>
       textAlign: 'center',
       writingDirection: 'ltr',
     },
-    unit: { color: colors.textSecondary, fontSize: 15, fontWeight: '600', minWidth: 28 },
+    unit: { color: colors.textSecondary, fontSize: 16, fontWeight: '600', minWidth: 28 },
     done: {
       width: 52,
       height: 52,

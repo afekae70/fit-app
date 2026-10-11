@@ -259,9 +259,9 @@ const createStyles = (colors: ColorPalette) =>
       alignItems: 'center',
       justifyContent: 'center',
     },
-    avatarBadgeGlyph: { fontSize: 15, color: colors.textSecondary },
-    name: { color: colors.text, fontSize: 20, fontWeight: '500' },
-    subtitle: { color: colors.textMuted, fontSize: 13 },
+    avatarBadgeGlyph: { fontSize: 16, color: colors.textSecondary },
+    name: { color: colors.text, fontSize: 22, fontWeight: '500' },
+    subtitle: { color: colors.textMuted, fontSize: 14 },
 
     statRow: { flexDirection: 'row', gap: 10 },
     statCard: {
@@ -296,6 +296,6 @@ const createStyles = (colors: ColorPalette) =>
       paddingHorizontal: 16,
     },
     rowPressed: { backgroundColor: colors.surfaceRaised },
-    rowLabel: { color: colors.text, fontSize: 15, textAlign: 'auto' },
+    rowLabel: { color: colors.text, fontSize: 16, textAlign: 'auto' },
     rowDivider: { height: 1, backgroundColor: colors.borderSubtle },
   });

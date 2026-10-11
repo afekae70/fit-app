@@ -254,8 +254,8 @@ const createStyles = (colors: ColorPalette) =>
     header: { flexDirection: 'row', alignItems: 'center', gap: 14 },
     visual: { width: 110 },
     headerText: { flex: 1, gap: 4 },
-    name: { color: colors.text, fontSize: 20, fontWeight: '700', textAlign: 'auto' },
-    subtitle: { color: colors.textMuted, fontSize: 13, textAlign: 'auto' },
+    name: { color: colors.text, fontSize: 22, fontWeight: '700', textAlign: 'auto' },
+    subtitle: { color: colors.textMuted, fontSize: 14, textAlign: 'auto' },
 
     tiles: { flexDirection: 'row', gap: 10 },
     tile: {
@@ -270,7 +270,7 @@ const createStyles = (colors: ColorPalette) =>
     tileValueRow: { flexDirection: 'row', alignItems: 'baseline', gap: 3 },
     tileValue: {
       color: colors.text,
-      fontSize: 20,
+      fontSize: 22,
       fontWeight: '700',
       fontVariant: ['tabular-nums'],
     },
@@ -305,7 +305,7 @@ const createStyles = (colors: ColorPalette) =>
       ...shadow(colors.shadow).card,
     },
     rowMain: { flex: 1, gap: 3 },
-    rowDate: { color: colors.text, fontSize: 15, fontWeight: '500', textAlign: 'auto' },
+    rowDate: { color: colors.text, fontSize: 16, fontWeight: '500', textAlign: 'auto' },
     rowMeta: { color: colors.textMuted, fontSize: 12, textAlign: 'auto' },
     rowVolume: { color: colors.textFaint, fontSize: 12, fontVariant: ['tabular-nums'] },
     pressed: { opacity: 0.7 },

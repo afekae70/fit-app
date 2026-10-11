@@ -248,7 +248,7 @@ const createStyles = (colors: ColorPalette) =>
     },
     ringValue: {
       color: colors.text,
-      fontSize: 17,
+      fontSize: 18,
       fontWeight: '700',
       fontVariant: ['tabular-nums'],
     },

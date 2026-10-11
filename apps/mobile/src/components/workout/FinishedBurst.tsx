@@ -115,7 +115,7 @@ const createStyles = (colors: ColorPalette) =>
     line: {
       marginTop: 18,
       color: colors.text,
-      fontSize: 20,
+      fontSize: 22,
       fontWeight: '700',
       textAlign: 'center',
       paddingHorizontal: 32,

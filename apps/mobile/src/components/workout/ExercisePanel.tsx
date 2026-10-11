@@ -339,7 +339,7 @@ export function ExercisePanel({
               hitSlop={6}
               style={({ pressed }) => [s.options, pressed && s.pressed]}
             >
-              <Glyph icon={DotsThree} style={s.optionsGlyph} scale={1.2} />
+              <Glyph icon={DotsThree} style={s.optionsGlyph} scale={1.1} />
             </Pressable>
           ) : null}
 
@@ -755,11 +755,11 @@ const createStyles = (colors: ColorPalette) =>
     // A back-off is the one suggestion that is not an advance, and it should not wear the same
     // colour as one.
     adviceDeload: { backgroundColor: colors.dangerSoft, borderColor: colors.danger },
-    adviceGlyph: { color: colors.accent, fontSize: 13, fontWeight: '700' },
+    adviceGlyph: { color: colors.accent, fontSize: 14, fontWeight: '700' },
     adviceGlyphDeload: { color: colors.danger },
     adviceNumbers: {
       color: colors.accent,
-      fontSize: 13,
+      fontSize: 14,
       fontWeight: '700',
       fontVariant: ['tabular-nums'],
     },
@@ -771,7 +771,7 @@ const createStyles = (colors: ColorPalette) =>
       flexShrink: 1,
     },
     options: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-    optionsGlyph: { color: colors.textSecondary, fontSize: 20, lineHeight: 22 },
+    optionsGlyph: { color: colors.textSecondary, fontSize: 22, lineHeight: 22 },
     // A full 44pt target. The grip is small, but the area that answers to a thumb is not —
     // a handle you have to aim at is a handle that loses the drag before it starts.
     handle: {
@@ -801,12 +801,12 @@ const createStyles = (colors: ColorPalette) =>
     titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
     bannerName: {
       color: colors.text,
-      fontSize: 20,
+      fontSize: 22,
       fontWeight: '700',
       textAlign: 'auto',
       flexShrink: 1,
     },
-    subtitle: { color: colors.textMuted, fontSize: 13, textAlign: 'auto' },
+    subtitle: { color: colors.textMuted, fontSize: 14, textAlign: 'auto' },
     // Quieter than the advice strip below it: this is read once, that is acted on.
     note: {
       marginTop: 6,
@@ -815,7 +815,7 @@ const createStyles = (colors: ColorPalette) =>
       borderRadius: radius.sm,
       backgroundColor: colors.surfaceRaised,
     },
-    noteText: { color: colors.textSecondary, fontSize: 13, lineHeight: 18, textAlign: 'auto' },
+    noteText: { color: colors.textSecondary, fontSize: 14, lineHeight: 20, textAlign: 'auto' },
     nameTap: { flexShrink: 1 },
     nameHint: { color: colors.accent, fontSize: 18 },
     chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
@@ -828,7 +828,7 @@ const createStyles = (colors: ColorPalette) =>
       borderWidth: 1,
       borderColor: colors.borderSubtle,
     },
-    chipText: { color: colors.textSecondary, fontSize: 13, fontWeight: '500' },
+    chipText: { color: colors.textSecondary, fontSize: 14, fontWeight: '500' },
 
     // The sets sit in a panel of their own, a shade off the card — the part of the screen that
     // is filled in, set apart from the part that is read.
@@ -861,7 +861,7 @@ const createStyles = (colors: ColorPalette) =>
     setButtonText: { color: colors.textSecondary, fontSize: 14, fontWeight: '600' },
     setButtonAddText: { color: colors.accent },
     warmupLink: { alignSelf: 'flex-start', paddingVertical: 4 },
-    warmupLinkText: { color: colors.textSecondary, fontSize: 13 },
+    warmupLinkText: { color: colors.textSecondary, fontSize: 14 },
     pressed: { opacity: 0.6 },
     volume: {
       color: colors.textFaint,

@@ -553,7 +553,7 @@ const createStyles = (colors: ColorPalette) =>
     },
     // The one place a fill is allowed: it is the success state the accent is reserved for.
     checkDone: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
-    checkGlyph: { color: colors.textFaint, fontSize: 17 },
+    checkGlyph: { color: colors.textFaint, fontSize: 18 },
     checkGlyphDone: { color: colors.accent },
   });
 

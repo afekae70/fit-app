@@ -690,7 +690,7 @@ const createStyles = (colors: ColorPalette) =>
     /* greeting ------------------------------------------------------------ */
     greetingRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
     greetingText: { flex: 1, gap: 1 },
-    greetingName: { color: colors.text, fontSize: 17, fontWeight: '700', textAlign: 'auto' },
+    greetingName: { color: colors.text, fontSize: 18, fontWeight: '700', textAlign: 'auto' },
     avatar: {
       width: 46,
       height: 46,
@@ -725,7 +725,7 @@ const createStyles = (colors: ColorPalette) =>
     statValueRow: { flexDirection: 'row', alignItems: 'baseline', gap: 1 },
     statSun: { backgroundColor: colors.tileSun },
     statCoral: { backgroundColor: colors.tileCoral },
-    greeting: { color: colors.textMuted, fontSize: 13, lineHeight: 16, textAlign: 'auto' },
+    greeting: { color: colors.textMuted, fontSize: 14, lineHeight: 18, textAlign: 'auto' },
     date: { color: colors.text, fontSize: 24, fontWeight: '500', letterSpacing: -0.5, textAlign: 'auto' },
 
 
@@ -755,7 +755,7 @@ const createStyles = (colors: ColorPalette) =>
       letterSpacing: -0.5,
       textAlign: 'auto',
     },
-    workoutMeta: { color: colors.textMuted, fontSize: 13, lineHeight: 20, textAlign: 'auto' },
+    workoutMeta: { color: colors.textMuted, fontSize: 14, lineHeight: 20, textAlign: 'auto' },
     accentBar: { width: 6, borderRadius: 3 },
 
     missed: { color: colors.textFaint, fontSize: 12, textAlign: 'auto' },
@@ -785,7 +785,7 @@ const createStyles = (colors: ColorPalette) =>
     // the accent flooding, which is the one thing the palette is not allowed to do.
     ctaPressed: { opacity: 0.92 },
     ctaGlyph: { color: colors.bg, fontSize: 14 },
-    ctaLabel: { color: colors.bg, fontSize: 17, fontWeight: '700' },
+    ctaLabel: { color: colors.bg, fontSize: 16, fontWeight: '700' },
 
     /* streak -------------------------------------------------------------- */
     card: {
@@ -812,17 +812,17 @@ const createStyles = (colors: ColorPalette) =>
     },
     doneHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
     doneMark: { color: colors.accent, fontSize: 18, fontWeight: '800' },
-    doneTitle: { color: colors.accent, fontSize: 13, fontWeight: '700', textAlign: 'auto' },
+    doneTitle: { color: colors.accent, fontSize: 14, fontWeight: '700', textAlign: 'auto' },
     doneName: {
       color: colors.text,
-      fontSize: 20,
+      fontSize: 22,
       fontWeight: '700',
       marginTop: 6,
       textAlign: 'auto',
     },
     doneStats: {
       color: colors.textMuted,
-      fontSize: 13,
+      fontSize: 14,
       marginTop: 4,
       textAlign: 'auto',
       fontVariant: ['tabular-nums'],
@@ -836,9 +836,9 @@ const createStyles = (colors: ColorPalette) =>
       borderColor: colors.accentBorder,
       alignItems: 'center',
     },
-    doneLinkText: { color: colors.accent, fontSize: 15, fontWeight: '700' },
+    doneLinkText: { color: colors.accent, fontSize: 16, fontWeight: '700' },
     doneSecondary: { marginTop: 8, paddingVertical: 8, alignItems: 'center' },
-    doneSecondaryText: { color: colors.textFaint, fontSize: 13 },
+    doneSecondaryText: { color: colors.textFaint, fontSize: 14 },
     restCard: {
       backgroundColor: colors.surface,
       borderRadius: radius.xl,
@@ -852,10 +852,10 @@ const createStyles = (colors: ColorPalette) =>
     // spans the card, the way the same button does on the trained-today card.
     unplannedAction: { alignSelf: 'stretch' },
     restGlyph: { fontSize: 34, color: colors.accent },
-    restTitle: { color: colors.text, fontSize: 20, fontWeight: '500', textAlign: 'center' },
+    restTitle: { color: colors.text, fontSize: 22, fontWeight: '500', textAlign: 'center' },
     restBody: {
       color: colors.textMuted,
-      fontSize: 13,
+      fontSize: 14,
       lineHeight: 20,
       textAlign: 'center',
       maxWidth: 300,
@@ -863,8 +863,8 @@ const createStyles = (colors: ColorPalette) =>
     streakHeader: { flexDirection: 'row', alignItems: 'center', gap: 14 },
     streakHeaderText: { flex: 1, gap: 4 },
     ringValue: { color: colors.text, fontSize: 22, fontWeight: '700', fontVariant: ['tabular-nums'] },
-    ringTarget: { color: colors.textFaint, fontSize: 13, fontWeight: '500' },
-    streakTitle: { color: colors.text, fontSize: 15, fontWeight: '500', textAlign: 'auto' },
+    ringTarget: { color: colors.textFaint, fontSize: 14, fontWeight: '500' },
+    streakTitle: { color: colors.text, fontSize: 16, fontWeight: '500', textAlign: 'auto' },
     streakCount: { color: colors.textFaint, fontSize: 12, textAlign: 'auto' },
 
     strip: { flexDirection: 'row', gap: 6 },
@@ -917,14 +917,14 @@ const createStyles = (colors: ColorPalette) =>
     },
     bigUnit: { color: colors.textFaint, fontSize: 12, fontWeight: '400' },
     trendRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 },
-    trendLabel: { color: colors.textMuted, fontSize: 13, textAlign: 'auto' },
-    trendRate: { color: colors.accent, fontSize: 13, textAlign: 'auto', fontVariant: ['tabular-nums'] },
+    trendLabel: { color: colors.textMuted, fontSize: 12, textAlign: 'auto' },
+    trendRate: { color: colors.accent, fontSize: 14, textAlign: 'auto', fontVariant: ['tabular-nums'] },
     trendHint: { color: colors.textFaint, fontSize: 11, flexShrink: 1, textAlign: 'auto' },
     clamped: { color: colors.warning, fontSize: 12, lineHeight: 18, textAlign: 'auto' },
 
     macroBlock: { gap: 6 },
     macroHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 },
-    macroLabel: { color: colors.textMuted, fontSize: 13, textAlign: 'auto' },
+    macroLabel: { color: colors.textMuted, fontSize: 14, textAlign: 'auto' },
     macroValue: { color: colors.textFaint, fontSize: 12, fontVariant: ['tabular-nums'] },
     macroTrack: {
       height: 6,

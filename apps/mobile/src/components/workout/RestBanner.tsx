@@ -349,7 +349,7 @@ const createStyles = (colors: ColorPalette) =>
     ringLabel: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
     ringText: {
       color: colors.accent,
-      fontSize: 13,
+      fontSize: 12,
       fontWeight: '500',
       // Tabular, or the digits jostle the centre of the ring every second.
       fontVariant: ['tabular-nums'],
@@ -371,5 +371,5 @@ const createStyles = (colors: ColorPalette) =>
       borderColor: colors.borderStrong,
     },
     pressed: { opacity: 0.6 },
-    actionText: { color: colors.textSecondary, fontSize: 13, fontWeight: '500' },
+    actionText: { color: colors.textSecondary, fontSize: 14, fontWeight: '500' },
   });

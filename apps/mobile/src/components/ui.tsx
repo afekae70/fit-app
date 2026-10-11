@@ -700,7 +700,7 @@ const createStyles = (colors: ColorPalette) =>
      */
     sectionTitle: {
       color: colors.text,
-      fontSize: 15,
+      fontSize: 16,
       fontWeight: fontWeight.medium,
       marginBottom: spacing.sm,
       textAlign: 'auto',
@@ -789,7 +789,7 @@ const createStyles = (colors: ColorPalette) =>
      * thing this palette is not allowed to do.
      */
     buttonDisabled: { opacity: 0.45 },
-    buttonLabel: { fontSize: 17, fontWeight: fontWeight.medium },
+    buttonLabel: { fontSize: 16, fontWeight: fontWeight.medium },
     buttonLabelPrimary: { color: colors.bg, fontWeight: fontWeight.bold },
     buttonLabelSecondary: { color: colors.text },
     buttonLabelGhost: { color: colors.textSecondary },

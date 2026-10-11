@@ -169,7 +169,7 @@ const createStyles = (colors: ColorPalette) =>
       gap: spacing.xl,
     },
     actions: { alignSelf: 'stretch', gap: spacing.sm, maxWidth: 360, width: '100%' },
-    failed: { color: colors.warning, fontSize: 13, textAlign: 'center' },
+    failed: { color: colors.warning, fontSize: 14, textAlign: 'center' },
     secondary: {
       minHeight: 50,
       borderRadius: radius.lg,
@@ -179,7 +179,7 @@ const createStyles = (colors: ColorPalette) =>
       borderWidth: 1,
       borderColor: colors.border,
     },
-    secondaryText: { color: colors.text, fontSize: 15, fontWeight: '600' },
+    secondaryText: { color: colors.text, fontSize: 16, fontWeight: '600' },
     closeButton: {
       alignSelf: 'center',
       paddingVertical: spacing.sm,
