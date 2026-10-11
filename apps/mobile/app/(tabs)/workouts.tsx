@@ -28,7 +28,6 @@ import {
   Keyboard,
   PanResponder,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   useWindowDimensions,
@@ -36,6 +35,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Pressable } from '../../src/components/Pressable.js';
 import { Text, TextInput } from '../../src/components/Text.js';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 

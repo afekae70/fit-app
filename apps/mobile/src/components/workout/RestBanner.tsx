@@ -40,12 +40,12 @@ import {
   Animated,
   Easing,
   I18nManager,
-  Pressable,
   StyleSheet,
   View,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Pressable } from '../Pressable.js';
 import { Text } from '../Text.js';
 import Svg, { Circle } from 'react-native-svg';
 

@@ -18,7 +18,6 @@ import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -26,6 +25,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Pressable } from '../src/components/Pressable.js';
 import { Text, TextInput } from '../src/components/Text.js';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 

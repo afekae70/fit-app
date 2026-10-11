@@ -24,7 +24,6 @@ import { useTranslation } from 'react-i18next';
 import {
   Animated,
   Easing,
-  Pressable,
   StyleSheet,
   Switch,
   View,
@@ -32,6 +31,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Pressable } from '../Pressable.js';
 import { Text } from '../Text.js';
 import { CaretLeft, CaretRight, type Icon } from 'phosphor-react-native';
 

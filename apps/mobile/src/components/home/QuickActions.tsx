@@ -12,7 +12,8 @@
  */
 
 import { useMemo, useRef } from 'react';
-import { Animated, Pressable, StyleSheet, View, type TextStyle, type ViewStyle } from 'react-native';
+import { Animated, StyleSheet, View, type TextStyle, type ViewStyle } from 'react-native';
+import { Pressable } from '../Pressable.js';
 import { Text } from '../Text.js';
 import type { Icon } from 'phosphor-react-native';
 

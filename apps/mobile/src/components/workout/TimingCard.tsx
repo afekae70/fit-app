@@ -12,13 +12,13 @@
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Pressable,
   StyleSheet,
   Switch,
   View,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Pressable } from '../Pressable.js';
 import { Text } from '../Text.js';
 
 import type { PlanDayTiming } from '../../db/plans.js';

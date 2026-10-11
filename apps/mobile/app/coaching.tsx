@@ -29,7 +29,6 @@ import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
-  Pressable,
   ScrollView,
   Share,
   StyleSheet,
@@ -37,6 +36,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Pressable } from '../src/components/Pressable.js';
 import { Text } from '../src/components/Text.js';
 import {
   EnvelopeSimple,

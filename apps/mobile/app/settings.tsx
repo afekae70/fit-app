@@ -23,7 +23,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Image,
-  Pressable,
   ScrollView,
   StyleSheet,
   View,
@@ -31,6 +30,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Pressable } from '../src/components/Pressable.js';
 import { Text } from '../src/components/Text.js';
 import { LinearGradient } from 'expo-linear-gradient';
 import {

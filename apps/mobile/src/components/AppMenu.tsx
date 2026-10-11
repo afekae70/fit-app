@@ -18,7 +18,8 @@
 import { router, usePathname, type Href } from 'expo-router';
 import { List } from 'phosphor-react-native';
 import { useTranslation } from 'react-i18next';
-import { Pressable, StyleSheet, type ViewStyle } from 'react-native';
+import { StyleSheet, type ViewStyle } from 'react-native';
+import { Pressable } from './Pressable.js';
 
 import { useAuth } from '../auth/AuthProvider.js';
 import { useSignOut } from '../auth/useSignOut.js';

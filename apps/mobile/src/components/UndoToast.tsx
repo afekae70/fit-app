@@ -15,11 +15,11 @@ import { useTranslation } from 'react-i18next';
 import {
   Animated,
   Easing,
-  Pressable,
   StyleSheet,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Pressable } from './Pressable.js';
 import { Text } from './Text.js';
 
 import { useTheme } from '../ThemeProvider.js';

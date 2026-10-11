@@ -14,7 +14,8 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { Pressable } from '../../src/components/Pressable.js';
 import { Text } from '../../src/components/Text.js';
 
 import { useAuth } from '../../src/auth/AuthProvider.js';

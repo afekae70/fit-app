@@ -13,7 +13,8 @@
 
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, StyleSheet, View, type TextStyle, type ViewStyle } from 'react-native';
+import { StyleSheet, View, type TextStyle, type ViewStyle } from 'react-native';
+import { Pressable } from '../components/Pressable.js';
 import { Text } from '../components/Text.js';
 import { CloudWarning } from 'phosphor-react-native';
 

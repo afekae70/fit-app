@@ -13,7 +13,8 @@
 
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, ScrollView, Share, StyleSheet, View } from 'react-native';
+import { ScrollView, Share, StyleSheet, View } from 'react-native';
+import { Pressable } from '../src/components/Pressable.js';
 import { Text } from '../src/components/Text.js';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -464,7 +465,7 @@ const createStyles = (colors: ColorPalette) =>
       alignItems: 'center',
       justifyContent: 'center',
     },
-    buttonPressed: { transform: [{ scale: 0.99 }] },
+    buttonPressed: { opacity: 0.92 },
     buttonText: { color: colors.accent, fontSize: fontSize.md, fontWeight: '500' },
 
     copyButton: {

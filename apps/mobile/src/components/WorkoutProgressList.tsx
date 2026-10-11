@@ -13,7 +13,8 @@
 import { router } from 'expo-router';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, StyleSheet, View, type TextStyle, type ViewStyle } from 'react-native';
+import { StyleSheet, View, type TextStyle, type ViewStyle } from 'react-native';
+import { Pressable } from './Pressable.js';
 import { Text } from './Text.js';
 
 import { latestComparison, type Metric, type WorkoutLine } from '../progress/workoutProgress.js';

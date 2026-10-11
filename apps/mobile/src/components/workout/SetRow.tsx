@@ -44,12 +44,12 @@ import { useTranslation } from 'react-i18next';
 import {
   Animated,
   Easing,
-  Pressable,
   StyleSheet,
   View,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Pressable } from '../Pressable.js';
 import { Text } from '../Text.js';
 
 import { stepReps, stepWeight } from '../../workout/derived.js';

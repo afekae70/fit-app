@@ -33,7 +33,6 @@ import {
   Easing,
   Image,
   Keyboard,
-  Pressable,
   ScrollView,
   StyleSheet,
   View,
@@ -41,6 +40,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Pressable } from '../components/Pressable.js';
 import { Text } from '../components/Text.js';
 import { EnvelopeSimple, Eye, EyeSlash, LockSimple } from 'phosphor-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';

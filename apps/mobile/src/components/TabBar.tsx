@@ -37,12 +37,12 @@ import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useEffect, useMemo, useRef } from 'react';
 import {
   Animated,
-  Pressable,
   StyleSheet,
   View,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Pressable } from './Pressable.js';
 import { Text } from './Text.js';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';

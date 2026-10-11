@@ -17,7 +17,6 @@ import { useTranslation } from 'react-i18next';
 import { Camera, CaretLeft, CaretRight } from 'phosphor-react-native';
 import {
   Image,
-  Pressable,
   ScrollView,
   StyleSheet,
   View,
@@ -29,6 +28,7 @@ import { Text } from '../src/components/Text.js';
 import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { I18nManager } from 'react-native';
+import { Pressable } from '../src/components/Pressable.js';
 
 import { useAuth } from '../src/auth/AuthProvider.js';
 import { useAccountRole } from '../src/coaching/useAccountRole.js';

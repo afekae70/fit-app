@@ -34,12 +34,12 @@ import { useTranslation } from 'react-i18next';
 import {
   Animated,
   Easing,
-  Pressable,
   StyleSheet,
   View,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Pressable } from '../components/Pressable.js';
 import { Text } from '../components/Text.js';
 import { Fingerprint, ScanSmiley } from 'phosphor-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';

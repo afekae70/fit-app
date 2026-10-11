@@ -19,13 +19,13 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Pressable,
   ScrollView,
   StyleSheet,
   View,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Pressable } from '../src/components/Pressable.js';
 import { Text } from '../src/components/Text.js';
 import { MagnifyingGlass } from 'phosphor-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';

@@ -47,7 +47,6 @@ import { useTranslation } from 'react-i18next';
 import {
   Keyboard,
   Modal,
-  Pressable,
   ScrollView,
   StyleSheet,
   useWindowDimensions,
@@ -55,6 +54,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Pressable } from './Pressable.js';
 import { Text, TextInput } from './Text.js';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 

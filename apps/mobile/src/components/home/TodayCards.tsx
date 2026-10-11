@@ -18,13 +18,13 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Pressable,
   StyleSheet,
   View,
   type TextStyle,
   type ImageStyle,
   type ViewStyle,
 } from 'react-native';
+import { Pressable } from '../Pressable.js';
 import { Text } from '../Text.js';
 
 import {
@@ -783,7 +783,7 @@ const createStyles = (colors: ColorPalette) =>
     },
     // The whole button shrinks a hair rather than changing colour: the press is confirmed without
     // the accent flooding, which is the one thing the palette is not allowed to do.
-    ctaPressed: { transform: [{ scale: 0.985 }] },
+    ctaPressed: { opacity: 0.92 },
     ctaGlyph: { color: colors.bg, fontSize: 14 },
     ctaLabel: { color: colors.bg, fontSize: 17, fontWeight: '700' },
 
@@ -798,7 +798,7 @@ const createStyles = (colors: ColorPalette) =>
     },
     // The same restraint as the workout CTA: a press is confirmed by a hair of scale, never by
     // the accent flooding a card that is otherwise quiet.
-    cardPressed: { transform: [{ scale: 0.99 }] },
+    cardPressed: { opacity: 0.92 },
 
     /* rest day ------------------------------------------------------------ */
     // Quieter than the workout card on purpose: no accent border, no gradient, nothing that

@@ -14,12 +14,12 @@ import { useMemo, useRef } from 'react';
 import {
   ActivityIndicator,
   Animated,
-  Pressable,
   StyleSheet,
   type StyleProp,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Pressable } from './Pressable.js';
 import { Text } from './Text.js';
 import { LinearGradient } from 'expo-linear-gradient';
 

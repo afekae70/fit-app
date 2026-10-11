@@ -36,7 +36,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Keyboard,
-  Pressable,
   ScrollView,
   StyleSheet,
   View,
@@ -46,6 +45,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Pressable } from '../components/Pressable.js';
 import { Text, TextInput } from '../components/Text.js';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Minus, PencilSimple, Plus } from 'phosphor-react-native';

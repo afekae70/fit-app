@@ -22,13 +22,13 @@ import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Modal,
-  Pressable,
   ScrollView,
   StyleSheet,
   View,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Pressable } from '../Pressable.js';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { hapticLight } from '../../haptics.js';

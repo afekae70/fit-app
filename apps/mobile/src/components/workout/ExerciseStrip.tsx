@@ -21,7 +21,6 @@ import { useTranslation } from 'react-i18next';
 import {
   Animated,
   PanResponder,
-  Pressable,
   ScrollView,
   StyleSheet,
   View,
@@ -29,6 +28,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Pressable } from '../Pressable.js';
 import { Text } from '../Text.js';
 
 import { hapticLight, hapticSuccess } from '../../haptics.js';

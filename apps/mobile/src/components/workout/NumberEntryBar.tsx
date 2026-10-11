@@ -48,13 +48,13 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Keyboard,
-  Pressable,
   StyleSheet,
   View,
   type LayoutChangeEvent,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Pressable } from '../Pressable.js';
 import { Text, TextInput } from '../Text.js';
 
 import { hapticLight } from '../../haptics.js';

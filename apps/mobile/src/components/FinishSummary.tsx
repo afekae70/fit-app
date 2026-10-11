@@ -25,12 +25,12 @@ import {
   Animated,
   Easing,
   Modal,
-  Pressable,
   StyleSheet,
   View,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Pressable } from './Pressable.js';
 import { Text, TextInput } from './Text.js';
 
 import { SESSION_EFFORT_CHOICES, sessionLoad } from '@fit/shared/calculations';

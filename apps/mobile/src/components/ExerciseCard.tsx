@@ -16,13 +16,13 @@ import { useTranslation } from 'react-i18next';
 import {
   Animated,
   Easing,
-  Pressable,
   StyleSheet,
   View,
   type StyleProp,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Pressable } from './Pressable.js';
 import { Text, TextInput } from './Text.js';
 
 import type { SetRow } from '../db/workouts.js';

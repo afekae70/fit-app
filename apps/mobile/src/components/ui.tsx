@@ -16,13 +16,13 @@
 import { useEffect, useMemo, useRef, type ReactNode } from 'react';
 import {
   Animated,
-  Pressable,
   StyleSheet,
   View,
   type StyleProp,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Pressable } from './Pressable.js';
 import type { Icon } from 'phosphor-react-native';
 
 import { AnimatedText, Text, TextInput } from './Text.js';

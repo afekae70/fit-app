@@ -14,7 +14,6 @@
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -22,6 +21,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { Pressable } from './Pressable.js';
 import { Text } from './Text.js';
 
 import type { SessionSummaryRow } from '../db/workouts.js';
