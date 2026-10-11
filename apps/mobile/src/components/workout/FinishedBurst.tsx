@@ -1,6 +1,6 @@
 /**
- * The whole of finishing a workout: a trophy in the middle of the screen, and then the screen
- * moves on.
+ * The whole of finishing a workout: a trophy in the middle of the screen, confetti thrown from
+ * behind it, and then the screen moves on.
  *
  * It replaced a sheet that asked whether to save, what to call the session and how hard it had
  * been. Nobody taps "cancel" on a workout they just did, and the name and the effort rating are
@@ -22,6 +22,7 @@ import { useTheme } from '../../ThemeProvider.js';
 import { radius, shadow, type ColorPalette } from '../../theme.js';
 import { Trophy } from 'phosphor-react-native';
 import { Glyph } from '../Glyph.js';
+import { ConfettiBurst } from './ConfettiBurst.js';
 
 /** Long enough to register as a moment, short enough that nobody waits it out. */
 const HOLD_MS = 1900;
@@ -55,6 +56,9 @@ export function FinishedBurst({ onDone }: { onDone: () => void }) {
       pointerEvents="none"
       style={[StyleSheet.absoluteFill, s.backdrop, { opacity: leave }]}
     >
+      {/* Thrown from behind the trophy: drawn first, so the badge sits over where it starts. */}
+      <ConfettiBurst />
+
       <Animated.View
         style={[
           s.badge,
