@@ -254,7 +254,7 @@ describe('addUploadSigning', () => {
   it('refuses a build.gradle whose release build it cannot find', () => {
     // Loading the key and then not using it would produce a Play bundle signed with the public
     // debug keystore - with nothing in the build output to say so.
-    const noRelease = SIGNING_GRADLE.replace(/release \{[\s\S]*?\n        \}\n/, '');
+    const noRelease = SIGNING_GRADLE.replace(/release \{[\s\S]*?\n {8}\}\n/, '');
     expect(() => addUploadSigning(noRelease)).toThrow(/release build type/);
     expect(() => addUploadSigning('android {\n}\n')).toThrow(/signingConfigs/);
   });
