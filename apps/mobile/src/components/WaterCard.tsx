@@ -6,6 +6,9 @@
  * a bottle — and there is no sheet, no number to type and nothing to confirm. The price of
  * one-tap adding is adding by mistake, so the last one can be taken back from the same card.
  *
+ * A third button is for every other amount: it opens a field to type millilitres into, and
+ * opens it on whatever was typed last time, so a bottle of one's own is typed once.
+ *
  * It loads and saves for itself, given a day. The food screen shows it for whichever day is
  * open; the home screen shows it for today. Neither has to know what water is.
  *
@@ -17,16 +20,24 @@ import { useFocusEffect } from 'expo-router';
 import { ArrowCounterClockwise, Drop } from 'phosphor-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Animated, Easing, StyleSheet, View } from 'react-native';
+import { Animated, Easing, Keyboard, StyleSheet, View } from 'react-native';
 
 import { useCurrentUserId } from '../auth/CurrentUserProvider.js';
 import { getLatestWeight } from '../db/metrics.js';
 import { getExecutor, newId } from '../db/provider.js';
-import { addWater, getWaterTotal, undoLastWater } from '../db/water.js';
+import {
+  addWater,
+  getLastCustomWater,
+  getWaterTotal,
+  MAX_WATER_ML,
+  undoLastWater,
+} from '../db/water.js';
+import { parseAmount } from '../food/foodMath.js';
 import { BOTTLE_ML, GLASS_ML, litres, WATER_ML_PER_KG, waterGoalMl } from '../food/water.js';
 import { hapticLight, hapticSuccess } from '../haptics.js';
 import { useTheme } from '../ThemeProvider.js';
 import { fontSize, fontWeight, radius, shadow, spacing, type ColorPalette } from '../theme.js';
+import { Field } from './Field.js';
 import { useReduceMotion } from './motion.js';
 import { Pressable } from './Pressable.js';
 import { Text } from './Text.js';
@@ -42,14 +53,20 @@ export function WaterCard({ date }: { date: string }) {
   const [goal, setGoal] = useState(() => waterGoalMl(null));
   // Whether the aim is this person's, or the stand-in used until they have weighed in.
   const [weighed, setWeighed] = useState(true);
+  // Typing an amount of one's own: the text in the field, or null while the field is shut.
+  const [typed, setTyped] = useState<string | null>(null);
+  // The last amount typed, on any day, offered again when the field opens.
+  const [lastOwn, setLastOwn] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     const db = await getExecutor();
-    const [drunk, latest] = await Promise.all([
+    const [drunk, latest, own] = await Promise.all([
       getWaterTotal(db, userId, date),
       getLatestWeight(db, userId),
+      getLastCustomWater(db, userId, [GLASS_ML, BOTTLE_ML]),
     ]);
     setTotal(drunk);
+    setLastOwn(own);
     setGoal(waterGoalMl(latest?.weight_kg ?? null));
     setWeighed(latest?.weight_kg != null);
   }, [userId, date]);
@@ -92,6 +109,27 @@ export function WaterCard({ date }: { date: string }) {
       if (!id) setTotal(before);
       else await load();
     })();
+  };
+
+  const ownAmount = typed === null ? null : parseAmount(typed, MAX_WATER_ML);
+
+  const toggleOwn = () => {
+    hapticLight();
+    if (typed !== null) {
+      Keyboard.dismiss();
+      setTyped(null);
+      return;
+    }
+    // Open on the amount typed last time, selected, so that the same bottle again is one tap
+    // and a different one is typed straight over it.
+    setTyped(lastOwn === null ? '' : String(lastOwn));
+  };
+
+  const addOwn = () => {
+    if (ownAmount === null) return;
+    Keyboard.dismiss();
+    setTyped(null);
+    add(ownAmount);
   };
 
   const undo = () => {
@@ -171,7 +209,55 @@ export function WaterCard({ date }: { date: string }) {
             {BOTTLE_ML} {t('water.ml')}
           </Text>
         </Pressable>
+        <Pressable
+          onPress={toggleOwn}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: typed !== null }}
+          accessibilityLabel={t('water.otherLabel')}
+          style={({ pressed }) => [
+            styles.button,
+            typed !== null && styles.buttonOn,
+            pressed && styles.pressed,
+          ]}
+        >
+          <Text style={styles.buttonText}>+ {t('water.other')}</Text>
+          <Text style={styles.buttonMeta}>{t('water.otherMeta')}</Text>
+        </Pressable>
       </View>
+
+      {/* Any amount at all, typed. Under the buttons, in the page itself and not in a dialog:
+          on this build a field inside a Modal does not raise the keyboard (see
+          NumberEntryBar). The screen keeps it above the keys — `useFieldAboveKeyboard`. */}
+      {typed !== null ? (
+        <View style={styles.own}>
+          <View style={styles.ownField}>
+            <Field
+              value={typed}
+              onChangeText={(value) => setTyped(value.replace(/[^0-9.,]/g, '').slice(0, 6))}
+              keyboardType="number-pad"
+              placeholder={t('water.otherPlaceholder')}
+              trailing={<Text style={styles.buttonMeta}>{t('water.ml')}</Text>}
+              returnKeyType="done"
+              onSubmitEditing={addOwn}
+              selectTextOnFocus
+              autoFocus
+            />
+          </View>
+          <Pressable
+            onPress={addOwn}
+            disabled={ownAmount === null}
+            accessibilityRole="button"
+            accessibilityLabel={t('water.addOtherLabel')}
+            style={({ pressed }) => [
+              styles.ownAdd,
+              ownAmount === null && styles.ownAddOff,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text style={styles.ownAddText}>{t('water.addOther')}</Text>
+          </Pressable>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -228,6 +314,21 @@ const createStyles = (colors: ColorPalette) =>
       backgroundColor: colors.infoSoft,
       paddingVertical: spacing.sm,
     },
+    // Marks the third button while its field is open: pressing it again closes the field.
+    buttonOn: { borderWidth: 1, borderColor: colors.info },
     buttonText: { color: colors.text, fontSize: fontSize.md, fontWeight: fontWeight.bold },
     buttonMeta: { color: colors.textMuted, fontSize: fontSize.xs },
+
+    own: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    ownField: { flex: 1 },
+    ownAdd: {
+      minHeight: 48,
+      paddingHorizontal: spacing.lg,
+      borderRadius: radius.sm,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.info,
+    },
+    ownAddOff: { opacity: 0.4 },
+    ownAddText: { color: colors.bg, fontSize: fontSize.md, fontWeight: fontWeight.bold },
   });

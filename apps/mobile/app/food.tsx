@@ -55,6 +55,7 @@ import { Field } from '../src/components/Field.js';
 import { KeyboardSafe } from '../src/components/KeyboardSafe.js';
 import { FadeSlideIn } from '../src/components/motion.js';
 import { SwipeableRow } from '../src/components/SwipeableRow.js';
+import { useFieldAboveKeyboard } from '../src/components/useFieldAboveKeyboard.js';
 import {
   Button,
   Card,
@@ -104,6 +105,8 @@ export default function FoodLogScreen() {
   const [picking, setPicking] = useState<ReadonlySet<string> | null>(null);
   const [mealName, setMealName] = useState('');
   const [busy, setBusy] = useState(false);
+  // Two fields live low on this page: the name of a meal being kept, and an amount of water.
+  const { scrollRef, onScroll } = useFieldAboveKeyboard();
 
   const load = useCallback(async () => {
     const db = await getExecutor();
@@ -243,6 +246,9 @@ export default function FoodLogScreen() {
   return (
     <KeyboardSafe>
       <ScrollView
+        ref={scrollRef}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
         style={styles.screen}
         contentContainerStyle={[
           styles.content,

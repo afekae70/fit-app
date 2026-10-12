@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { keyboardInset, toScreenY, windowTopFor } from './keyboardInset.js';
+import { fieldOverlap, keyboardInset, toScreenY, windowTopFor } from './keyboardInset.js';
 
 const STATUS_BAR = 44.5;
 const KEYBOARD_TOP = 645.6;
@@ -107,5 +107,36 @@ describe('keyboardInset', () => {
         windowTop: STATUS_BAR,
       }),
     ).toBe(0);
+  });
+});
+
+describe('fieldOverlap', () => {
+  // A phone 900 tall with a 45 status bar and the keyboard's top edge at 560.
+  const base = { keyboardTop: 560, windowTop: 45 };
+
+  it('is how far the field has to rise to clear the keys', () => {
+    // Measured at 600 from under the status bar: really at 645, ending at 695.
+    expect(fieldOverlap({ ...base, y: 600, height: 50 })).toBe(135);
+  });
+
+  it('counts the status bar that the measurement left out', () => {
+    // Ends at 550 by its own measurement, which looks clear — and at 595 on the glass.
+    expect(fieldOverlap({ ...base, y: 500, height: 50 })).toBe(35);
+    expect(fieldOverlap({ ...base, windowTop: 0, y: 500, height: 50 })).toBe(0);
+  });
+
+  it('leaves room between the field and the keys when asked to', () => {
+    expect(fieldOverlap({ ...base, y: 440, height: 50 })).toBe(0);
+    expect(fieldOverlap({ ...base, y: 440, height: 50, margin: 16 })).toBe(0);
+    expect(fieldOverlap({ ...base, y: 460, height: 50, margin: 16 })).toBe(11);
+  });
+
+  it('never pulls a visible field down toward the keyboard', () => {
+    expect(fieldOverlap({ ...base, y: 100, height: 50, margin: 16 })).toBe(0);
+  });
+
+  it('does nothing with a measurement that is not a number', () => {
+    expect(fieldOverlap({ ...base, y: Number.NaN, height: 50 })).toBe(0);
+    expect(fieldOverlap({ ...base, y: 600, height: Number.POSITIVE_INFINITY })).toBe(0);
   });
 });

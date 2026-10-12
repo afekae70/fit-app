@@ -32,7 +32,14 @@ import {
   saveMeal,
 } from './savedMeals.js';
 import { createTestExecutor } from './testUtils.js';
-import { addWater, getWaterTotal, listWaterByDay, MAX_WATER_ML, undoLastWater } from './water.js';
+import {
+  addWater,
+  getLastCustomWater,
+  getWaterTotal,
+  listWaterByDay,
+  MAX_WATER_ML,
+  undoLastWater,
+} from './water.js';
 import { SYNC_TABLES } from '../sync/tables.js';
 
 const USER = 'user-1';
@@ -120,6 +127,48 @@ describe('drinking water', () => {
       { day: '2026-10-10', ml: 500 },
       { day: TODAY, ml: 500 },
     ]);
+  });
+});
+
+describe('an amount of one’s own', () => {
+  const STANDARD = [GLASS_ML, BOTTLE_ML];
+
+  it('adds any amount, to the millilitre', async () => {
+    await addWater(db, USER, newId, { drunkOn: TODAY, ml: 330 }, clock);
+    await addWater(db, USER, newId, { drunkOn: TODAY, ml: 750 }, clock);
+    expect(await getWaterTotal(db, USER, TODAY)).toBe(1080);
+  });
+
+  it('remembers the last amount that was typed, to offer it again', async () => {
+    await addWater(db, USER, newId, { drunkOn: '2026-10-10', ml: 330 }, clock);
+    await addWater(db, USER, newId, { drunkOn: TODAY, ml: 750 }, clock);
+    expect(await getLastCustomWater(db, USER, STANDARD)).toBe(750);
+  });
+
+  it('does not take a glass or a bottle for an amount that was typed', async () => {
+    await addWater(db, USER, newId, { drunkOn: TODAY, ml: 750 }, clock);
+    await addWater(db, USER, newId, { drunkOn: TODAY, ml: GLASS_ML }, clock);
+    await addWater(db, USER, newId, { drunkOn: TODAY, ml: BOTTLE_ML }, clock);
+    expect(await getLastCustomWater(db, USER, STANDARD)).toBe(750);
+  });
+
+  it('has nothing to offer someone who has only ever used the buttons', async () => {
+    expect(await getLastCustomWater(db, USER, STANDARD)).toBeNull();
+    await addWater(db, USER, newId, { drunkOn: TODAY, ml: GLASS_ML }, clock);
+    expect(await getLastCustomWater(db, USER, STANDARD)).toBeNull();
+  });
+
+  it('does not offer an amount that was taken back, or somebody else’s', async () => {
+    await addWater(db, USER, newId, { drunkOn: TODAY, ml: 330 }, clock);
+    await addWater(db, USER, newId, { drunkOn: TODAY, ml: 7500 / 10 }, clock);
+    await undoLastWater(db, USER, TODAY, clock);
+    await addWater(db, 'someone-else', newId, { drunkOn: TODAY, ml: 1234 }, clock);
+    expect(await getLastCustomWater(db, USER, STANDARD)).toBe(330);
+  });
+
+  it('answers with no standing amounts to leave out', async () => {
+    await addWater(db, USER, newId, { drunkOn: TODAY, ml: GLASS_ML }, clock);
+    expect(await getLastCustomWater(db, USER, [])).toBe(GLASS_ML);
   });
 });
 

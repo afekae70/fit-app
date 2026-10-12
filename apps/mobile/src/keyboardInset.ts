@@ -84,3 +84,34 @@ export function keyboardInset({
   const overlap = toScreenY(top, windowTop) + height - keyboardTop + offset;
   return overlap > 0 ? Math.ceil(overlap) : 0;
 }
+
+export interface FieldOverlapInput {
+  /** The field's top edge as `measureInWindow` reports it. */
+  y: number;
+  height: number;
+  /** The keyboard's top edge, as its event reports it. */
+  keyboardTop: number;
+  /** Where `measureInWindow` counts from. See `toScreenY`. */
+  windowTop: number;
+  /** Clear space to leave between the field and the keys. */
+  margin?: number;
+}
+
+/**
+ * How far a page has to scroll for a focused field to clear the keyboard.
+ *
+ * Zero when the field is already above the keys, margin included: a field that can be seen is
+ * left where it is, and never pulled down toward the keyboard. The same two coordinate systems
+ * meet here as in `keyboardInset`, so the field's y goes through `toScreenY` first.
+ */
+export function fieldOverlap({
+  y,
+  height,
+  keyboardTop,
+  windowTop,
+  margin = 0,
+}: FieldOverlapInput): number {
+  if (![y, height, keyboardTop, margin].every(Number.isFinite)) return 0;
+  const overlap = toScreenY(y, windowTop) + height + margin - keyboardTop;
+  return overlap > 0 ? Math.ceil(overlap) : 0;
+}

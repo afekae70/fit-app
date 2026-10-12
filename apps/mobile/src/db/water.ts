@@ -99,3 +99,25 @@ export async function listWaterByDay(
     [userId, from, to],
   );
 }
+
+/**
+ * The last amount this person added that is not one of the standing buttons, or null.
+ *
+ * For offering it again: someone who drinks from a 750 ml bottle types 750 once, and after
+ * that the field opens with it already there. `standard` is the buttons' own amounts.
+ */
+export async function getLastCustomWater(
+  db: SqlExecutor,
+  userId: string,
+  standard: readonly number[],
+): Promise<number | null> {
+  const holes = standard.map(() => '?').join(', ');
+  const row = await db.get<{ ml: number }>(
+    `SELECT ml FROM water_entries
+      WHERE user_id = ? AND deleted_at IS NULL${standard.length > 0 ? ` AND ml NOT IN (${holes})` : ''}
+      ORDER BY created_at DESC, id DESC
+      LIMIT 1`,
+    [userId, ...standard],
+  );
+  return row?.ml ?? null;
+}

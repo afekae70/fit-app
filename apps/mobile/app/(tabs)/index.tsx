@@ -38,8 +38,10 @@ import {
   WeightTrendCard,
   TrainedTodayCard,
 } from '../../src/components/home/TodayCards.js';
+import { KeyboardSafe } from '../../src/components/KeyboardSafe.js';
 import { FadeSlideIn } from '../../src/components/motion.js';
 import { Skeleton } from '../../src/components/ui.js';
+import { useFieldAboveKeyboard } from '../../src/components/useFieldAboveKeyboard.js';
 import { WaterCard } from '../../src/components/WaterCard.js';
 import {
   getHomeNutrition,
@@ -91,6 +93,7 @@ interface HomeData {
 export default function TodayScreen() {
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
+  const { scrollRef, onScroll } = useFieldAboveKeyboard();
   const userId = useCurrentUserId();
   const { session } = useAuth();
   // The reader's own name and face at the top of their own screen — the picture from the profile
@@ -212,157 +215,168 @@ export default function TodayScreen() {
   }, [userId, data]);
 
   return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={[styles.content, { paddingTop: 8, paddingBottom: insets.bottom + 28 }]}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
-      }
-    >
-      <GreetingRow
-        greeting={t(greetingKey(new Date()))}
-        date={formatDate(new Date(), i18n.language)}
-        name={displayName}
-        avatarUri={avatarUri}
-        onOpenProfile={() => router.push('/profile')}
-      />
+    // This screen had nothing to type into until the water card grew a field for an amount of
+    // one's own. The card is the last thing on the page, which is exactly where a keyboard
+    // draws: `KeyboardSafe` makes the room under it, and the hook scrolls the field into it.
+    <KeyboardSafe>
+      <ScrollView
+        ref={scrollRef}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        keyboardShouldPersistTaps="handled"
+        style={styles.screen}
+        contentContainerStyle={[
+          styles.content,
+          { paddingTop: 8, paddingBottom: insets.bottom + 28 },
+        ]}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
+        }
+      >
+        <GreetingRow
+          greeting={t(greetingKey(new Date()))}
+          date={formatDate(new Date(), i18n.language)}
+          name={displayName}
+          avatarUri={avatarUri}
+          onOpenProfile={() => router.push('/profile')}
+        />
 
-      {/* Nothing, unless a sync has failed. See SyncTrouble. */}
-      <SyncTrouble />
+        {/* Nothing, unless a sync has failed. See SyncTrouble. */}
+        <SyncTrouble />
 
-      {failed ? (
-        <ErrorPanel onRetry={() => void load()} />
-      ) : !data ? (
-        <LoadingPanel />
-      ) : (
-        <>
-          {data.trained ? (
-            /* Training today outranks the invitation to train. The card used to go on offering
+        {failed ? (
+          <ErrorPanel onRetry={() => void load()} />
+        ) : !data ? (
+          <LoadingPanel />
+        ) : (
+          <>
+            {data.trained ? (
+              /* Training today outranks the invitation to train. The card used to go on offering
                to start a workout that had just been finished, because the screen worked out
                which workout today calls for and never asked whether it had happened. */
-            <>
-              <FadeSlideIn index={0}>
-                <TrainedTodayCard
-                  trained={data.trained}
-                  onOpen={() =>
-                    router.push({
-                      pathname: '/session/[id]',
-                      params: { id: data.trained!.sessionId },
-                    })
-                  }
-                  onStartAnother={startWorkout}
-                />
-              </FadeSlideIn>
-              {/* A second workout planned for today stays on offer after the first is done.
+              <>
+                <FadeSlideIn index={0}>
+                  <TrainedTodayCard
+                    trained={data.trained}
+                    onOpen={() =>
+                      router.push({
+                        pathname: '/session/[id]',
+                        params: { id: data.trained!.sessionId },
+                      })
+                    }
+                    onStartAnother={startWorkout}
+                  />
+                </FadeSlideIn>
+                {/* A second workout planned for today stays on offer after the first is done.
                   Without this, finishing the morning session hid the evening one until
                   tomorrow, which is exactly the day it was not planned for. */}
-              {data.workout ? (
+                {data.workout ? (
+                  <FadeSlideIn index={1}>
+                    <TodayWorkoutCard workout={data.workout} onStart={startWorkout} />
+                  </FadeSlideIn>
+                ) : null}
                 <FadeSlideIn index={1}>
+                  <StreakCard days={data.strip} monthWeeks={data.monthWeeks} />
+                </FadeSlideIn>
+                <FadeSlideIn index={2}>
+                  <WeekSummaryRow summary={data.summary} />
+                </FadeSlideIn>
+              </>
+            ) : data.workout ? (
+              <>
+                {/* Staggered in the order they are read: what to train, then the streak that argues
+                  for doing it, then the week behind it. */}
+                <FadeSlideIn index={0}>
                   <TodayWorkoutCard workout={data.workout} onStart={startWorkout} />
                 </FadeSlideIn>
-              ) : null}
-              <FadeSlideIn index={1}>
-                <StreakCard days={data.strip} monthWeeks={data.monthWeeks} />
-              </FadeSlideIn>
-              <FadeSlideIn index={2}>
-                <WeekSummaryRow summary={data.summary} />
-              </FadeSlideIn>
-            </>
-          ) : data.workout ? (
-            <>
-              {/* Staggered in the order they are read: what to train, then the streak that argues
-                  for doing it, then the week behind it. */}
-              <FadeSlideIn index={0}>
-                <TodayWorkoutCard workout={data.workout} onStart={startWorkout} />
-              </FadeSlideIn>
-              <FadeSlideIn index={1}>
-                <StreakCard days={data.strip} monthWeeks={data.monthWeeks} />
-              </FadeSlideIn>
-              <FadeSlideIn index={2}>
-                <WeekSummaryRow summary={data.summary} />
-              </FadeSlideIn>
-            </>
-          ) : data.restDay ? (
-            /* A scheduled rest day keeps the streak strip and the week's numbers — they say the
+                <FadeSlideIn index={1}>
+                  <StreakCard days={data.strip} monthWeeks={data.monthWeeks} />
+                </FadeSlideIn>
+                <FadeSlideIn index={2}>
+                  <WeekSummaryRow summary={data.summary} />
+                </FadeSlideIn>
+              </>
+            ) : data.restDay ? (
+              /* A scheduled rest day keeps the streak strip and the week's numbers — they say the
                week is going fine, which is the reassurance a rest day wants — and drops only
                the invitation to train. */
-            <>
-              <FadeSlideIn index={0}>
-                <RestDayCard />
-              </FadeSlideIn>
-              <FadeSlideIn index={1}>
-                <StreakCard days={data.strip} monthWeeks={data.monthWeeks} />
-              </FadeSlideIn>
-              <FadeSlideIn index={2}>
-                <WeekSummaryRow summary={data.summary} />
-              </FadeSlideIn>
-            </>
-          ) : data.unplanned ? (
-            /* Nothing was put on today. Said as that, with the week's numbers kept — the same
+              <>
+                <FadeSlideIn index={0}>
+                  <RestDayCard />
+                </FadeSlideIn>
+                <FadeSlideIn index={1}>
+                  <StreakCard days={data.strip} monthWeeks={data.monthWeeks} />
+                </FadeSlideIn>
+                <FadeSlideIn index={2}>
+                  <WeekSummaryRow summary={data.summary} />
+                </FadeSlideIn>
+              </>
+            ) : data.unplanned ? (
+              /* Nothing was put on today. Said as that, with the week's numbers kept — the same
                shape as a rest day, because like a rest day it is an ordinary day in a plan that
                exists, not the first screen of someone who has no plan. */
-            <>
-              <FadeSlideIn index={0}>
-                <UnplannedDayCard
-                  onPlan={() => router.push('/(tabs)/plan')}
-                  onStartEmpty={startWorkout}
-                />
-              </FadeSlideIn>
-              <FadeSlideIn index={1}>
-                <StreakCard days={data.strip} monthWeeks={data.monthWeeks} />
-              </FadeSlideIn>
-              <FadeSlideIn index={2}>
-                <WeekSummaryRow summary={data.summary} />
-              </FadeSlideIn>
-            </>
-          ) : (
-            <EmptyPanel
-              onStartEmpty={startWorkout}
-              onPickPlan={() => router.push('/(tabs)/plan')}
-            />
-          )}
+              <>
+                <FadeSlideIn index={0}>
+                  <UnplannedDayCard
+                    onPlan={() => router.push('/(tabs)/plan')}
+                    onStartEmpty={startWorkout}
+                  />
+                </FadeSlideIn>
+                <FadeSlideIn index={1}>
+                  <StreakCard days={data.strip} monthWeeks={data.monthWeeks} />
+                </FadeSlideIn>
+                <FadeSlideIn index={2}>
+                  <WeekSummaryRow summary={data.summary} />
+                </FadeSlideIn>
+              </>
+            ) : (
+              <EmptyPanel
+                onStartEmpty={startWorkout}
+                onPickPlan={() => router.push('/(tabs)/plan')}
+              />
+            )}
 
-          {/* The five places worth reaching in one tap, under the training block: what to do
+            {/* The five places worth reaching in one tap, under the training block: what to do
               today comes first, and these are what follows it. */}
-          <FadeSlideIn index={3}>
-            <QuickActions
-              actions={[
-                {
-                  key: 'workout',
-                  label: t('tabs.workout'),
-                  Glyph: Barbell,
-                  onPress: startWorkout,
-                  primary: true,
-                },
-                {
-                  key: 'plan',
-                  label: t('tabs.plan'),
-                  Glyph: CalendarBlank,
-                  onPress: () => router.push('/(tabs)/plan'),
-                },
-                {
-                  key: 'nutrition',
-                  label: t('profileScreen.nutrition'),
-                  Glyph: ForkKnife,
-                  onPress: () => router.push('/nutrition'),
-                },
-                {
-                  key: 'metrics',
-                  label: t('profileScreen.metrics'),
-                  Glyph: Scales,
-                  onPress: () => router.push('/metrics'),
-                },
-                {
-                  key: 'coach',
-                  label: t('profileScreen.coach'),
-                  Glyph: Sparkle,
-                  onPress: () => router.push('/coach'),
-                },
-              ]}
-            />
-          </FadeSlideIn>
+            <FadeSlideIn index={3}>
+              <QuickActions
+                actions={[
+                  {
+                    key: 'workout',
+                    label: t('tabs.workout'),
+                    Glyph: Barbell,
+                    onPress: startWorkout,
+                    primary: true,
+                  },
+                  {
+                    key: 'plan',
+                    label: t('tabs.plan'),
+                    Glyph: CalendarBlank,
+                    onPress: () => router.push('/(tabs)/plan'),
+                  },
+                  {
+                    key: 'nutrition',
+                    label: t('profileScreen.nutrition'),
+                    Glyph: ForkKnife,
+                    onPress: () => router.push('/nutrition'),
+                  },
+                  {
+                    key: 'metrics',
+                    label: t('profileScreen.metrics'),
+                    Glyph: Scales,
+                    onPress: () => router.push('/metrics'),
+                  },
+                  {
+                    key: 'coach',
+                    label: t('profileScreen.coach'),
+                    Glyph: Sparkle,
+                    onPress: () => router.push('/coach'),
+                  },
+                ]}
+              />
+            </FadeSlideIn>
 
-          {/*
+            {/*
             Below the training block, and outside the `data.workout` branch on purpose: a rest day
             still has a calorie target and a weight to watch, and hiding them on the days someone
             is most likely to eat off plan would be exactly backwards.
@@ -371,33 +385,34 @@ export default function TodayScreen() {
             nor a profile to compute from — the empty state above is deliberately two ways in and
             not a dashboard, and two blank cards under it would undo that.
           */}
-          {data.workout || data.trained || hasBodyData(data.nutrition) ? (
-            <>
-              <FadeSlideIn index={data.workout ? 3 : 0}>
-                <WeightTrendCard
-                  latestKg={data.nutrition.latestKg}
-                  ratePerWeek={data.nutrition.ratePerWeek}
-                  points={data.nutrition.weightPoints}
-                  readings={data.nutrition.weighIns}
-                  onPress={() => router.push('/metrics')}
-                />
-              </FadeSlideIn>
-              <FadeSlideIn index={data.workout ? 4 : 1}>
-                <NutritionCard
-                  targets={data.nutrition.targets}
-                  onPress={() => router.push('/metrics')}
-                />
-              </FadeSlideIn>
-              {/* Today's water, where it can be added to without going anywhere: it is logged
+            {data.workout || data.trained || hasBodyData(data.nutrition) ? (
+              <>
+                <FadeSlideIn index={data.workout ? 3 : 0}>
+                  <WeightTrendCard
+                    latestKg={data.nutrition.latestKg}
+                    ratePerWeek={data.nutrition.ratePerWeek}
+                    points={data.nutrition.weightPoints}
+                    readings={data.nutrition.weighIns}
+                    onPress={() => router.push('/metrics')}
+                  />
+                </FadeSlideIn>
+                <FadeSlideIn index={data.workout ? 4 : 1}>
+                  <NutritionCard
+                    targets={data.nutrition.targets}
+                    onPress={() => router.push('/metrics')}
+                  />
+                </FadeSlideIn>
+                {/* Today's water, where it can be added to without going anywhere: it is logged
                   a glass at a time, many times a day. */}
-              <FadeSlideIn index={data.workout ? 5 : 2}>
-                <WaterCard date={localDate(new Date())} />
-              </FadeSlideIn>
-            </>
-          ) : null}
-        </>
-      )}
-    </ScrollView>
+                <FadeSlideIn index={data.workout ? 5 : 2}>
+                  <WaterCard date={localDate(new Date())} />
+                </FadeSlideIn>
+              </>
+            ) : null}
+          </>
+        )}
+      </ScrollView>
+    </KeyboardSafe>
   );
 }
 
