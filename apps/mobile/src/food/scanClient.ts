@@ -29,7 +29,7 @@
 import * as ImagePicker from 'expo-image-picker';
 
 import { getSupabaseClient } from '../auth/client.js';
-import { SUPABASE_ANON_KEY, SUPABASE_URL } from '../config.js';
+import { FOOD_SCAN_FUNCTION, SUPABASE_ANON_KEY, SUPABASE_URL } from '../config.js';
 import { readScanResponse, type ScanFailure, type ScanOutcome } from './scanEstimate.js';
 
 export interface MealPhoto {
@@ -114,7 +114,7 @@ export async function scanMeal(photo: MealPhoto, language: string): Promise<Scan
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), SCAN_TIMEOUT_MS);
   try {
-    const response = await fetch(`${SUPABASE_URL}/functions/v1/scan-food`, {
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/${FOOD_SCAN_FUNCTION}`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,

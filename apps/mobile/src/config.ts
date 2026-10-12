@@ -17,6 +17,7 @@ interface ExtraConfig {
   apiBaseUrl?: string;
   supabaseUrl?: string;
   supabaseAnonKey?: string;
+  foodScanFunction?: string;
 }
 
 const extra = (Constants.expoConfig?.extra ?? {}) as ExtraConfig;
@@ -30,6 +31,22 @@ export const API_BASE_URL: string | null = extra.apiBaseUrl?.trim() || null;
  */
 export const SUPABASE_URL: string | null = extra.supabaseUrl?.trim() || null;
 export const SUPABASE_ANON_KEY: string | null = extra.supabaseAnonKey?.trim() || null;
+
+/**
+ * Where the meal-scan function answers, as the last part of its URL.
+ *
+ * Configuration and not a constant, because it is not ours to choose: a function created in the
+ * Supabase dashboard is listed under the name it was given and served at an address the
+ * dashboard generates. The first deployment was named `scan-food`, lives at another address
+ * entirely, and answered "not found" to an app that had assumed the two were the same.
+ *
+ * Held to the characters an address of this kind can have, so that nothing read from
+ * configuration is ever spliced into a URL as a path of its own.
+ */
+const scanFunction = extra.foodScanFunction?.trim() ?? '';
+export const FOOD_SCAN_FUNCTION: string = /^[A-Za-z0-9_-]{1,64}$/.test(scanFunction)
+  ? scanFunction
+  : 'scan-food';
 
 export const isCoachConfigured = (): boolean => API_BASE_URL !== null;
 export const isAuthConfigured = (): boolean => SUPABASE_URL !== null && SUPABASE_ANON_KEY !== null;

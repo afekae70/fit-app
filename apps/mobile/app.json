@@ -113,6 +113,8 @@
       "apiBaseUrl": "https://upbeat-kindness-production-5c1c.up.railway.app",
       "//supabase": "From the Supabase project: Settings -> API. supabaseUrl is the Project URL; supabaseAnonKey is the 'anon public' key (safe to ship — RLS protects data, not key secrecy). Never put the service_role key here; that one bypasses RLS and belongs only in the API service's .env.",
       "supabaseUrl": "https://ibapcvxepbpdlmwnpuhs.supabase.co",
+      "//foodScanFunction": "The last part of the meal-scan function's URL (Supabase dashboard -> Edge Functions -> the URL column), which is NOT necessarily its name. A function created in the dashboard editor is given a generated address - this one is listed as scan-food and lives at smooth-processor. Leave it out and the app asks for scan-food.",
+      "foodScanFunction": "smooth-processor",
       "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImliYXBjdnhlcGJwZGxtd25wdWhzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUyNTQwOTMsImV4cCI6MjEwMDgzMDA5M30.754zHmoVekRWlJmTMYC4sipQgowzMyMKgfz1i7Qd9XQ",
       "//blePermissions": "neverForLocation is set on BLUETOOTH_SCAN so Android 12+ does not require the user to grant location just to find a scale. ACCESS_FINE_LOCATION remains declared because Android 11 and below have no BLUETOOTH_SCAN and genuinely gate BLE discovery behind location.",
       "//blePermissionsLegacy": "BLUETOOTH and BLUETOOTH_ADMIN were added by the react-native-ble-plx config plugin, not by hand. They are the pre-Android-12 equivalents of BLUETOOTH_CONNECT and BLUETOOTH_SCAN, scoped by the manifest merger to older API levels — inert on Android 12+, required below it.",
