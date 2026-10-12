@@ -352,6 +352,15 @@ export const en = {
     cutShort: 'Answer was cut short — ask again',
     refused: 'The coach cannot answer that.',
     unavailable: 'Could not reach the coach.',
+    failed: {
+      signIn: 'Sign in again to ask the coach.',
+      dailyLimit: 'You have used up the coach messages for the day. Try again later.',
+      busy: 'The coach is busy right now. Try again in a few minutes.',
+      notSetUp: 'The coach has not been switched on in the server yet.',
+      needsData: 'Log a workout or a weigh-in first, so the coach has something to go on.',
+      offline: 'Could not reach the coach. Check your connection.',
+      timeout: 'The coach took too long to answer. Try again.',
+    },
     notConfigured: 'The coach is not connected yet',
     notConfiguredHint: 'Deploy the server and set its address in the app',
     keyNote:

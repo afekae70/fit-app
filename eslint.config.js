@@ -39,6 +39,9 @@ export default tseslint.config(
       '**/android/**',
       '**/ios/**',
       'apps/api/drizzle/**',
+      // The Supabase function as deployed: a bundle made by apps/api/scripts/build-edge.ts.
+      // Its sources are linted where they live, in apps/api/src/edge.
+      'apps/api/edge/**',
       'apps/mobile/expo-env.d.ts',
     ],
   },
@@ -110,10 +113,10 @@ export default tseslint.config(
   },
 
   {
-    // `projectService` only auto-discovers configs literally named tsconfig.json. This one is
-    // covered by apps/api/tsconfig.tools.json, so it has to be pointed at by hand or every rule
-    // needing type information reports a parse failure here.
-    files: ['apps/api/drizzle.config.ts'],
+    // `projectService` only auto-discovers configs literally named tsconfig.json. These are
+    // covered by apps/api/tsconfig.tools.json, so they have to be pointed at by hand or every
+    // rule needing type information reports a parse failure here.
+    files: ['apps/api/drizzle.config.ts', 'apps/api/scripts/**/*.ts'],
     languageOptions: {
       parserOptions: {
         projectService: false,

@@ -33,6 +33,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '../src/auth/AuthProvider.js';
 import { useCurrentUserId } from '../src/auth/CurrentUserProvider.js';
+import { coachFailureKey } from '../src/coach/failure.js';
 import { buildCoachPayload } from '../src/coach/payload.js';
 import { streamCoachChat, type CancelStream } from '../src/coach/stream.js';
 import { NutritionMenuCard, WorkoutPlanCard } from '../src/components/CoachProposalCard.js';
@@ -280,12 +281,14 @@ export default function CoachChatScreen() {
               setStreaming(false);
             },
             onError: (message, code) => {
-              // Logged as well as shown. The bubble carries whatever the server said, but the
-              // screen is not somewhere a failure can be read back from later — and "the coach
-              // did not answer" has as many causes as a failed sync did. `code` is what tells
-              // them apart without opening the server console.
+              // Logged as well as shown. The screen is not somewhere a failure can be read back
+              // from later — and "the coach did not answer" has as many causes as a failed sync
+              // did. `code` is what tells them apart without opening the server console.
               console.warn('[coach] stream error:', message, code ?? '');
-              markLast('error', message);
+              // Said in the person's language when the cause is one this build knows. The
+              // server's own sentence is English, and is the fallback rather than the rule.
+              const known = coachFailureKey(code);
+              markLast('error', known ? t(known) : message);
               setStreaming(false);
             },
           },

@@ -1,6 +1,6 @@
 /**
- * `scan-food` — a Supabase Edge Function: a photo of a meal in, an estimate of what is on the
- * plate out.
+ * Reading a photographed meal: a photo in, an estimate of what is on the plate out. One of the
+ * two jobs of the Supabase function (`main.ts`); the other is the coach (`coach.ts`).
  *
  * ## Why this is here and not in the Fastify service
  *
@@ -8,18 +8,19 @@
  * who installs the app. That server is `apps/api`, and it costs money to keep running. This
  * one feature is asked to cost nothing, so it runs where the project already has a free
  * allowance: as a function on Supabase, holding a Gemini key on Google's free tier. The key is
- * still never in the app. Everything else about the coach stays where it was.
+ * still never in the app.
  *
- * ## One file, no imports
+ * ## Web standards only
  *
- * It is deployed by pasting this file into the Supabase dashboard's function editor. So it
- * imports nothing, uses only what every modern runtime has (`fetch`, `Request`, `Response`),
- * and reads its environment through `globalThis` — which is also what lets the API workspace
- * typecheck it and run it under vitest, with a fake `fetch`, without a Deno in sight.
+ * It uses only what every modern runtime has (`fetch`, `Request`, `Response`) and is handed
+ * its environment rather than reaching for it, which is what lets the API workspace typecheck
+ * it and run it under vitest, with a fake `fetch`, without a Deno in sight. What is deployed
+ * is a bundle of this and its neighbours — see `scripts/build-edge.mjs`.
  *
- * The contract it answers to is `packages/shared/src/schemas/foodScan.ts`. This file cannot
- * import that one, so the bounds are repeated below; `scan-food.test.ts` validates what this
- * produces against the shared schema, which is what keeps the two from drifting.
+ * The contract it answers to is `packages/shared/src/schemas/foodScan.ts`. The bounds are
+ * repeated below rather than imported, so that this half does not pull a validation library
+ * into the bundle for five numbers; `scan-food.test.ts` validates what this produces against
+ * the shared schema, which is what keeps the two from drifting.
  *
  * ## What it refuses, in order
  *
@@ -42,6 +43,18 @@
  * `SUPABASE_URL` and `SUPABASE_ANON_KEY` are provided by Supabase.
  */
 
+import {
+  bearerToken,
+  countAgainstLimit,
+  googleErrorCode,
+  jsonResponse,
+  modelsToTry,
+  signedInUser,
+  type EdgeDeps,
+} from './shared.js';
+
+export { DEFAULT_MODELS } from './shared.js';
+
 /* ------------------------------------------------------------------------------------ */
 /* Bounds — the same as FOOD_SCAN_LIMITS in packages/shared                              */
 /* ------------------------------------------------------------------------------------ */
@@ -61,12 +74,6 @@ const LIMITS = {
 export const MAX_IMAGE_BASE64 = 6_000_000;
 
 const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
-
-/**
- * Tried in order. A model that is unknown or out of free quota hands on to the next, and each
- * has a quota of its own — so the list is also what makes the free tier go further.
- */
-export const DEFAULT_MODELS = ['gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-2.5-flash'];
 
 /** How long the model is given before the phone is told to try again. */
 const MODEL_TIMEOUT_MS = 40_000;
@@ -95,11 +102,8 @@ export interface ScanResult {
   confidence: 'low' | 'medium' | 'high';
 }
 
-/** Everything the function reaches outside itself for, so a test can stand in for all of it. */
-export interface ScanDeps {
-  fetch: typeof fetch;
-  env: (name: string) => string | undefined;
-}
+/** What the scan reaches outside itself for. The same as the coach's. */
+export type ScanDeps = EdgeDeps;
 
 /* ------------------------------------------------------------------------------------ */
 /* The prompt                                                                            */
@@ -218,67 +222,8 @@ export function readEstimate(text: string): ScanResult | null {
 }
 
 /* ------------------------------------------------------------------------------------ */
-/* The three things it asks of the outside world                                         */
+/* Asking the model                                                                     */
 /* ------------------------------------------------------------------------------------ */
-
-/** Whose token this is, by asking the auth server. Null for the anon key or a dead session. */
-async function signedInUser(deps: ScanDeps, token: string): Promise<string | null> {
-  const base = deps.env('SUPABASE_URL');
-  const anon = deps.env('SUPABASE_ANON_KEY');
-  if (!base || !anon) return null;
-  try {
-    const response = await deps.fetch(`${base}/auth/v1/user`, {
-      headers: { Authorization: `Bearer ${token}`, apikey: anon },
-    });
-    if (!response.ok) return null;
-    const user = (await response.json()) as { id?: unknown };
-    return typeof user.id === 'string' && user.id !== '' ? user.id : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Count this scan against the account's day.
- *
- * A row in `food_scans`, written as the caller. The table's trigger stamps the owner and the
- * time itself and refuses the row once the day's allowance is used (drizzle/0015), so the
- * limit cannot be talked round by a client — this only reads the verdict.
- */
-async function countScan(deps: ScanDeps, token: string): Promise<'ok' | ScanError> {
-  const base = deps.env('SUPABASE_URL');
-  const anon = deps.env('SUPABASE_ANON_KEY');
-  if (!base || !anon) return 'not_set_up';
-  try {
-    const response = await deps.fetch(`${base}/rest/v1/food_scans`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        apikey: anon,
-        'Content-Type': 'application/json',
-        Prefer: 'return=minimal',
-      },
-      body: '{}',
-    });
-    if (response.ok) return 'ok';
-
-    const problem = (await response.json().catch(() => ({}))) as {
-      code?: unknown;
-      message?: unknown;
-    };
-    if (typeof problem.message === 'string' && problem.message.includes('scan_limit')) {
-      return 'daily_limit';
-    }
-    // The table is not there: the SQL has not been run. Refused rather than waved through —
-    // without the table there is no limit, and an unlimited function is the thing to avoid.
-    if (response.status === 404 || problem.code === 'PGRST205' || problem.code === '42P01') {
-      return 'not_set_up';
-    }
-    return 'server_error';
-  } catch {
-    return 'server_error';
-  }
-}
 
 /** Ask one model. A result, or why not — `next` meaning the following model is worth trying. */
 async function askModel(
@@ -318,6 +263,7 @@ async function askModel(
       },
     );
 
+    if (!response.ok) deps.log?.(`[scan] ${model}: ${await googleErrorCode(response)}`);
     // Out of free quota on this model, or a model id Google no longer serves: try the next.
     if (response.status === 429 || response.status === 404) return 'next';
     // Overloaded or briefly down: also worth the next model.
@@ -340,6 +286,7 @@ async function askModel(
     return readEstimate(text) ?? 'not_readable';
   } catch {
     // A timeout or a dropped connection. The next model may well answer.
+    deps.log?.(`[scan] ${model}: no answer`);
     return 'next';
   } finally {
     clearTimeout(timer);
@@ -361,18 +308,12 @@ const STATUS: Record<ScanError, number> = {
   server_error: 500,
 };
 
-const json = (body: unknown, status: number) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
-  });
-
-const refuse = (error: ScanError) => json({ error }, STATUS[error]);
+const refuse = (error: ScanError) => jsonResponse({ error }, STATUS[error]);
 
 export async function handle(request: Request, deps: ScanDeps): Promise<Response> {
   if (request.method !== 'POST') return refuse('bad_request');
 
-  const token = /^Bearer\s+(.+)$/i.exec(request.headers.get('Authorization') ?? '')?.[1]?.trim();
+  const token = bearerToken(request);
   if (!token) return refuse('sign_in_required');
 
   // Read as text first, so an oversized body is refused by its length before it is parsed.
@@ -407,39 +348,16 @@ export async function handle(request: Request, deps: ScanDeps): Promise<Response
 
   if ((await signedInUser(deps, token)) === null) return refuse('sign_in_required');
 
-  const counted = await countScan(deps, token);
+  // A row in `food_scans`, whose trigger refuses the forty-first of the day (drizzle/0015).
+  const counted = await countAgainstLimit(deps, token, 'food_scans', 'scan_limit');
   if (counted !== 'ok') return refuse(counted);
 
-  const models = (deps.env('GEMINI_MODELS') ?? '')
-    .split(',')
-    .map((model) => model.trim())
-    .filter((model) => /^[a-z0-9.-]+$/i.test(model));
-
-  for (const model of models.length > 0 ? models : DEFAULT_MODELS) {
+  for (const model of modelsToTry(deps)) {
     const answer = await askModel(deps, key, model, image, mimeType, language);
     if (answer === 'next') continue;
     if (answer === 'not_readable' || answer === 'server_error') return refuse(answer);
-    return json(answer, 200);
+    return jsonResponse(answer, 200);
   }
   // Every model was out of quota or unreachable.
   return refuse('ai_busy');
-}
-
-/*
- * Started only where there is a Deno to start it — on Supabase. Under vitest there is none,
- * and importing this file must not try to open a port.
- */
-const deno = (
-  globalThis as {
-    Deno?: {
-      serve: (handler: (request: Request) => Promise<Response>) => unknown;
-      env: { get: (name: string) => string | undefined };
-    };
-  }
-).Deno;
-
-if (deno) {
-  deno.serve((request) =>
-    handle(request, { fetch: (...args) => fetch(...args), env: (name) => deno.env.get(name) }),
-  );
 }

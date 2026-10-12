@@ -5,3 +5,7 @@
 # reads the carriage return as part of each command and fails with "$'\r': command not found",
 # on the first line, in a way that names nothing useful.
 *.sh text eol=lf
+
+# The Supabase function as deployed is a generated file that a test compares, byte for byte,
+# with what its sources produce. One line ending everywhere keeps that comparison honest.
+apps/api/edge/*.js text eol=lf

@@ -29,7 +29,7 @@
 import * as ImagePicker from 'expo-image-picker';
 
 import { getSupabaseClient } from '../auth/client.js';
-import { FOOD_SCAN_FUNCTION, SUPABASE_ANON_KEY, SUPABASE_URL } from '../config.js';
+import { AI_FUNCTION_URL, SUPABASE_ANON_KEY } from '../config.js';
 import { readScanResponse, type ScanFailure, type ScanOutcome } from './scanEstimate.js';
 
 export interface MealPhoto {
@@ -105,7 +105,7 @@ const failed = (error: ScanFailure): ScanOutcome => ({ ok: false, error });
 /** Ask the server what is in the photo. Never throws: every way it can go wrong is a reason. */
 export async function scanMeal(photo: MealPhoto, language: string): Promise<ScanOutcome> {
   const supabase = getSupabaseClient();
-  if (!supabase || !SUPABASE_URL || !SUPABASE_ANON_KEY) return failed('not_configured');
+  if (!supabase || !AI_FUNCTION_URL || !SUPABASE_ANON_KEY) return failed('not_configured');
 
   const { data } = await supabase.auth.getSession().catch(() => ({ data: { session: null } }));
   const token = data.session?.access_token;
@@ -114,7 +114,7 @@ export async function scanMeal(photo: MealPhoto, language: string): Promise<Scan
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), SCAN_TIMEOUT_MS);
   try {
-    const response = await fetch(`${SUPABASE_URL}/functions/v1/${FOOD_SCAN_FUNCTION}`, {
+    const response = await fetch(AI_FUNCTION_URL, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,

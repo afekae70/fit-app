@@ -88,6 +88,31 @@ function isMenuShaped(value: unknown): value is AiNutritionMenu {
   );
 }
 
+/**
+ * What a refusal said: the sentence to log and the word for why.
+ *
+ * A refusal is a plain JSON body, `{ error, message }`, from the server that would otherwise
+ * have streamed. `error` is the word. One refusal does not come from that server at all: a
+ * token the gateway in front of it would not accept is turned away there, with a body in the
+ * gateway's own shape and no word of ours in it — so a 401 with no word is read as what it is.
+ */
+export function readRefusal(
+  status: number,
+  responseText: string,
+): { message: string; code: string | undefined } {
+  let message = `Request failed (${status})`;
+  let code: string | undefined = status === 401 ? 'sign_in_required' : undefined;
+  try {
+    const parsed = JSON.parse(responseText) as { message?: unknown; error?: unknown } | null;
+    if (typeof parsed?.error === 'string') code = parsed.error;
+    if (typeof parsed?.message === 'string') message = parsed.message;
+    else if (typeof parsed?.error === 'string') message = parsed.error;
+  } catch {
+    /* non-JSON error body; the status-code message stands */
+  }
+  return { message, code };
+}
+
 export interface StreamHandlers {
   onDelta: (text: string) => void;
   /** The model proposed a full workout plan — a card to review, never applied automatically. */
@@ -97,7 +122,11 @@ export interface StreamHandlers {
   onDone: () => void;
   /** The model declined. Not a fault — and any text already delivered is truncated. */
   onRefusal: (category: string | null) => void;
-  /** `code` is a provider status and error type, when the server could name one. */
+  /**
+   * `message` is English, for the log. `code` is the word for what went wrong, when there is
+   * one — the server's own (`daily_limit`, `ai_busy`; see `failure.ts`) or one of the three
+   * this file can tell for itself: `offline`, `timeout`, `interrupted`.
+   */
   onError: (message: string, code?: string) => void;
 }
 
@@ -188,28 +217,24 @@ export function streamCoachChat({
     // A non-2xx never streams — the server rejected before opening the event stream, and the
     // body is a plain JSON error rather than SSE frames.
     if (request.status >= 400) {
-      let message = `Request failed (${request.status})`;
-      try {
-        const parsed = JSON.parse(request.responseText) as { message?: string; error?: string };
-        message = parsed.message ?? parsed.error ?? message;
-      } catch {
-        /* non-JSON error body; the status-code message stands */
-      }
-      finish(() => handlers.onError(message));
+      const { message, code } = readRefusal(request.status, request.responseText);
+      finish(() => handlers.onError(message, code));
       return;
     }
 
     // Reaching here without a `done` frame means the connection closed early — mid-generation.
     // Reported rather than treated as success, so a truncated answer is never shown as final.
-    finish(() => handlers.onError('The connection closed before the answer finished.'));
+    finish(() =>
+      handlers.onError('The connection closed before the answer finished.', 'interrupted'),
+    );
   };
 
   request.onerror = () => {
-    finish(() => handlers.onError('Could not reach the coach. Check your connection.'));
+    finish(() => handlers.onError('Could not reach the coach. Check your connection.', 'offline'));
   };
 
   request.ontimeout = () => {
-    finish(() => handlers.onError('The coach took too long to respond.'));
+    finish(() => handlers.onError('The coach took too long to respond.', 'timeout'));
   };
 
   // Generous: a coaching reply at medium effort can take tens of seconds, and the timeout must

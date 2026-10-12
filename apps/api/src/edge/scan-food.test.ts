@@ -82,8 +82,13 @@ function world(setup: World = {}) {
     return answer(500);
   }) as typeof fetch;
 
-  const deps: ScanDeps = { fetch: fakeFetch, env: (name) => env[name] };
-  return { deps, calls };
+  const logged: string[] = [];
+  const deps: ScanDeps = {
+    fetch: fakeFetch,
+    env: (name) => env[name],
+    log: (line) => logged.push(line),
+  };
+  return { deps, calls, logged };
 }
 
 const request = (
@@ -353,6 +358,24 @@ describe('which model answers', () => {
     const response = await handle(request(), deps);
     expect(await errorOf(response)).toBe('server_error');
     expect(modelCalls(calls)).toHaveLength(1);
+  });
+
+  it('leaves a line in the log for each model that did not answer, and none when one did', async () => {
+    const quiet = world();
+    await handle(request(), quiet.deps);
+    expect(quiet.logged).toEqual([]);
+
+    const { deps, logged } = world({
+      models: {
+        [DEFAULT_MODELS[0]!]: {
+          status: 400,
+          // Google's sentence can quote what it was sent. Only its status word is kept.
+          body: { error: { status: 'INVALID_ARGUMENT', message: `bad image ${PHOTO}` } },
+        },
+      },
+    });
+    await handle(request(), deps);
+    expect(logged).toEqual([`[scan] ${DEFAULT_MODELS[0]}: 400 INVALID_ARGUMENT`]);
   });
 });
 

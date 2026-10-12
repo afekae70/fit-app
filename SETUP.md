@@ -10,6 +10,7 @@ Most work needs no secrets at all.
 | I want to… | What I need |
 | --- | --- |
 | Work on the mobile app, run it, build it | `npm install` + `npx eas-cli login` |
+| Update the coach or the meal scan | the Supabase dashboard (see "The AI function" below) |
 | Deploy or update the API | Railway access (secrets already live there) |
 | Run the API server **locally** | the above **plus** `apps/api/.env` |
 
@@ -189,12 +190,45 @@ Local release builds are signed with the debug key, so they update each other in
 uninstall, which takes the local database with it. Pick one signing route per device and stay on
 it.
 
+## The AI function
+
+The coach and the meal scan do not need the API server. They are one Supabase Edge Function
+that passes the request to Google's Gemini on its free tier, so they cost nothing to run. The
+Fastify service in `apps/api` can still serve the coach, but it is switched off and the app
+does not ask it (`apiBaseUrl` in `app.json` is empty).
+
+**What is deployed** is `apps/api/edge/novafit-ai.js` — a single generated file. Its sources
+are `apps/api/src/edge/`; after changing them:
+
+```bash
+npm run build:edge -w @fit/api
+```
+
+and commit the result. A test fails if the committed file is not what the sources produce.
+
+**Deploying it** is done by hand, in the Supabase dashboard: Edge Functions → the function →
+Code → replace everything with the contents of `novafit-ai.js` → Deploy. The function is listed
+as `scan-food` and served at `…/functions/v1/smooth-processor`; that last part is `aiFunction`
+in `app.json`.
+
+**What it needs on the Supabase side:**
+
+- a secret named `GEMINI_API_KEY` (Edge Functions → Secrets), holding a key from Google AI
+  Studio made on a project with no billing account — the free tier is what keeps this free;
+- the two tables that count use per account per day, by running
+  `apps/api/drizzle/0015_food_scans.sql` and `0016_coach_turns.sql` once in the SQL editor.
+  The function refuses to work without them rather than work without a limit.
+
+When something fails, the function's own log (Edge Functions → the function → Logs) names the
+model that did not answer and the status Google gave. It never holds what anyone asked.
+
 ## Accounts you may need to sign into
 
 - **Expo / EAS** — `npx eas-cli login` (builds, signing credentials)
-- **Supabase** — web dashboard (database, auth users, SQL editor)
+- **Supabase** — web dashboard (database, auth users, SQL editor, the AI function)
+- **Google AI Studio** — the Gemini key the AI function uses (free tier, no billing)
 - **Railway** — web dashboard (the deployed API and its environment variables)
-- **Anthropic** — console (the coach's API key and its billing)
+- **Anthropic** — console (only if the Fastify service is switched back on)
 
 ## Day-to-day between two machines
 
