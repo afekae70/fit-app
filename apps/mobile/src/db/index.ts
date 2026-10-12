@@ -92,6 +92,8 @@ export async function resetDb(): Promise<void> {
     DROP TABLE IF EXISTS scheduled_days_v16;
     DROP TABLE IF EXISTS coach_briefs;
     DROP TABLE IF EXISTS food_entries;
+    DROP TABLE IF EXISTS water_entries;
+    DROP TABLE IF EXISTS saved_meals;
     DROP TABLE IF EXISTS outbox;
     DROP TABLE IF EXISTS sets;
     DROP TABLE IF EXISTS session_exercises;

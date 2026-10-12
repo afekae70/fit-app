@@ -66,7 +66,7 @@ import {
   weightUnitKey,
 } from '../../units.js';
 import { duration, radius, type ColorPalette } from '../../theme.js';
-import { Check } from 'phosphor-react-native';
+import { Check, Trophy } from 'phosphor-react-native';
 import { Glyph } from '../Glyph.js';
 
 /** The handoff's timings. The tint settles before the glyph finishes popping, which is the point. */
@@ -128,6 +128,14 @@ export interface SetRowProps {
   /** Continues the set above it, lighter, with no rest. Shown as an arrow, not a number. */
   isDrop?: boolean;
   /**
+   * This set is a personal record for the exercise.
+   *
+   * The record is announced when it happens, by a toast that is gone in seconds. This is what
+   * is left: a small trophy on the chip, so that the row which made the record still says so
+   * when the workout is looked back over. Which row it is, is decided in `workout/records.ts`.
+   */
+  isRecord?: boolean;
+  /**
    * Open this set's menu: change its kind, or delete it.
    *
    * One tap on the index chip, and the menu names both actions. It replaces a tap that toggled
@@ -161,6 +169,7 @@ export function SetRow({
   rpe = null,
   toFailure = false,
   isDrop = false,
+  isRecord = false,
   onOptions,
 }: SetRowProps) {
   const { t } = useTranslation();
@@ -261,7 +270,13 @@ export function SetRow({
         onPress={onOptions}
         disabled={!onOptions}
         accessibilityRole={onOptions ? 'button' : undefined}
-        accessibilityLabel={onOptions ? t('workout.setOptions', { index }) : undefined}
+        accessibilityLabel={
+          onOptions
+            ? `${t('workout.setOptions', { index })}${isRecord ? `, ${t('workout.recordSet')}` : ''}`
+            : isRecord
+              ? t('workout.recordSet')
+              : undefined
+        }
         style={[
           s.indexChip,
           isDrop && s.indexChipDrop,
@@ -280,6 +295,8 @@ export function SetRow({
         >
           {isWarmup ? t('workout.warmupShort') : isDrop ? '↓' : index}
         </Text>
+        {/* Under the number, in the chip's spare height: the chip is what names the row. */}
+        {isRecord ? <Trophy size={13} color={colors.warning} weight="fill" /> : null}
       </Pressable>
 
       {fields === 'cardio' ? (
@@ -485,6 +502,7 @@ const createStyles = (colors: ColorPalette) =>
       height: 56,
       alignItems: 'center',
       justifyContent: 'center',
+      gap: 2,
       borderRadius: radius.sm,
       backgroundColor: colors.bg,
     },

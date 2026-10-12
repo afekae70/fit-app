@@ -290,6 +290,25 @@ export const SYNC_TABLES: readonly SyncTable[] = [
     scope: { kind: 'column' },
     optional: true,
   },
+  {
+    // Water: a row per glass. Optional for the reason the food log is — its table reaches the
+    // server by a script run by hand (0017).
+    table: 'water_entries',
+    columns: ['id', 'user_id', 'drunk_on', 'ml', 'created_at', 'updated_at', 'deleted_at'],
+    booleans: [],
+    json: [],
+    scope: { kind: 'column' },
+    optional: true,
+  },
+  {
+    // Meals kept to be logged again. `items` is the meal itself, as JSON (0017).
+    table: 'saved_meals',
+    columns: ['id', 'user_id', 'name', 'items', 'created_at', 'updated_at', 'deleted_at'],
+    booleans: [],
+    json: ['items'],
+    scope: { kind: 'column' },
+    optional: true,
+  },
 ] as const;
 
 /** Lookup by name, for the deferral bookkeeping that needs to find a table's parent. */

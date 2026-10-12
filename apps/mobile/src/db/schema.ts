@@ -26,7 +26,7 @@
  * TEXT (lexicographically sortable, which is what the history queries rely on).
  */
 
-export const SCHEMA_VERSION = 22;
+export const SCHEMA_VERSION = 23;
 
 /**
  * Incremental migrations, keyed by the version they upgrade TO.
@@ -450,6 +450,53 @@ CREATE INDEX IF NOT EXISTS locations_user_idx ON locations (user_id);
     CREATE INDEX IF NOT EXISTS food_entries_user_day_idx
       ON food_entries (user_id, eaten_on);
   `,
+
+  /*
+   * 23 — water, and meals worth keeping.
+   *
+   * Two small tables beside the food log, and synced the way it is.
+   *
+   * `water_entries` is a row per glass: how much, on which local day. A day's water is their
+   * sum. A counter on the day would be one row and one number, and would also make "I pressed
+   * it twice" something that cannot be taken back on another phone without a conflict.
+   *
+   * `saved_meals` is a named list of things to log together — the breakfast that is the same
+   * every morning. The items are kept as JSON on the row: a meal is read and written whole, is
+   * never queried by what is in it, and as one row it syncs as one thing.
+   */
+  23: `
+    CREATE TABLE IF NOT EXISTS water_entries (
+      id          TEXT PRIMARY KEY NOT NULL,
+      user_id     TEXT NOT NULL,
+      -- The local calendar day it was drunk on, YYYY-MM-DD: a day, not a moment, as for food.
+      drunk_on    TEXT NOT NULL,
+      -- Millilitres. One row per glass or bottle, so taking the last one back is a deletion.
+      ml          INTEGER NOT NULL,
+      created_at  TEXT NOT NULL,
+      updated_at  TEXT,
+      deleted_at  TEXT,
+      remote_updated_at TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS water_entries_user_day_idx
+      ON water_entries (user_id, drunk_on);
+
+    CREATE TABLE IF NOT EXISTS saved_meals (
+      id          TEXT PRIMARY KEY NOT NULL,
+      user_id     TEXT NOT NULL,
+      name        TEXT NOT NULL,
+      -- What the meal is made of: a JSON array of things to log, each with its own numbers.
+      -- Copies, not pointers at the log, for the reason a log entry is a copy of the food list.
+      items       TEXT NOT NULL,
+      created_at  TEXT NOT NULL,
+      updated_at  TEXT,
+      deleted_at  TEXT,
+      remote_updated_at TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS saved_meals_user_idx
+      ON saved_meals (user_id);
+  `,
 };
 
 export const CREATE_SCHEMA_SQL = `
@@ -749,6 +796,38 @@ CREATE TABLE IF NOT EXISTS food_entries (
 
 CREATE INDEX IF NOT EXISTS food_entries_user_day_idx
   ON food_entries (user_id, eaten_on);
+
+CREATE TABLE IF NOT EXISTS water_entries (
+  id          TEXT PRIMARY KEY NOT NULL,
+  user_id     TEXT NOT NULL,
+  -- The local calendar day it was drunk on, YYYY-MM-DD: a day, not a moment, as for food.
+  drunk_on    TEXT NOT NULL,
+  -- Millilitres. One row per glass or bottle, so taking the last one back is a deletion.
+  ml          INTEGER NOT NULL,
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT,
+  deleted_at  TEXT,
+  remote_updated_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS water_entries_user_day_idx
+  ON water_entries (user_id, drunk_on);
+
+CREATE TABLE IF NOT EXISTS saved_meals (
+  id          TEXT PRIMARY KEY NOT NULL,
+  user_id     TEXT NOT NULL,
+  name        TEXT NOT NULL,
+  -- What the meal is made of: a JSON array of things to log, each with its own numbers.
+  -- Copies, not pointers at the log, for the reason a log entry is a copy of the food list.
+  items       TEXT NOT NULL,
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT,
+  deleted_at  TEXT,
+  remote_updated_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS saved_meals_user_idx
+  ON saved_meals (user_id);
 
 CREATE TABLE IF NOT EXISTS outbox (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,

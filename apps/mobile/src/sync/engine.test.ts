@@ -2154,12 +2154,14 @@ describe('a table the server has not been given yet', () => {
   });
 
   it('marks only the tables that arrived after launch as allowed to be missing', () => {
-    // The calendar (0009) and the food log (0014): each reached the server by a script run by
-    // hand, after phones were already syncing. The training log itself is never on this list —
-    // a server without `sets` is broken, not behind.
+    // The calendar (0009), the food log (0014), and water and saved meals (0017): each reached
+    // the server by a script run by hand, after phones were already syncing. The training log
+    // itself is never on this list — a server without `sets` is broken, not behind.
     expect(SYNC_TABLES.filter((entry) => entry.optional).map((entry) => entry.table)).toEqual([
       'scheduled_days',
       'food_entries',
+      'water_entries',
+      'saved_meals',
     ]);
   });
 
@@ -2183,6 +2185,70 @@ describe('a table the server has not been given yet', () => {
     server.missing.delete('food_entries');
     await runSync(db, server, USER, at('12:00:00'));
     expect(server.rows('food_entries').map((row) => row.id)).toEqual(['f1']);
+  });
+
+  it('sends water and a kept meal up, the meal’s items as a list and not as text', async () => {
+    const server = createFakeServer();
+    const stamp = '2026-02-01T10:00:00.000Z';
+    await db.run(
+      `INSERT INTO water_entries (id, user_id, drunk_on, ml, created_at, updated_at)
+       VALUES ('w1', ?, '2026-02-01', 250, ?, ?)`,
+      [USER, stamp, stamp],
+    );
+    const items = [{ name: 'ביצה', foodKey: 'egg', grams: 50, calories: 72 }];
+    await db.run(
+      `INSERT INTO saved_meals (id, user_id, name, items, created_at, updated_at)
+       VALUES ('m1', ?, 'בוקר', ?, ?, ?)`,
+      [USER, JSON.stringify(items), stamp, stamp],
+    );
+
+    const run = await runSync(db, server, USER, at('11:00:00'));
+
+    expect(run.refused).toEqual([]);
+    expect(server.rows('water_entries')).toMatchObject([{ id: 'w1', drunk_on: '2026-02-01', ml: 250 }]);
+    // jsonb on the server: a list it can check the length of, which a string would not be.
+    expect(server.rows('saved_meals')).toMatchObject([{ id: 'm1', name: 'בוקר', items }]);
+  });
+
+  it('brings a kept meal down to another phone as text it can read back', async () => {
+    const server = createFakeServer();
+    const items = [{ name: 'ביצה', foodKey: 'egg', grams: 50, calories: 72 }];
+    server.seed('saved_meals', {
+      id: 'm1',
+      user_id: USER,
+      name: 'בוקר',
+      items,
+      created_at: '2026-02-01T10:00:00.000Z',
+      deleted_at: null,
+    });
+
+    await runSync(db, server, USER, at('11:00:00'));
+
+    const row = await db.get<{ name: string; items: string }>(
+      `SELECT name, items FROM saved_meals WHERE id = 'm1'`,
+    );
+    expect(row?.name).toBe('בוקר');
+    expect(JSON.parse(row!.items)).toEqual(items);
+  });
+
+  it('carries on without water and kept meals while their tables are not there yet', async () => {
+    const server = createFakeServer();
+    server.missing.add('water_entries');
+    server.missing.add('saved_meals');
+    await seedSession('2026-02-01T10:00:00.000Z');
+    await db.run(
+      `INSERT INTO water_entries (id, user_id, drunk_on, ml, created_at, updated_at)
+       VALUES ('w1', ?, '2026-02-01', 250, ?, ?)`,
+      [USER, '2026-02-01T10:00:00.000Z', '2026-02-01T10:00:00.000Z'],
+    );
+
+    const first = await runSync(db, server, USER, at('11:00:00'));
+    expect(first.refused).toEqual([]);
+    expect(server.rows('workout_sessions')).toHaveLength(1);
+
+    server.missing.delete('water_entries');
+    await runSync(db, server, USER, at('12:00:00'));
+    expect(server.rows('water_entries').map((row) => row.id)).toEqual(['w1']);
   });
 });
 

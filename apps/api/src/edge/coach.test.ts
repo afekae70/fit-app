@@ -11,6 +11,7 @@
 
 import {
   aiWorkoutPlanSchema,
+  coachChatRequestSchema,
   PROPOSE_NUTRITION_MENU_TOOL,
   PROPOSE_WORKOUT_PLAN_TOOL,
 } from '@fit/shared/schemas';
@@ -232,8 +233,65 @@ describe('asking the coach', () => {
     ]);
   });
 
+  it('answers an app from before there was a food log, and tells the model nothing about one', async () => {
+    const { deps, calls } = world();
+    const response = await handleCoach(request(ASK), deps);
+    expect(response.status).toBe(200);
+    const sent = JSON.parse(modelCalls(calls)[0]!.init?.body as string) as {
+      systemInstruction: { parts: { text: string }[] };
+    };
+    expect(sent.systemInstruction.parts[0]!.text.slice(COACH_PERSONA.length)).not.toContain(
+      'Food log',
+    );
+  });
+
+  it('passes the food log on to the model when the app sends one', async () => {
+    const { deps, calls } = world();
+    const withLog = {
+      ...ASK,
+      context: {
+        ...CONTEXT,
+        intake: {
+          days: [
+            {
+              date: '2026-10-12',
+              calories: 2140,
+              proteinG: 120,
+              carbsG: 210,
+              fatG: 61,
+              macrosPartial: false,
+              entryCount: 5,
+            },
+          ],
+          today: [{ name: 'ביצה קשה', calories: 155 }],
+          water: [{ date: '2026-10-12', ml: 1750 }],
+        },
+      },
+    };
+    await (await handleCoach(request(withLog), deps)).text();
+    const sent = JSON.parse(modelCalls(calls)[0]!.init?.body as string) as {
+      systemInstruction: { parts: { text: string }[] };
+    };
+    const told = sent.systemInstruction.parts[0]!.text;
+    expect(told).toContain('- 2026-10-12: 2,140 kcal');
+    expect(told).toContain('- ביצה קשה: 155 kcal');
+    expect(told).toContain('- 2026-10-12: 1750 ml');
+  });
+
+  it('refuses a request whose food log is malformed, without asking anyone', async () => {
+    const { deps, calls } = world();
+    const response = await handleCoach(
+      request({ ...ASK, context: { ...CONTEXT, intake: { days: [{ date: 'yesterday' }] } } }),
+      deps,
+    );
+    expect(response.status).toBe(400);
+    expect(calls).toEqual([]);
+  });
+
   it('strips schema keywords Gemini does not accept from the tools', () => {
-    const body = JSON.stringify(geminiRequest(ASK as never));
+    // Parsed first, as the handler does: the schema is what fills in the parts of a request
+    // that an older build of the app does not send.
+    const body = JSON.stringify(geminiRequest(coachChatRequestSchema.parse(ASK)));
     for (const keyword of ['minLength', 'maxLength', 'exclusiveMinimum', '$schema']) {
       expect(body, keyword).not.toContain(`"${keyword}"`);
     }

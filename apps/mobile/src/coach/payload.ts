@@ -13,6 +13,7 @@
 import type { CoachContextPayload } from '@fit/shared/schemas';
 
 import type { SqlExecutor } from '../db/executor.js';
+import { listFoodDays, listFoodEntries } from '../db/food.js';
 import {
   computeTargets,
   getProfile,
@@ -23,7 +24,14 @@ import {
 } from '../db/metrics.js';
 import { getActivePlan, getSessionAdherence } from '../db/plans.js';
 import { summariseAllProgress } from '../db/progression.js';
+import { addDays, localDate } from '../db/schedule.js';
+import { listWaterByDay } from '../db/water.js';
 import { listSessionSummaries } from '../db/workouts.js';
+
+/** How far back the food and water log is sent: today and the six days before it. */
+const INTAKE_DAYS = 7;
+/** How many of today's entries are named. The schema's bound; a day has far fewer. */
+const MAX_TODAY_ENTRIES = 40;
 
 /** Whole years from an ISO birth date, or null when unknown. */
 function ageFromBirthDate(birthDate: string | null, today: Date): number | null {
@@ -86,6 +94,16 @@ export async function buildCoachPayload(
       }))
     : [];
 
+  // What was eaten and drunk, as the food screen adds it up. A day with nothing logged is not
+  // in either list — see `listFoodDays` for why that matters to whoever reads it.
+  const todayKey = localDate(today);
+  const since = addDays(todayKey, -(INTAKE_DAYS - 1));
+  const [foodDays, eatenToday, waterDays] = await Promise.all([
+    listFoodDays(db, userId, since, todayKey),
+    listFoodEntries(db, userId, todayKey),
+    listWaterByDay(db, userId, since, todayKey),
+  ]);
+
   return {
     locale,
     profile: {
@@ -130,5 +148,27 @@ export async function buildCoachPayload(
     adherence: adherence.slice(0, 40),
     availableEquipment: [],
     planName: activePlan?.name ?? null,
+    // Held to the bounds the server validates against. One absurd day — a typo of an extra
+    // zero, logged three times — would otherwise fail the whole request, and the person
+    // would be told the coach is unavailable because of a line in their food log.
+    intake: {
+      days: foodDays.map((day) => ({
+        date: day.day,
+        calories: Math.min(day.calories, 50_000),
+        proteinG: Math.min(day.proteinG, 5000),
+        carbsG: Math.min(day.carbsG, 5000),
+        fatG: Math.min(day.fatG, 5000),
+        macrosPartial: day.partial,
+        entryCount: Math.min(day.entries, 500),
+      })),
+      today: eatenToday
+        .filter((entry) => entry.name.trim() !== '')
+        .slice(0, MAX_TODAY_ENTRIES)
+        .map((entry) => ({
+          name: entry.name.trim().slice(0, 120),
+          calories: Math.min(Math.max(0, Math.round(entry.calories)), 20_000),
+        })),
+      water: waterDays.map((day) => ({ date: day.day, ml: Math.min(day.ml, 50_000) })),
+    },
   };
 }

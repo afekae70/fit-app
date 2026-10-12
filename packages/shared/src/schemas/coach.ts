@@ -29,9 +29,7 @@ export const coachProfileSchema = z.object({
   sex: z.enum(['male', 'female', 'other']).nullable(),
   heightCm: bounded(90, 260).nullable(),
   weightKg: bounded(25, 400).nullable(),
-  activityLevel: z
-    .enum(['sedentary', 'light', 'moderate', 'active', 'very_active'])
-    .nullable(),
+  activityLevel: z.enum(['sedentary', 'light', 'moderate', 'active', 'very_active']).nullable(),
   goal: z.enum(['cut', 'maintain', 'bulk']).nullable(),
 });
 
@@ -81,6 +79,52 @@ export const coachAdherenceSchema = z.object({
   loggedSets: z.number().int().min(0).max(100),
 });
 
+const calendarDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+/**
+ * What one logged day of eating came to.
+ *
+ * A day appears here only if something was logged on it. That is the whole point of the
+ * shape: a day nobody wrote down is absent, not a row of zeros, so the coach cannot mistake
+ * "did not log" for "did not eat".
+ */
+export const coachIntakeDaySchema = z.object({
+  date: calendarDay,
+  calories: z.number().int().min(0).max(50_000),
+  proteinG: bounded(0, 5000),
+  carbsG: bounded(0, 5000),
+  fatG: bounded(0, 5000),
+  /**
+   * True when something that day was logged with calories and no macros. The macro totals are
+   * then floors — at least this much — and are worded that way to the model.
+   */
+  macrosPartial: z.boolean(),
+  entryCount: z.number().int().min(1).max(500),
+});
+
+export const coachIntakeSchema = z.object({
+  /** The last week's logged days, oldest first. */
+  days: z.array(coachIntakeDaySchema).max(14).default([]),
+  /**
+   * What has been logged today, by name — so "what should I have for dinner" can be answered
+   * against what breakfast and lunch were. Names are what the athlete typed or picked.
+   */
+  today: z
+    .array(
+      z.object({
+        name: z.string().min(1).max(120),
+        calories: z.number().int().min(0).max(20_000),
+      }),
+    )
+    .max(40)
+    .default([]),
+  /** Millilitres of water per logged day, oldest first. */
+  water: z
+    .array(z.object({ date: calendarDay, ml: z.number().int().min(0).max(50_000) }))
+    .max(14)
+    .default([]),
+});
+
 export const coachContextSchema = z.object({
   /** BCP-47-ish; drives the language the coach replies in. */
   locale: z.enum(['he', 'en']).default('he'),
@@ -93,6 +137,11 @@ export const coachContextSchema = z.object({
   /** Equipment available where they are training, so the coach cannot prescribe a missing machine. */
   availableEquipment: z.array(z.string().min(1).max(80)).max(60).default([]),
   planName: z.string().min(1).max(120).nullable().default(null),
+  /**
+   * The food and water log. Defaulted, so a build of the app from before there was one is
+   * still a valid request.
+   */
+  intake: coachIntakeSchema.default({ days: [], today: [], water: [] }),
 });
 
 export const coachMessageSchema = z.object({
@@ -115,5 +164,7 @@ export type CoachTargets = z.infer<typeof coachTargetsSchema>;
 export type CoachExerciseProgress = z.infer<typeof coachExerciseProgressSchema>;
 export type CoachWeightTrend = z.infer<typeof coachWeightTrendSchema>;
 export type CoachAdherence = z.infer<typeof coachAdherenceSchema>;
+export type CoachIntakeDay = z.infer<typeof coachIntakeDaySchema>;
+export type CoachIntake = z.infer<typeof coachIntakeSchema>;
 export type CoachContextPayload = z.infer<typeof coachContextSchema>;
 export type CoachChatRequest = z.infer<typeof coachChatRequestSchema>;

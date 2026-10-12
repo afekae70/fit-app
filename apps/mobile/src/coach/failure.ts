@@ -25,6 +25,10 @@ export const COACH_FAILURES = {
   offline: 'coach.failed.offline',
   timeout: 'coach.failed.timeout',
   interrupted: 'coach.cutShort',
+  // The model declined. Not a fault, and worded as the chat words it.
+  refused: 'coach.refused',
+  // A weekly review asked for before a week has passed since the last (`weeklyReview.ts`).
+  too_soon: 'coach.weekly.tooSoon',
   // Nothing the person can act on, and nothing they would learn from the detail: the request
   // was malformed or the server broke. The detail is in the log, where it is of use.
   invalid_request: 'coach.unavailable',

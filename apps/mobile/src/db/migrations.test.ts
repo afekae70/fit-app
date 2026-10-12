@@ -1019,3 +1019,94 @@ describe('migration 20 — supersets, drop sets and timed workouts join sync', (
     empty.close();
   });
 });
+
+describe('migration 23 — water, and meals worth keeping', () => {
+  const TABLES = ['water_entries', 'saved_meals'] as const;
+
+  /** A phone at version 22: a workout and a food entry, and neither new table. */
+  function loggingDevice() {
+    const db = new DatabaseSync(':memory:');
+    db.exec(`
+      CREATE TABLE workout_sessions (id TEXT PRIMARY KEY NOT NULL, user_id TEXT NOT NULL, started_at TEXT NOT NULL);
+      INSERT INTO workout_sessions VALUES ('s1', 'u1', '2026-10-01T10:00:00.000Z');
+      CREATE TABLE food_entries (id TEXT PRIMARY KEY NOT NULL, user_id TEXT NOT NULL, name TEXT NOT NULL, calories REAL NOT NULL);
+      INSERT INTO food_entries VALUES ('f1', 'u1', 'egg', 72);
+    `);
+    return db;
+  }
+
+  it('is on the app upgrade path', () => {
+    expect(SCHEMA_VERSION).toBeGreaterThanOrEqual(23);
+    expect(MIGRATIONS[23]).toBeDefined();
+  });
+
+  it.each(TABLES)('makes the same %s a fresh install gets', (table) => {
+    const upgraded = loggingDevice();
+    applyMigration(upgraded, MIGRATIONS[23] ?? '');
+    const fresh = new DatabaseSync(':memory:');
+    fresh.exec(CREATE_SCHEMA_SQL.replace(/PRAGMA journal_mode = WAL;/, ''));
+
+    const columns = (db: typeof upgraded) =>
+      db
+        .prepare(`SELECT name, type, "notnull", pk FROM pragma_table_info('${table}') ORDER BY cid`)
+        .all();
+    const indexes = (db: typeof upgraded) =>
+      (
+        db
+          .prepare(`SELECT name FROM pragma_index_list('${table}') WHERE origin = 'c' ORDER BY name`)
+          .all() as { name: string }[]
+      ).map((index) => index.name);
+
+    expect(columns(upgraded)).toEqual(columns(fresh));
+    expect(columns(upgraded).length).toBeGreaterThanOrEqual(8);
+    expect(indexes(upgraded)).toEqual(indexes(fresh));
+    expect(indexes(upgraded)).toHaveLength(1);
+    upgraded.close();
+    fresh.close();
+  });
+
+  it.each(TABLES)('gives %s the columns sync keeps its bookkeeping in', (table) => {
+    const db = loggingDevice();
+    applyMigration(db, MIGRATIONS[23] ?? '');
+    const names = (
+      db.prepare(`SELECT name FROM pragma_table_info('${table}')`).all() as { name: string }[]
+    ).map((column) => column.name);
+    expect(names).toEqual(
+      expect.arrayContaining(['updated_at', 'deleted_at', 'remote_updated_at']),
+    );
+    db.close();
+  });
+
+  it('touches nothing that was already there', () => {
+    const db = loggingDevice();
+    applyMigration(db, MIGRATIONS[23] ?? '');
+    expect(db.prepare(`SELECT * FROM workout_sessions`).all()).toEqual([
+      { id: 's1', user_id: 'u1', started_at: '2026-10-01T10:00:00.000Z' },
+    ]);
+    expect(db.prepare(`SELECT * FROM food_entries`).all()).toEqual([
+      { id: 'f1', user_id: 'u1', name: 'egg', calories: 72 },
+    ]);
+    db.close();
+  });
+
+  it('is safe to run twice, and on a new install where the tables are already there', () => {
+    const db = loggingDevice();
+    applyMigration(db, MIGRATIONS[23] ?? '');
+    expect(() => applyMigration(db, MIGRATIONS[23] ?? '')).not.toThrow();
+    db.close();
+
+    const fresh = new DatabaseSync(':memory:');
+    fresh.exec(CREATE_SCHEMA_SQL.replace(/PRAGMA journal_mode = WAL;/, ''));
+    expect(() => applyMigration(fresh, MIGRATIONS[23] ?? '')).not.toThrow();
+    fresh.close();
+  });
+
+  it('has no semicolon inside a comment, which the statement splitter would cut on', () => {
+    // The runner splits a migration on `;`. A semicolon in a `--` comment would cut a CREATE
+    // TABLE in half on the phone, where the failure is a table that is simply not there.
+    for (const line of (MIGRATIONS[23] ?? '').split('\n')) {
+      const comment = line.indexOf('--');
+      if (comment >= 0) expect(line.slice(comment), line).not.toContain(';');
+    }
+  });
+});

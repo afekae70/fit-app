@@ -30,6 +30,7 @@ const EMPTY_CONTEXT: CoachContextPayload = {
   adherence: [],
   availableEquipment: [],
   planName: null,
+  intake: { days: [], today: [], water: [] },
 };
 
 describe('localDateString', () => {

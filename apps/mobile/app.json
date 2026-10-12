@@ -103,6 +103,15 @@
           "cameraPermission": "Photograph a meal so its calories can be estimated.",
           "microphonePermission": false
         }
+      ],
+      [
+        "expo-camera",
+        {
+          "//": "Reads the barcode of a packaged food (app/food-barcode.tsx). It decodes on the phone: no picture is taken and none is sent anywhere. Nothing here records, so the microphone the library would otherwise declare on both platforms is switched off.",
+          "cameraPermission": "Photograph a meal, or read a food's barcode, to log what you eat.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
       ]
     ],
     "experiments": {

@@ -31,6 +31,7 @@ import {
   SectionTitle,
   SkeletonScreen,
 } from '../../src/components/ui.js';
+import { WeeklyReviewCard } from '../../src/components/WeeklyReviewCard.js';
 import {
   ConsistencyGrid,
   PersonalRecordList,
@@ -149,6 +150,10 @@ export default function ProgressScreen() {
           <WorkoutProgressList lines={workouts} />
         </Card>
       ) : null}
+
+      {/* Above the charts it is, in effect, a reading of. Draws nothing when there is neither
+          a review to show nor a way to ask for one. */}
+      <WeeklyReviewCard />
 
       {volume.some((w) => w.volumeKg > 0) ? (
         <>

@@ -125,6 +125,7 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { setWorkoutActive } from '../../src/workout/activeWorkout.js';
 import { shouldAutoComplete } from '../../src/workout/autoComplete.js';
 import { adoptGhost, ghostsFor } from '../../src/workout/ghost.js';
+import { beats, recordSetIndex, type Best } from '../../src/workout/records.js';
 import { scrollToReveal, type MeasureRow } from '../../src/workout/revealRow.js';
 import { toScreenY, windowTopFor } from '../../src/keyboardInset.js';
 import { estimateMaxHeartRate, heartRateZone } from '../../src/workout/heartRate.js';
@@ -214,6 +215,10 @@ export default function WorkoutsScreen() {
   // Keyed by exercise key, like `previous`. Recomputed on reload rather than per render: it is
   // several queries deep and the answer only changes when a session is finished.
   const [stalling, setStalling] = useState<Record<string, boolean>>({});
+  // The best each exercise had been lifted before this workout: what a set has to beat to be
+  // a record. A key that is missing has not been read yet, which is not the same as `null`,
+  // "never lifted" — see `recordSetIndex`.
+  const [bests, setBests] = useState<Record<string, Best | null>>({});
   // False for a session that is neither planned nor named: there is no other workout of its
   // kind, so every comparison on screen silently widens to all of them. Worth saying out loud
   // rather than letting the numbers quietly mean something else.
@@ -383,9 +388,17 @@ export default function WorkoutsScreen() {
 
       const nextPrevious: Record<string, PreviousSet[] | null> = {};
       const nextStalling: Record<string, boolean> = {};
+      const nextBests: Record<string, Best | null> = {};
       for (const exercise of loaded) {
         const sets = await getPreviousSessionSets(db, userId, exercise.exercise_key, id, type);
         nextPrevious[exercise.exercise_key] = sets.length > 0 ? sets : null;
+        // Across every kind of workout, unlike "last time": a record is a record whichever
+        // day it was set on. This workout's own sets are left out, or each would only ever
+        // tie with itself.
+        const best = await getPreviousBest(db, userId, exercise.exercise_key, id);
+        nextBests[exercise.exercise_key] = best
+          ? { weightKg: best.weight_kg, reps: best.reps }
+          : null;
         // Same exclusion, same reason: today's half-finished sets must not be weighed against
         // themselves when deciding whether this lift has stopped moving.
         nextStalling[exercise.exercise_key] = await isExerciseStalling(
@@ -399,6 +412,7 @@ export default function WorkoutsScreen() {
       if (!latestReload.isCurrent(ticket)) return loaded;
       setPrevious(nextPrevious);
       setStalling(nextStalling);
+      setBests(nextBests);
 
       // Targets exist only for a session started from a plan day. A freestyle session leaves this
       // empty and the cards simply show no target badge.
@@ -770,10 +784,11 @@ export default function WorkoutsScreen() {
         }
 
         const best = await getPreviousBest(db, userId, exercise.exercise_key, sessionId);
-        const isPr =
-          !best ||
-          set.weight_kg > best.weight_kg ||
-          (set.weight_kg === best.weight_kg && set.reps > best.reps);
+        // The same rule that decides which row keeps the trophy, so the two cannot disagree.
+        const isPr = beats(
+          { weightKg: set.weight_kg, reps: set.reps },
+          best ? { weightKg: best.weight_kg, reps: best.reps } : null,
+        );
         if (!isPr) return;
 
         celebratedSetIds.current.add(setId);
@@ -1458,6 +1473,19 @@ export default function WorkoutsScreen() {
           })) ?? null
         }
         ghosts={ghosts}
+        recordIndex={
+          seed.loadType === 'cardio'
+            ? null
+            : recordSetIndex(
+                exercise.sets.map((set) => ({
+                  weightKg: set.weight_kg,
+                  reps: set.reps,
+                  done: set.done_at !== null,
+                  isWarmup: set.is_warmup === 1,
+                })),
+                bests[exercise.exercise_key],
+              )
+        }
         target={
           prescription
             ? {

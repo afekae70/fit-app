@@ -40,6 +40,7 @@ import {
 } from '../../src/components/home/TodayCards.js';
 import { FadeSlideIn } from '../../src/components/motion.js';
 import { Skeleton } from '../../src/components/ui.js';
+import { WaterCard } from '../../src/components/WaterCard.js';
 import {
   getHomeNutrition,
   getTodayWorkout,
@@ -58,6 +59,7 @@ import {
 } from '../../src/db/home.js';
 import { startSessionFromPlanDay } from '../../src/db/plans.js';
 import { getExecutor, newId } from '../../src/db/provider.js';
+import { localDate } from '../../src/db/schedule.js';
 import { getActiveSession, getWorkoutStreak } from '../../src/db/workouts.js';
 import { syncWorkoutReminders } from '../../src/reminders/sync.js';
 import { hapticLight } from '../../src/haptics.js';
@@ -385,6 +387,11 @@ export default function TodayScreen() {
                   targets={data.nutrition.targets}
                   onPress={() => router.push('/metrics')}
                 />
+              </FadeSlideIn>
+              {/* Today's water, where it can be added to without going anywhere: it is logged
+                  a glass at a time, many times a day. */}
+              <FadeSlideIn index={data.workout ? 5 : 2}>
+                <WaterCard date={localDate(new Date())} />
               </FadeSlideIn>
             </>
           ) : null}

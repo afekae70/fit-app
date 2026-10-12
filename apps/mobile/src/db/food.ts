@@ -158,3 +158,64 @@ export async function listRecentFoods(
     [userId, limit],
   );
 }
+
+export interface FoodDay {
+  /** The local day, `YYYY-MM-DD`. */
+  day: string;
+  calories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  /** Something that day was logged without all three macros: the macro totals are floors. */
+  partial: boolean;
+  entries: number;
+}
+
+/**
+ * What each day in a span came to, oldest first. Only days with something logged: a day with
+ * no entries is not in the list, because "nothing was written down" is not "nothing was eaten"
+ * and whoever reads this — the coach, above all — must not be handed a zero to reason about.
+ *
+ * Summed in SQL and rounded the way `sumDay` rounds, so a day reads the same here as it does
+ * at the top of the food screen.
+ */
+export async function listFoodDays(
+  db: SqlExecutor,
+  userId: string,
+  from: string,
+  to: string,
+): Promise<FoodDay[]> {
+  const rows = await db.all<{
+    day: string;
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+    partial: number;
+    entries: number;
+  }>(
+    `SELECT eaten_on AS day,
+            SUM(calories) AS calories,
+            SUM(COALESCE(protein_g, 0)) AS protein,
+            SUM(COALESCE(carbs_g, 0)) AS carbs,
+            SUM(COALESCE(fat_g, 0)) AS fat,
+            MAX(CASE WHEN protein_g IS NULL OR carbs_g IS NULL OR fat_g IS NULL
+                     THEN 1 ELSE 0 END) AS partial,
+            COUNT(*) AS entries
+       FROM food_entries
+      WHERE user_id = ? AND eaten_on BETWEEN ? AND ? AND deleted_at IS NULL
+      GROUP BY eaten_on
+      ORDER BY eaten_on`,
+    [userId, from, to],
+  );
+  const tenth = (value: number) => Math.round(value * 10) / 10;
+  return rows.map((row) => ({
+    day: row.day,
+    calories: Math.round(row.calories),
+    proteinG: tenth(row.protein),
+    carbsG: tenth(row.carbs),
+    fatG: tenth(row.fat),
+    partial: row.partial === 1,
+    entries: row.entries,
+  }));
+}

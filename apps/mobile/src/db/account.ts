@@ -31,6 +31,8 @@ const USER_TABLES = [
   'coach_briefs',
   'scheduled_days',
   'food_entries',
+  'water_entries',
+  'saved_meals',
   'nutrition_targets',
   'body_metrics',
   'locations',

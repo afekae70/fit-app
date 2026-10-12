@@ -66,6 +66,8 @@ export interface ExercisePanelProps {
    * which of today's is a decision about warm-ups and working sets, not about drawing.
    */
   ghosts?: readonly (Ghost | null)[];
+  /** Which set is a personal record for this exercise, if one is (`workout/records.ts`). */
+  recordIndex?: number | null;
   target: ExerciseTarget | null;
   onChangeWeight: (setIndex: number, next: number) => void;
   onChangeReps: (setIndex: number, next: number) => void;
@@ -190,6 +192,7 @@ export function ExercisePanel({
   sets,
   previous,
   ghosts,
+  recordIndex = null,
   target,
   onChangeWeight,
   onChangeReps,
@@ -476,6 +479,7 @@ export function ExercisePanel({
                   index={labels[index]?.ordinal ?? index + 1}
                   isWarmup={labels[index]?.kind === 'warmup'}
                   isDrop={labels[index]?.kind === 'drop'}
+                  isRecord={index === recordIndex}
                   rpe={set.rpe}
                   toFailure={set.toFailure}
                   onOptions={onSetOptions ? () => onSetOptions(index) : undefined}
