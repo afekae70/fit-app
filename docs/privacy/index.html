@@ -61,6 +61,7 @@
 <li><strong>נתוני אימון:</strong> אימונים, תרגילים, סטים, משקלים, חזרות, זמנים ומרחקים; ותוכניות האימון ולוח האימונים שלך.</li>
 <li><strong>מדדי גוף:</strong> שקילות, ואם חיברת משקל חכם — גם אחוז שומן, מסת שריר, אחוז מים, מסת עצם ושומן ויסצרלי.</li>
 <li><strong>יומן אכילה:</strong> רק אם אתה רושם בו. מה שרשמת שאכלת בכל יום: שם המאכל, הכמות, הקלוריות, ואם הוזנו — חלבון, פחמימות ושומן. היומן משמש רק כדי להציג לך את היום מול היעדים שלך.</li>
+<li><strong>סריקות ארוחה:</strong> רק אם אתה סורק. נשמר שבוצעה סריקה ומתי, כדי להגביל את מספר הסריקות ביום — לא התמונה ולא מה שזוהה בה. מה שבחרת להוסיף ליומן נשמר ביומן האכילה, כמו מאכל שהוזן ידנית.</li>
 <li><strong>תמונת פרופיל:</strong> אם בחרת אחת, היא נשמרת במכשיר שלך ומגובה לחשבון שלך בשרת, כדי שתופיע גם במכשיר אחר שתתחבר ממנו. היא נשמרת באחסון פרטי: רק החשבון שלך יכול לגשת אליה, ואין לה קישור ציבורי. מאמן שהתחברת אליו אינו רואה אותה.</li>
 </ul>
 <p>האפליקציה אינה אוספת מיקום, אנשי קשר, או מזהי פרסום.</p>
@@ -73,6 +74,7 @@
 <li><strong>Supabase</strong> — אחסון הנתונים ואימות החשבון.</li>
 <li><strong>מאמן אישי</strong> — רק אם התחברת לאחד. כשאתה מקליד באפליקציה קוד שקיבלת ממאמן, אותו מאמן יכול לראות ולערוך את תוכניות האימון ואת לוח האימונים שלך, ורואה את האימונים שסיימת — התרגילים, הסטים, המשקלים, החזרות, הזמנים וההערה שכתבת על האימון — וכן את שם התצוגה ואת כתובת האימייל שלך. הוא אינו רואה את השקילות, את מדדי הגוף, את משקל הגוף שנרשם באימון, את יומן האכילה, את תמונת הפרופיל או את שאר פרטי הפרופיל שלך, ואינו יכול לשנות אימון שביצעת. אתה רואה את שם התצוגה ואת כתובת האימייל שלו. החיבור נוצר רק על ידך, ואפשר לנתק אותו בכל רגע מתוך האפליקציה — הגישה של המאמן נפסקת מיד. אם אתה מאמן, המתאמנים שהתחברו אליך רואים את שם התצוגה ואת כתובת האימייל שלך.</li>
 <li><strong>המאמן ה-AI</strong> — רק אם אתה משתמש בו. כדי לענות לך, נשלחים לספק הבינה המלאכותית (Anthropic או Google) סיכום של הפרופיל, היעדים, מגמת המשקל, ההתקדמות בתרגילים והתוכנית שלך, יחד עם השאלות שכתבת. הבקשה עוברת דרך השרת שלנו, והשיחות אינן נשמרות בו.</li>
+<li><strong>סריקת ארוחה</strong> — רק אם אתה משתמש בה. התמונה שצילמת או בחרת נשלחת דרך השרת שלנו ל-Google (Gemini), כדי לזהות את המאכלים ולהעריך את ערכיהם. התמונה אינה נשמרת בשרת שלנו ואינה נשמרת בחשבון שלך. השירות של Google שבו אנחנו משתמשים הוא חינמי, ולפי תנאיו Google רשאית להשתמש בתמונות ובתשובות לשיפור המוצרים שלה, ובודקים אנושיים עשויים לראות אותן כשהן מנותקות מהחשבון. אל תצלם לסריקה דבר שאינך רוצה לשתף כך.</li>
 <li><strong>Health Connect</strong> — רק אם הפעלת את הסנכרון. אימונים שסיימת, המרחק והקלוריות שנשרפו נכתבים למאגר הבריאות של Android במכשיר שלך, ומשם אפליקציות אחרות שאישרת (למשל Samsung Health) יכולות לקרוא אותם. NovaFit כותבת למאגר הזה ואינה קוראת ממנו. מידע שמקורו ב-Health Connect אינו משמש לפרסום ואינו מועבר לאף גורם.</li>
 </ul>
 <p>אנחנו לא מוכרים מידע, לא משתפים אותו לצורכי פרסום, ואין באפליקציה ספריות פרסום, מעקב או אנליטיקה.</p>
@@ -81,7 +83,8 @@
 <ul>
 <li><strong>Bluetooth</strong> — לחיבור למשקל חכם, אם יש לך. לא נעשה בו שימוש לאיתור מיקום.</li>
 <li><strong>התראות</strong> — לתזכורות אימון ושקילה. התזכורות נוצרות במכשיר עצמו.</li>
-<li><strong>תמונות</strong> — רק כשאתה בוחר תמונת פרופיל, דרך בורר התמונות של המערכת.</li>
+<li><strong>מצלמה</strong> — רק כשאתה מצלם ארוחה לסריקה.</li>
+<li><strong>תמונות</strong> — רק כשאתה בוחר תמונת פרופיל או תמונה לסריקת ארוחה, דרך בורר התמונות של המערכת.</li>
 <li><strong>Health Connect</strong> — לכתיבת אימונים, מרחק וקלוריות, רק אם הפעלת זאת.</li>
 </ul>
 
@@ -124,6 +127,7 @@
 <li><strong>Training data:</strong> workouts, exercises, sets, weights, repetitions, durations and distances; and your training plans and schedule.</li>
 <li><strong>Body measurements:</strong> weigh-ins, and if you connect a smart scale, body-fat percentage, muscle mass, water percentage, bone mass and visceral fat.</li>
 <li><strong>Food log:</strong> only if you use it. What you record eating each day: the name of the food, the amount, the calories and, where entered, protein, carbohydrate and fat. It is used only to show you the day against your targets.</li>
+<li><strong>Meal scans:</strong> only if you scan. That a scan was made and when, to limit the number of scans in a day — not the photo and not what was found in it. What you choose to add to the log is kept in the food log, like a food entered by hand.</li>
 <li><strong>Profile picture:</strong> if you choose one, it is kept on your device and backed up to your account on the server, so that it also appears on another device you sign in from. It is held in private storage: only your own account can reach it, and it has no public link. A coach you have connected to does not see it.</li>
 </ul>
 <p>The app does not collect your location, your contacts or any advertising identifier.</p>
@@ -136,6 +140,7 @@
 <li><strong>Supabase</strong> — data storage and account authentication.</li>
 <li><strong>A personal coach</strong> — only if you connect to one. When you enter a code a coach gave you, that coach can see and edit your training plans and your training schedule, and sees the workouts you have finished — the exercises, sets, weights, repetitions, times and the note you write on a workout — as well as your display name and email address. They do not see your weigh-ins, your body measurements, the body weight recorded with a workout, your food log, your profile picture or the rest of your profile, and they cannot change a workout you have done. You see their display name and email address. The connection is only ever made by you, and you can end it at any time from inside the app — the coach's access stops at once. If you are a coach, the trainees who have connected to you see your display name and email address.</li>
 <li><strong>The AI coach</strong> — only if you use it. To answer you, a summary of your profile, targets, weight trend, exercise progress and plan is sent to the AI provider (Anthropic or Google), together with the questions you typed. The request passes through our server, and conversations are not stored on it.</li>
+<li><strong>Meal scan</strong> — only if you use it. The photo you take or choose is sent through our server to Google (Gemini), to recognise the foods and estimate their values. The photo is not stored on our server and is not kept in your account. The Google service we use is free of charge, and under its terms Google may use the photos and the answers to improve its products, and human reviewers may see them detached from the account. Do not photograph for a scan anything you would not want shared in that way.</li>
 <li><strong>Health Connect</strong> — only if you switch the sync on. Workouts you finish, their distance and the calories burned are written to Android's health store on your device, where other apps you have approved (Samsung Health, for example) can read them. NovaFit writes to that store and does not read from it. Information from Health Connect is not used for advertising and is not transferred to anyone.</li>
 </ul>
 <p>We do not sell information or share it for advertising, and the app contains no advertising, tracking or analytics libraries.</p>
@@ -144,7 +149,8 @@
 <ul>
 <li><strong>Bluetooth</strong> — to connect to a smart scale, if you have one. It is not used to find your location.</li>
 <li><strong>Notifications</strong> — for workout and weigh-in reminders, which are created on the device itself.</li>
-<li><strong>Photos</strong> — only when you choose a profile picture, through the system photo picker.</li>
+<li><strong>Camera</strong> — only when you photograph a meal to scan it.</li>
+<li><strong>Photos</strong> — only when you choose a profile picture or a photo for a meal scan, through the system photo picker.</li>
 <li><strong>Health Connect</strong> — to write workouts, distance and calories, only if you switch it on.</li>
 </ul>
 

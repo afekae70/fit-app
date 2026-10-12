@@ -24,13 +24,7 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  ScrollView,
-  StyleSheet,
-  View,
-  type TextStyle,
-  type ViewStyle,
-} from 'react-native';
+import { ScrollView, StyleSheet, View, type TextStyle, type ViewStyle } from 'react-native';
 import { Pressable } from '../src/components/Pressable.js';
 import { Text } from '../src/components/Text.js';
 import { CaretLeft, CaretRight, ForkKnife } from 'phosphor-react-native';
@@ -40,7 +34,7 @@ import { useCurrentUserId } from '../src/auth/CurrentUserProvider.js';
 import { BrandButton } from '../src/components/BrandButton.js';
 import { FadeSlideIn } from '../src/components/motion.js';
 import { SwipeableRow } from '../src/components/SwipeableRow.js';
-import { EmptyState, Hint, ScreenHeader } from '../src/components/ui.js';
+import { Button, EmptyState, Hint, ScreenHeader } from '../src/components/ui.js';
 import { deleteFoodEntry, listFoodEntries, type FoodEntryRow } from '../src/db/food.js';
 import {
   computeTargets,
@@ -221,10 +215,18 @@ export default function FoodLogScreen() {
         {total.partial ? <Text style={styles.partial}>{t('food.partial')}</Text> : null}
       </FadeSlideIn>
 
-      <BrandButton
-        label={t('food.add')}
-        onPress={() => router.push({ pathname: '/food-add', params: { date } })}
-      />
+      <View style={styles.actions}>
+        <BrandButton
+          label={t('food.add')}
+          onPress={() => router.push({ pathname: '/food-add', params: { date } })}
+        />
+        {/* The quicker way in for a whole plate: a photograph, and an estimate to correct. */}
+        <Button
+          label={t('food.scan')}
+          variant="secondary"
+          onPress={() => router.push({ pathname: '/food-scan', params: { date } })}
+        />
+      </View>
 
       {entries.length === 0 ? (
         <EmptyState icon={ForkKnife} title={t('food.empty')} hint={t('food.emptyHint')} />
@@ -330,6 +332,7 @@ const createStyles = (colors: ColorPalette) =>
     macroTrack: ViewStyle;
     macroFill: ViewStyle;
     partial: TextStyle;
+    actions: ViewStyle;
     list: ViewStyle;
     entry: ViewStyle;
     entryText: ViewStyle;
@@ -401,6 +404,7 @@ const createStyles = (colors: ColorPalette) =>
     macroFill: { height: '100%', borderRadius: radius.pill },
     partial: { color: colors.textFaint, fontSize: fontSize.xs, textAlign: 'auto' },
 
+    actions: { gap: spacing.sm },
     list: { gap: spacing.sm },
     entry: {
       flexDirection: 'row',

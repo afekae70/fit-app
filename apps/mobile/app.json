@@ -22,11 +22,10 @@
       }
     },
     "android": {
-      "//blockedPermissions": "expo-audio's library manifest declares the microphone permission for recording, which this app never does. Blocked so a beep does not add a microphone entry to the app's permissions. The camera likewise: expo-image-picker declares it for taking photos, and the profile picture only ever comes from the gallery, through Android's photo picker, which needs no permission.",
+      "//blockedPermissions": "expo-audio's library manifest declares the microphone permission for recording, which this app never does. Blocked so a beep does not add a microphone entry to the app's permissions. The camera is NOT blocked: it used to be, when the only picture was a profile picture from the gallery, and is now what the meal scan (app/food-scan.tsx) photographs a plate with. It is asked for when that button is pressed and nowhere else.",
       "//blockedPermissions2": "And three more, for Google Play, which reads a manifest literally. FOREGROUND_SERVICE and FOREGROUND_SERVICE_MEDIA_PLAYBACK come from expo-audio, which can run lock-screen controls as a foreground service; this app plays a beep and never starts one, and Play wants every declared foreground-service type justified with a video of the feature. The services themselves are removed by plugins/withStoreManifest. SYSTEM_ALERT_WINDOW is in Expo's template manifest for the developer menu's overlay; a release build has no developer menu, and 'display over other apps' is not something to ask a stranger's phone for.",
       "blockedPermissions": [
         "android.permission.RECORD_AUDIO",
-        "android.permission.CAMERA",
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
         "android.permission.SYSTEM_ALERT_WINDOW"
@@ -99,9 +98,9 @@
       [
         "expo-image-picker",
         {
-          "//": "Only ever used to choose a profile picture from the gallery. Listed here to say so in the app's own words on iOS, and to switch off the camera and microphone the library would otherwise declare on both platforms - it can take photos and record video, and this app does neither.",
-          "photosPermission": "Choose a profile picture from your photos.",
-          "cameraPermission": false,
+          "//": "Used to choose a profile picture from the gallery, and to photograph or choose a meal for the scan. Listed here to say so in the app's own words on iOS, and to switch off the microphone the library would otherwise declare on both platforms - it can record video, and this app does not.",
+          "photosPermission": "Choose a profile picture, or a photo of a meal to scan, from your photos.",
+          "cameraPermission": "Photograph a meal so its calories can be estimated.",
           "microphonePermission": false
         }
       ]
