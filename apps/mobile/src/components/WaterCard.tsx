@@ -9,7 +9,8 @@
  * It loads and saves for itself, given a day. The food screen shows it for whichever day is
  * open; the home screen shows it for today. Neither has to know what water is.
  *
- * The aim is a rule of thumb from body weight (`food/water.ts`) and is labelled as one.
+ * The aim is 45 ml for each kilogram of body weight (`food/water.ts`), and the card says so,
+ * so that the number can be checked against the rule it came from.
  */
 
 import { useFocusEffect } from 'expo-router';
@@ -22,7 +23,7 @@ import { useCurrentUserId } from '../auth/CurrentUserProvider.js';
 import { getLatestWeight } from '../db/metrics.js';
 import { getExecutor, newId } from '../db/provider.js';
 import { addWater, getWaterTotal, undoLastWater } from '../db/water.js';
-import { BOTTLE_ML, GLASS_ML, litres, waterGoalMl } from '../food/water.js';
+import { BOTTLE_ML, GLASS_ML, litres, WATER_ML_PER_KG, waterGoalMl } from '../food/water.js';
 import { hapticLight, hapticSuccess } from '../haptics.js';
 import { useTheme } from '../ThemeProvider.js';
 import { fontSize, fontWeight, radius, shadow, spacing, type ColorPalette } from '../theme.js';
@@ -39,6 +40,8 @@ export function WaterCard({ date }: { date: string }) {
 
   const [total, setTotal] = useState(0);
   const [goal, setGoal] = useState(() => waterGoalMl(null));
+  // Whether the aim is this person's, or the stand-in used until they have weighed in.
+  const [weighed, setWeighed] = useState(true);
 
   const load = useCallback(async () => {
     const db = await getExecutor();
@@ -48,6 +51,7 @@ export function WaterCard({ date }: { date: string }) {
     ]);
     setTotal(drunk);
     setGoal(waterGoalMl(latest?.weight_kg ?? null));
+    setWeighed(latest?.weight_kg != null);
   }, [userId, date]);
 
   // On every return to the screen, and whenever the day shown changes.
@@ -136,7 +140,13 @@ export function WaterCard({ date }: { date: string }) {
           ]}
         />
       </View>
-      <Text style={styles.note}>{reached ? t('water.reached') : t('water.goalNote')}</Text>
+      <Text style={styles.note}>
+        {reached
+          ? t('water.reached')
+          : weighed
+            ? t('water.goalNote', { ml: WATER_ML_PER_KG })
+            : t('water.goalNoteNoWeight')}
+      </Text>
 
       <View style={styles.buttons}>
         <Pressable

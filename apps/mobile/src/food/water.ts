@@ -1,10 +1,14 @@
 /**
  * How much water to aim for, and how to say an amount of it.
  *
- * The aim is a rule of thumb and is presented as one: about 35 ml for each kilogram of body
- * weight, which is where most general guidance lands for an adult who trains. It is rounded to
- * a quarter of a litre, because a target of 2,817 ml claims a precision nobody has, and held
- * between a litre and a half and four litres so that a mistyped weight cannot ask for eight.
+ * The aim is 45 ml for each kilogram of body weight: 72 kg is 3.24 litres. That is the rule
+ * the app's owner trains by, and it is applied as it is stated — the figure is not rounded to
+ * a quarter litre or nudged toward a rounder one, because someone who knows the rule will do
+ * the multiplication in their head and expect to see its answer.
+ *
+ * It is held between one litre and six. Neither bound is an opinion about the rule: six litres
+ * is what it gives at 133 kg, and above that the likelier explanation is a mistyped weight —
+ * which should not turn into advice to drink eleven litres.
  *
  * It is not stored. Like the calorie target it is worked out from the latest weight each time,
  * so it follows the person as they change without anything having to be kept in step.
@@ -14,24 +18,28 @@
 export const GLASS_ML = 250;
 export const BOTTLE_ML = 500;
 
-const ML_PER_KG = 35;
-const MIN_GOAL_ML = 1500;
-const MAX_GOAL_ML = 4000;
-/** With no weight to go by: the figure the rule gives for about seventy kilograms. */
-export const DEFAULT_GOAL_ML = 2500;
+export const WATER_ML_PER_KG = 45;
+const MIN_GOAL_ML = 1000;
+const MAX_GOAL_ML = 6000;
+/** With no weight to go by: what the rule gives for seventy kilograms. */
+export const DEFAULT_GOAL_ML = 70 * WATER_ML_PER_KG;
 
 export function waterGoalMl(weightKg: number | null | undefined): number {
   if (weightKg === null || weightKg === undefined || !Number.isFinite(weightKg) || weightKg <= 0) {
     return DEFAULT_GOAL_ML;
   }
-  const rounded = Math.round((weightKg * ML_PER_KG) / 250) * 250;
-  return Math.max(MIN_GOAL_ML, Math.min(MAX_GOAL_ML, rounded));
+  // The rule's own answer, to the millilitre. Rounding happens once, where it is shown.
+  const exact = Math.round(weightKg * WATER_ML_PER_KG);
+  return Math.max(MIN_GOAL_ML, Math.min(MAX_GOAL_ML, exact));
 }
 
-/** Millilitres as litres to one decimal, without a trailing ".0": 1750 → "1.8", 2000 → "2". */
+/**
+ * Millilitres as litres, to two decimals and no further than needed:
+ * 3240 → "3.24", 3600 → "3.6", 2000 → "2", 250 → "0.25".
+ */
 export function litres(ml: number): string {
-  const value = Math.round(ml / 100) / 10;
-  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+  const value = Math.round(ml / 10) / 100;
+  return String(value);
 }
 
 /** How many whole glasses an amount is: the count the row of glasses draws. */

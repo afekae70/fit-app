@@ -15,6 +15,7 @@ import {
   GLASS_ML,
   glassesOf,
   litres,
+  WATER_ML_PER_KG,
   waterGoalMl,
 } from '../food/water.js';
 import { PURGED_TABLES, purgeUserData } from './account.js';
@@ -123,15 +124,34 @@ describe('drinking water', () => {
 });
 
 describe('how much water to aim for', () => {
-  it('is about 35 ml a kilogram, to the quarter litre', () => {
-    expect(waterGoalMl(70)).toBe(2500);
-    expect(waterGoalMl(82)).toBe(2750);
-    expect(waterGoalMl(60)).toBe(2000);
+  it('is 45 ml for each kilogram: 72 kg is 3.24 litres', () => {
+    // The owner's own example, as given.
+    expect(waterGoalMl(72)).toBe(3240);
+    expect(litres(waterGoalMl(72))).toBe('3.24');
   });
 
-  it('is held to a sane range, whatever the weight says', () => {
-    expect(waterGoalMl(30)).toBe(1500);
-    expect(waterGoalMl(250)).toBe(4000);
+  it('is the rule as stated, not rounded to something tidier', () => {
+    expect(WATER_ML_PER_KG).toBe(45);
+    expect(waterGoalMl(60)).toBe(2700);
+    expect(waterGoalMl(82)).toBe(3690);
+    expect(waterGoalMl(100)).toBe(4500);
+    // A weight with a decimal, as a scale gives it, and an odd one whose answer ends in a 5.
+    expect(waterGoalMl(72.4)).toBe(3258);
+    expect(litres(waterGoalMl(72.4))).toBe('3.26');
+    expect(waterGoalMl(73)).toBe(3285);
+    expect(litres(waterGoalMl(73))).toBe('3.29');
+  });
+
+  it('follows the rule across every weight a person is likely to be', () => {
+    for (let kg = 40; kg <= 130; kg += 1) {
+      expect(waterGoalMl(kg), `${kg} kg`).toBe(kg * 45);
+    }
+  });
+
+  it('does not turn a mistyped weight into advice to drink a bucket', () => {
+    expect(waterGoalMl(250)).toBe(6000);
+    expect(waterGoalMl(720)).toBe(6000);
+    expect(waterGoalMl(7)).toBe(1000);
   });
 
   it('falls back to a default with no weight to go by', () => {
@@ -140,11 +160,19 @@ describe('how much water to aim for', () => {
     }
   });
 
-  it('says an amount in litres without false precision', () => {
+  it('says an amount in litres, to two decimals and no further than needed', () => {
+    expect(litres(3240)).toBe('3.24');
+    expect(litres(3600)).toBe('3.6');
     expect(litres(2000)).toBe('2');
-    expect(litres(1750)).toBe('1.8');
-    expect(litres(250)).toBe('0.3');
+    expect(litres(1750)).toBe('1.75');
+    // A glass is a quarter of a litre, and reads as one.
+    expect(litres(250)).toBe('0.25');
     expect(litres(0)).toBe('0');
+    expect(litres(3245)).toBe('3.25');
+  });
+
+  it('uses the rule at seventy kilograms when there is no weight', () => {
+    expect(DEFAULT_GOAL_ML).toBe(3150);
   });
 
   it('counts whole glasses', () => {
