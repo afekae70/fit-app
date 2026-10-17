@@ -491,7 +491,7 @@ const createStyles = (colors: ColorPalette) =>
       backgroundColor: colors.accent,
       marginStart: 6,
     },
-    legendText: { color: colors.textFaint, fontSize: fontSize.xxs },
+    legendText: { color: colors.textMuted, fontSize: fontSize.xxs },
     tooltip: {
       position: 'absolute',
       top: -34,

@@ -357,7 +357,7 @@ const createStyles = (colors: ColorPalette) =>
 
     text: { flex: 1, gap: 2 },
     title: { color: colors.text, fontSize: 14, fontWeight: '500', textAlign: 'auto' },
-    next: { color: colors.textFaint, fontSize: 12, textAlign: 'auto' },
+    next: { color: colors.textMuted, fontSize: 12, textAlign: 'auto' },
 
     actions: { flexDirection: 'row', gap: 8 },
     action: {

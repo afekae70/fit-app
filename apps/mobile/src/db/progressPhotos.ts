@@ -82,7 +82,16 @@ export async function addProgressPhoto(
   await db.run(
     `INSERT INTO progress_photos (id, user_id, taken_on, pose, note, created_at, updated_at, file_uri)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [input.id, userId, input.takenOn, input.pose, note === '' ? null : note, now, now, input.fileUri],
+    [
+      input.id,
+      userId,
+      input.takenOn,
+      input.pose,
+      note === '' ? null : note,
+      now,
+      now,
+      input.fileUri,
+    ],
   );
   return true;
 }

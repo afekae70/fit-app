@@ -6,7 +6,10 @@
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** The day a photo was taken on, from its EXIF date ("2026:07:14 08:31:02"); null if there is none. */
-export function exifDay(exif: Record<string, unknown> | null | undefined, today: string): string | null {
+export function exifDay(
+  exif: Record<string, unknown> | null | undefined,
+  today: string,
+): string | null {
   const raw = exif?.DateTimeOriginal ?? exif?.DateTime;
   if (typeof raw !== 'string') return null;
   const match = /^(\d{4}):(\d{2}):(\d{2})/.exec(raw.trim());

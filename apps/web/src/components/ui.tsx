@@ -20,6 +20,7 @@ import { useEffect, useRef, type ReactNode } from 'react';
 
 import type { Flag as FlagName } from '../analytics/overview.js';
 import { he } from '../i18n/he.js';
+import { useCountUp } from '../lib/countUp.js';
 import { initials } from '../lib/format.js';
 
 export function Card({
@@ -67,14 +68,17 @@ export function StatTile({
   delta?: { text: string; direction: 'up' | 'down' | 'flat' } | null | undefined;
   icon?: Icon | undefined;
 }) {
+  const counted = useCountUp(value);
   return (
     <div className="stat">
       <span className="stat-label">
         {IconComponent ? <IconComponent size={16} weight="duotone" aria-hidden /> : null}
         {label}
       </span>
+      {/* The count is for the eye. A screen reader is given the figure itself, once. */}
       <span className="stat-value">
-        {value}
+        <span aria-hidden>{counted}</span>
+        <span className="visually-hidden">{value}</span>
         {unit ? <span className="stat-unit">{unit}</span> : null}
       </span>
       {delta && delta.direction !== 'flat' ? (
@@ -213,6 +217,34 @@ export function EmptyState({
       </span>
       <p className="empty-title">{title}</p>
       {children}
+    </div>
+  );
+}
+
+/**
+ * The shape of a tab while it loads: a row of tiles and a chart-sized card, or a grid of photo
+ * frames. What arrives then takes the place it was promised, and the page does not jump.
+ */
+export function Skeleton({ kind = 'tab' }: { kind?: 'tab' | 'photos' }) {
+  return (
+    <div role="status" aria-live="polite">
+      <span className="visually-hidden">טוען</span>
+      {kind === 'photos' ? (
+        <div className="photo-grid" aria-hidden>
+          {Array.from({ length: 8 }, (_, index) => (
+            <span key={index} className="skeleton skeleton-photo" />
+          ))}
+        </div>
+      ) : (
+        <div className="skeleton-stack" aria-hidden>
+          <div className="grid grid-stats">
+            {Array.from({ length: 4 }, (_, index) => (
+              <span key={index} className="skeleton skeleton-stat" />
+            ))}
+          </div>
+          <span className="skeleton skeleton-card" />
+        </div>
+      )}
     </div>
   );
 }

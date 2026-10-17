@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 
 import { daysBetween, exifDay, inOrder, weightNear } from './compare.js';
 import { stripJpegMetadata } from './jpeg.js';
+import { dividerAfterDrag, dividerStep, shownPercent } from './slider.js';
 
 /** A marker segment: FF, the marker, a two-byte length that counts itself, then the payload. */
 const segment = (marker: number, payload: number[]) => [
@@ -63,7 +64,15 @@ describe('taking the metadata out of a picture', () => {
 
   it('does not look for markers inside the compressed picture', () => {
     // FF E1 after the scan starts is picture data, not a block to drop.
-    const scanWithLookalike = [...segment(0xda, [1, 1, 0, 0, 63, 0]), 0xff, 0xe1, 0x00, 0x04, 0xff, 0xd9];
+    const scanWithLookalike = [
+      ...segment(0xda, [1, 1, 0, 0, 63, 0]),
+      0xff,
+      0xe1,
+      0x00,
+      0x04,
+      0xff,
+      0xd9,
+    ];
     const before = jpeg(EXIF_WITH_GPS, FRAME, scanWithLookalike);
     const after = stripJpegMetadata(before);
     expect([...after.slice(after.length - scanWithLookalike.length)]).toEqual(scanWithLookalike);
@@ -150,5 +159,27 @@ describe('two photos side by side', () => {
       expect(weightNear(readings, '2026-08-20', day)).toBeNull();
       expect(weightNear([], '2026-10-17', day)).toBeNull();
     });
+  });
+});
+
+describe('the before-and-after slider', () => {
+  it('moves with the finger in English, and against the physical drag in Hebrew', () => {
+    // A drag to the right: away from the start in English, towards it in Hebrew.
+    expect(dividerAfterDrag(150, 40, 300, false)).toBe(190);
+    expect(dividerAfterDrag(150, 40, 300, true)).toBe(110);
+  });
+
+  it('stays inside the frame however far the finger goes', () => {
+    expect(dividerAfterDrag(150, 900, 300, false)).toBe(300);
+    expect(dividerAfterDrag(150, -900, 300, false)).toBe(0);
+    expect(dividerAfterDrag(150, 900, 300, true)).toBe(0);
+  });
+
+  it('steps a tenth at a time for a screen reader, and says how much shows', () => {
+    expect(dividerStep(150, 300, false)).toBe(180);
+    expect(dividerStep(150, 300, true)).toBe(120);
+    expect(dividerStep(295, 300, false)).toBe(300);
+    expect(shownPercent(150, 300)).toBe(50);
+    expect(shownPercent(0, 0)).toBe(0);
   });
 });

@@ -38,8 +38,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useCurrentUserId } from '../src/auth/CurrentUserProvider.js';
 import { useActionSheet } from '../src/components/ActionSheetProvider.js';
+import { BeforeAfterSlider } from '../src/components/BeforeAfterSlider.js';
 import { BrandButton } from '../src/components/BrandButton.js';
 import { KeyboardSafe } from '../src/components/KeyboardSafe.js';
+import { FadeSlideIn } from '../src/components/motion.js';
 import { Pressable } from '../src/components/Pressable.js';
 import { Text, TextInput } from '../src/components/Text.js';
 import { Button, Card, Hint, ScreenHeader, Segmented } from '../src/components/ui.js';
@@ -79,6 +81,9 @@ type Stage =
 
 type PoseChoice = PhotoPose | 'none';
 
+/** One frame with a line to drag, or two pictures side by side. */
+type CompareMode = 'slider' | 'side';
+
 type Failure = Exclude<TakenPhoto, { ok: true }>['error'] | 'not_saved';
 
 interface Reading {
@@ -105,6 +110,8 @@ export default function ProgressPhotosScreen() {
   const [note, setNote] = useState('');
   const [failure, setFailure] = useState<Failure | null>(null);
   const [saving, setSaving] = useState(false);
+  // The slider first: laid over each other, the same waist is in the same place.
+  const [compareMode, setCompareMode] = useState<CompareMode>('slider');
 
   const reload = useCallback(async () => {
     const db = await getExecutor();
@@ -202,29 +209,31 @@ export default function ProgressPhotosScreen() {
     <View style={styles.grid}>
       {photos
         .filter((photo) => photo.id !== exceptId)
-        .map((photo) => (
-          <Pressable
-            key={photo.id}
-            onPress={() => {
-              void hapticLight();
-              onPick(photo);
-            }}
-            accessibilityRole="button"
-            accessibilityLabel={t('progressPhotos.open', { date: dayLabel(photo.takenOn) })}
-            style={({ pressed }) => [{ width: tileWidth }, pressed && styles.pressed]}
-          >
-            <PhotoImage
-              photo={photo}
-              userId={userId}
-              style={[styles.tile, { width: tileWidth, height: (tileWidth * 4) / 3 }]}
-            />
-            <Text style={styles.tileDate} numberOfLines={1}>
-              {parseLocalDate(photo.takenOn).toLocaleDateString(i18n.language, {
-                day: 'numeric',
-                month: 'short',
-              })}
-            </Text>
-          </Pressable>
+        .map((photo, index) => (
+          // A few at a time, in reading order, as every list in the app arrives.
+          <FadeSlideIn key={photo.id} index={index}>
+            <Pressable
+              onPress={() => {
+                void hapticLight();
+                onPick(photo);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={t('progressPhotos.open', { date: dayLabel(photo.takenOn) })}
+              style={({ pressed }) => [{ width: tileWidth }, pressed && styles.pressed]}
+            >
+              <PhotoImage
+                photo={photo}
+                userId={userId}
+                style={[styles.tile, { width: tileWidth, height: (tileWidth * 4) / 3 }]}
+              />
+              <Text style={styles.tileDate} numberOfLines={1}>
+                {parseLocalDate(photo.takenOn).toLocaleDateString(i18n.language, {
+                  day: 'numeric',
+                  month: 'short',
+                })}
+              </Text>
+            </Pressable>
+          </FadeSlideIn>
         ))}
     </View>
   );
@@ -313,7 +322,7 @@ export default function ProgressPhotosScreen() {
                 value={note}
                 onChangeText={setNote}
                 placeholder={t('progressPhotos.notePlaceholder')}
-                placeholderTextColor={colors.textFaint}
+                placeholderTextColor={colors.textMuted}
                 maxLength={MAX_PHOTO_NOTE}
                 style={styles.noteInput}
               />
@@ -407,34 +416,56 @@ export default function ProgressPhotosScreen() {
               const half = Math.floor((width - spacing.lg * 2 - spacing.sm) / 2);
               const change =
                 kgBefore !== null && kgAfter !== null
-                  ? Math.round((kgToDisplay(kgAfter, unit) - kgToDisplay(kgBefore, unit)) * 10) /
-                    10
+                  ? Math.round((kgToDisplay(kgAfter, unit) - kgToDisplay(kgBefore, unit)) * 10) / 10
                   : null;
               return (
                 <>
-                  <View style={styles.pair}>
-                    {[before, after].map((photo, index) => {
-                      const kg = index === 0 ? kgBefore : kgAfter;
-                      return (
-                        <View key={photo.id} style={[styles.half, { width: half }]}>
-                          <Text style={styles.halfLabel}>
-                            {index === 0 ? t('progressPhotos.before') : t('progressPhotos.after')}
-                          </Text>
-                          <PhotoImage
-                            photo={photo}
-                            userId={userId}
-                            style={[styles.tile, { width: half, height: (half * 4) / 3 }]}
-                          />
-                          <Text style={styles.halfDate}>{dayLabel(photo.takenOn)}</Text>
-                          {kg !== null ? (
-                            <Text style={styles.halfWeight}>
-                              {formatBodyWeight(kg, unit)} {weightUnit}
+                  <Segmented<CompareMode>
+                    label={t('progressPhotos.compareHow')}
+                    options={[
+                      { value: 'slider', label: t('progressPhotos.slider') },
+                      { value: 'side', label: t('progressPhotos.sideBySide') },
+                    ]}
+                    selected={compareMode}
+                    onSelect={setCompareMode}
+                  />
+                  {compareMode === 'slider' ? (
+                    <>
+                      <BeforeAfterSlider
+                        before={(size) => (
+                          <PhotoImage photo={before} userId={userId} style={size} />
+                        )}
+                        after={(size) => <PhotoImage photo={after} userId={userId} style={size} />}
+                        beforeLabel={`${t('progressPhotos.before')} · ${dayLabel(before.takenOn)}`}
+                        afterLabel={`${t('progressPhotos.after')} · ${dayLabel(after.takenOn)}`}
+                      />
+                      <Hint>{t('progressPhotos.sliderHint')}</Hint>
+                    </>
+                  ) : (
+                    <View style={styles.pair}>
+                      {[before, after].map((photo, index) => {
+                        const kg = index === 0 ? kgBefore : kgAfter;
+                        return (
+                          <View key={photo.id} style={[styles.half, { width: half }]}>
+                            <Text style={styles.halfLabel}>
+                              {index === 0 ? t('progressPhotos.before') : t('progressPhotos.after')}
                             </Text>
-                          ) : null}
-                        </View>
-                      );
-                    })}
-                  </View>
+                            <PhotoImage
+                              photo={photo}
+                              userId={userId}
+                              style={[styles.tile, { width: half, height: (half * 4) / 3 }]}
+                            />
+                            <Text style={styles.halfDate}>{dayLabel(photo.takenOn)}</Text>
+                            {kg !== null ? (
+                              <Text style={styles.halfWeight}>
+                                {formatBodyWeight(kg, unit)} {weightUnit}
+                              </Text>
+                            ) : null}
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
                   <Card style={styles.summary}>
                     <Text style={styles.summaryText}>
                       {days === 0

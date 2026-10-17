@@ -341,19 +341,19 @@ export default function PlanDayScreen() {
                         <NumberField
                           value={prescription.target_sets}
                           onCommit={(next) => patch(prescription.id, 'targetSets', next)}
-                          placeholderTextColor={colors.textFaint}
+                          placeholderTextColor={colors.textMuted}
                           style={[styles.input, styles.colField]}
                         />
                         <NumberField
                           value={prescription.target_reps_min}
                           onCommit={(next) => patch(prescription.id, 'targetRepsMin', next)}
-                          placeholderTextColor={colors.textFaint}
+                          placeholderTextColor={colors.textMuted}
                           style={[styles.input, styles.colField]}
                         />
                         <NumberField
                           value={prescription.target_reps_max}
                           onCommit={(next) => patch(prescription.id, 'targetRepsMax', next)}
-                          placeholderTextColor={colors.textFaint}
+                          placeholderTextColor={colors.textMuted}
                           style={[styles.input, styles.colField]}
                         />
                       </>
@@ -475,7 +475,7 @@ const createStyles = (colors: ColorPalette) =>
       textAlign: 'auto',
     },
     emptyText: {
-      color: colors.textFaint,
+      color: colors.textMuted,
       fontSize: fontSize.sm,
       marginVertical: spacing.lg,
       textAlign: 'auto',

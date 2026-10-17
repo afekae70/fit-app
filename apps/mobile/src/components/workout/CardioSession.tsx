@@ -234,7 +234,7 @@ export function CardioSession({
             inputMode="decimal"
             selectTextOnFocus
             placeholder="—"
-            placeholderTextColor={colors.textFaint}
+            placeholderTextColor={colors.textMuted}
             style={s.input}
           />
           <Text style={s.unit}>{unitLabel}</Text>
@@ -325,7 +325,7 @@ const createStyles = (colors: ColorPalette) =>
       letterSpacing: -1,
       fontVariant: ['tabular-nums'],
     },
-    clockLabel: { color: colors.textFaint, fontSize: 12, marginTop: -6 },
+    clockLabel: { color: colors.textMuted, fontSize: 12, marginTop: -6 },
 
     controls: { flexDirection: 'row', gap: 8, alignSelf: 'stretch' },
     primary: {
@@ -376,7 +376,7 @@ const createStyles = (colors: ColorPalette) =>
       padding: 0,
       fontVariant: ['tabular-nums'],
     },
-    unit: { color: colors.textFaint, fontSize: 12, marginEnd: 4 },
+    unit: { color: colors.textMuted, fontSize: 12, marginEnd: 4 },
 
     stats: { flexDirection: 'row', alignSelf: 'stretch', gap: 8 },
     stat: {
@@ -392,6 +392,6 @@ const createStyles = (colors: ColorPalette) =>
       fontWeight: '700',
       fontVariant: ['tabular-nums'],
     },
-    statLabel: { color: colors.textFaint, fontSize: 11, textAlign: 'center' },
+    statLabel: { color: colors.textMuted, fontSize: 11, textAlign: 'center' },
     pressed: { opacity: 0.7 },
   });

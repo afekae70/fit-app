@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { he } from '../i18n/he.js';
 import { paletteStylesheet, SERIES } from '../theme/theme.js';
 import { compact, niceMax } from './chartMath.js';
+import { countable, easeOut, withValue } from './countUp.js';
 import { searchExercises } from './exerciseSearch.js';
 import {
   formatLitres,
@@ -63,6 +64,34 @@ describe('the address', () => {
     const href = hrefFor({ name: 'trainee', id: '../../evil/x', tab: 'overview' });
     expect(href.startsWith('#/trainee/')).toBe(true);
     expect(parseRoute(href)).toEqual({ name: 'trainee', id: '../../evil/x', tab: 'overview' });
+  });
+});
+
+describe('a number counting up to itself', () => {
+  it('finds the one number in a formatted figure, and writes it back the same way', () => {
+    const parts = countable('1,718')!;
+    expect(withValue(parts, 0)).toBe('0');
+    expect(withValue(parts, 859.4)).toBe('859');
+    expect(withValue(parts, 1718)).toBe('1,718');
+    expect(withValue(countable('21.9%')!, 7)).toBe('7.0%');
+  });
+
+  it('keeps a sign and its isolation around the number', () => {
+    const parts = countable(ltr('−2.7'))!;
+    expect(withValue(parts, 1.35)).toBe(ltr('−1.4'));
+    expect(withValue(parts, 2.7)).toBe(ltr('−2.7'));
+  });
+
+  it('leaves alone a text with no number, or with two', () => {
+    expect(countable('—')).toBeNull();
+    expect(countable('26/26')).toBeNull();
+    expect(countable('לא תוכנן')).toBeNull();
+  });
+
+  it('lands exactly where it was going', () => {
+    expect(easeOut(0)).toBe(0);
+    expect(easeOut(1)).toBe(1);
+    expect(easeOut(0.5)).toBeGreaterThan(0.5);
   });
 });
 

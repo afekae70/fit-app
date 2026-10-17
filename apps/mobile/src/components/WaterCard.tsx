@@ -20,7 +20,7 @@ import { useFocusEffect } from 'expo-router';
 import { ArrowCounterClockwise, Drop } from 'phosphor-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Animated, Easing, Keyboard, StyleSheet, View } from 'react-native';
+import { AccessibilityInfo, Animated, Easing, Keyboard, StyleSheet, View } from 'react-native';
 
 import { useCurrentUserId } from '../auth/CurrentUserProvider.js';
 import { getLatestWeight } from '../db/metrics.js';
@@ -39,6 +39,7 @@ import { useTheme } from '../ThemeProvider.js';
 import { fontSize, fontWeight, radius, shadow, spacing, type ColorPalette } from '../theme.js';
 import { Field } from './Field.js';
 import { useReduceMotion } from './motion.js';
+import { ConfettiBurst } from './workout/ConfettiBurst.js';
 import { Pressable } from './Pressable.js';
 import { Text } from './Text.js';
 
@@ -51,6 +52,8 @@ export function WaterCard({ date }: { date: string }) {
 
   const [total, setTotal] = useState(0);
   const [goal, setGoal] = useState(() => waterGoalMl(null));
+  /** Counts the goals reached while the card is up; each one replays the burst. */
+  const [burst, setBurst] = useState(0);
   // Whether the aim is this person's, or the stand-in used until they have weighed in.
   const [weighed, setWeighed] = useState(true);
   // Typing an amount of one's own: the text in the field, or null while the field is shut.
@@ -101,8 +104,13 @@ export function WaterCard({ date }: { date: string }) {
     const before = total;
     // Shown at once: the tap should feel like it did something before the database answers.
     setTotal(before + ml);
-    if (before < goal && before + ml >= goal) hapticSuccess();
-    else hapticLight();
+    if (before < goal && before + ml >= goal) {
+      // The glass that crosses the line is a small win, and is treated as one: the same burst
+      // as a finished workout, smaller in its card, and said aloud for anyone not looking.
+      hapticSuccess();
+      setBurst((count) => count + 1);
+      AccessibilityInfo.announceForAccessibility(t('water.reached'));
+    } else hapticLight();
     void (async () => {
       const id = await addWater(await getExecutor(), userId, newId, { drunkOn: date, ml });
       // Whatever was shown, the database is what is true.
@@ -258,6 +266,11 @@ export function WaterCard({ date }: { date: string }) {
           </Pressable>
         </View>
       ) : null}
+      {burst > 0 ? (
+        <View pointerEvents="none" style={styles.burst}>
+          <ConfettiBurst key={burst} />
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -271,6 +284,8 @@ const createStyles = (colors: ColorPalette) =>
       gap: spacing.sm,
       ...shadow(colors.shadow).card,
     },
+    // Over the whole card, so the burst starts from its middle and is drawn above the buttons.
+    burst: { ...StyleSheet.absoluteFillObject },
     header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     title: { color: colors.textSecondary, fontSize: fontSize.sm, fontWeight: fontWeight.bold },

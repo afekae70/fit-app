@@ -19,8 +19,14 @@ import { computeTargets, getLatestWeight, getProfile } from '../db/metrics.js';
 import { getExecutor } from '../db/provider.js';
 
 /** The app's own daily targets, in the shape the server keeps; null while they cannot be worked out. */
-export async function currentTargets(db: SqlExecutor, userId: string): Promise<SharedTargets | null> {
-  const [profile, latest] = await Promise.all([getProfile(db, userId), getLatestWeight(db, userId)]);
+export async function currentTargets(
+  db: SqlExecutor,
+  userId: string,
+): Promise<SharedTargets | null> {
+  const [profile, latest] = await Promise.all([
+    getProfile(db, userId),
+    getLatestWeight(db, userId),
+  ]);
   const computed = computeTargets(profile, latest?.weight_kg ?? null);
   if (!computed.ok) return null;
   const { calorieTarget, proteinG, carbsG, fatG, goal } = computed.targets;
@@ -55,7 +61,10 @@ export async function shareTargetsIfChanged(userId: string): Promise<void> {
     const sent = await api.setSharing(sharing, targets);
     if (sent.ok) lastOffered = key;
   } catch (error) {
-    console.warn('[coaching] could not send the targets:', error instanceof Error ? error.message : error);
+    console.warn(
+      '[coaching] could not send the targets:',
+      error instanceof Error ? error.message : error,
+    );
   }
 }
 

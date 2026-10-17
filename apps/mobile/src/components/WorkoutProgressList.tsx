@@ -146,5 +146,5 @@ const createStyles = (colors: ColorPalette) =>
     chip: { fontSize: fontSize.xs, fontWeight: fontWeight.bold, fontVariant: ['tabular-nums'] },
     chipUp: { color: colors.accent },
     chipDown: { color: colors.warning },
-    chipFlat: { color: colors.textFaint },
+    chipFlat: { color: colors.textMuted },
   });

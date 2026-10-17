@@ -357,7 +357,7 @@ const createStyles = (colors: ColorPalette) =>
       gap: spacing.xs,
       paddingVertical: spacing.xs,
     },
-    typeHintText: { color: colors.textFaint, fontSize: fontSize.xs },
+    typeHintText: { color: colors.textMuted, fontSize: fontSize.xs },
     unit: { color: colors.textMuted, fontSize: fontSize.md, fontWeight: fontWeight.medium },
     nudge: {
       width: 44,
@@ -383,7 +383,7 @@ const createStyles = (colors: ColorPalette) =>
       start: (TICK - LABEL_WIDTH) / 2,
       width: LABEL_WIDTH,
       textAlign: 'center',
-      color: colors.textFaint,
+      color: colors.textMuted,
       fontSize: fontSize.xs,
       fontVariant: ['tabular-nums'],
     },

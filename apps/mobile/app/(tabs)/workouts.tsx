@@ -1983,7 +1983,7 @@ const createStyles = (colors: ColorPalette) =>
       fontVariant: ['tabular-nums'],
     },
     stationNext: {
-      color: colors.textFaint,
+      color: colors.textMuted,
       fontSize: 12,
       marginTop: spacing.md,
       textAlign: 'center',

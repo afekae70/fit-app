@@ -193,7 +193,7 @@ function SteppedField({
         style={inputStyle}
         selectTextOnFocus
         placeholder={placeholder}
-        placeholderTextColor={colors.textFaint}
+        placeholderTextColor={colors.textMuted}
       />
       <Pressable onPress={() => adjust(step)} style={buttonStyle} hitSlop={6} accessibilityRole="button">
         <Text style={buttonTextStyle}>+</Text>
@@ -371,6 +371,8 @@ function ExerciseCardImpl({
                 ? onSetOptions(set.id)
                 : onUpdateSet(set.id, { isWarmup: set.is_warmup === 0 })
             }
+            // The badge is 36 by 40; the finger gets 44 either way.
+            hitSlop={{ top: 2, bottom: 2, left: 4, right: 4 }}
             style={[
               styles.colIndex,
               styles.indexBadge,
@@ -451,7 +453,7 @@ function ExerciseCardImpl({
                   ? t('workout.seconds')
                   : String(previous.duration_seconds)
               }
-              placeholderTextColor={colors.textFaint}
+              placeholderTextColor={colors.textMuted}
             />
           ) : null}
 
@@ -478,7 +480,7 @@ function ExerciseCardImpl({
                   ? t(`common.${distanceUnitKey(unit)}`)
                   : String(metresToDisplay(previous.distance_m, unit))
               }
-              placeholderTextColor={colors.textFaint}
+              placeholderTextColor={colors.textMuted}
             />
           ) : null}
 

@@ -320,7 +320,7 @@ const createStyles = (colors: ColorPalette) =>
     marginBottom: spacing.xs,
   },
   monthName: { color: colors.textSecondary, fontSize: fontSize.sm, fontWeight: '700' },
-  monthCount: { color: colors.textFaint, fontSize: fontSize.xxs },
+  monthCount: { color: colors.textMuted, fontSize: fontSize.xxs },
 
   card: {
     flexDirection: 'row',

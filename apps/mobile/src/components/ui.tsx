@@ -212,7 +212,7 @@ export function NumberField({
           keyboardType="numeric"
           inputMode="decimal"
           style={styles.input}
-          placeholderTextColor={colors.textFaint}
+          placeholderTextColor={colors.textMuted}
           selectTextOnFocus
         />
         {suffix ? <Text style={styles.suffix}>{suffix}</Text> : null}
@@ -827,7 +827,7 @@ const createStyles = (colors: ColorPalette) =>
     },
     statUnit: { color: colors.textMuted, fontSize: fontSize.sm, marginStart: spacing.xs },
     statHint: {
-      color: colors.textFaint,
+      color: colors.textMuted,
       fontSize: fontSize.xxs,
       marginTop: spacing.xxs,
       lineHeight: 16,

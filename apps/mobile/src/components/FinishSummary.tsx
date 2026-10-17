@@ -275,7 +275,7 @@ export function FinishSummary({
             value={name}
             onChangeText={setName}
             placeholder={t('history.namePlaceholder')}
-            placeholderTextColor={colors.textFaint}
+            placeholderTextColor={colors.textMuted}
             style={styles.nameInput}
             returnKeyType="done"
           />
@@ -388,7 +388,7 @@ const createStyles = (colors: ColorPalette) =>
   effortText: { color: colors.textMuted, fontSize: fontSize.xxs, textAlign: 'center' },
   effortTextOn: { color: colors.accent, fontWeight: fontWeight.medium },
   loadLine: {
-    color: colors.textFaint,
+    color: colors.textMuted,
     fontSize: fontSize.xs,
     textAlign: 'auto',
     marginBottom: spacing.sm,

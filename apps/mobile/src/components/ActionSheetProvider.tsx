@@ -259,7 +259,7 @@ export function ActionSheetProvider({ children }: { children: ReactNode }) {
                 value={query}
                 onChangeText={setQuery}
                 placeholder={request.searchPlaceholder}
-                placeholderTextColor={colors.textFaint}
+                placeholderTextColor={colors.textMuted}
                 style={styles.search}
                 returnKeyType="search"
                 autoCorrect={false}

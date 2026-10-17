@@ -593,5 +593,5 @@ const createStyles = (colors: ColorPalette) =>
     centredLink: { alignSelf: 'center', padding: spacing.sm },
     link: { color: colors.accent, fontSize: fontSize.sm, fontWeight: fontWeight.medium },
     submit: { marginTop: spacing.xs },
-    note: { color: colors.textFaint, fontSize: fontSize.xs, lineHeight: 18, textAlign: 'center' },
+    note: { color: colors.textMuted, fontSize: fontSize.xs, lineHeight: 18, textAlign: 'center' },
   });

@@ -570,7 +570,7 @@ const createStyles = (colors: ColorPalette) =>
     weekday: {
       flex: 1,
       textAlign: 'center',
-      color: colors.textFaint,
+      color: colors.textMuted,
       fontSize: fontSize.xs,
       paddingBottom: spacing.xs,
     },
@@ -598,7 +598,7 @@ const createStyles = (colors: ColorPalette) =>
       fontVariant: ['tabular-nums'],
     },
     dayNumberPlanned: { color: colors.accent, fontWeight: fontWeight.bold },
-    dayLabel: { color: colors.textFaint, fontSize: 9, textAlign: 'center' },
+    dayLabel: { color: colors.textMuted, fontSize: 9, textAlign: 'center' },
     dayLabelPlanned: { color: colors.accent },
     more: {
       position: 'absolute',

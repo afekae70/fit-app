@@ -714,7 +714,7 @@ const createStyles = (colors: ColorPalette) =>
     },
     headerText: { flex: 1, gap: 3 },
     name: { color: colors.text, fontSize: 16, fontWeight: '500', textAlign: 'auto' },
-    previous: { color: colors.textFaint, fontSize: 12, textAlign: 'auto' },
+    previous: { color: colors.textMuted, fontSize: 12, textAlign: 'auto' },
     targetPill: {
       paddingVertical: 4,
       paddingHorizontal: 9,
@@ -790,7 +790,7 @@ const createStyles = (colors: ColorPalette) =>
     handleGlyphActive: { color: colors.accent },
 
     columns: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-    columnLabel: { color: colors.textFaint, fontSize: 11, textAlign: 'center' },
+    columnLabel: { color: colors.textMuted, fontSize: 11, textAlign: 'center' },
     columnIndex: { width: 30 },
     columnField: { flex: 1 },
     columnCheck: { width: 52 },
@@ -845,7 +845,7 @@ const createStyles = (colors: ColorPalette) =>
       borderColor: colors.borderSubtle,
     },
     tablePrevious: {
-      color: colors.textFaint,
+      color: colors.textMuted,
       fontSize: 12,
       textAlign: 'auto',
       fontVariant: ['tabular-nums'],
@@ -868,7 +868,7 @@ const createStyles = (colors: ColorPalette) =>
     warmupLinkText: { color: colors.textSecondary, fontSize: 14 },
     pressed: { opacity: 0.6 },
     volume: {
-      color: colors.textFaint,
+      color: colors.textMuted,
       fontSize: 12,
       fontVariant: ['tabular-nums'],
       textAlign: 'center',

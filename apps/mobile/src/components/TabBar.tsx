@@ -106,7 +106,7 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
             <Pill focused={focused} styles={s} />
             <Glyph
               size={21}
-              color={focused ? colors.accent : colors.textFaint}
+              color={focused ? colors.accent : colors.textMuted}
               weight={focused ? 'fill' : 'regular'}
             />
             <Text style={[s.label, focused && s.labelOn]} numberOfLines={1}>
@@ -188,6 +188,6 @@ const createStyles = (colors: ColorPalette) =>
       backgroundColor: colors.accentSoft,
     },
     tab: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2, height: '100%' },
-    label: { color: colors.textFaint, fontSize: 10 },
+    label: { color: colors.textMuted, fontSize: 10 },
     labelOn: { color: colors.accent, fontWeight: '700' },
   });

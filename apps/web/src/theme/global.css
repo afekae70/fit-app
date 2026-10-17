@@ -630,7 +630,7 @@ p {
 
 /* A tab whose subject the trainee has not shared: still there, to say so, but quieter. */
 .tab.tab-closed {
-  color: var(--text-faint);
+  color: var(--text-muted);
 }
 
 .tab[aria-current='page'] {
@@ -840,11 +840,170 @@ p {
   transition: opacity 160ms ease;
 }
 
+/* ------------------------------------------------------------------ motion */
+
+/* The app's own entrance, on the web: content rises 8px and fades in, a few pieces at a time.
+   The same travel as `FadeSlideIn` in the app, so the two read as one product in motion too.
+   Only opacity and transform move — nothing that makes the page re-flow. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.page > *,
+.grid > * {
+  animation: rise 320ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.page > *:nth-child(2),
+.grid > *:nth-child(2) {
+  animation-delay: 40ms;
+}
+.page > *:nth-child(3),
+.grid > *:nth-child(3) {
+  animation-delay: 80ms;
+}
+.page > *:nth-child(4),
+.grid > *:nth-child(4) {
+  animation-delay: 120ms;
+}
+.page > *:nth-child(5),
+.grid > *:nth-child(5) {
+  animation-delay: 160ms;
+}
+.page > *:nth-child(n + 6),
+.grid > *:nth-child(n + 6) {
+  animation-delay: 200ms;
+}
+
+/* A bar grows from its baseline; a line draws itself from oldest to newest. */
+@keyframes bar-grow {
+  from {
+    transform: scaleY(0);
+  }
+}
+@keyframes line-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+}
+@keyframes dot-in {
+  from {
+    opacity: 0;
+  }
+}
+.chart .bar {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: bar-grow 520ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.chart .line {
+  stroke-dasharray: 1;
+  animation: line-draw 900ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+.chart .dots circle {
+  animation: dot-in 400ms ease 300ms both;
+}
+.chart .end-dot {
+  animation: dot-in 240ms ease 800ms both;
+}
+
+/* A bar against its target fills from where the reader starts — the right, in Hebrew. */
+@keyframes fill-in {
+  from {
+    transform: scaleX(0);
+  }
+}
+.macro-fill,
+.hbar-fill {
+  transform-origin: right center;
+  animation: fill-in 600ms cubic-bezier(0.2, 0.8, 0.2, 1) 120ms both;
+}
+
+/* Something that opens a page answers the pointer by rising to meet it. */
+a.card,
+.photo-open {
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease;
+}
+a.card:hover,
+.photo-open:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--lift-high);
+}
+.tab {
+  transition:
+    color 140ms ease,
+    border-color 140ms ease;
+}
+
+/* Skeletons: the shape of what is coming, so nothing jumps when it arrives. */
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+.skeleton {
+  border-radius: var(--radius-md);
+  background: linear-gradient(
+    90deg,
+    var(--surface-raised) 0%,
+    var(--surface-high) 50%,
+    var(--surface-raised) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1400ms ease-in-out infinite;
+}
+.skeleton-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.skeleton-stat {
+  height: 112px;
+  border-radius: var(--radius-lg);
+}
+.skeleton-card {
+  height: 300px;
+  border-radius: var(--radius-lg);
+}
+.skeleton-photo {
+  aspect-ratio: 3 / 4;
+}
+
+/* All of it off for anyone who asked their system for less motion: things simply appear. */
 @media (prefers-reduced-motion: reduce) {
   .spinner {
     animation-duration: 2400ms;
   }
   .button:active:not(:disabled) {
+    transform: none;
+  }
+  .page > *,
+  .grid > *,
+  .chart .bar,
+  .chart .line,
+  .chart .dots circle,
+  .chart .end-dot,
+  .macro-fill,
+  .hbar-fill,
+  .skeleton {
+    animation: none;
+  }
+  .chart .line {
+    stroke-dasharray: none;
+  }
+  a.card:hover,
+  .photo-open:hover {
     transform: none;
   }
 }
@@ -903,7 +1062,7 @@ p {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  color: var(--text-faint);
+  color: var(--text-muted);
   font-size: var(--text-xs);
 }
 
@@ -1540,7 +1699,7 @@ p {
   justify-content: center;
   gap: var(--space-2);
   padding: var(--space-3);
-  color: var(--text-faint);
+  color: var(--text-muted);
   font-size: var(--text-xs);
   text-align: center;
 }
@@ -1694,5 +1853,32 @@ p {
   }
   .macro-value {
     grid-column: 2;
+  }
+}
+
+/* ------------------------------------------------------------------ touch */
+
+/* A finger is not a mouse pointer. On a touch screen every control is at least 44px in both
+   directions — the size a fingertip covers — and the desktop layout, where a pointer can hit
+   a 32px button reliably, keeps its own. Measured: before this, the small buttons were 32px
+   tall on a phone, the copy button 36px, the theme switch 34px and a photo's chip 28px. */
+@media (pointer: coarse) {
+  .button,
+  .button.small {
+    min-height: 44px;
+  }
+  .icon-button {
+    width: 44px;
+    height: 44px;
+  }
+  .segmented button {
+    min-height: 44px;
+  }
+  .chip,
+  .photo-meta .chip {
+    min-height: 44px;
+  }
+  .tab {
+    min-height: 44px;
   }
 }

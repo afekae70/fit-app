@@ -162,9 +162,9 @@ const createStyles = (colors: ColorPalette) =>
       minWidth: 46,
       textAlign: 'auto',
     },
-    indirect: { color: colors.textFaint },
+    indirect: { color: colors.textMuted },
     untrained: {
-      color: colors.textFaint,
+      color: colors.textMuted,
       fontSize: fontSize.xxs,
       lineHeight: 16,
       marginTop: spacing.xs,

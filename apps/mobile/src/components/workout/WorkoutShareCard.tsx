@@ -184,7 +184,7 @@ const createStyles = (colors: ColorPalette) =>
     },
     more: { color: colors.textMuted, fontSize: 12, textAlign: 'auto', marginTop: 6 },
     footer: {
-      color: colors.textFaint,
+      color: colors.textMuted,
       fontSize: 11,
       textAlign: 'center',
       marginTop: 12,

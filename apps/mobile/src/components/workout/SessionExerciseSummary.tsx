@@ -203,7 +203,7 @@ const createStyles = (colors: ColorPalette) =>
     pillWarmup: { backgroundColor: 'transparent', borderStyle: 'dashed' },
     pillBest: { borderColor: colors.accentBorder, backgroundColor: colors.accentSoft },
     tag: { color: colors.accent, fontSize: fontSize.xxs, fontWeight: fontWeight.bold },
-    tagWarmup: { color: colors.textFaint },
+    tagWarmup: { color: colors.textMuted },
     value: {
       color: colors.text,
       fontSize: fontSize.sm,

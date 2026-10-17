@@ -70,7 +70,12 @@ describe('keeping a photo', () => {
   });
 
   it('keeps the pose, the note and where the picture is', async () => {
-    await addProgressPhoto(db, USER, { ...photo(ID_A), pose: 'side', note: '  after the cut ' }, clock);
+    await addProgressPhoto(
+      db,
+      USER,
+      { ...photo(ID_A), pose: 'side', note: '  after the cut ' },
+      clock,
+    );
     expect(await listProgressPhotos(db, USER)).toEqual([
       {
         id: ID_A,
@@ -231,9 +236,7 @@ describe('as part of the account', () => {
       (column) => column.name,
     );
     expect([...table!.columns].sort()).toEqual(
-      local
-        .filter((c) => !['remote_updated_at', 'file_uri', 'uploaded_at'].includes(c))
-        .sort(),
+      local.filter((c) => !['remote_updated_at', 'file_uri', 'uploaded_at'].includes(c)).sort(),
     );
     // Where a picture is on one phone means nothing on another.
     expect(table!.columns).not.toContain('file_uri');

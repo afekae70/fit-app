@@ -274,8 +274,8 @@ const createStyles = (colors: ColorPalette) =>
       fontWeight: '700',
       fontVariant: ['tabular-nums'],
     },
-    tileUnit: { color: colors.textFaint, fontSize: 11 },
-    tileLabel: { color: colors.textFaint, fontSize: 11, textAlign: 'auto' },
+    tileUnit: { color: colors.textMuted, fontSize: 11 },
+    tileLabel: { color: colors.textMuted, fontSize: 11, textAlign: 'auto' },
 
     chart: { flexDirection: 'row', alignItems: 'flex-end', gap: 6, marginTop: 10 },
     // The full height of the chart, so the whole column answers to a finger.
@@ -307,6 +307,6 @@ const createStyles = (colors: ColorPalette) =>
     rowMain: { flex: 1, gap: 3 },
     rowDate: { color: colors.text, fontSize: 16, fontWeight: '500', textAlign: 'auto' },
     rowMeta: { color: colors.textMuted, fontSize: 12, textAlign: 'auto' },
-    rowVolume: { color: colors.textFaint, fontSize: 12, fontVariant: ['tabular-nums'] },
+    rowVolume: { color: colors.textMuted, fontSize: 12, fontVariant: ['tabular-nums'] },
     pressed: { opacity: 0.7 },
   });

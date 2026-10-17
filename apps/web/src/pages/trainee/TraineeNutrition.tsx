@@ -22,7 +22,7 @@ import {
 import { nutritionDays, nutritionSummary, type NutritionDay } from '../../analytics/nutrition.js';
 import { useCoach } from '../../coachContext.js';
 import { BarChart, ChartFrame, type Bar } from '../../components/charts.js';
-import { Card, EmptyState, ErrorBanner, Loading, Segmented, StatTile } from '../../components/ui.js';
+import { Card, EmptyState, ErrorBanner, Segmented, Skeleton, StatTile } from '../../components/ui.js';
 import { fill, he } from '../../i18n/he.js';
 import {
   dateBadge,
@@ -66,7 +66,7 @@ function SharedNutrition({ traineeId }: { traineeId: string }) {
   const targets = loaded.state === 'ready' ? loaded.value.targets : null;
   const summary = useMemo(() => nutritionSummary(days, targets, today), [days, targets, today]);
 
-  if (loaded.state === 'loading') return <Loading />;
+  if (loaded.state === 'loading') return <Skeleton />;
   if (loaded.state === 'failed') return <ErrorBanner error={loaded.error} onRetry={loaded.reload} />;
 
   // A month is read day by day; longer, week by week, or the bars are slivers.

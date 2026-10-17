@@ -1149,7 +1149,7 @@ const createStyles = (colors: ColorPalette) =>
     weekday: {
       flex: 1,
       textAlign: 'center',
-      color: colors.textFaint,
+      color: colors.textMuted,
       fontSize: fontSize.xs,
       fontWeight: fontWeight.medium,
     },
@@ -1181,7 +1181,7 @@ const createStyles = (colors: ColorPalette) =>
     // The background's own colour as text on a hue: dark on the light hues of the dark theme,
     // light on the deeper hues of the light theme, readable both ways without a per-hue table.
     tagText: { color: colors.bg, fontSize: 9, fontWeight: fontWeight.bold, textAlign: 'center' },
-    rest: { color: colors.textFaint, fontSize: 9, textAlign: 'center' },
+    rest: { color: colors.textMuted, fontSize: 9, textAlign: 'center' },
 
     fillButton: {
       marginTop: spacing.sm,
@@ -1286,7 +1286,7 @@ const createStyles = (colors: ColorPalette) =>
     },
     startButtonText: { color: colors.bg, fontSize: fontSize.sm, fontWeight: fontWeight.bold },
     emptyDayHint: {
-      color: colors.textFaint,
+      color: colors.textMuted,
       fontSize: fontSize.xs,
       marginTop: spacing.sm,
       textAlign: 'auto',

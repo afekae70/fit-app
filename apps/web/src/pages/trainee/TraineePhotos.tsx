@@ -14,7 +14,7 @@ import { useEffect, useState } from 'react';
 
 import { daysApart } from '../../analytics/dates.js';
 import { useCoach } from '../../coachContext.js';
-import { Button, Card, Dialog, EmptyState, ErrorBanner, Loading } from '../../components/ui.js';
+import { Button, Card, Dialog, EmptyState, ErrorBanner, Skeleton } from '../../components/ui.js';
 import { fill, he } from '../../i18n/he.js';
 import { formatDayLong, formatDayShort } from '../../lib/format.js';
 import { useLoad } from '../../lib/useLoad.js';
@@ -44,7 +44,7 @@ function SharedPhotos({ traineeId }: { traineeId: string }) {
     };
   }, [source, traineeId, list]);
 
-  if (photos.state === 'loading') return <Loading />;
+  if (photos.state === 'loading') return <Skeleton kind="photos" />;
   if (photos.state === 'failed') return <ErrorBanner error={photos.error} onRetry={photos.reload} />;
   if (photos.value.length === 0) {
     return (

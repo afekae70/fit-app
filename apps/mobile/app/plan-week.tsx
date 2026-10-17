@@ -333,7 +333,7 @@ const createStyles = (colors: ColorPalette) =>
     toggleChipOn: { borderColor: colors.accentBorder, backgroundColor: colors.accentSoft },
     toggleText: { color: colors.textMuted, fontSize: fontSize.sm },
     toggleTextOn: { color: colors.accent, fontWeight: fontWeight.bold },
-    toggleRange: { color: colors.textFaint, fontSize: fontSize.xxs, marginTop: 2, textAlign: 'center' },
+    toggleRange: { color: colors.textMuted, fontSize: fontSize.xxs, marginTop: 2, textAlign: 'center' },
 
     dayHeader: {
       flexDirection: 'row',
@@ -373,7 +373,7 @@ const createStyles = (colors: ColorPalette) =>
     chipClear: { color: colors.danger, fontSize: fontSize.sm },
 
     undecided: {
-      color: colors.textFaint,
+      color: colors.textMuted,
       fontSize: fontSize.xs,
       marginTop: spacing.sm,
       textAlign: 'auto',

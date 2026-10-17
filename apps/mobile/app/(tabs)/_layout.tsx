@@ -116,7 +116,7 @@ export default function TabsLayout() {
         screenOptions={{
           headerShown: false,
           tabBarActiveTintColor: colors.accent,
-          tabBarInactiveTintColor: colors.textFaint,
+          tabBarInactiveTintColor: colors.textMuted,
           tabBarStyle: {
             position: 'absolute',
             insetInlineStart: 14,

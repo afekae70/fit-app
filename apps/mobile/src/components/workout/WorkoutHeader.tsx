@@ -252,7 +252,7 @@ const createStyles = (colors: ColorPalette) =>
       fontWeight: '700',
       fontVariant: ['tabular-nums'],
     },
-    ringTotal: { color: colors.textFaint, fontSize: 11, fontWeight: '500' },
+    ringTotal: { color: colors.textMuted, fontSize: 11, fontWeight: '500' },
     finishText: { color: colors.bg, fontSize: 14, fontWeight: '700' },
     pressed: { opacity: 0.7 },
     // A card of its own rather than a strip welded to the top of the page, like everything
@@ -268,7 +268,7 @@ const createStyles = (colors: ColorPalette) =>
     row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
     titleBlock: { flex: 1, gap: 1 },
     name: { color: colors.text, fontSize: 18, fontWeight: '500', textAlign: 'auto' },
-    count: { color: colors.textFaint, fontSize: 12, textAlign: 'auto', fontVariant: ['tabular-nums'] },
+    count: { color: colors.textMuted, fontSize: 12, textAlign: 'auto', fontVariant: ['tabular-nums'] },
     time: {
       color: colors.text,
       fontSize: 24,
@@ -276,7 +276,7 @@ const createStyles = (colors: ColorPalette) =>
       letterSpacing: -0.5,
       fontVariant: ['tabular-nums'],
     },
-    timeLabel: { color: colors.textFaint, fontSize: 11 },
+    timeLabel: { color: colors.textMuted, fontSize: 11 },
     heart: { alignItems: 'center', gap: 1, minWidth: 48 },
     // Always left to right: the heart leads its number in Hebrew as well, the way a unit follows
     // a figure — a mirrored row would read as "132 ♥".
@@ -288,5 +288,5 @@ const createStyles = (colors: ColorPalette) =>
       letterSpacing: -0.5,
       fontVariant: ['tabular-nums'],
     },
-    heartLabel: { color: colors.textFaint, fontSize: 11 },
+    heartLabel: { color: colors.textMuted, fontSize: 11 },
   });

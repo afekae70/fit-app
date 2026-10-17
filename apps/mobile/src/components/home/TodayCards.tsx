@@ -758,7 +758,7 @@ const createStyles = (colors: ColorPalette) =>
     workoutMeta: { color: colors.textMuted, fontSize: 14, lineHeight: 20, textAlign: 'auto' },
     accentBar: { width: 6, borderRadius: 3 },
 
-    missed: { color: colors.textFaint, fontSize: 12, textAlign: 'auto' },
+    missed: { color: colors.textMuted, fontSize: 12, textAlign: 'auto' },
     pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
     pill: {
       paddingVertical: 6,
@@ -838,7 +838,7 @@ const createStyles = (colors: ColorPalette) =>
     },
     doneLinkText: { color: colors.accent, fontSize: 16, fontWeight: '700' },
     doneSecondary: { marginTop: 8, paddingVertical: 8, alignItems: 'center' },
-    doneSecondaryText: { color: colors.textFaint, fontSize: 14 },
+    doneSecondaryText: { color: colors.textMuted, fontSize: 14 },
     restCard: {
       backgroundColor: colors.surface,
       borderRadius: radius.xl,
@@ -863,9 +863,9 @@ const createStyles = (colors: ColorPalette) =>
     streakHeader: { flexDirection: 'row', alignItems: 'center', gap: 14 },
     streakHeaderText: { flex: 1, gap: 4 },
     ringValue: { color: colors.text, fontSize: 22, fontWeight: '700', fontVariant: ['tabular-nums'] },
-    ringTarget: { color: colors.textFaint, fontSize: 14, fontWeight: '500' },
+    ringTarget: { color: colors.textMuted, fontSize: 14, fontWeight: '500' },
     streakTitle: { color: colors.text, fontSize: 16, fontWeight: '500', textAlign: 'auto' },
-    streakCount: { color: colors.textFaint, fontSize: 12, textAlign: 'auto' },
+    streakCount: { color: colors.textMuted, fontSize: 12, textAlign: 'auto' },
 
     strip: { flexDirection: 'row', gap: 6 },
     stripItem: { flex: 1, alignItems: 'center', gap: 7 },
@@ -881,7 +881,7 @@ const createStyles = (colors: ColorPalette) =>
     dayCellTrained: { borderColor: colors.accentBorder, backgroundColor: colors.accentSoft },
     dayCellToday: { borderColor: colors.accent },
     dayMark: { color: colors.accent, fontSize: 12, fontWeight: '500' },
-    dayLabel: { color: colors.textFaint, fontSize: 11 },
+    dayLabel: { color: colors.textMuted, fontSize: 11 },
     streakFooter: { color: colors.textMuted, fontSize: 12, lineHeight: 18, textAlign: 'auto' },
 
     /* week summary -------------------------------------------------------- */
@@ -903,8 +903,8 @@ const createStyles = (colors: ColorPalette) =>
       textAlign: 'auto',
       fontVariant: ['tabular-nums'],
     },
-    statUnit: { color: colors.textFaint, fontSize: 12 },
-    statLabel: { color: colors.textFaint, fontSize: 11, lineHeight: 14, textAlign: 'auto' },
+    statUnit: { color: colors.textMuted, fontSize: 12 },
+    statLabel: { color: colors.textMuted, fontSize: 11, lineHeight: 14, textAlign: 'auto' },
 
     /* weight and nutrition ------------------------------------------------- */
     // Tabular figures: a weight ticking 82.4 → 82.1 should not shuffle sideways under the eye.
@@ -915,17 +915,17 @@ const createStyles = (colors: ColorPalette) =>
       textAlign: 'auto',
       fontVariant: ['tabular-nums'],
     },
-    bigUnit: { color: colors.textFaint, fontSize: 12, fontWeight: '400' },
+    bigUnit: { color: colors.textMuted, fontSize: 12, fontWeight: '400' },
     trendRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 },
     trendLabel: { color: colors.textMuted, fontSize: 12, textAlign: 'auto' },
     trendRate: { color: colors.accent, fontSize: 14, textAlign: 'auto', fontVariant: ['tabular-nums'] },
-    trendHint: { color: colors.textFaint, fontSize: 11, flexShrink: 1, textAlign: 'auto' },
+    trendHint: { color: colors.textMuted, fontSize: 11, flexShrink: 1, textAlign: 'auto' },
     clamped: { color: colors.warning, fontSize: 12, lineHeight: 18, textAlign: 'auto' },
 
     macroBlock: { gap: 6 },
     macroHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 },
     macroLabel: { color: colors.textMuted, fontSize: 14, textAlign: 'auto' },
-    macroValue: { color: colors.textFaint, fontSize: 12, fontVariant: ['tabular-nums'] },
+    macroValue: { color: colors.textMuted, fontSize: 12, fontVariant: ['tabular-nums'] },
     macroTrack: {
       height: 6,
       borderRadius: 3,

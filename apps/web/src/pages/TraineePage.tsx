@@ -13,6 +13,7 @@ import {
   ArrowRight,
   Camera,
   ForkKnife,
+  LockSimple,
   Scales,
   ShieldCheck,
   UserMinus,
@@ -23,7 +24,7 @@ import { useEffect, useRef, useState } from 'react';
 import { addDays, localDate, parseDay, rangeStart } from '../analytics/dates.js';
 import { useCoach } from '../coachContext.js';
 import { DemoBar } from '../components/DemoBar.js';
-import { Avatar, Button, Card, Dialog, ErrorBanner, Loading } from '../components/ui.js';
+import { Avatar, Button, Card, Dialog, ErrorBanner, Skeleton } from '../components/ui.js';
 import { fill, he } from '../i18n/he.js';
 import { formatDayLong } from '../lib/format.js';
 import { hrefFor, navigate, type TraineeTab } from '../lib/router.js';
@@ -140,14 +141,18 @@ export function TraineePage({ traineeId, tab }: { traineeId: string; tab: Traine
       <nav className="tabs" aria-label={name} ref={tabStrip}>
         {TABS.map((entry) => {
           const needs = SHARED_TAB[entry.tab];
+          const closed = needs !== undefined && !person.sharing[needs];
           return (
             <a
               key={entry.tab}
-              className={`tab${needs && !person.sharing[needs] ? ' tab-closed' : ''}`}
+              className={`tab${closed ? ' tab-closed' : ''}`}
               href={hrefFor({ name: 'trainee', id: traineeId, tab: entry.tab })}
               aria-current={entry.tab === tab ? 'page' : undefined}
             >
+              {/* Said with a lock as well as a quieter colour: colour alone is not a signal. */}
+              {closed ? <LockSimple size={14} weight="bold" aria-hidden /> : null}
               {entry.label}
+              {closed ? <span className="visually-hidden"> ({he.sharing.notSharedTitle})</span> : null}
             </a>
           );
         })}
@@ -172,7 +177,7 @@ export function TraineePage({ traineeId, tab }: { traineeId: string; tab: Traine
           }}
         />
       ) : sessions.state !== 'ready' || calendar.state !== 'ready' || plans.state !== 'ready' ? (
-        <Loading />
+        <Skeleton />
       ) : tab === 'overview' ? (
         <TraineeOverview sessions={sessions.value} calendar={calendar.value} plans={plans.value} />
       ) : tab === 'workouts' ? (

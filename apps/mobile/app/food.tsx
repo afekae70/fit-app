@@ -626,7 +626,7 @@ const createStyles = (colors: ColorPalette) =>
       overflow: 'hidden',
     },
     macroFill: { height: '100%', borderRadius: radius.pill },
-    partial: { color: colors.textFaint, fontSize: fontSize.xs, textAlign: 'auto' },
+    partial: { color: colors.textMuted, fontSize: fontSize.xs, textAlign: 'auto' },
 
     actions: { gap: spacing.sm },
     list: { gap: spacing.sm },

@@ -283,7 +283,7 @@ const createStyles = (colors: ColorPalette) =>
       height: 26,
       textAlign: 'center',
     },
-    nameDone: { color: colors.textFaint },
+    nameDone: { color: colors.textMuted },
     ltr: { direction: 'ltr' },
     row: { gap: GAP, paddingVertical: 6, paddingHorizontal: 4 },
     thumb: {

@@ -55,7 +55,7 @@ export function Field({
           setFocused(false);
           input.onBlur?.(event);
         }}
-        placeholderTextColor={colors.textFaint}
+        placeholderTextColor={colors.textMuted}
         style={[styles.input, inputStyle]}
       />
       {trailing}

@@ -26,6 +26,14 @@
  *
  * The accent stays a single colour used sparingly: the primary action, live data, nothing else.
  * When every card has an accent border, none of them read as important.
+ *
+ * **Contrast is a rule here, not a taste** (WCAG AA, checked in `palette.test.ts`). Everything a
+ * person reads — `text`, `textSecondary`, `textMuted`, and the accent and status colours used as
+ * words — holds 4.5:1 on every ground it can sit on. `textFaint` is the one exception, at 3:1:
+ * it is for what is meant to recede — a drag handle, a ghost value in an empty field, a disabled
+ * label, an unticked mark — and never for a label, a unit or a hint someone needs to read. The
+ * light values were darkened in place, hue and saturation kept, by the least that passes; the
+ * first versions of `textMuted`, `textFaint`, the accent and the status colours did not.
  */
 
 export interface ColorPalette {
@@ -89,8 +97,8 @@ export const darkColors: ColorPalette = {
   /* Text — the ramp read downward from the brightest. */
   text: '#EEEAFB',
   textSecondary: '#C6BDE4',
-  textMuted: '#9A8FBE',
-  textFaint: '#776C99',
+  textMuted: '#A197C3',
+  textFaint: '#8278A1',
 
   /* Accent — the logo's violet, lifted to hold its own on a dark ground. */
   accent: '#A78BFA',
@@ -133,27 +141,27 @@ export const lightColors: ColorPalette = {
   /* Text — deep violet-navy rather than black, so it belongs to the same family as the ground. */
   text: '#241C3D',
   textSecondary: '#473A6B',
-  textMuted: '#7A6E9B',
-  textFaint: '#A79BC4',
+  textMuted: '#6A5F89',
+  textFaint: '#8F80B4',
 
   /* Accent — the logo's violet, one rung darker so white type on it holds contrast. */
-  accent: '#7C5CD6',
+  accent: '#7351D3',
   accentSoft: '#EDE7FB',
   accentBorder: '#C9B8F2',
   accentLift: '#5B3FB0',
 
   /* Status */
-  warning: '#B07C1C',
+  warning: '#855E15',
   warningSoft: '#FBEFC9',
-  danger: '#C8484E',
+  danger: '#B8373D',
   dangerSoft: '#FBDEDF',
-  info: '#B4559E',
+  info: '#9D4589',
   infoSoft: '#F8E6F4',
 
   /* Macro colours */
-  protein: '#7C5CD6',
-  carbs: '#C09524',
-  fat: '#B4559E',
+  protein: '#7351D3',
+  carbs: '#A88320',
+  fat: '#9D4589',
 
   tileSun: '#F7E9B8',
   tileCoral: '#F4DDF1',

@@ -149,7 +149,14 @@ export default function ExercisePickerScreen() {
     <View style={[styles.screen, { paddingTop: spacing.md }]}>
       <View style={styles.header}>
         <Text style={styles.title}>{t('picker.title')}</Text>
-        <Pressable onPress={() => router.back()} style={styles.closeButton} accessibilityRole="button">
+        <Pressable
+          onPress={() => router.back()}
+          style={styles.closeButton}
+          // 36 drawn, 44 to the thumb; and a name, since an X says nothing to a screen reader.
+          hitSlop={4}
+          accessibilityRole="button"
+          accessibilityLabel={t('picker.close')}
+        >
           <Glyph icon={X} style={styles.closeText} />
         </Pressable>
       </View>
@@ -176,6 +183,7 @@ export default function ExercisePickerScreen() {
             <Pressable
               onPress={() => setMuscle(item)}
               style={[styles.chip, active && styles.chipActive]}
+              hitSlop={{ top: 5, bottom: 5 }}
               accessibilityRole="button"
               accessibilityState={{ selected: active }}
             >
@@ -200,6 +208,7 @@ export default function ExercisePickerScreen() {
               <Pressable
                 onPress={() => choose(item)}
                 style={styles.recentChip}
+                hitSlop={{ top: 5, bottom: 5 }}
                 accessibilityRole="button"
               >
                 <Text style={styles.recentChipText}>{label(item)}</Text>
@@ -359,7 +368,7 @@ const createStyles = (colors: ColorPalette) =>
   rowSub: { color: colors.textMuted, fontSize: fontSize.xs, marginTop: 2, textAlign: 'auto' },
   rowStats: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.xs, marginTop: 3 },
   rowE1rm: { color: colors.accent, fontSize: fontSize.sm, fontWeight: '700' },
-  rowE1rmLabel: { color: colors.textFaint, fontSize: fontSize.xxs },
+  rowE1rmLabel: { color: colors.textMuted, fontSize: fontSize.xxs },
   rowDelta: { color: colors.accent, fontSize: fontSize.xxs, fontWeight: '700' },
   rowDeltaDown: { color: colors.textMuted },
   rowChevron: { color: colors.textMuted, fontSize: fontSize.lg },

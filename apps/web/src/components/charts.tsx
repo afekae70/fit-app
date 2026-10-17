@@ -172,9 +172,12 @@ export function BarChart({
               <g key={bar.key}>
                 {bar.value > 0 ? (
                   <path
+                    className="bar"
                     d={roundedTop(x, barTop, barWidth, barHeight, radius)}
                     fill="var(--series-1)"
                     opacity={hover === null || hover === index ? 1 : 0.55}
+                    // Oldest first, a sweep the way the page is read; never longer than a beat.
+                    style={{ animationDelay: `${Math.min(300, index * 14)}ms` }}
                   />
                 ) : null}
                 {(bars.length - 1 - index) % every === 0 ? (
@@ -425,7 +428,7 @@ export function LineChart({
             const marked = hoverT === null ? null : nearest(line.points, hoverT);
             if (line.kind === 'dots') {
               return (
-                <g key={line.key}>
+                <g key={line.key} className="dots">
                   {line.points.map((point) => (
                     <circle
                       key={point.t}
@@ -444,6 +447,9 @@ export function LineChart({
             return (
               <g key={line.key}>
                 <path
+                  className="line"
+                  // Measured as 1, so the drawing-in animation needs no length from the DOM.
+                  pathLength={1}
                   d={path}
                   fill="none"
                   stroke={line.colour}
@@ -455,6 +461,8 @@ export function LineChart({
                   point ? (
                     <circle
                       key={index}
+                      // The end-dot waits for its line; the hover marker never waits.
+                      className={index === 0 ? 'end-dot' : undefined}
                       cx={x(point.t)}
                       cy={y(point.value)}
                       r={4}

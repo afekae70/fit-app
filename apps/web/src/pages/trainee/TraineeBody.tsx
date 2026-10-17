@@ -13,7 +13,7 @@ import { bodyDays, bodySummary, weeklyAverage } from '../../analytics/body.js';
 import { addDays, parseDay, rangeStart, type RangeKey } from '../../analytics/dates.js';
 import { useCoach } from '../../coachContext.js';
 import { ChartFrame, LineChart, type LineSeries } from '../../components/charts.js';
-import { Card, EmptyState, ErrorBanner, Loading, Segmented, StatTile } from '../../components/ui.js';
+import { Card, EmptyState, ErrorBanner, Segmented, Skeleton, StatTile } from '../../components/ui.js';
 import { fill, he } from '../../i18n/he.js';
 import { formatDayShort, formatKg, formatNumber, formatSigned, relativeDay } from '../../lib/format.js';
 import { useLoad } from '../../lib/useLoad.js';
@@ -44,7 +44,7 @@ function SharedBody({ traineeId }: { traineeId: string }) {
   );
   const summary = useMemo(() => bodySummary(days), [days]);
 
-  if (loaded.state === 'loading') return <Loading />;
+  if (loaded.state === 'loading') return <Skeleton />;
   if (loaded.state === 'failed') return <ErrorBanner error={loaded.error} onRetry={loaded.reload} />;
 
   const toT = (day: string) => parseDay(day).getTime() + 12 * 3_600_000;

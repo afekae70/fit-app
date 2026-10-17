@@ -280,7 +280,7 @@ const createStyles = (colors: ColorPalette) =>
       textAlign: 'auto',
       fontVariant: ['tabular-nums'],
     },
-    statLabel: { color: colors.textFaint, fontSize: 11, textAlign: 'auto' },
+    statLabel: { color: colors.textMuted, fontSize: 11, textAlign: 'auto' },
 
     group: {
       backgroundColor: colors.surface,

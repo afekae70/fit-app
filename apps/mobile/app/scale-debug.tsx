@@ -499,9 +499,9 @@ const createStyles = (colors: ColorPalette) =>
       gap: spacing.sm,
     },
     deviceName: { color: colors.text, fontSize: fontSize.sm, fontWeight: '500', flex: 1, textAlign: 'auto' },
-    deviceKnown: { color: colors.textFaint, fontWeight: '400' },
-    frames: { color: colors.textFaint, fontSize: fontSize.xs, fontVariant: ['tabular-nums'] },
-    deviceId: { color: colors.textFaint, fontSize: fontSize.xs },
+    deviceKnown: { color: colors.textMuted, fontWeight: '400' },
+    frames: { color: colors.textMuted, fontSize: fontSize.xs, fontVariant: ['tabular-nums'] },
+    deviceId: { color: colors.textMuted, fontSize: fontSize.xs },
     recognised: { color: colors.accent, fontSize: fontSize.xs, textAlign: 'auto' },
     decoded: {
       color: colors.accent,
@@ -521,5 +521,5 @@ const createStyles = (colors: ColorPalette) =>
       textAlign: 'left',
     },
     payloads: { marginTop: 4, gap: 1 },
-    payloadsLabel: { color: colors.textFaint, fontSize: fontSize.xs, textAlign: 'auto' },
+    payloadsLabel: { color: colors.textMuted, fontSize: fontSize.xs, textAlign: 'auto' },
   });

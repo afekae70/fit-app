@@ -513,7 +513,7 @@ const createStyles = (colors: ColorPalette) =>
     // Amber rather than the accent: a warm-up is neither the work nor a problem, and the two
     // colours the app already uses for rows both say one of those.
     indexChipWarmup: { backgroundColor: colors.warningSoft },
-    indexText: { color: colors.textFaint, fontSize: 12, fontVariant: ['tabular-nums'] },
+    indexText: { color: colors.textMuted, fontSize: 12, fontVariant: ['tabular-nums'] },
     indexTextWarmup: { color: colors.warning, fontWeight: '700' },
     // Listed before the warm-up styles above so a ramp still reads as a ramp: nobody takes a
     // warm-up to failure, and if both flags somehow land on one set, "warm-up" is the one that
@@ -524,7 +524,7 @@ const createStyles = (colors: ColorPalette) =>
     indexTextDrop: { color: colors.accent, fontWeight: '700' },
     indexChipFailure: { backgroundColor: colors.dangerSoft },
     indexTextFailure: { color: colors.danger, fontWeight: '700' },
-    rpe: { color: colors.textFaint, fontSize: 10, fontVariant: ['tabular-nums'] },
+    rpe: { color: colors.textMuted, fontSize: 10, fontVariant: ['tabular-nums'] },
 
     field: {
       flex: 1,
@@ -554,7 +554,7 @@ const createStyles = (colors: ColorPalette) =>
       minHeight: 0,
       textAlign: 'center',
     },
-    unit: { color: colors.textFaint, fontSize: 10 },
+    unit: { color: colors.textMuted, fontSize: 10 },
 
     stepper: { width: 34, height: 56, alignItems: 'center', justifyContent: 'center' },
     stepperPressed: { backgroundColor: colors.surfaceRaised },

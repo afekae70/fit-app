@@ -403,7 +403,7 @@ const createStyles = (colors: ColorPalette) =>
       textAlign: 'auto',
     },
     pairThen: {
-      color: colors.textFaint,
+      color: colors.textMuted,
       fontSize: fontSize.sm,
       fontVariant: ['tabular-nums'],
       textAlign: 'auto',
@@ -431,7 +431,7 @@ const createStyles = (colors: ColorPalette) =>
     barTrack: { height: BAR_HEIGHT, justifyContent: 'flex-end', alignSelf: 'stretch' },
     barMonth: { color: colors.textMuted, fontSize: fontSize.xs },
     barMonthCurrent: { color: colors.text, fontWeight: fontWeight.bold },
-    barCount: { color: colors.textFaint, fontSize: 10, fontVariant: ['tabular-nums'] },
+    barCount: { color: colors.textMuted, fontSize: 10, fontVariant: ['tabular-nums'] },
     monthLine: {
       color: colors.textSecondary,
       fontSize: fontSize.sm,
