@@ -21,6 +21,18 @@ import {
   type CoachPlan,
 } from './planDocument.js';
 import { parseSessions, type CoachSession } from './sessionDocument.js';
+import {
+  NOTHING_SHARED,
+  parseMeasurements,
+  parseNutrition,
+  parsePhotos,
+  parseSharing,
+  type CoachMeasurement,
+  type CoachNutrition,
+  type CoachPhoto,
+  type SharedTargets,
+  type Sharing,
+} from './sharedDocument.js';
 
 export type CoachingError =
   /** The functions are not on the server: migration 0007 has not been run on this project. */
@@ -42,6 +54,10 @@ export type CoachingError =
   | 'not_admin'
   /** The server would not take what was sent. */
   | 'invalid'
+  /** A coach asking for something the trainee has not shared with them (0018). */
+  | 'not_shared'
+  /** A trainee setting what they share, with no coach to share it with. */
+  | 'no_coach'
   | 'failed';
 
 export type CoachingResult<T> = { ok: true; value: T } | { ok: false; error: CoachingError };
@@ -52,6 +68,11 @@ export interface CoachingPerson {
   name: string | null;
   /** When the link was made, as the server recorded it. */
   since: string | null;
+  /**
+   * What the trainee shares beyond their training, on this link. All off from a server that
+   * has not been given 0018, which is also the truth: nothing beyond training can be shared yet.
+   */
+  sharing: Sharing;
 }
 
 export interface CoachingStatus {
@@ -91,6 +112,8 @@ export function interpretCoachingError(error: { code?: string; message?: string 
   // PostgREST's "no such function in the schema cache".
   if (code === 'PGRST202' || /could not find the function/i.test(message)) return 'not_available';
   if (/no_such_code/.test(message)) return 'no_such_code';
+  if (/not_shared/.test(message)) return 'not_shared';
+  if (/no_coach/.test(message)) return 'no_coach';
   if (/no_such_user/.test(message)) return 'no_such_user';
   if (/not_admin/.test(message)) return 'not_admin';
   if (/own_code/.test(message)) return 'own_code';
@@ -119,6 +142,7 @@ function parsePerson(raw: unknown): CoachingPerson | null {
     email: typeof person.email === 'string' ? person.email : '',
     name: typeof person.name === 'string' && person.name.trim() !== '' ? person.name : null,
     since: typeof person.since === 'string' ? person.since : null,
+    sharing: person.sharing === undefined ? NOTHING_SHARED : parseSharing(person.sharing),
   };
 }
 
@@ -258,6 +282,42 @@ export function createCoachingApi(client: RpcClient) {
         { p_trainee: traineeId, p_date: date, p_plan_days: [...planDayIds], p_rest: rest },
         nothing,
       ),
+
+    /**
+     * The trainee's side: what they share with their coach, all three switches at once, and —
+     * while nutrition is shared — the app's own daily targets. Answers with the new status.
+     */
+    setSharing: (sharing: Sharing, targets: SharedTargets | null) =>
+      call(
+        'coach_set_sharing',
+        {
+          p_body: sharing.body,
+          p_nutrition: sharing.nutrition,
+          p_photos: sharing.photos,
+          p_targets: sharing.nutrition ? targets : null,
+        },
+        parseStatus,
+      ),
+
+    /** A trainee's weigh-ins between two moments (ISO), newest first. Needs `body` shared. */
+    body: (
+      traineeId: string,
+      from: string,
+      to: string,
+    ): Promise<CoachingResult<CoachMeasurement[]>> =>
+      call('coach_get_body', { p_trainee: traineeId, p_from: from, p_to: to }, parseMeasurements),
+
+    /** A trainee's food log, water and targets between two local dates. Needs `nutrition` shared. */
+    nutrition: (
+      traineeId: string,
+      from: string,
+      to: string,
+    ): Promise<CoachingResult<CoachNutrition>> =>
+      call('coach_get_nutrition', { p_trainee: traineeId, p_from: from, p_to: to }, parseNutrition),
+
+    /** A trainee's progress photos, newest first. Needs `photos` shared. */
+    photos: (traineeId: string): Promise<CoachingResult<CoachPhoto[]>> =>
+      call('coach_get_photos', { p_trainee: traineeId }, parsePhotos),
 
     /** Administrators only. Every coach there is. */
     coaches: () => call('admin_list_coaches', undefined, parseCoaches),

@@ -234,6 +234,15 @@ It is a static site, published by GitHub Pages from `docs/coach` at
 `https://afekae70.github.io/fit-app/coach/`, free. Adding `?demo` to that address opens a
 demonstration with made-up trainees, which needs no account.
 
+**Beyond training — weight, food and water, progress photos** — a coach sees only what each
+trainee chose to share, on the coaching screen in the app: three switches, all off until turned
+on, reset when the trainee moves to another coach. They need
+`apps/api/drizzle/0018_coach_sharing_and_progress_photos.sql` run once in the SQL editor. It adds
+the switches, the functions that read each kind (each refusing with `not_shared` while its switch
+is off), the `progress_photos` table and the private `progress-photos` storage bucket, where a
+coach can read a trainee's folder only while photos are shared. Until it is run, the app's
+switches report that the server is not ready, and photos stay on the phone.
+
 **Working on it:**
 
 ```bash

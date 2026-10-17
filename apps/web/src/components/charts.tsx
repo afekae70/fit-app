@@ -105,6 +105,7 @@ export function BarChart({
   height = 220,
   valueLabel,
   whole = false,
+  reference,
 }: {
   bars: readonly Bar[];
   format: (value: number) => string;
@@ -112,11 +113,13 @@ export function BarChart({
   valueLabel: string;
   /** Counts: the axis says 0, 2, 4 — never two and a half workouts. */
   whole?: boolean;
+  /** A dashed line across the bars — a daily target — named in the readout beside the bar. */
+  reference?: { value: number; label: string } | undefined;
 }) {
   const [ref, width] = useWidth<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
 
-  const highest = Math.max(0, ...bars.map((bar) => bar.value));
+  const highest = Math.max(0, reference?.value ?? 0, ...bars.map((bar) => bar.value));
   // An even top, so the middle tick is a whole number too.
   const top = whole ? Math.max(2, Math.ceil(highest / 2) * 2) : niceMax(highest);
   const plotWidth = Math.max(0, width - PAD.start - PAD.end);
@@ -135,7 +138,10 @@ export function BarChart({
         x: centre(hover!),
         y: y(hovered.value),
         title: hovered.title,
-        rows: [{ label: valueLabel, value: format(hovered.value) }],
+        rows: [
+          { label: valueLabel, value: format(hovered.value) },
+          ...(reference ? [{ label: reference.label, value: format(reference.value) }] : []),
+        ],
       }
     : null;
 
@@ -191,6 +197,20 @@ export function BarChart({
               </g>
             );
           })}
+          {reference ? (
+            <g pointerEvents="none">
+              <line
+                className="reference-line"
+                x1={PAD.end}
+                x2={width - PAD.start}
+                y1={y(reference.value)}
+                y2={y(reference.value)}
+              />
+              <text className="axis-text reference-text" x={PAD.end} y={y(reference.value) - 6}>
+                {reference.label} {format(reference.value)}
+              </text>
+            </g>
+          ) : null}
         </svg>
       ) : (
         <div style={{ height }} />
@@ -231,6 +251,11 @@ export interface LineSeries {
   /** `var(--series-n)`, in the fixed order. */
   colour: string;
   points: readonly LinePoint[];
+  /**
+   * `dots`: each point on its own, unjoined and lighter — for noisy daily readings drawn under
+   * the line that averages them. A line by default.
+   */
+  kind?: 'line' | 'dots';
 }
 
 /**
@@ -246,6 +271,7 @@ export function LineChart({
   to,
   format,
   height = 260,
+  label = he.charts.strength,
 }: {
   series: readonly LineSeries[];
   /** The ends of the time axis, in milliseconds. */
@@ -253,6 +279,8 @@ export function LineChart({
   to: number;
   format: (value: number) => string;
   height?: number;
+  /** What the chart is, for a screen reader. */
+  label?: string;
 }) {
   const [ref, width] = useWidth<HTMLDivElement>();
   const [hoverT, setHoverT] = useState<number | null>(null);
@@ -335,7 +363,10 @@ export function LineChart({
         <div className="legend" style={{ marginBlockEnd: 8 }}>
           {series.map((line) => (
             <span className="legend-item" key={line.key}>
-              <span className="legend-line" style={{ background: line.colour }} />
+              <span
+                className={line.kind === 'dots' ? 'legend-dot' : 'legend-line'}
+                style={{ background: line.colour }}
+              />
               {line.label}
             </span>
           ))}
@@ -345,7 +376,7 @@ export function LineChart({
         <svg
           height={height}
           role="img"
-          aria-label={he.charts.strength}
+          aria-label={label}
           onMouseMove={(event) => snap(event.clientX, event.currentTarget.getBoundingClientRect())}
           onMouseLeave={() => setHoverT(null)}
         >
@@ -392,6 +423,24 @@ export function LineChart({
               .join(' ');
             const last = line.points[line.points.length - 1];
             const marked = hoverT === null ? null : nearest(line.points, hoverT);
+            if (line.kind === 'dots') {
+              return (
+                <g key={line.key}>
+                  {line.points.map((point) => (
+                    <circle
+                      key={point.t}
+                      cx={x(point.t)}
+                      cy={y(point.value)}
+                      r={point === marked ? 5 : 4}
+                      fill={line.colour}
+                      fillOpacity={point === marked ? 1 : 0.4}
+                      stroke="var(--surface)"
+                      strokeWidth={point === marked ? 2 : 0}
+                    />
+                  ))}
+                </g>
+              );
+            }
             return (
               <g key={line.key}>
                 <path

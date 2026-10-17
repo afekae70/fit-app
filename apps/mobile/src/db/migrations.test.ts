@@ -1110,3 +1110,75 @@ describe('migration 23 — water, and meals worth keeping', () => {
     }
   });
 });
+
+describe('migration 24 — progress photos', () => {
+  /** A phone at version 23, with a weigh-in and none of the new table. */
+  function weighingDevice() {
+    const db = new DatabaseSync(':memory:');
+    db.exec(`
+      CREATE TABLE body_measurements (id TEXT PRIMARY KEY NOT NULL, user_id TEXT NOT NULL, weight_kg REAL);
+      INSERT INTO body_measurements VALUES ('m1', 'u1', 72);
+    `);
+    return db;
+  }
+
+  it('is on the app upgrade path', () => {
+    expect(SCHEMA_VERSION).toBeGreaterThanOrEqual(24);
+    expect(MIGRATIONS[24]).toBeDefined();
+  });
+
+  it('makes the same table a fresh install gets', () => {
+    const upgraded = weighingDevice();
+    applyMigration(upgraded, MIGRATIONS[24] ?? '');
+    const fresh = new DatabaseSync(':memory:');
+    fresh.exec(CREATE_SCHEMA_SQL.replace(/PRAGMA journal_mode = WAL;/, ''));
+
+    const columns = (db: typeof upgraded) =>
+      db
+        .prepare(
+          `SELECT name, type, "notnull", pk FROM pragma_table_info('progress_photos') ORDER BY cid`,
+        )
+        .all();
+    const indexes = (db: typeof upgraded) =>
+      db
+        .prepare(
+          `SELECT name FROM pragma_index_list('progress_photos') WHERE origin = 'c' ORDER BY name`,
+        )
+        .all();
+
+    expect(columns(upgraded)).toEqual(columns(fresh));
+    expect(columns(upgraded)).toHaveLength(11);
+    expect(indexes(upgraded)).toEqual(indexes(fresh));
+    expect(indexes(upgraded)).toHaveLength(1);
+    upgraded.close();
+    fresh.close();
+  });
+
+  it('touches nothing that was already there', () => {
+    const db = weighingDevice();
+    applyMigration(db, MIGRATIONS[24] ?? '');
+    expect(db.prepare(`SELECT * FROM body_measurements`).all()).toEqual([
+      { id: 'm1', user_id: 'u1', weight_kg: 72 },
+    ]);
+    db.close();
+  });
+
+  it('is safe to run twice, and on a new install where the table is already there', () => {
+    const db = weighingDevice();
+    applyMigration(db, MIGRATIONS[24] ?? '');
+    expect(() => applyMigration(db, MIGRATIONS[24] ?? '')).not.toThrow();
+    db.close();
+
+    const fresh = new DatabaseSync(':memory:');
+    fresh.exec(CREATE_SCHEMA_SQL.replace(/PRAGMA journal_mode = WAL;/, ''));
+    expect(() => applyMigration(fresh, MIGRATIONS[24] ?? '')).not.toThrow();
+    fresh.close();
+  });
+
+  it('has no semicolon inside a comment, which the statement splitter would cut on', () => {
+    for (const line of (MIGRATIONS[24] ?? '').split('\n')) {
+      const comment = line.indexOf('--');
+      if (comment >= 0) expect(line.slice(comment), line).not.toContain(';');
+    }
+  });
+});

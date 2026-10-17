@@ -12,6 +12,7 @@ const LOCALE = 'he-IL';
 
 const whole = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 0 });
 const oneDecimal = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 1 });
+const twoDecimals = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 2 });
 
 export function formatNumber(value: number): string {
   return whole.format(value);
@@ -49,6 +50,20 @@ export function formatSignedPercent(value: number | null): string {
   if (value === 0) return '0%';
   const magnitude = oneDecimal.format(Math.abs(value));
   return ltr(value > 0 ? `+${magnitude}%` : `−${magnitude}%`);
+}
+
+/** A signed amount to the tenth: +0.4, −1.2, 0. Isolated like the percentages. */
+export function formatSigned(value: number | null): string {
+  if (value === null) return '—';
+  const rounded = Math.round(value * 10) / 10;
+  if (rounded === 0) return '0';
+  const magnitude = oneDecimal.format(Math.abs(rounded));
+  return ltr(rounded > 0 ? `+${magnitude}` : `−${magnitude}`);
+}
+
+/** Millilitres as litres, to two places where there are any: 2.45, 3. */
+export function formatLitres(ml: number): string {
+  return twoDecimals.format(ml / 1000);
 }
 
 /** 12 באוק׳ */

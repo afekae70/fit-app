@@ -8,12 +8,27 @@
 
 import { useEffect, useState } from 'react';
 
-export type TraineeTab = 'overview' | 'workouts' | 'plans' | 'calendar';
+export type TraineeTab =
+  | 'overview'
+  | 'workouts'
+  | 'plans'
+  | 'calendar'
+  | 'body'
+  | 'nutrition'
+  | 'photos';
 
 export type Route =
   { name: 'overview' } | { name: 'trainee'; id: string; tab: TraineeTab } | { name: 'admin' };
 
-const TABS: readonly TraineeTab[] = ['overview', 'workouts', 'plans', 'calendar'];
+const TABS: readonly TraineeTab[] = [
+  'overview',
+  'workouts',
+  'plans',
+  'calendar',
+  'body',
+  'nutrition',
+  'photos',
+];
 
 export function parseRoute(hash: string): Route {
   const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);

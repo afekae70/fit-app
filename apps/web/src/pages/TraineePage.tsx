@@ -9,9 +9,16 @@
  * changed.
  */
 
-import { ArrowRight, ShieldCheck, UserMinus } from '@phosphor-icons/react';
-import { personLabel } from '@fit/shared/coaching';
-import { useState } from 'react';
+import {
+  ArrowRight,
+  Camera,
+  ForkKnife,
+  Scales,
+  ShieldCheck,
+  UserMinus,
+} from '@phosphor-icons/react';
+import { personLabel, type Sharing } from '@fit/shared/coaching';
+import { useEffect, useRef, useState } from 'react';
 
 import { addDays, localDate, parseDay, rangeStart } from '../analytics/dates.js';
 import { useCoach } from '../coachContext.js';
@@ -21,8 +28,11 @@ import { fill, he } from '../i18n/he.js';
 import { formatDayLong } from '../lib/format.js';
 import { hrefFor, navigate, type TraineeTab } from '../lib/router.js';
 import { useLoad } from '../lib/useLoad.js';
+import { TraineeBody } from './trainee/TraineeBody.js';
 import { TraineeCalendar } from './trainee/TraineeCalendar.js';
+import { TraineeNutrition } from './trainee/TraineeNutrition.js';
 import { TraineeOverview } from './trainee/TraineeOverview.js';
+import { TraineePhotos } from './trainee/TraineePhotos.js';
 import { TraineePlans } from './trainee/TraineePlans.js';
 import { TraineeWorkouts } from './trainee/TraineeWorkouts.js';
 
@@ -31,7 +41,17 @@ const TABS: { tab: TraineeTab; label: string }[] = [
   { tab: 'workouts', label: he.trainee.tabWorkouts },
   { tab: 'plans', label: he.trainee.tabPlans },
   { tab: 'calendar', label: he.trainee.tabCalendar },
+  { tab: 'body', label: he.trainee.tabBody },
+  { tab: 'nutrition', label: he.trainee.tabNutrition },
+  { tab: 'photos', label: he.trainee.tabPhotos },
 ];
+
+/** The tabs that are about what a trainee chooses to share, and the switch each needs. */
+const SHARED_TAB: Partial<Record<TraineeTab, keyof Sharing>> = {
+  body: 'body',
+  nutrition: 'nutrition',
+  photos: 'photos',
+};
 
 /** How far back workouts are read: the longest period, and half a year before it for records. */
 const HISTORY_WEEKS = 78;
@@ -40,6 +60,14 @@ export function TraineePage({ traineeId, tab }: { traineeId: string; tab: Traine
   const { source, status, today, refreshStatus } = useCoach();
   const person = status.trainees.find((candidate) => candidate.id === traineeId);
   const [removing, setRemoving] = useState(false);
+  const tabStrip = useRef<HTMLElement>(null);
+
+  // Seven tabs do not fit a phone's width: the strip scrolls, and the open one is brought into it.
+  useEffect(() => {
+    tabStrip.current
+      ?.querySelector<HTMLElement>('[aria-current="page"]')
+      ?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [tab]);
 
   const historyFrom = addDays(today, -7 * HISTORY_WEEKS);
   const calendarFrom = rangeStart('52w', today);
@@ -101,6 +129,7 @@ export function TraineePage({ traineeId, tab }: { traineeId: string; tab: Traine
                 ? ` · ${fill(he.trainee.since, { date: formatDayLong(localDate(new Date(person.since))) })}`
                 : ''}
             </p>
+            <SharingLine sharing={person.sharing} />
           </div>
         </div>
         <Button variant="ghost" small onClick={() => setRemoving(true)}>
@@ -108,20 +137,32 @@ export function TraineePage({ traineeId, tab }: { traineeId: string; tab: Traine
         </Button>
       </header>
 
-      <nav className="tabs" aria-label={name}>
-        {TABS.map((entry) => (
-          <a
-            key={entry.tab}
-            className="tab"
-            href={hrefFor({ name: 'trainee', id: traineeId, tab: entry.tab })}
-            aria-current={entry.tab === tab ? 'page' : undefined}
-          >
-            {entry.label}
-          </a>
-        ))}
+      <nav className="tabs" aria-label={name} ref={tabStrip}>
+        {TABS.map((entry) => {
+          const needs = SHARED_TAB[entry.tab];
+          return (
+            <a
+              key={entry.tab}
+              className={`tab${needs && !person.sharing[needs] ? ' tab-closed' : ''}`}
+              href={hrefFor({ name: 'trainee', id: traineeId, tab: entry.tab })}
+              aria-current={entry.tab === tab ? 'page' : undefined}
+            >
+              {entry.label}
+            </a>
+          );
+        })}
       </nav>
 
-      {failed && failed.state === 'failed' ? (
+      {tab === 'body' || tab === 'nutrition' || tab === 'photos' ? (
+        // Loaded by the tab itself, and only when shared: the workouts below are not needed.
+        tab === 'body' ? (
+          <TraineeBody traineeId={traineeId} shared={person.sharing.body} />
+        ) : tab === 'nutrition' ? (
+          <TraineeNutrition traineeId={traineeId} shared={person.sharing.nutrition} />
+        ) : (
+          <TraineePhotos traineeId={traineeId} shared={person.sharing.photos} />
+        )
+      ) : failed && failed.state === 'failed' ? (
         <ErrorBanner
           error={failed.error}
           onRetry={() => {
@@ -174,5 +215,31 @@ export function TraineePage({ traineeId, tab }: { traineeId: string; tab: Traine
         </Dialog>
       ) : null}
     </div>
+  );
+}
+
+/** What this trainee shares beyond training, in words and icons — never colour alone. */
+function SharingLine({ sharing }: { sharing: Sharing }) {
+  const shared = (
+    [
+      ['body', Scales, he.sharing.body],
+      ['nutrition', ForkKnife, he.sharing.nutrition],
+      ['photos', Camera, he.sharing.photos],
+    ] as const
+  ).filter(([key]) => sharing[key]);
+  return (
+    <p className="shares">
+      <span>{he.sharing.label}:</span>
+      {shared.length === 0 ? (
+        <span>{he.sharing.nothing}</span>
+      ) : (
+        shared.map(([key, IconComponent, label]) => (
+          <span className="flag neutral" key={key}>
+            <IconComponent size={12} weight="bold" aria-hidden />
+            {label}
+          </span>
+        ))
+      )}
+    </p>
   );
 }

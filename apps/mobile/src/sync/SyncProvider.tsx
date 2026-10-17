@@ -28,6 +28,8 @@ import { AppState, type AppStateStatus } from 'react-native';
 import { getSupabaseClient } from '../auth/client.js';
 import { getExecutor } from '../db/provider.js';
 import { runSync, type SyncResult } from './engine.js';
+import { shareTargetsIfChanged } from '../coaching/sharing.js';
+import { syncProgressPhotosNow } from '../progressPhotos/photoSync.js';
 import { syncProfileNow } from './profileSyncRunner.js';
 import { createSupabaseTransport } from './transport.js';
 
@@ -109,6 +111,11 @@ export function SyncProvider({ userId, children }: { userId: string; children: R
       // the account has a row on the server at all. It reports for itself and never throws:
       // whatever becomes of it, the result above stands.
       await syncProfileNow(userId);
+      // Progress photos' files, which the rows above only describe; and the daily targets, if
+      // they changed and the trainee shares nutrition with a coach. Both report for themselves
+      // and never throw.
+      await syncProgressPhotosNow(userId);
+      await shareTargetsIfChanged(userId);
       setStatus(
         result.refused.length > 0
           ? { kind: 'partial', refused: result.refused.length, lastSyncedAt: result.syncedAt }

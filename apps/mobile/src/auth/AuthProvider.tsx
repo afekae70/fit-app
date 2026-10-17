@@ -11,6 +11,7 @@
 import type { Session } from '@supabase/supabase-js';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
+import { resendAllPhotos } from '../db/progressPhotos.js';
 import { getExecutor } from '../db/provider.js';
 import { claimLocalData } from './claimLocalData.js';
 import { getSupabaseClient } from './client.js';
@@ -19,6 +20,8 @@ import { deleteAccount, type DeleteAccountOutcome } from './deleteAccount.js';
 import { secureClaimStorage } from './storage.js';
 import { deleteLocalAvatar } from '../profile/avatar.js';
 import { removeCloudAvatars, resendAvatarLater } from '../profile/avatarCloud.js';
+import { deleteLocalProgressPhotos } from '../progressPhotos/files.js';
+import { removeCloudProgressPhotos } from '../progressPhotos/photoSync.js';
 
 export interface AuthState {
   /** Undefined while the stored session is still being read; null once confirmed absent. */
@@ -127,9 +130,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           userId: session.user.id,
           // Not `removeAvatar`: that records the change on the profile so it can be synced,
           // and by this point there is no profile left to record it on.
-          clearDeviceState: deleteLocalAvatar,
-          removeServerFiles: (userId) => removeCloudAvatars(client, userId),
-          afterServerRefused: (userId) => resendAvatarLater(db, userId),
+          clearDeviceState: async (userId) => {
+            await deleteLocalAvatar(userId);
+            deleteLocalProgressPhotos(userId);
+          },
+          // Both kinds of picture, each tried whatever became of the other. It does not throw:
+          // a throw would mean "nothing was removed", and one kind may have been — so if the
+          // account is then not deleted, both are put back below, which is harmless for one
+          // that was never taken away.
+          removeServerFiles: async (userId) => {
+            await Promise.allSettled([
+              removeCloudAvatars(client, userId),
+              removeCloudProgressPhotos(client, userId),
+            ]);
+          },
+          afterServerRefused: async (userId) => {
+            await resendAvatarLater(db, userId);
+            await resendAllPhotos(db, userId);
+          },
         });
       },
       resetPassword: async (email) => {

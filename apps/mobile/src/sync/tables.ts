@@ -309,6 +309,16 @@ export const SYNC_TABLES: readonly SyncTable[] = [
     scope: { kind: 'column' },
     optional: true,
   },
+  {
+    // Progress photos' particulars (0018). The pictures go to storage separately, and the
+    // phone-only columns saying where a picture is (`file_uri`, `uploaded_at`) are not here.
+    table: 'progress_photos',
+    columns: ['id', 'user_id', 'taken_on', 'pose', 'note', 'created_at', 'updated_at', 'deleted_at'],
+    booleans: [],
+    json: [],
+    scope: { kind: 'column' },
+    optional: true,
+  },
 ] as const;
 
 /** Lookup by name, for the deferral bookkeeping that needs to find a table's parent. */

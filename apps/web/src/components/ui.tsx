@@ -7,12 +7,15 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   CalendarX,
+  Camera,
+  ForkKnife,
   Pause,
+  Scales,
   TrendDown,
   WarningCircle,
   type Icon,
 } from '@phosphor-icons/react';
-import type { CoachingError } from '@fit/shared/coaching';
+import type { CoachingError, Sharing } from '@fit/shared/coaching';
 import { useEffect, useRef, type ReactNode } from 'react';
 
 import type { Flag as FlagName } from '../analytics/overview.js';
@@ -161,6 +164,27 @@ export function FlagChip({ flag }: { flag: FlagName }) {
     <span className={`flag ${look.tone}`} title={he.flags[`${flag}Hint`]}>
       <IconComponent size={12} weight="bold" aria-hidden />
       {he.flags[flag]}
+    </span>
+  );
+}
+
+/** What a trainee shares beyond training, as three small icons with their names for a screen reader. */
+export function ShareIcons({ sharing }: { sharing: Sharing }) {
+  const shared = (
+    [
+      ['body', Scales, he.sharing.body],
+      ['nutrition', ForkKnife, he.sharing.nutrition],
+      ['photos', Camera, he.sharing.photos],
+    ] as const
+  ).filter(([key]) => sharing[key]);
+  if (shared.length === 0) return null;
+  const names = shared.map(([, , label]) => label).join(', ');
+  return (
+    <span className="share-icons" title={`${he.sharing.label}: ${names}`}>
+      {shared.map(([key, IconComponent]) => (
+        <IconComponent key={key} size={14} weight="duotone" aria-hidden />
+      ))}
+      <span className="visually-hidden">{`${he.sharing.label}: ${names}`}</span>
     </span>
   );
 }

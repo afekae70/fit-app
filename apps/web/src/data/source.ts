@@ -18,6 +18,9 @@ import type {
   CoachDay,
   CoachingResult,
   CoachingStatus,
+  CoachMeasurement,
+  CoachNutrition,
+  CoachPhoto,
   CoachPlan,
   CoachSession,
 } from '@fit/shared/coaching';
@@ -35,6 +38,21 @@ export interface CoachData {
   /** The calendar between two local dates, inclusive. */
   schedule(traineeId: string, from: string, to: string): Promise<CoachingResult<CoachCalendar>>;
   plans(traineeId: string): Promise<CoachingResult<CoachPlan[]>>;
+
+  /*
+   * What the trainee chose to share beyond training (0018). Each is refused with `not_shared`
+   * while its switch is off, so a page asks only when `person.sharing` says it may.
+   */
+  /** Weigh-ins that were taken in `[from, to]`, newest first. */
+  body(traineeId: string, from: Date, to: Date): Promise<CoachingResult<CoachMeasurement[]>>;
+  /** The food log, water and the app's targets, between two local dates inclusive. */
+  nutrition(traineeId: string, from: string, to: string): Promise<CoachingResult<CoachNutrition>>;
+  photos(traineeId: string): Promise<CoachingResult<CoachPhoto[]>>;
+  /**
+   * Links to look at photos, by photo id, good for an hour. A photo whose picture has not
+   * reached the server yet is simply absent.
+   */
+  photoUrls(traineeId: string, photoIds: readonly string[]): Promise<Record<string, string>>;
 
   setSchedule(
     traineeId: string,

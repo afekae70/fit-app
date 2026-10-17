@@ -6,7 +6,9 @@ import { paletteStylesheet, SERIES } from '../theme/theme.js';
 import { compact, niceMax } from './chartMath.js';
 import { searchExercises } from './exerciseSearch.js';
 import {
+  formatLitres,
   formatPercent,
+  formatSigned,
   formatSignedPercent,
   formatVolume,
   initials,
@@ -35,6 +37,17 @@ describe('the address', () => {
     expect(parseRoute('#/elsewhere')).toEqual({ name: 'overview' });
   });
 
+  it('reads the tabs about what a trainee shares', () => {
+    for (const tab of ['body', 'nutrition', 'photos'] as const) {
+      expect(parseRoute(`#/trainee/abc/${tab}`)).toEqual({ name: 'trainee', id: 'abc', tab });
+      expect(parseRoute(hrefFor({ name: 'trainee', id: 'abc', tab }))).toEqual({
+        name: 'trainee',
+        id: 'abc',
+        tab,
+      });
+    }
+  });
+
   it('writes an address that reads back as the same page', () => {
     for (const route of [
       { name: 'overview' } as const,
@@ -54,6 +67,18 @@ describe('the address', () => {
 });
 
 describe('numbers in Hebrew', () => {
+  it('signs a change in weight, and says nothing changed as nothing', () => {
+    expect(formatSigned(-2.66)).toBe(ltr('−2.7'));
+    expect(formatSigned(0.24)).toBe(ltr('+0.2'));
+    expect(formatSigned(0.04)).toBe('0');
+    expect(formatSigned(null)).toBe('—');
+  });
+
+  it('writes water in litres', () => {
+    expect(formatLitres(2450)).toBe('2.45');
+    expect(formatLitres(3000)).toBe('3');
+  });
+
   it('keeps a sign beside its number inside a right-to-left line', () => {
     expect(formatSignedPercent(-8)).toBe(ltr('−8%'));
     expect(formatSignedPercent(12.5)).toBe(ltr('+12.5%'));

@@ -442,6 +442,17 @@ export default function MetricsScreen() {
         </Card>
       ) : null}
 
+      {/* The scale's numbers above, and the mirror's here: what the weight does not show. */}
+      <Card index={3}>
+        <SectionTitle>{t('progressPhotos.metricsTitle')}</SectionTitle>
+        <Hint>{t('progressPhotos.metricsHint')}</Hint>
+        <Button
+          label={t('progressPhotos.metricsOpen')}
+          variant="secondary"
+          onPress={() => router.push('/progress-photos')}
+        />
+      </Card>
+
       <Card index={3}>
         <SectionTitle>{t('metrics.targetsTitle')}</SectionTitle>
         {/* Branch on the discriminant, not on the extracted `targets`, so TypeScript can

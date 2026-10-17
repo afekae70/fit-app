@@ -40,6 +40,7 @@ import { Pressable } from '../src/components/Pressable.js';
 import { Text } from '../src/components/Text.js';
 import {
   EnvelopeSimple,
+  Eye,
   Handshake,
   IdentificationBadge,
   ShareNetwork,
@@ -56,19 +57,29 @@ import {
   type CoachingError,
   type CoachingStatus,
 } from '../src/coaching/api.js';
+import type { Sharing } from '@fit/shared/coaching';
+
+import { useCurrentUserId } from '../src/auth/CurrentUserProvider.js';
+import { currentTargets, targetsSentNow } from '../src/coaching/sharing.js';
 import { coachingErrorKey, useCoachingApi } from '../src/coaching/useCoachingApi.js';
+import { getExecutor } from '../src/db/provider.js';
 import { useActionSheet } from '../src/components/ActionSheetProvider.js';
 import { BrandButton } from '../src/components/BrandButton.js';
 import { Field } from '../src/components/Field.js';
 import { KeyboardSafe } from '../src/components/KeyboardSafe.js';
-import { LinkRow, RowDivider, SettingsSection } from '../src/components/settings/kit.js';
+import {
+  LinkRow,
+  RowDivider,
+  SettingsSection,
+  ToggleRow,
+} from '../src/components/settings/kit.js';
 import { Banner, ScreenHeader } from '../src/components/ui.js';
 import { hapticSuccess } from '../src/haptics.js';
 import { useTheme } from '../src/ThemeProvider.js';
 import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../src/theme.js';
 
 /** Which change is in flight. A spinner belongs on the button that was pressed. */
-type Pending = 'join' | 'leave' | 'appoint' | 'dismiss' | null;
+type Pending = 'join' | 'leave' | 'appoint' | 'dismiss' | 'share' | null;
 
 export default function CoachingScreen() {
   const { t } = useTranslation();
@@ -77,6 +88,7 @@ export default function CoachingScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const api = useCoachingApi();
   const { confirm } = useActionSheet();
+  const userId = useCurrentUserId();
 
   const [status, setStatus] = useState<CoachingStatus | null>(null);
   const [coaches, setCoaches] = useState<AppointedCoach[] | null>(null);
@@ -153,6 +165,20 @@ export default function CoachingScreen() {
     if (sure) await run('leave', () => api.leave());
   };
 
+  /**
+   * Turn one thing the trainee shares on or off. All three are sent together, as the server
+   * keeps them; with nutrition on, the app's own daily targets go with them.
+   */
+  const share = async (what: keyof Sharing, on: boolean) => {
+    if (!api || !status?.coach) return;
+    const next: Sharing = { ...status.coach.sharing, [what]: on };
+    const targets = next.nutrition ? await currentTargets(await getExecutor(), userId) : null;
+    if (await run('share', () => api.setSharing(next, targets))) {
+      targetsSentNow(userId, targets);
+      if (on) hapticSuccess();
+    }
+  };
+
   const appoint = async () => {
     const address = email.trim();
     if (!api || address === '') return;
@@ -222,6 +248,35 @@ export default function CoachingScreen() {
                     <Text style={styles.personDetail}>{status.coach.email}</Text>
                   </View>
                   <Text style={styles.note}>{t('coaching.coachCanSee')}</Text>
+                  <RowDivider />
+                  {/* More than the training, each by choice and each off until chosen. The
+                      switches belong to this coach: a new coach starts with none of them on. */}
+                  <View style={styles.shareHead}>
+                    <Eye size={18} color={colors.accent} weight="duotone" />
+                    <Text style={styles.shareTitle}>{t('coaching.shareTitle')}</Text>
+                  </View>
+                  <ToggleRow
+                    label={t('coaching.shareBody')}
+                    hint={t('coaching.shareBodyHint')}
+                    value={status.coach.sharing.body}
+                    onChange={(on) => void share('body', on)}
+                    disabled={busy}
+                  />
+                  <ToggleRow
+                    label={t('coaching.shareNutrition')}
+                    hint={t('coaching.shareNutritionHint')}
+                    value={status.coach.sharing.nutrition}
+                    onChange={(on) => void share('nutrition', on)}
+                    disabled={busy}
+                  />
+                  <ToggleRow
+                    label={t('coaching.sharePhotos')}
+                    hint={t('coaching.sharePhotosHint')}
+                    value={status.coach.sharing.photos}
+                    onChange={(on) => void share('photos', on)}
+                    disabled={busy}
+                  />
+                  <Text style={styles.note}>{t('coaching.shareNote')}</Text>
                   <RowDivider />
                   <LinkRow
                     label={t('coaching.leave')}
@@ -387,6 +442,8 @@ const createStyles = (colors: ColorPalette) =>
     personName: TextStyle;
     personDetail: TextStyle;
     note: TextStyle;
+    shareHead: ViewStyle;
+    shareTitle: TextStyle;
     codeInput: TextStyle;
     codePlaceholder: TextStyle;
     codeBlock: ViewStyle;
@@ -414,6 +471,8 @@ const createStyles = (colors: ColorPalette) =>
     },
     personDetail: { color: colors.textMuted, fontSize: fontSize.sm, textAlign: 'auto' },
     note: { color: colors.textMuted, fontSize: fontSize.xs, lineHeight: 18, textAlign: 'auto' },
+    shareHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingTop: spacing.sm },
+    shareTitle: { color: colors.text, fontSize: fontSize.md, fontWeight: fontWeight.bold },
 
     codeInput: {
       textAlign: 'center',

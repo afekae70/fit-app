@@ -11,3 +11,4 @@ export * from './api.js';
 export * from './dates.js';
 export * from './planDocument.js';
 export * from './sessionDocument.js';
+export * from './sharedDocument.js';

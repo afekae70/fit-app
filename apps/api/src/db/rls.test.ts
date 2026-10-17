@@ -83,6 +83,14 @@ const SHARED_READ_ONLY = new Set(['equipment']);
  */
 const FUNCTIONS_ONLY = new Set(['coach_links', 'app_admins']);
 
+/**
+ * File policies that let a coach read a trainee's files. They do not name `auth.uid()` in their
+ * own text: they ask `coach_sees_photos_of`, which does, and which is audited below for exactly
+ * that. Named here so that "reaches an owner through a function" is an exception granted to
+ * these and nothing else.
+ */
+const COACH_READ_POLICIES = new Set(['progress_photos_coach_select']);
+
 /** Every role a table's privileges were taken away from, across all the migrations. */
 const revokedFrom = (table: string) =>
   new Set(
@@ -160,7 +168,7 @@ describe('row level security, as written in the migrations', () => {
 
   it.each(
     policies
-      .filter((p) => !SHARED_READ_ONLY.has(p.table))
+      .filter((p) => !SHARED_READ_ONLY.has(p.table) && !COACH_READ_POLICIES.has(p.name))
       .map((p): [string, Policy] => [`${p.table}.${p.name}`, p]),
   )('%s ties rows to an owner rather than allowing everything', (_label, policy) => {
     // `USING (true)` is correct for a shared catalogue and catastrophic anywhere else, so the
@@ -266,37 +274,80 @@ describe('what a client may write on its own profile', () => {
   });
 });
 
-describe('profile pictures in file storage', () => {
+describe('pictures in file storage', () => {
   const filePolicies = policies.filter((p) => p.table === 'objects');
+  const ownPolicies = filePolicies.filter((p) => !COACH_READ_POLICIES.has(p.name));
+  const BUCKET_OF: Record<string, string> = {
+    avatars: 'avatars',
+    progress_photos: 'progress-photos',
+  };
 
-  it('finds the four things that can be done to a file', () => {
+  it('finds the four things that can be done to a file in each bucket, and the coach’s read', () => {
     expect(filePolicies.map((p) => p.name).sort()).toEqual([
       'avatars_own_delete',
       'avatars_own_insert',
       'avatars_own_select',
       'avatars_own_update',
+      'progress_photos_coach_select',
+      'progress_photos_own_delete',
+      'progress_photos_own_insert',
+      'progress_photos_own_select',
+      'progress_photos_own_update',
     ]);
   });
 
-  it.each(filePolicies.map((p): [string, Policy] => [p.name, p]))(
-    '%s reaches only this bucket, and only the folder named after the caller',
-    (_name, policy) => {
+  it.each(ownPolicies.map((p): [string, Policy] => [p.name, p]))(
+    '%s reaches only its bucket, and only the folder named after the caller',
+    (name, policy) => {
       // `storage.objects` holds every file in the project. A policy that left out the bucket
       // would apply to all of them; one that left out the folder would open every picture to
       // every signed-in account.
+      const bucket = BUCKET_OF[name.replace(/_own_(select|insert|update|delete)$/, '')];
+      expect(bucket).toBeDefined();
       const conditions = policy.body.match(/\((bucket_id[^;]*?::text)\)/g) ?? [];
       expect(conditions.length).toBeGreaterThan(0);
       for (const condition of conditions) {
-        expect(condition).toContain("bucket_id = 'avatars'");
+        expect(condition).toContain(`bucket_id = '${bucket}'`);
         expect(condition).toContain('(storage.foldername(name))[1] = (SELECT auth.uid())::text');
       }
       expect(policy.body).not.toMatch(/\bOR\b/);
     },
   );
 
-  it('keeps the bucket private, on first run and on every run after', () => {
+  it('keeps both buckets private, on first run and on every run after', () => {
     expect(sql).toMatch(/VALUES \('avatars', 'avatars', false,/);
-    expect(sql).toMatch(/ON CONFLICT \(id\) DO UPDATE\s+SET public = false/);
+    expect(sql).toMatch(/VALUES \('progress-photos', 'progress-photos', false,/);
+    expect(sql.match(/ON CONFLICT \(id\) DO UPDATE\s+SET public = false/g)?.length).toBe(2);
+  });
+
+  describe('a coach reading progress photos', () => {
+    const policy = filePolicies.find((p) => p.name === 'progress_photos_coach_select');
+    const check =
+      /CREATE OR REPLACE FUNCTION public\.coach_sees_photos_of\(p_folder text\)([\s\S]*?)\$\$;/.exec(
+        sql,
+      )?.[1] ?? '';
+
+    it('only reads, only in the photos bucket, and only through the check', () => {
+      expect(policy?.body).toMatch(/FOR SELECT TO authenticated/);
+      expect(policy?.body).toMatch(
+        /USING \(bucket_id = 'progress-photos' AND public\.coach_sees_photos_of\(\(storage\.foldername\(name\)\)\[1\]\)\)/,
+      );
+      expect(policy?.body).not.toMatch(/\bOR\b/);
+    });
+
+    it('asks whether the caller is that trainee’s coach, now, with photos shared', () => {
+      expect(check).toMatch(/l\.coach_id = \(SELECT auth\.uid\(\)\)/);
+      expect(check).toMatch(/l\.trainee_id::text = p_folder/);
+      expect(check).toMatch(/AND l\.share_photos/);
+      expect(check).toMatch(/SECURITY DEFINER/);
+      expect(check).toMatch(/SET search_path = ''/);
+    });
+
+    it('is the only coach policy on files', () => {
+      for (const other of filePolicies.filter((p) => p !== policy)) {
+        expect(other.body).not.toMatch(/coach_sees_photos_of/);
+      }
+    });
   });
 });
 
@@ -334,25 +385,117 @@ describe('functions that act on a trainee', () => {
   it('finds them', () => {
     expect(onTrainee.map((fn) => fn.name).sort()).toEqual([
       'coach_delete',
+      'coach_get_body',
+      'coach_get_nutrition',
+      'coach_get_photos',
       'coach_get_plans',
       'coach_get_schedule',
       'coach_get_sessions',
       'coach_remove_trainee',
       'coach_require_link',
+      'coach_require_share',
       'coach_save_day',
       'coach_save_plan',
       'coach_set_schedule',
     ]);
   });
 
+  /** What each of the reads behind a switch must check for, by name. */
+  const SHARED: Record<string, string> = {
+    coach_get_body: 'body',
+    coach_get_nutrition: 'nutrition',
+    coach_get_photos: 'photos',
+  };
+
   it.each(
     onTrainee
-      // The check itself, and the one function whose whole job is to delete the caller's own
-      // link, which it finds by the caller's id.
-      .filter((fn) => fn.name !== 'coach_require_link' && fn.name !== 'coach_remove_trainee')
+      // The checks themselves, and the one function whose whole job is to delete the caller's
+      // own link, which it finds by the caller's id.
+      .filter(
+        (fn) =>
+          !['coach_require_link', 'coach_require_share', 'coach_remove_trainee'].includes(fn.name),
+      )
       .map((fn): [string, Fn] => [fn.name, fn]),
-  )('%s checks the link before it does anything else', (_name, fn) => {
-    expect(fn.rest).toMatch(/\nBEGIN\s+PERFORM public\.coach_require_link\(p_trainee\);/);
+  )('%s checks the link before it does anything else', (name, fn) => {
+    const what = SHARED[name];
+    if (what) {
+      // Behind a switch: the link, and the switch for this very thing.
+      expect(fn.rest).toMatch(
+        new RegExp(
+          String.raw`\nBEGIN\s+PERFORM public\.coach_require_share\(p_trainee, '${what}'\);`,
+        ),
+      );
+    } else {
+      expect(fn.rest).toMatch(/\nBEGIN\s+PERFORM public\.coach_require_link\(p_trainee\);/);
+    }
+  });
+
+  it('checks a switch only after the link, and refuses anything it does not know', () => {
+    const body = functions.get('coach_require_share')?.rest ?? '';
+    expect(body).toMatch(/\nBEGIN\s+PERFORM public\.coach_require_link\(p_trainee\);/);
+    expect(body).toMatch(/WHEN 'body' THEN link\.share_body/);
+    expect(body).toMatch(/WHEN 'nutrition' THEN link\.share_nutrition/);
+    expect(body).toMatch(/WHEN 'photos' THEN link\.share_photos/);
+    expect(body).toMatch(/ELSE false/);
+    expect(body).toMatch(/RAISE EXCEPTION 'not_shared'/);
+    // Not callable from outside, like the link check.
+    expect(sql).toMatch(
+      /REVOKE ALL ON FUNCTION public\.coach_require_share\(uuid, text\) FROM authenticated;/,
+    );
+  });
+
+  describe('what a trainee shares', () => {
+    it('starts with nothing shared on every link made or remade', () => {
+      const join = functions.get('coach_join')?.rest ?? '';
+      for (const column of ['share_body', 'share_nutrition', 'share_photos']) {
+        expect(join).toMatch(new RegExp(`${column} = false`));
+      }
+      expect(join).toMatch(/shared_targets = NULL/);
+      expect(sql).toMatch(/share_body boolean NOT NULL DEFAULT false/);
+      expect(sql).toMatch(/share_photos boolean NOT NULL DEFAULT false/);
+    });
+
+    it('is changed only by the trainee, on their own link', () => {
+      const set = functions.get('coach_set_sharing')?.rest ?? '';
+      expect(set).toMatch(/WHERE l\.trainee_id = me;/);
+      expect(set).not.toMatch(/coach_id/);
+      expect(set).toMatch(/RAISE EXCEPTION 'invalid_targets'/);
+    });
+
+    it('sends the readings of a weigh-in, not the scale’s raw payload or the device', () => {
+      const body = functions.get('coach_get_body')?.rest ?? '';
+      expect(body).toMatch(/b\.user_id = p_trainee/);
+      expect(body).toMatch(/b\.deleted_at IS NULL/);
+      expect(body).not.toMatch(/raw_payload|device_id|b\.\*/);
+      expect(body).toMatch(/LIMIT \d+/);
+    });
+
+    it('sends the food log, the water and the app’s targets — never a weight', () => {
+      const body = functions.get('coach_get_nutrition')?.rest ?? '';
+      expect(body).toMatch(/e\.user_id = p_trainee/);
+      expect(body).toMatch(/x\.user_id = p_trainee/);
+      expect(body).toMatch(/l\.shared_targets/);
+      expect(body).not.toMatch(/body_metrics|weight/);
+      expect(body).toMatch(/LIMIT \d+/);
+    });
+
+    it('lists photos without reaching into the files', () => {
+      const body = functions.get('coach_get_photos')?.rest ?? '';
+      expect(body).toMatch(/x\.user_id = p_trainee/);
+      expect(body).toMatch(/x\.deleted_at IS NULL/);
+      expect(body).not.toMatch(/storage\./);
+    });
+
+    it.each([
+      String.raw`public\.coach_set_sharing\(boolean, boolean, boolean, jsonb\)`,
+      String.raw`public\.coach_get_body\(uuid, timestamptz, timestamptz\)`,
+      String.raw`public\.coach_get_nutrition\(uuid, date, date\)`,
+      String.raw`public\.coach_get_photos\(uuid\)`,
+    ])('%s is closed to anyone not signed in', (signature) => {
+      expect(sql).toMatch(new RegExp(`REVOKE ALL ON FUNCTION ${signature} FROM PUBLIC;`));
+      expect(sql).toMatch(new RegExp(`REVOKE ALL ON FUNCTION ${signature} FROM anon;`));
+      expect(sql).toMatch(new RegExp(`GRANT EXECUTE ON FUNCTION ${signature} TO authenticated;`));
+    });
   });
 
   it('removes a trainee only from the caller', () => {

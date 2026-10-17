@@ -142,6 +142,8 @@ describe('keys assembled at runtime', () => {
     'not_your_trainee',
     'gone',
     'invalid',
+    'not_shared',
+    'no_coach',
     'failed',
   ])('coaching.error.%s', (error) => {
     expect(hebrewKeys.has(`coaching.error.${error}`)).toBe(true);

@@ -23,7 +23,15 @@ import { exerciseName } from '../analytics/lifts.js';
 import { traineeOverview, type TraineeOverview } from '../analytics/overview.js';
 import { useCoach } from '../coachContext.js';
 import { DemoBar } from '../components/DemoBar.js';
-import { Avatar, Card, EmptyState, FlagChip, Loading, StatTile } from '../components/ui.js';
+import {
+  Avatar,
+  Card,
+  EmptyState,
+  FlagChip,
+  Loading,
+  ShareIcons,
+  StatTile,
+} from '../components/ui.js';
 import { he } from '../i18n/he.js';
 import {
   formatDayShort,
@@ -237,7 +245,9 @@ function TraineeRow({
         <div className="person">
           <Avatar name={name} />
           <div style={{ minWidth: 0 }}>
-            <div className="person-name">{name}</div>
+            <div className="person-name">
+              {name} <ShareIcons sharing={person.sharing} />
+            </div>
             <div className="person-sub" dir="ltr" style={{ textAlign: 'end' }}>
               {person.email}
             </div>

@@ -2162,6 +2162,7 @@ describe('a table the server has not been given yet', () => {
       'food_entries',
       'water_entries',
       'saved_meals',
+      'progress_photos',
     ]);
   });
 

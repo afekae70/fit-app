@@ -1,5 +1,6 @@
 /**
- * Made-up trainees for the demonstration: plans, a calendar, and a year of workouts.
+ * Made-up trainees for the demonstration: plans, a calendar, and a year of workouts — and,
+ * from demoShared.ts, whatever each of them shares beyond that.
  *
  * Deterministic — a seeded generator, not `Math.random` — so the demonstration shows the same
  * people with the same numbers every time it is opened, and a test can rely on it.
@@ -22,6 +23,7 @@ import type {
 } from '@fit/shared/coaching';
 
 import { addDays, parseDay } from '../analytics/dates.js';
+import { buildShared, type DemoShared } from './demoShared.js';
 
 /** Mulberry32: small, fast, and the same sequence for the same seed. */
 function generator(seed: number) {
@@ -238,6 +240,8 @@ export interface DemoTrainee {
   plans: CoachPlan[];
   calendar: CoachCalendar;
   sessions: CoachSession[];
+  /** Weigh-ins, food, water and photos, for what this trainee shares (demoShared.ts). */
+  shared: DemoShared;
 }
 
 const roundTo = (value: number, step: number) => Math.round(value / step) * step;
@@ -326,16 +330,19 @@ export function buildDemo(today: string): DemoTrainee[] {
     }
 
     sessions.sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1));
+    const shared = buildShared(spec.id, 5000 + specIndex * 104_729, start, today);
     return {
       person: {
         id: spec.id,
         email: spec.email,
         name: spec.name,
         since: parseDay(start).toISOString(),
+        sharing: shared.sharing,
       },
       plans: [plan],
       calendar,
       sessions,
+      shared,
     };
   });
 }

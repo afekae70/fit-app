@@ -26,7 +26,7 @@
  * TEXT (lexicographically sortable, which is what the history queries rely on).
  */
 
-export const SCHEMA_VERSION = 23;
+export const SCHEMA_VERSION = 24;
 
 /**
  * Incremental migrations, keyed by the version they upgrade TO.
@@ -497,6 +497,37 @@ CREATE INDEX IF NOT EXISTS locations_user_idx ON locations (user_id);
     CREATE INDEX IF NOT EXISTS saved_meals_user_idx
       ON saved_meals (user_id);
   `,
+
+  /*
+   * 24 — progress photos.
+   *
+   * The particulars of each photo — the day, the pose, a note — sync like the rest of the log.
+   * The picture itself does not travel through sync: it is a file on this phone, sent to a
+   * private bucket on the server (photoSync.ts), and the two columns at the end say where it is
+   * here and whether it has been sent. They are this phone's business and are not synced.
+   */
+  24: `
+    CREATE TABLE IF NOT EXISTS progress_photos (
+      id          TEXT PRIMARY KEY NOT NULL,
+      user_id     TEXT NOT NULL,
+      -- The local day it was taken on, YYYY-MM-DD.
+      taken_on    TEXT NOT NULL,
+      -- front, side or back, or NULL when not said.
+      pose        TEXT,
+      note        TEXT,
+      created_at  TEXT NOT NULL,
+      updated_at  TEXT,
+      deleted_at  TEXT,
+      remote_updated_at TEXT,
+      -- This phone only, and never synced: where the picture is on this phone, and when it
+      -- reached the server's private bucket. A row pulled from another phone has neither.
+      file_uri    TEXT,
+      uploaded_at TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS progress_photos_user_day_idx
+      ON progress_photos (user_id, taken_on);
+  `,
 };
 
 export const CREATE_SCHEMA_SQL = `
@@ -828,6 +859,27 @@ CREATE TABLE IF NOT EXISTS saved_meals (
 
 CREATE INDEX IF NOT EXISTS saved_meals_user_idx
   ON saved_meals (user_id);
+
+CREATE TABLE IF NOT EXISTS progress_photos (
+  id          TEXT PRIMARY KEY NOT NULL,
+  user_id     TEXT NOT NULL,
+  -- The local day it was taken on, YYYY-MM-DD.
+  taken_on    TEXT NOT NULL,
+  -- front, side or back, or NULL when not said.
+  pose        TEXT,
+  note        TEXT,
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT,
+  deleted_at  TEXT,
+  remote_updated_at TEXT,
+  -- This phone only, and never synced: where the picture is on this phone, and when it
+  -- reached the server's private bucket. A row pulled from another phone has neither.
+  file_uri    TEXT,
+  uploaded_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS progress_photos_user_day_idx
+  ON progress_photos (user_id, taken_on);
 
 CREATE TABLE IF NOT EXISTS outbox (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,

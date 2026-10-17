@@ -33,6 +33,7 @@ const USER_TABLES = [
   'food_entries',
   'water_entries',
   'saved_meals',
+  'progress_photos',
   'nutrition_targets',
   'body_metrics',
   'locations',

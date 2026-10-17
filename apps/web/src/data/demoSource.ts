@@ -15,6 +15,7 @@ import type {
 
 import { localDate } from '../analytics/dates.js';
 import { buildDemo, type DemoTrainee } from './demoData.js';
+import { demoPhotoUrl } from './demoShared.js';
 import type { CoachData } from './source.js';
 
 const ok = <T>(value: T): CoachingResult<T> => ({ ok: true, value });
@@ -28,6 +29,7 @@ export function demoSource(today: string = localDate(new Date())): CoachData {
   const find = (id: string): DemoTrainee | undefined =>
     trainees.find((trainee) => trainee.person.id === id);
   const gone = { ok: false, error: 'not_your_trainee' } as const;
+  const notShared = { ok: false, error: 'not_shared' } as const;
 
   const coaches: AppointedCoach[] = [
     {
@@ -79,6 +81,52 @@ export function demoSource(today: string = localDate(new Date())): CoachData {
       if (!trainee) return gone;
       // A copy: what the page edits is not the demonstration's own until it is saved.
       return ok(structuredClone(trainee.plans));
+    },
+
+    async body(traineeId, from, to) {
+      await pause();
+      const trainee = find(traineeId);
+      if (!trainee) return gone;
+      if (!trainee.person.sharing.body) return notShared;
+      const start = from.toISOString();
+      const end = to.toISOString();
+      return ok(
+        trainee.shared.measurements.filter((m) => m.measuredAt >= start && m.measuredAt <= end),
+      );
+    },
+
+    async nutrition(traineeId, from, to) {
+      await pause();
+      const trainee = find(traineeId);
+      if (!trainee) return gone;
+      if (!trainee.person.sharing.nutrition) return notShared;
+      const { targets, entries, water } = trainee.shared.nutrition;
+      return ok({
+        targets,
+        entries: entries.filter((e) => e.date >= from && e.date <= to),
+        water: water.filter((w) => w.date >= from && w.date <= to),
+      });
+    },
+
+    async photos(traineeId) {
+      await pause();
+      const trainee = find(traineeId);
+      if (!trainee) return gone;
+      if (!trainee.person.sharing.photos) return notShared;
+      return ok([...trainee.shared.photos]);
+    },
+
+    async photoUrls(traineeId, photoIds) {
+      await pause();
+      const trainee = find(traineeId);
+      if (!trainee?.person.sharing.photos) return {};
+      const urls: Record<string, string> = {};
+      for (const photo of trainee.shared.photos) {
+        if (photoIds.includes(photo.id)) {
+          urls[photo.id] = demoPhotoUrl(photo, trainee.shared.photoShape[photo.id] ?? 1);
+        }
+      }
+      return urls;
     },
 
     async setSchedule(traineeId, date, planDayIds, rest) {
