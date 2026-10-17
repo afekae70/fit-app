@@ -325,7 +325,7 @@ describe('a week against its plan', () => {
 
 describe('asking the server', () => {
   function server(answer: { data: unknown; error: { code?: string; message?: string } | null }) {
-    const calls: { fn: string; args?: Record<string, unknown> }[] = [];
+    const calls: { fn: string; args: Record<string, unknown> | undefined }[] = [];
     const api = createCoachingApi({
       rpc: async (fn, args) => {
         calls.push({ fn, args });

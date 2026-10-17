@@ -222,6 +222,34 @@ in `app.json`.
 When something fails, the function's own log (Edge Functions → the function → Logs) names the
 model that did not answer and the status Google gave. It never holds what anyone asked.
 
+## The coach website
+
+`apps/web` is a web dashboard for coaches: every trainee on one page, a dashboard per trainee
+(weekly volume, strength over time, records, adherence to the calendar, muscle balance), the
+finished workouts, and editing of plans and the calendar. It signs in with the coach's app
+account and reads only through the same coach functions the app's coach screens use, so it can
+see exactly what a coach can see in the app — no more.
+
+It is a static site, published by GitHub Pages from `docs/coach` at
+`https://afekae70.github.io/fit-app/coach/`, free. Adding `?demo` to that address opens a
+demonstration with made-up trainees, which needs no account.
+
+**Working on it:**
+
+```bash
+npm run dev -w @fit/web
+```
+
+**Publishing a change** is building it and committing the result:
+
+```bash
+npm run build -w @fit/web
+```
+
+That rewrites `docs/coach`; commit it with the change and push, and Pages serves it within a
+minute or two. Nothing needs configuring on GitHub or Supabase: the project's URL and anon key
+are read from `apps/mobile/app.json` at build time.
+
 ## Accounts you may need to sign into
 
 - **Expo / EAS** — `npx eas-cli login` (builds, signing credentials)

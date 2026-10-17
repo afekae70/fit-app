@@ -42,6 +42,9 @@ export default tseslint.config(
       // The Supabase function as deployed: a bundle made by apps/api/scripts/build-edge.ts.
       // Its sources are linted where they live, in apps/api/src/edge.
       'apps/api/edge/**',
+      // The coach dashboard as built and published (apps/web, built into docs/coach). Its
+      // sources are linted where they live.
+      'docs/**',
       'apps/mobile/expo-env.d.ts',
     ],
   },
@@ -75,7 +78,8 @@ export default tseslint.config(
   },
 
   {
-    files: ['**/*.tsx'],
+    // The web dashboard keeps hooks in plain .ts files too (useLoad, useRoute).
+    files: ['**/*.tsx', 'apps/web/src/**/*.ts'],
     plugins: { 'react-hooks': reactHooks },
     rules: {
       ...reactHooks.configs.recommended.rules,

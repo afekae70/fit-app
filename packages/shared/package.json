@@ -9,7 +9,9 @@
     ".": "./src/index.ts",
     "./calculations": "./src/calculations/index.ts",
     "./catalog": "./src/catalog/index.ts",
-    "./schemas": "./src/schemas/index.ts"
+    "./schemas": "./src/schemas/index.ts",
+    "./coaching": "./src/coaching/index.ts",
+    "./design": "./src/design/index.ts"
   },
   "scripts": {
     "test": "vitest run",
