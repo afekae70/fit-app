@@ -236,15 +236,19 @@ SET search_path = ''
 AS $$
 DECLARE
   link public.coach_links%ROWTYPE;
+  shared boolean;
 BEGIN
   PERFORM public.coach_require_link(p_trainee);
   SELECT * INTO link FROM public.coach_links l WHERE l.trainee_id = p_trainee;
-  IF NOT CASE p_what
-           WHEN 'body' THEN link.share_body
-           WHEN 'nutrition' THEN link.share_nutrition
-           WHEN 'photos' THEN link.share_photos
-           ELSE false
-         END THEN
+  -- Worked out first, not inside the IF: PL/pgSQL ends an IF's condition at the first THEN,
+  -- and a CASE has several.
+  shared := CASE p_what
+              WHEN 'body' THEN link.share_body
+              WHEN 'nutrition' THEN link.share_nutrition
+              WHEN 'photos' THEN link.share_photos
+              ELSE false
+            END;
+  IF NOT COALESCE(shared, false) THEN
     RAISE EXCEPTION 'not_shared' USING ERRCODE = '42501';
   END IF;
 END;

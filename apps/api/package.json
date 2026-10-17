@@ -34,6 +34,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@libpg-query/parser": "^17.6.10",
     "drizzle-kit": "^0.31.10",
     "esbuild": "^0.21.5",
     "typescript": "^5.7.2",
