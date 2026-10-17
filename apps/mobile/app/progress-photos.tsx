@@ -66,6 +66,7 @@ import {
   takeProgressPhoto,
   type TakenPhoto,
 } from '../src/progressPhotos/files.js';
+import { PhotoLock } from '../src/progressPhotos/PhotoLock.js';
 import { remotePhotoUrl, syncProgressPhotosNow } from '../src/progressPhotos/photoSync.js';
 import { useTheme } from '../src/ThemeProvider.js';
 import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../src/theme.js';
@@ -258,239 +259,246 @@ export default function ProgressPhotosScreen() {
           }
         />
 
-        {stage.kind === 'gallery' ? (
-          <>
-            {photos.length === 0 ? (
-              <Card style={styles.invite}>
-                <View style={styles.inviteIcon}>
-                  <Camera size={34} color={colors.accent} weight="duotone" />
-                </View>
-                <Text style={styles.inviteTitle}>{t('progressPhotos.inviteTitle')}</Text>
-                <Text style={styles.inviteBody}>{t('progressPhotos.inviteBody')}</Text>
-              </Card>
-            ) : null}
-            <View style={styles.buttons}>
-              <BrandButton
-                label={t('progressPhotos.take')}
-                onPress={() => {
-                  void hapticLight();
-                  void takeProgressPhoto().then(took);
-                }}
-              />
-              <Button
-                label={t('progressPhotos.fromGallery')}
-                variant="secondary"
-                onPress={() => {
-                  void hapticLight();
-                  void pickProgressPhoto().then(took);
-                }}
-              />
-            </View>
-            {failureNote}
-            <Hint>{t('progressPhotos.privacy')}</Hint>
-            {photos.length > 0 ? (
-              <>
-                <Text style={styles.count}>
-                  {t('progressPhotos.count', { count: photos.length })}
-                </Text>
-                {gallery((photo) => setStage({ kind: 'view', id: photo.id }))}
-              </>
-            ) : null}
-          </>
-        ) : null}
-
-        {stage.kind === 'add' ? (
-          <>
-            <Image source={{ uri: stage.uri }} style={styles.large} resizeMode="cover" />
-            <Text style={styles.meta}>
-              {t('progressPhotos.takenOn', { date: dayLabel(stage.takenOn) })}
-            </Text>
-            <Segmented<PoseChoice>
-              label={t('progressPhotos.pose')}
-              options={[
-                { value: 'front', label: t('progressPhotos.pose_front') },
-                { value: 'side', label: t('progressPhotos.pose_side') },
-                { value: 'back', label: t('progressPhotos.pose_back') },
-                { value: 'none', label: t('progressPhotos.poseNone') },
-              ]}
-              selected={pose}
-              onSelect={setPose}
-            />
-            <View style={styles.noteBlock}>
-              <Text style={styles.noteLabel}>{t('progressPhotos.note')}</Text>
-              <TextInput
-                value={note}
-                onChangeText={setNote}
-                placeholder={t('progressPhotos.notePlaceholder')}
-                placeholderTextColor={colors.textMuted}
-                maxLength={MAX_PHOTO_NOTE}
-                style={styles.noteInput}
-              />
-            </View>
-            {failureNote}
-            <BrandButton label={t('progressPhotos.save')} onPress={save} busy={saving} />
-            <Button
-              label={t('progressPhotos.cancel')}
-              variant="ghost"
-              onPress={() => {
-                setFailure(null);
-                setStage({ kind: 'gallery' });
-              }}
-            />
-          </>
-        ) : null}
-
-        {stage.kind === 'view'
-          ? (() => {
-              const photo = byId(stage.id);
-              if (!photo) return null;
-              const kg = weightOn(photo.takenOn);
-              return (
+        <PhotoLock>
+          {stage.kind === 'gallery' ? (
+            <>
+              {photos.length === 0 ? (
+                <Card style={styles.invite}>
+                  <View style={styles.inviteIcon}>
+                    <Camera size={34} color={colors.accent} weight="duotone" />
+                  </View>
+                  <Text style={styles.inviteTitle}>{t('progressPhotos.inviteTitle')}</Text>
+                  <Text style={styles.inviteBody}>{t('progressPhotos.inviteBody')}</Text>
+                </Card>
+              ) : null}
+              <View style={styles.buttons}>
+                <BrandButton
+                  label={t('progressPhotos.take')}
+                  onPress={() => {
+                    void hapticLight();
+                    void takeProgressPhoto().then(took);
+                  }}
+                />
+                <Button
+                  label={t('progressPhotos.fromGallery')}
+                  variant="secondary"
+                  onPress={() => {
+                    void hapticLight();
+                    void pickProgressPhoto().then(took);
+                  }}
+                />
+              </View>
+              {failureNote}
+              <Hint>{t('progressPhotos.privacy')}</Hint>
+              {photos.length > 0 ? (
                 <>
-                  <PhotoImage photo={photo} userId={userId} style={styles.large} />
-                  <Text style={styles.viewDate}>{dayLabel(photo.takenOn)}</Text>
-                  <Text style={styles.meta}>
-                    {[
-                      photo.pose ? t(`progressPhotos.pose_${photo.pose}`) : null,
-                      kg !== null ? `${formatBodyWeight(kg, unit)} ${weightUnit}` : null,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')}
+                  <Text style={styles.count}>
+                    {t('progressPhotos.count', { count: photos.length })}
                   </Text>
-                  {photo.note ? <Text style={styles.note}>{photo.note}</Text> : null}
-                  {photos.length > 1 ? (
+                  {gallery((photo) => setStage({ kind: 'view', id: photo.id }))}
+                </>
+              ) : null}
+            </>
+          ) : null}
+
+          {stage.kind === 'add' ? (
+            <>
+              <Image source={{ uri: stage.uri }} style={styles.large} resizeMode="cover" />
+              <Text style={styles.meta}>
+                {t('progressPhotos.takenOn', { date: dayLabel(stage.takenOn) })}
+              </Text>
+              <Segmented<PoseChoice>
+                label={t('progressPhotos.pose')}
+                options={[
+                  { value: 'front', label: t('progressPhotos.pose_front') },
+                  { value: 'side', label: t('progressPhotos.pose_side') },
+                  { value: 'back', label: t('progressPhotos.pose_back') },
+                  { value: 'none', label: t('progressPhotos.poseNone') },
+                ]}
+                selected={pose}
+                onSelect={setPose}
+              />
+              <View style={styles.noteBlock}>
+                <Text style={styles.noteLabel}>{t('progressPhotos.note')}</Text>
+                <TextInput
+                  value={note}
+                  onChangeText={setNote}
+                  placeholder={t('progressPhotos.notePlaceholder')}
+                  placeholderTextColor={colors.textMuted}
+                  maxLength={MAX_PHOTO_NOTE}
+                  style={styles.noteInput}
+                />
+              </View>
+              {failureNote}
+              <BrandButton label={t('progressPhotos.save')} onPress={save} busy={saving} />
+              <Button
+                label={t('progressPhotos.cancel')}
+                variant="ghost"
+                onPress={() => {
+                  setFailure(null);
+                  setStage({ kind: 'gallery' });
+                }}
+              />
+            </>
+          ) : null}
+
+          {stage.kind === 'view'
+            ? (() => {
+                const photo = byId(stage.id);
+                if (!photo) return null;
+                const kg = weightOn(photo.takenOn);
+                return (
+                  <>
+                    <PhotoImage photo={photo} userId={userId} style={styles.large} />
+                    <Text style={styles.viewDate}>{dayLabel(photo.takenOn)}</Text>
+                    <Text style={styles.meta}>
+                      {[
+                        photo.pose ? t(`progressPhotos.pose_${photo.pose}`) : null,
+                        kg !== null ? `${formatBodyWeight(kg, unit)} ${weightUnit}` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </Text>
+                    {photo.note ? <Text style={styles.note}>{photo.note}</Text> : null}
+                    {photos.length > 1 ? (
+                      <Pressable
+                        onPress={() => setStage({ kind: 'pick', firstId: photo.id })}
+                        accessibilityRole="button"
+                        style={({ pressed }) => [styles.action, pressed && styles.pressed]}
+                      >
+                        <ArrowsLeftRight size={20} color={colors.accent} weight="bold" />
+                        <Text style={styles.actionText}>{t('progressPhotos.compare')}</Text>
+                      </Pressable>
+                    ) : null}
                     <Pressable
-                      onPress={() => setStage({ kind: 'pick', firstId: photo.id })}
+                      onPress={() => remove(photo)}
                       accessibilityRole="button"
                       style={({ pressed }) => [styles.action, pressed && styles.pressed]}
                     >
-                      <ArrowsLeftRight size={20} color={colors.accent} weight="bold" />
-                      <Text style={styles.actionText}>{t('progressPhotos.compare')}</Text>
-                    </Pressable>
-                  ) : null}
-                  <Pressable
-                    onPress={() => remove(photo)}
-                    accessibilityRole="button"
-                    style={({ pressed }) => [styles.action, pressed && styles.pressed]}
-                  >
-                    <Trash size={20} color={colors.danger} weight="bold" />
-                    <Text style={[styles.actionText, styles.danger]}>
-                      {t('progressPhotos.delete')}
-                    </Text>
-                  </Pressable>
-                  <Button
-                    label={t('progressPhotos.back')}
-                    variant="ghost"
-                    onPress={() => setStage({ kind: 'gallery' })}
-                  />
-                </>
-              );
-            })()
-          : null}
-
-        {stage.kind === 'pick' ? (
-          <>
-            <Text style={styles.inviteTitle}>{t('progressPhotos.pickSecond')}</Text>
-            <Hint>{t('progressPhotos.pickSecondHint')}</Hint>
-            {gallery(
-              (photo) => setStage({ kind: 'compare', ids: [stage.firstId, photo.id] }),
-              stage.firstId,
-            )}
-            <Button
-              label={t('progressPhotos.cancel')}
-              variant="ghost"
-              onPress={() => setStage({ kind: 'view', id: stage.firstId })}
-            />
-          </>
-        ) : null}
-
-        {stage.kind === 'compare'
-          ? (() => {
-              const a = byId(stage.ids[0]);
-              const b = byId(stage.ids[1]);
-              if (!a || !b) return null;
-              const [before, after] = inOrder(a, b);
-              const days = daysBetween(before.takenOn, after.takenOn);
-              const kgBefore = weightOn(before.takenOn);
-              const kgAfter = weightOn(after.takenOn);
-              const half = Math.floor((width - spacing.lg * 2 - spacing.sm) / 2);
-              const change =
-                kgBefore !== null && kgAfter !== null
-                  ? Math.round((kgToDisplay(kgAfter, unit) - kgToDisplay(kgBefore, unit)) * 10) / 10
-                  : null;
-              return (
-                <>
-                  <Segmented<CompareMode>
-                    label={t('progressPhotos.compareHow')}
-                    options={[
-                      { value: 'slider', label: t('progressPhotos.slider') },
-                      { value: 'side', label: t('progressPhotos.sideBySide') },
-                    ]}
-                    selected={compareMode}
-                    onSelect={setCompareMode}
-                  />
-                  {compareMode === 'slider' ? (
-                    <>
-                      <BeforeAfterSlider
-                        before={(size) => (
-                          <PhotoImage photo={before} userId={userId} style={size} />
-                        )}
-                        after={(size) => <PhotoImage photo={after} userId={userId} style={size} />}
-                        beforeLabel={`${t('progressPhotos.before')} · ${dayLabel(before.takenOn)}`}
-                        afterLabel={`${t('progressPhotos.after')} · ${dayLabel(after.takenOn)}`}
-                      />
-                      <Hint>{t('progressPhotos.sliderHint')}</Hint>
-                    </>
-                  ) : (
-                    <View style={styles.pair}>
-                      {[before, after].map((photo, index) => {
-                        const kg = index === 0 ? kgBefore : kgAfter;
-                        return (
-                          <View key={photo.id} style={[styles.half, { width: half }]}>
-                            <Text style={styles.halfLabel}>
-                              {index === 0 ? t('progressPhotos.before') : t('progressPhotos.after')}
-                            </Text>
-                            <PhotoImage
-                              photo={photo}
-                              userId={userId}
-                              style={[styles.tile, { width: half, height: (half * 4) / 3 }]}
-                            />
-                            <Text style={styles.halfDate}>{dayLabel(photo.takenOn)}</Text>
-                            {kg !== null ? (
-                              <Text style={styles.halfWeight}>
-                                {formatBodyWeight(kg, unit)} {weightUnit}
-                              </Text>
-                            ) : null}
-                          </View>
-                        );
-                      })}
-                    </View>
-                  )}
-                  <Card style={styles.summary}>
-                    <Text style={styles.summaryText}>
-                      {days === 0
-                        ? t('progressPhotos.sameDay')
-                        : t('progressPhotos.daysApart', { count: days })}
-                    </Text>
-                    {change !== null ? (
-                      <Text style={styles.summaryText}>
-                        {t('progressPhotos.weightChange', {
-                          // A sign the reader can see either way; isolated so RTL keeps it in front.
-                          change: `⁦${change > 0 ? '+' : ''}${change}⁩`,
-                          unit: weightUnit,
-                        })}
+                      <Trash size={20} color={colors.danger} weight="bold" />
+                      <Text style={[styles.actionText, styles.danger]}>
+                        {t('progressPhotos.delete')}
                       </Text>
-                    ) : null}
-                  </Card>
-                  <Button
-                    label={t('progressPhotos.back')}
-                    variant="ghost"
-                    onPress={() => setStage({ kind: 'gallery' })}
-                  />
-                </>
-              );
-            })()
-          : null}
+                    </Pressable>
+                    <Button
+                      label={t('progressPhotos.back')}
+                      variant="ghost"
+                      onPress={() => setStage({ kind: 'gallery' })}
+                    />
+                  </>
+                );
+              })()
+            : null}
+
+          {stage.kind === 'pick' ? (
+            <>
+              <Text style={styles.inviteTitle}>{t('progressPhotos.pickSecond')}</Text>
+              <Hint>{t('progressPhotos.pickSecondHint')}</Hint>
+              {gallery(
+                (photo) => setStage({ kind: 'compare', ids: [stage.firstId, photo.id] }),
+                stage.firstId,
+              )}
+              <Button
+                label={t('progressPhotos.cancel')}
+                variant="ghost"
+                onPress={() => setStage({ kind: 'view', id: stage.firstId })}
+              />
+            </>
+          ) : null}
+
+          {stage.kind === 'compare'
+            ? (() => {
+                const a = byId(stage.ids[0]);
+                const b = byId(stage.ids[1]);
+                if (!a || !b) return null;
+                const [before, after] = inOrder(a, b);
+                const days = daysBetween(before.takenOn, after.takenOn);
+                const kgBefore = weightOn(before.takenOn);
+                const kgAfter = weightOn(after.takenOn);
+                const half = Math.floor((width - spacing.lg * 2 - spacing.sm) / 2);
+                const change =
+                  kgBefore !== null && kgAfter !== null
+                    ? Math.round((kgToDisplay(kgAfter, unit) - kgToDisplay(kgBefore, unit)) * 10) /
+                      10
+                    : null;
+                return (
+                  <>
+                    <Segmented<CompareMode>
+                      label={t('progressPhotos.compareHow')}
+                      options={[
+                        { value: 'slider', label: t('progressPhotos.slider') },
+                        { value: 'side', label: t('progressPhotos.sideBySide') },
+                      ]}
+                      selected={compareMode}
+                      onSelect={setCompareMode}
+                    />
+                    {compareMode === 'slider' ? (
+                      <>
+                        <BeforeAfterSlider
+                          before={(size) => (
+                            <PhotoImage photo={before} userId={userId} style={size} />
+                          )}
+                          after={(size) => (
+                            <PhotoImage photo={after} userId={userId} style={size} />
+                          )}
+                          beforeLabel={`${t('progressPhotos.before')} · ${dayLabel(before.takenOn)}`}
+                          afterLabel={`${t('progressPhotos.after')} · ${dayLabel(after.takenOn)}`}
+                        />
+                        <Hint>{t('progressPhotos.sliderHint')}</Hint>
+                      </>
+                    ) : (
+                      <View style={styles.pair}>
+                        {[before, after].map((photo, index) => {
+                          const kg = index === 0 ? kgBefore : kgAfter;
+                          return (
+                            <View key={photo.id} style={[styles.half, { width: half }]}>
+                              <Text style={styles.halfLabel}>
+                                {index === 0
+                                  ? t('progressPhotos.before')
+                                  : t('progressPhotos.after')}
+                              </Text>
+                              <PhotoImage
+                                photo={photo}
+                                userId={userId}
+                                style={[styles.tile, { width: half, height: (half * 4) / 3 }]}
+                              />
+                              <Text style={styles.halfDate}>{dayLabel(photo.takenOn)}</Text>
+                              {kg !== null ? (
+                                <Text style={styles.halfWeight}>
+                                  {formatBodyWeight(kg, unit)} {weightUnit}
+                                </Text>
+                              ) : null}
+                            </View>
+                          );
+                        })}
+                      </View>
+                    )}
+                    <Card style={styles.summary}>
+                      <Text style={styles.summaryText}>
+                        {days === 0
+                          ? t('progressPhotos.sameDay')
+                          : t('progressPhotos.daysApart', { count: days })}
+                      </Text>
+                      {change !== null ? (
+                        <Text style={styles.summaryText}>
+                          {t('progressPhotos.weightChange', {
+                            // A sign the reader can see either way; isolated so RTL keeps it in front.
+                            change: `⁦${change > 0 ? '+' : ''}${change}⁩`,
+                            unit: weightUnit,
+                          })}
+                        </Text>
+                      ) : null}
+                    </Card>
+                    <Button
+                      label={t('progressPhotos.back')}
+                      variant="ghost"
+                      onPress={() => setStage({ kind: 'gallery' })}
+                    />
+                  </>
+                );
+              })()
+            : null}
+        </PhotoLock>
       </ScrollView>
     </KeyboardSafe>
   );

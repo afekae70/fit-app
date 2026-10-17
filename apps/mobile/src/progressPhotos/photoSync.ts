@@ -86,7 +86,7 @@ async function movePictures(userId: string): Promise<void> {
 /* ------------------------------------------------- showing one from the server */
 
 /** How long a link to a picture is good for. Long enough for a screen to be looked at. */
-const LINK_SECONDS = 60 * 60;
+const LINK_SECONDS = 10 * 60;
 
 const links = new Map<string, { url: string; until: number }>();
 

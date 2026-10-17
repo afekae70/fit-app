@@ -815,7 +815,14 @@ export const en = {
     take: 'Take a photo',
     fromGallery: 'Choose from gallery',
     privacy:
-      'Your photos are kept on this phone and in a private backup in your account, and nobody else sees them. A coach sees them only if you turn on photo sharing on the coach screen. The location and camera details are removed from each photo before it is saved.',
+      'Your photos are kept on this phone and in a private backup in your account, and nobody else sees them. A coach sees them only if you turn on photo sharing on the coach screen. The location and camera details are removed from each photo before it is saved. This screen opens with your fingerprint, screenshots and screen recording are blocked on it, and the photos are not included in Google backup.',
+    unlockPrompt: 'Open progress photos',
+    lockedTitle: 'Photos are locked',
+    lockedBody: 'Your progress photos open only with your fingerprint.',
+    lockedOut: 'Too many attempts. Try again in a moment.',
+    unlock: 'Unlock with fingerprint',
+    noBiometrics:
+      'To have your photos open only with a fingerprint, add one in the phone settings (Security → Fingerprint).',
     pose: 'Angle',
     poseNone: 'Not said',
     pose_front: 'Front',

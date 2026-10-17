@@ -10,8 +10,11 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { sessionsBetween, type CoachData } from './source.js';
 
-/** How long a link to a photo works: long enough to look through them, and no longer. */
-const LINK_SECONDS = 60 * 60;
+/**
+ * How long a link to a photo works. A signed link is a key: whoever has it can open that one
+ * picture until it runs out, so it runs out soon. The photos tab asks for fresh ones before then.
+ */
+const LINK_SECONDS = 10 * 60;
 
 export function supabaseSource(supabase: SupabaseClient): CoachData {
   const api = createCoachingApi({

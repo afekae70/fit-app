@@ -25,7 +25,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import react from '@vitejs/plugin-react';
+import type { Plugin } from 'vite';
 import { defineConfig } from 'vitest/config';
+
+import { contentSecurityPolicy } from './src/lib/csp.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -35,10 +38,36 @@ interface AppJson {
 const extra = (JSON.parse(readFileSync(path.join(here, '../mobile/app.json'), 'utf8')) as AppJson)
   .expo?.extra;
 
+/**
+ * The security policy and the referrer rule, as the first things in the built page's <head>
+ * (see src/lib/csp.ts). Only in the build: the development server runs an inline script for hot
+ * reloading, which the policy would rightly refuse.
+ */
+function securityHeaders(supabaseUrl: string): Plugin {
+  return {
+    name: 'novafit-security-meta',
+    apply: 'build',
+    // Straight after the charset, which has to stay first, and ahead of every script.
+    transformIndexHtml: (html) => {
+      const charset = '<meta charset="utf-8" />';
+      if (!html.includes(charset)) throw new Error('index.html: no charset meta to follow.');
+      return html.replace(
+        charset,
+        [
+          charset,
+          `<meta http-equiv="Content-Security-Policy" content="${contentSecurityPolicy(supabaseUrl)}" />`,
+          // A signed photo link must not travel to another site in a Referer header.
+          '<meta name="referrer" content="no-referrer" />',
+        ].join('\n    '),
+      );
+    },
+  };
+}
+
 export default defineConfig({
   root: here,
   base: './',
-  plugins: [react()],
+  plugins: [react(), securityHeaders(extra?.supabaseUrl ?? 'https://invalid.supabase.co')],
   define: {
     __SUPABASE_URL__: JSON.stringify(extra?.supabaseUrl ?? ''),
     __SUPABASE_ANON_KEY__: JSON.stringify(extra?.supabaseAnonKey ?? ''),

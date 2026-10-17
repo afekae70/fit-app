@@ -24,11 +24,14 @@
     "android": {
       "//blockedPermissions": "expo-audio's library manifest declares the microphone permission for recording, which this app never does. Blocked so a beep does not add a microphone entry to the app's permissions. The camera is NOT blocked: it used to be, when the only picture was a profile picture from the gallery, and is now what the meal scan (app/food-scan.tsx) photographs a plate with. It is asked for when that button is pressed and nowhere else.",
       "//blockedPermissions2": "And three more, for Google Play, which reads a manifest literally. FOREGROUND_SERVICE and FOREGROUND_SERVICE_MEDIA_PLAYBACK come from expo-audio, which can run lock-screen controls as a foreground service; this app plays a beep and never starts one, and Play wants every declared foreground-service type justified with a video of the feature. The services themselves are removed by plugins/withStoreManifest. SYSTEM_ALERT_WINDOW is in Expo's template manifest for the developer menu's overlay; a release build has no developer menu, and 'display over other apps' is not something to ask a stranger's phone for.",
+      "//blockedPermissions3": "And two that expo-screen-capture declares for telling an app a screenshot was taken, which this app does not ask: READ_MEDIA_IMAGES (to look at the screenshot) and DETECT_SCREEN_CAPTURE. What it is here for - blocking screenshots of the progress photos (src/progressPhotos/PhotoLock.tsx) - sets a flag on the window and needs no permission at all. A photo-library permission would be the opposite of the point, and Google Play asks every app that declares one to justify it.",
       "blockedPermissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
-        "android.permission.SYSTEM_ALERT_WINDOW"
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.DETECT_SCREEN_CAPTURE"
       ],
       "package": "com.afeka.fitapp",
       "//versionCode": "Google Play accepts each number once: every bundle uploaded has to carry one higher than any before it, whether or not that upload was ever released. Raise it for each upload. It is invisible to users - what they see is `version`, above.",

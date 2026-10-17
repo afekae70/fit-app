@@ -20,6 +20,9 @@ import { formatDayLong, formatDayShort } from '../../lib/format.js';
 import { useLoad } from '../../lib/useLoad.js';
 import { NotShared } from './NotShared.js';
 
+/** Comfortably inside the ten minutes a link lasts. */
+const REFRESH_LINKS_MS = 8 * 60 * 1000;
+
 export function TraineePhotos({ traineeId, shared }: { traineeId: string; shared: boolean }) {
   if (!shared) return <NotShared />;
   return <SharedPhotos traineeId={traineeId} />;
@@ -36,11 +39,17 @@ function SharedPhotos({ traineeId }: { traineeId: string }) {
   useEffect(() => {
     if (!list) return;
     let live = true;
-    void source.photoUrls(traineeId, list.map((photo) => photo.id)).then((answer) => {
-      if (live) setUrls(answer);
-    });
+    const fetchLinks = () =>
+      void source.photoUrls(traineeId, list.map((photo) => photo.id)).then((answer) => {
+        if (live) setUrls(answer);
+      });
+    fetchLinks();
+    // The links last ten minutes (see supabaseSource.ts); a page left open is given new ones
+    // before they run out, so a photo scrolled to later still opens.
+    const timer = window.setInterval(fetchLinks, REFRESH_LINKS_MS);
     return () => {
       live = false;
+      window.clearInterval(timer);
     };
   }, [source, traineeId, list]);
 
@@ -178,9 +187,10 @@ function Picture({
   url: string | undefined;
   loading: boolean;
 }) {
-  const [broken, setBroken] = useState(false);
+  // Broken is about one link: a fresh one for the same photo gets its own chance.
+  const [brokenUrl, setBrokenUrl] = useState<string | null>(null);
   if (loading) return <span className="photo-frame placeholder" aria-hidden />;
-  if (!url || broken) {
+  if (!url || brokenUrl === url) {
     return (
       <span className="photo-frame placeholder">
         <ImageBroken size={28} weight="duotone" aria-hidden />
@@ -196,7 +206,7 @@ function Picture({
       loading="lazy"
       // Never sent along when the picture is fetched: the link is the only key it needs.
       referrerPolicy="no-referrer"
-      onError={() => setBroken(true)}
+      onError={() => setBrokenUrl(url)}
     />
   );
 }

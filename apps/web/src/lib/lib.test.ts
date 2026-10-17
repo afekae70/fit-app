@@ -5,6 +5,7 @@ import { he } from '../i18n/he.js';
 import { paletteStylesheet, SERIES } from '../theme/theme.js';
 import { compact, niceMax } from './chartMath.js';
 import { countable, easeOut, withValue } from './countUp.js';
+import { contentSecurityPolicy } from './csp.js';
 import { searchExercises } from './exerciseSearch.js';
 import {
   formatLitres,
@@ -64,6 +65,38 @@ describe('the address', () => {
     const href = hrefFor({ name: 'trainee', id: '../../evil/x', tab: 'overview' });
     expect(href.startsWith('#/trainee/')).toBe(true);
     expect(parseRoute(href)).toEqual({ name: 'trainee', id: '../../evil/x', tab: 'overview' });
+  });
+});
+
+describe('the content security policy', () => {
+  const policy = contentSecurityPolicy('https://abcdefgh.supabase.co/');
+  const rule = (name: string) =>
+    policy
+      .split('; ')
+      .find((part) => part.startsWith(`${name} `) || part === name)
+      ?.split(' ')
+      .slice(1);
+
+  it('runs only the site’s own scripts', () => {
+    expect(rule('script-src')).toEqual(["'self'"]);
+    expect(policy).not.toContain('unsafe-eval');
+  });
+
+  it('talks to nothing but the site and its Supabase project', () => {
+    expect(rule('connect-src')).toEqual(["'self'", 'https://abcdefgh.supabase.co']);
+    expect(rule('img-src')).toEqual(["'self'", 'data:', 'https://abcdefgh.supabase.co']);
+  });
+
+  it('starts from nothing allowed, and closes the other doors', () => {
+    expect(rule('default-src')).toEqual(["'none'"]);
+    expect(rule('object-src')).toEqual(["'none'"]);
+    expect(rule('base-uri')).toEqual(["'none'"]);
+    expect(rule('frame-src')).toEqual(["'none'"]);
+    expect(rule('upgrade-insecure-requests')).toEqual([]);
+  });
+
+  it('refuses a project that is not https', () => {
+    expect(() => contentSecurityPolicy('http://abcdefgh.supabase.co')).toThrow();
   });
 });
 
