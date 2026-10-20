@@ -17,7 +17,7 @@
  */
 
 import { useFocusEffect } from 'expo-router';
-import { ArrowCounterClockwise, Drop } from 'phosphor-react-native';
+import { ArrowCounterClockwise, Drop, PencilSimple } from 'phosphor-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AccessibilityInfo, Animated, Easing, Keyboard, StyleSheet, View } from 'react-native';
@@ -33,7 +33,15 @@ import {
   undoLastWater,
 } from '../db/water.js';
 import { parseAmount } from '../food/foodMath.js';
-import { BOTTLE_ML, GLASS_ML, litres, WATER_ML_PER_KG, waterGoalMl } from '../food/water.js';
+import { litres, WATER_ML_PER_KG, waterGoalMl } from '../food/water.js';
+import {
+  buttonAmount,
+  DEFAULT_WATER_BUTTONS,
+  isDefault,
+  MIN_BUTTON_ML,
+  type WaterButtons,
+} from '../food/waterButtons.js';
+import { loadWaterButtons, saveWaterButtons } from '../food/waterButtonsStore.js';
 import { hapticLight, hapticSuccess } from '../haptics.js';
 import { useTheme } from '../ThemeProvider.js';
 import { fontSize, fontWeight, radius, shadow, spacing, type ColorPalette } from '../theme.js';
@@ -60,14 +68,21 @@ export function WaterCard({ date }: { date: string }) {
   const [typed, setTyped] = useState<string | null>(null);
   // The last amount typed, on any day, offered again when the field opens.
   const [lastOwn, setLastOwn] = useState<number | null>(null);
+  // The two quick-add buttons, as this account set them (food/waterButtons.ts).
+  const [buttons, setButtons] = useState<WaterButtons>(DEFAULT_WATER_BUTTONS);
+  // Setting them: the two amounts as typed, or null while the editor is shut.
+  const [editing, setEditing] = useState<[string, string] | null>(null);
 
   const load = useCallback(async () => {
     const db = await getExecutor();
+    const mine = await loadWaterButtons(userId);
     const [drunk, latest, own] = await Promise.all([
       getWaterTotal(db, userId, date),
       getLatestWeight(db, userId),
-      getLastCustomWater(db, userId, [GLASS_ML, BOTTLE_ML]),
+      // A press of either button is not "an amount of one's own", whatever the buttons are set to.
+      getLastCustomWater(db, userId, mine),
     ]);
+    setButtons(mine);
     setTotal(drunk);
     setLastOwn(own);
     setGoal(waterGoalMl(latest?.weight_kg ?? null));
@@ -121,8 +136,34 @@ export function WaterCard({ date }: { date: string }) {
 
   const ownAmount = typed === null ? null : parseAmount(typed, MAX_WATER_ML);
 
+  const editedAmounts = editing ? editing.map(buttonAmount) : null;
+  const editValid = editedAmounts !== null && editedAmounts.every((ml) => ml !== null);
+
+  /** Open or shut the editor for the two buttons. Shuts the typed-amount field: one at a time. */
+  const toggleEditing = () => {
+    hapticLight();
+    if (editing) {
+      Keyboard.dismiss();
+      setEditing(null);
+      return;
+    }
+    setTyped(null);
+    setEditing([String(buttons[0]), String(buttons[1])]);
+  };
+
+  const saveButtons = () => {
+    if (!editValid || !editedAmounts) return;
+    const next: WaterButtons = [editedAmounts[0]!, editedAmounts[1]!];
+    Keyboard.dismiss();
+    setButtons(next);
+    setEditing(null);
+    hapticSuccess();
+    void saveWaterButtons(userId, next);
+  };
+
   const toggleOwn = () => {
     hapticLight();
+    setEditing(null);
     if (typed !== null) {
       Keyboard.dismiss();
       setTyped(null);
@@ -155,17 +196,37 @@ export function WaterCard({ date }: { date: string }) {
           <Drop size={18} color={colors.info} weight="fill" />
           <Text style={styles.title}>{t('water.title')}</Text>
         </View>
-        {total > 0 ? (
+        <View style={styles.headerActions}>
+          {total > 0 ? (
+            <Pressable
+              onPress={undo}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel={t('water.undo')}
+              style={({ pressed }) => [styles.undo, pressed && styles.pressed]}
+            >
+              <ArrowCounterClockwise size={16} color={colors.textMuted} weight="bold" />
+            </Pressable>
+          ) : null}
           <Pressable
-            onPress={undo}
+            onPress={toggleEditing}
             hitSlop={10}
             accessibilityRole="button"
-            accessibilityLabel={t('water.undo')}
-            style={({ pressed }) => [styles.undo, pressed && styles.pressed]}
+            accessibilityState={{ expanded: editing !== null }}
+            accessibilityLabel={t('water.editButtons')}
+            style={({ pressed }) => [
+              styles.undo,
+              editing !== null && styles.undoOn,
+              pressed && styles.pressed,
+            ]}
           >
-            <ArrowCounterClockwise size={16} color={colors.textMuted} weight="bold" />
+            <PencilSimple
+              size={16}
+              color={editing ? colors.info : colors.textMuted}
+              weight="bold"
+            />
           </Pressable>
-        ) : null}
+        </View>
       </View>
 
       <Text
@@ -195,28 +256,22 @@ export function WaterCard({ date }: { date: string }) {
       </Text>
 
       <View style={styles.buttons}>
-        <Pressable
-          onPress={() => add(GLASS_ML)}
-          accessibilityRole="button"
-          accessibilityLabel={t('water.addGlassLabel', { ml: GLASS_ML })}
-          style={({ pressed }) => [styles.button, pressed && styles.pressed]}
-        >
-          <Text style={styles.buttonText}>+ {t('water.glass')}</Text>
-          <Text style={styles.buttonMeta}>
-            {GLASS_ML} {t('water.ml')}
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={() => add(BOTTLE_ML)}
-          accessibilityRole="button"
-          accessibilityLabel={t('water.addBottleLabel', { ml: BOTTLE_ML })}
-          style={({ pressed }) => [styles.button, pressed && styles.pressed]}
-        >
-          <Text style={styles.buttonText}>+ {t('water.bottle')}</Text>
-          <Text style={styles.buttonMeta}>
-            {BOTTLE_ML} {t('water.ml')}
-          </Text>
-        </Pressable>
+        {/* The amount itself on each, not "glass" and "bottle": once someone has set their own,
+            the amount is the only name that is true. A long press opens the editor. */}
+        {buttons.map((ml, index) => (
+          <Pressable
+            key={index}
+            onPress={() => add(ml)}
+            onLongPress={toggleEditing}
+            accessibilityRole="button"
+            accessibilityLabel={t('water.addAmountLabel', { ml })}
+            accessibilityHint={t('water.editHint')}
+            style={({ pressed }) => [styles.button, pressed && styles.pressed]}
+          >
+            <Text style={styles.buttonText}>+ {ml}</Text>
+            <Text style={styles.buttonMeta}>{t('water.ml')}</Text>
+          </Pressable>
+        ))}
         <Pressable
           onPress={toggleOwn}
           accessibilityRole="button"
@@ -266,6 +321,73 @@ export function WaterCard({ date }: { date: string }) {
           </Pressable>
         </View>
       ) : null}
+      {/* Setting the two buttons. In the card, like the typed amount and for the same reason:
+          a field in a Modal does not raise the keyboard on this build. */}
+      {editing !== null ? (
+        <View style={styles.editor}>
+          <Text style={styles.editorTitle}>{t('water.buttonsTitle')}</Text>
+          <View style={styles.own}>
+            {editing.map((value, index) => (
+              <View key={index} style={styles.ownField}>
+                <Field
+                  value={value}
+                  onChangeText={(text) => {
+                    const clean = text.replace(/[^0-9]/g, '').slice(0, 4);
+                    setEditing((current) => {
+                      if (!current) return current;
+                      return index === 0 ? [clean, current[1]] : [current[0], clean];
+                    });
+                  }}
+                  keyboardType="number-pad"
+                  accessibilityLabel={
+                    index === 0 ? t('water.firstButton') : t('water.secondButton')
+                  }
+                  trailing={<Text style={styles.buttonMeta}>{t('water.ml')}</Text>}
+                  returnKeyType="done"
+                  onSubmitEditing={saveButtons}
+                  selectTextOnFocus
+                  autoFocus={index === 0}
+                />
+              </View>
+            ))}
+          </View>
+          <Text style={[styles.editorHint, !editValid && styles.editorHintBad]}>
+            {t('water.buttonsHint', { min: MIN_BUTTON_ML, max: MAX_WATER_ML })}
+          </Text>
+          <View style={styles.own}>
+            <Pressable
+              onPress={saveButtons}
+              disabled={!editValid}
+              accessibilityRole="button"
+              accessibilityLabel={t('water.saveButtons')}
+              style={({ pressed }) => [
+                styles.ownAdd,
+                styles.editorSave,
+                !editValid && styles.ownAddOff,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={styles.ownAddText}>{t('water.saveButtons')}</Text>
+            </Pressable>
+            {!isDefault([Number(editing[0]), Number(editing[1])]) ? (
+              <Pressable
+                onPress={() =>
+                  setEditing([String(DEFAULT_WATER_BUTTONS[0]), String(DEFAULT_WATER_BUTTONS[1])])
+                }
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.editorReset, pressed && styles.pressed]}
+              >
+                <Text style={styles.editorResetText}>
+                  {t('water.resetButtons', {
+                    first: DEFAULT_WATER_BUTTONS[0],
+                    second: DEFAULT_WATER_BUTTONS[1],
+                  })}
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        </View>
+      ) : null}
       {burst > 0 ? (
         <View pointerEvents="none" style={styles.burst}>
           <ConfettiBurst key={burst} />
@@ -287,6 +409,31 @@ const createStyles = (colors: ColorPalette) =>
     // Over the whole card, so the burst starts from its middle and is drawn above the buttons.
     burst: { ...StyleSheet.absoluteFillObject },
     header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    // The pencil while the editor is open: pressing it again shuts it.
+    undoOn: { borderWidth: 1, borderColor: colors.info },
+    editor: {
+      gap: spacing.sm,
+      padding: spacing.md,
+      borderRadius: radius.lg,
+      backgroundColor: colors.surfaceRaised,
+    },
+    editorTitle: {
+      color: colors.textSecondary,
+      fontSize: fontSize.sm,
+      fontWeight: fontWeight.bold,
+      textAlign: 'auto',
+    },
+    editorHint: {
+      color: colors.textMuted,
+      fontSize: fontSize.xs,
+      lineHeight: 18,
+      textAlign: 'auto',
+    },
+    editorHintBad: { color: colors.warning },
+    editorSave: { flex: 1 },
+    editorReset: { minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.sm },
+    editorResetText: { color: colors.accent, fontSize: fontSize.sm, fontWeight: fontWeight.medium },
     titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     title: { color: colors.textSecondary, fontSize: fontSize.sm, fontWeight: fontWeight.bold },
     undo: {
