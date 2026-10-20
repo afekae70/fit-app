@@ -5,8 +5,9 @@
  * 750, another drinks from a 330 can all day. Whatever someone pours most often should be one
  * tap, so both buttons can be set to any amount, by each account for itself.
  *
- * Kept on the phone, per account (see `waterButtonsStore.ts`), as two numbers. Everything here is
- * the part with no native code: what the stored text means, and what a typed amount may be.
+ * Kept on the account's profile (`db/waterButtons.ts`), which syncs to its other phones. Everything
+ * here is the part with no database and no native code: what an amount may be, and what the one
+ * earlier build's stored text meant (`waterButtonsStore.ts` moves it onto the profile).
  */
 
 import { MAX_WATER_ML } from '../db/water.js';
@@ -24,8 +25,11 @@ export function waterButtonsKey(userId: string): string {
   return `water-buttons-${userId.replace(/[^A-Za-z0-9_-]/g, '_') || 'local'}`;
 }
 
-const inRange = (ml: unknown): ml is number =>
+/** Whether this is an amount a button may hold: whole millilitres, within the bounds. */
+export const isButtonAmount = (ml: unknown): ml is number =>
   typeof ml === 'number' && Number.isInteger(ml) && ml >= MIN_BUTTON_ML && ml <= MAX_WATER_ML;
+
+const inRange = isButtonAmount;
 
 /**
  * The stored buttons, read back. Never throws: anything that is not two sensible amounts —

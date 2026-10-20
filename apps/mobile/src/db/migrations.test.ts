@@ -1182,3 +1182,52 @@ describe('migration 24 — progress photos', () => {
     }
   });
 });
+
+describe('migration 25 — water buttons on the profile', () => {
+  it('is on the app upgrade path', () => {
+    expect(SCHEMA_VERSION).toBeGreaterThanOrEqual(25);
+    expect(MIGRATIONS[25]).toBeDefined();
+  });
+
+  it('gives an existing profile the two columns, empty, and keeps what it had', () => {
+    const db = new DatabaseSync(':memory:');
+    db.exec(`
+      CREATE TABLE profile (user_id TEXT PRIMARY KEY NOT NULL, display_name TEXT, updated_at TEXT NOT NULL);
+      INSERT INTO profile VALUES ('u1', 'אפק', '2026-10-01');
+    `);
+    applyMigration(db, MIGRATIONS[25] ?? '');
+    expect(db.prepare(`SELECT * FROM profile`).all()).toEqual([
+      {
+        user_id: 'u1',
+        display_name: 'אפק',
+        updated_at: '2026-10-01',
+        water_button_1_ml: null,
+        water_button_2_ml: null,
+      },
+    ]);
+    db.close();
+  });
+
+  it('makes the same columns a fresh install gets', () => {
+    const fresh = new DatabaseSync(':memory:');
+    fresh.exec(CREATE_SCHEMA_SQL.replace(/PRAGMA journal_mode = WAL;/, ''));
+    const names = (
+      fresh.prepare(`SELECT name, type FROM pragma_table_info('profile')`).all() as {
+        name: string;
+        type: string;
+      }[]
+    ).filter((column) => column.name.startsWith('water_button'));
+    expect(names).toEqual([
+      { name: 'water_button_1_ml', type: 'INTEGER' },
+      { name: 'water_button_2_ml', type: 'INTEGER' },
+    ]);
+    fresh.close();
+  });
+
+  it('has no semicolon inside a comment, which the statement splitter would cut on', () => {
+    for (const line of (MIGRATIONS[25] ?? '').split('\n')) {
+      const comment = line.indexOf('--');
+      if (comment >= 0) expect(line.slice(comment), line).not.toContain(';');
+    }
+  });
+});

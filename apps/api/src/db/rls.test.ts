@@ -203,13 +203,16 @@ describe('row level security, as written in the migrations', () => {
  * So the columns are audited here, by name.
  */
 describe('what a client may write on its own profile', () => {
-  const granted = (privilege: 'INSERT' | 'UPDATE') => {
-    const match = new RegExp(
-      String.raw`GRANT ${privilege}\s*\(([^)]+)\)\s+ON\s+public\.profiles\s+TO\s+authenticated;`,
-      'i',
-    ).exec(sql);
-    return (match?.[1] ?? '').split(',').map((column) => column.trim());
-  };
+  /** Every column ever granted, across every migration — not only the first grant (0011). */
+  const granted = (privilege: 'INSERT' | 'UPDATE') =>
+    [
+      ...sql.matchAll(
+        new RegExp(
+          String.raw`GRANT ${privilege}\s*\(([^)]+)\)\s+ON\s+public\.profiles\s+TO\s+authenticated;`,
+          'gi',
+        ),
+      ),
+    ].flatMap((match) => (match[1] ?? '').split(',').map((column) => column.trim()));
 
   /** Decided by the owner or by the server, never by the account itself. */
   const NOT_THE_CLIENTS = ['role', 'coach_code', 'created_at', 'updated_at'];
@@ -230,6 +233,16 @@ describe('what a client may write on its own profile', () => {
     for (const column of ['display_name', 'height_cm', 'goal', 'avatar_version']) {
       expect(columns).toContain(column);
     }
+  });
+
+  it('lets a person save their own water buttons, and nothing next to them', () => {
+    for (const privilege of ['INSERT', 'UPDATE'] as const) {
+      expect(granted(privilege)).toEqual(
+        expect.arrayContaining(['water_button_1_ml', 'water_button_2_ml']),
+      );
+    }
+    expect(sql).toMatch(/water_button_1_ml BETWEEN 10 AND 5000/);
+    expect(sql).toMatch(/water_button_2_ml BETWEEN 10 AND 5000/);
   });
 
   it('lets a client name its own row when creating it, and never rename it afterwards', () => {

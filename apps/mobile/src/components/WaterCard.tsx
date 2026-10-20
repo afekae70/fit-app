@@ -41,7 +41,10 @@ import {
   MIN_BUTTON_ML,
   type WaterButtons,
 } from '../food/waterButtons.js';
-import { loadWaterButtons, saveWaterButtons } from '../food/waterButtonsStore.js';
+import { adoptLegacyWaterButtons } from '../food/waterButtonsStore.js';
+import { getWaterButtons, setWaterButtons } from '../db/waterButtons.js';
+import { onProfilePulled } from '../sync/profileEvents.js';
+import { syncProfileNow } from '../sync/profileSyncRunner.js';
 import { hapticLight, hapticSuccess } from '../haptics.js';
 import { useTheme } from '../ThemeProvider.js';
 import { fontSize, fontWeight, radius, shadow, spacing, type ColorPalette } from '../theme.js';
@@ -75,7 +78,11 @@ export function WaterCard({ date }: { date: string }) {
 
   const load = useCallback(async () => {
     const db = await getExecutor();
-    const mine = await loadWaterButtons(userId);
+    // From the profile, which syncs; the one older build kept them on the phone and is moved over.
+    const mine =
+      (await getWaterButtons(db, userId)) ??
+      (await adoptLegacyWaterButtons(db, userId)) ??
+      DEFAULT_WATER_BUTTONS;
     const [drunk, latest, own] = await Promise.all([
       getWaterTotal(db, userId, date),
       getLatestWeight(db, userId),
@@ -88,6 +95,10 @@ export function WaterCard({ date }: { date: string }) {
     setGoal(waterGoalMl(latest?.weight_kg ?? null));
     setWeighed(latest?.weight_kg != null);
   }, [userId, date]);
+
+  // Buttons set on another phone of this account arrive through the profile sync, while the card
+  // may already be showing.
+  useEffect(() => onProfilePulled(() => void load()), [load]);
 
   // On every return to the screen, and whenever the day shown changes.
   useFocusEffect(
@@ -158,7 +169,12 @@ export function WaterCard({ date }: { date: string }) {
     setButtons(next);
     setEditing(null);
     hapticSuccess();
-    void saveWaterButtons(userId, next);
+    void (async () => {
+      const db = await getExecutor();
+      // Sent at once rather than at the next sync, so another phone of the same account has them
+      // the next time it syncs.
+      if (await setWaterButtons(db, userId, next)) void syncProfileNow(userId);
+    })();
   };
 
   const toggleOwn = () => {

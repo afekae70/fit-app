@@ -60,6 +60,10 @@ export const PROFILE_FIELDS = [
   'activity_level',
   'goal',
   'unit_preference',
+  // The two quick-add water buttons (0019). Each its own field: one changed on one phone and
+  // the other on another both survive.
+  'water_button_1_ml',
+  'water_button_2_ml',
 ] as const;
 
 /** The profile picture's name tag. Compared like a field, moved like a file. */
@@ -174,6 +178,12 @@ export function canonical(field: ProfileField, raw: unknown): ProfileValue | und
     }
     case 'display_name':
       return String(raw);
+    case 'water_button_1_ml':
+    case 'water_button_2_ml': {
+      const ml = typeof raw === 'number' ? raw : Number(raw);
+      // The server's own range check (0019); a whole number of millilitres.
+      return Number.isInteger(ml) && ml >= 10 && ml <= 5000 ? ml : undefined;
+    }
     case 'avatar_version': {
       // It becomes part of a file path on the server, so only what is safe in one.
       const tag = String(raw);

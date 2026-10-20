@@ -8,9 +8,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { SqlExecutor } from '../db/executor.js';
 import { createTestExecutor } from '../db/testUtils.js';
 import { addWater, getLastCustomWater, MAX_WATER_ML } from '../db/water.js';
+import { getWaterButtons, setWaterButtons } from '../db/waterButtons.js';
 import {
   buttonAmount,
   DEFAULT_WATER_BUTTONS,
+  isButtonAmount,
   isDefault,
   MIN_BUTTON_ML,
   readWaterButtons,
@@ -87,5 +89,59 @@ describe('an amount of one’s own, beside buttons set to other amounts', () => 
     await addWater(db, 'u', newId, { drunkOn: '2026-10-20', ml: 330 }, clock);
     // With the buttons at 330 and 750, the 330 was a button and the 400 was typed.
     expect(await getLastCustomWater(db, 'u', [330, 750])).toBe(400);
+  });
+});
+
+describe('the buttons on the profile, where they sync', () => {
+  let db: SqlExecutor & { close: () => void };
+  beforeEach(() => {
+    db = createTestExecutor();
+  });
+  afterEach(() => db.close());
+
+  it('are nothing until set, and then exactly what was set', async () => {
+    expect(await getWaterButtons(db, 'u')).toBeNull();
+    expect(await setWaterButtons(db, 'u', [330, 750])).toBe(true);
+    expect(await getWaterButtons(db, 'u')).toEqual([330, 750]);
+  });
+
+  it('are each account’s own', async () => {
+    await setWaterButtons(db, 'u', [330, 750]);
+    await setWaterButtons(db, 'someone-else', [200, 1000]);
+    expect(await getWaterButtons(db, 'u')).toEqual([330, 750]);
+    expect(await getWaterButtons(db, 'someone-else')).toEqual([200, 1000]);
+  });
+
+  it('refuse what the server would refuse, and keep what was there', async () => {
+    await setWaterButtons(db, 'u', [330, 750]);
+    expect(await setWaterButtons(db, 'u', [5, 750])).toBe(false);
+    expect(await setWaterButtons(db, 'u', [330, MAX_WATER_ML + 1])).toBe(false);
+    expect(await getWaterButtons(db, 'u')).toEqual([330, 750]);
+  });
+
+  it('leave the rest of the profile alone', async () => {
+    await db.run(
+      `INSERT INTO profile (user_id, display_name, goal, updated_at) VALUES ('u', 'אפק', 'cut', 'x')`,
+    );
+    await setWaterButtons(db, 'u', [330, 750]);
+    const row = await db.get<{ display_name: string; goal: string }>(
+      `SELECT display_name, goal FROM profile WHERE user_id = 'u'`,
+    );
+    expect(row).toEqual({ display_name: 'אפק', goal: 'cut' });
+  });
+
+  it('read a stored nonsense pair as never set', async () => {
+    await db.run(
+      `INSERT INTO profile (user_id, water_button_1_ml, water_button_2_ml, updated_at)
+       VALUES ('u', 3, 750, 'x')`,
+    );
+    expect(await getWaterButtons(db, 'u')).toBeNull();
+  });
+
+  it('use the same rule for an amount as the typed field', () => {
+    expect(isButtonAmount(330)).toBe(true);
+    expect(isButtonAmount(330.5)).toBe(false);
+    expect(isButtonAmount('330')).toBe(false);
+    expect(isButtonAmount(MIN_BUTTON_ML - 1)).toBe(false);
   });
 });

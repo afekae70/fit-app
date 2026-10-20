@@ -2,7 +2,8 @@
 #
 # Build the Android app from a generated project.
 #
-#   scripts/build-android.sh            a release APK, for installing directly
+#   scripts/build-android.sh            a release APK, for installing on the owner's own phone
+#   scripts/build-android.sh share      a release APK to hand to other people's phones
 #   scripts/build-android.sh bundle     a release AAB, for Google Play
 #
 # Run it from the build tree (see SETUP.md), under git bash.
@@ -47,6 +48,15 @@
 # So `apk` points the build at a key file that is not there. That is the whole mechanism: the
 # signing config falls back to debug when the file is missing. A phone that has moved to the
 # Play version has no use for these APKs any more — Play signs with a third key again.
+#
+# ## An APK for other people's phones is signed with the upload key
+#
+# The debug keystore is Expo's template, the same file in every project, so its private key is
+# public. On the owner's phone that is a convenience; on a stranger's it is a door: anyone could
+# sign a different app as an "update" to this one and the phone would accept it. `share` builds
+# the same APK signed with the upload key, which exists only on this machine, and copies it out
+# under its own name so it is never mistaken for the one that goes onto the owner's phone (which
+# would refuse it: a different signature). Like `bundle`, it refuses to run without the key.
 
 set -euo pipefail
 
@@ -60,6 +70,18 @@ case "${1:-apk}" in
   apk)
     NOVAFIT_UPLOAD_KEY="/no-upload-key-for-sideloaded-builds" ./gradlew :app:assembleRelease
     ;;
+  share)
+    if [ ! -f "$upload_key" ]; then
+      echo "No upload key at $upload_key." >&2
+      echo "An APK for other phones is signed with it, not with the public debug keystore." >&2
+      exit 1
+    fi
+    ./gradlew :app:assembleRelease
+    version="$(node -p "require('../app.json').expo.version")"
+    out="${NOVAFIT_SHARE_DIR:-$HOME/Desktop}/NovaFit-${version}-$(date +%Y%m%d).apk"
+    cp app/build/outputs/apk/release/app-release.apk "$out"
+    echo "Shareable APK: $out"
+    ;;
   bundle)
     if [ ! -f "$upload_key" ]; then
       echo "No upload key at $upload_key." >&2
@@ -70,7 +92,7 @@ case "${1:-apk}" in
     ./gradlew :app:bundleRelease
     ;;
   *)
-    echo "usage: $0 [apk|bundle]" >&2
+    echo "usage: $0 [apk|share|bundle]" >&2
     exit 2
     ;;
 esac

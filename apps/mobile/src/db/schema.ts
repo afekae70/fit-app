@@ -26,7 +26,7 @@
  * TEXT (lexicographically sortable, which is what the history queries rely on).
  */
 
-export const SCHEMA_VERSION = 24;
+export const SCHEMA_VERSION = 25;
 
 /**
  * Incremental migrations, keyed by the version they upgrade TO.
@@ -528,6 +528,18 @@ CREATE INDEX IF NOT EXISTS locations_user_idx ON locations (user_id);
     CREATE INDEX IF NOT EXISTS progress_photos_user_day_idx
       ON progress_photos (user_id, taken_on);
   `,
+
+  /*
+   * 25 — each person's two water buttons, on the profile.
+   *
+   * They were kept on the phone alone (SecureStore, for one build). On the profile they go
+   * through the profile sync to the account's other phones, field by field, once the server has
+   * the columns (0019); until then the sync leaves them alone. NULL is "never set".
+   */
+  25: `
+    ALTER TABLE profile ADD COLUMN water_button_1_ml INTEGER;
+    ALTER TABLE profile ADD COLUMN water_button_2_ml INTEGER;
+  `,
 };
 
 export const CREATE_SCHEMA_SQL = `
@@ -556,7 +568,10 @@ CREATE TABLE IF NOT EXISTS profile (
   -- Which profile picture is on this phone; NULL is none. See migration 21.
   avatar_version   TEXT,
   -- What this phone and the server last agreed the profile was. See migration 21.
-  synced_json      TEXT
+  synced_json      TEXT,
+  -- The two quick-add water buttons, in ml; NULL is never set (250 and 500). Migration 25.
+  water_button_1_ml INTEGER,
+  water_button_2_ml INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS body_metrics (

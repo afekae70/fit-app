@@ -8,13 +8,14 @@
  * until told otherwise — has never heard of `avatar_version`.
  */
 
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { getProfile, saveProfile, setAvatarVersion } from '../db/metrics.js';
 import { createTestExecutor } from '../db/testUtils.js';
+import { getWaterButtons, setWaterButtons } from '../db/waterButtons.js';
 import {
   canonical,
   decide,
@@ -577,10 +578,18 @@ describe('what the server is told to accept', () => {
     join(import.meta.dirname, '../../../api/drizzle/0011_profile_sync.sql'),
     'utf8',
   );
-  const granted = /GRANT UPDATE\s*\(([^)]+)\)\s+ON\s+public\.profiles\s+TO\s+authenticated;/
-    .exec(migration)?.[1]
-    ?.split(',')
-    .map((column) => column.trim());
+  // Every column granted in any migration: a field added later (0019's water buttons) is
+  // granted in its own file, and has to be, or the server refuses the whole update.
+  const drizzle = join(import.meta.dirname, '../../../api/drizzle');
+  const everyMigration = readdirSync(drizzle)
+    .filter((file) => file.endsWith('.sql'))
+    .map((file) => readFileSync(join(drizzle, file), 'utf8'))
+    .join('\n');
+  const granted = [
+    ...everyMigration.matchAll(
+      /GRANT UPDATE\s*\(([^)]+)\)\s+ON\s+public\.profiles\s+TO\s+authenticated;/g,
+    ),
+  ].flatMap((match) => (match[1] ?? '').split(',').map((column) => column.trim()));
 
   it('finds the list', () => {
     expect(granted?.length).toBeGreaterThan(5);
@@ -848,5 +857,72 @@ describe('recording which picture is on the phone', () => {
     await setAvatarVersion(db, USER, null);
     expect(await fields(db)).toMatchObject({ display_name: 'אפק', height_cm: 178, goal: 'bulk' });
     expect((await getProfile(db, USER))?.avatar_version).toBeNull();
+  });
+});
+
+describe('the water buttons on the profile', () => {
+  const WITH_COLUMNS = { water_button_1_ml: null, water_button_2_ml: null };
+
+  it('are whole millilitres within the server’s bounds, or nothing at all', () => {
+    expect(canonical('water_button_1_ml', 330)).toBe(330);
+    expect(canonical('water_button_2_ml', '750')).toBe(750);
+    expect(canonical('water_button_1_ml', null)).toBeNull();
+    for (const bad of [5, 5001, 330.5, 'a lot']) {
+      expect(canonical('water_button_1_ml', bad), String(bad)).toBeUndefined();
+    }
+  });
+
+  it('go up from the phone they were set on', async () => {
+    const db = phone();
+    await saveProfile(db, USER, { displayName: 'אפק' });
+    await setWaterButtons(db, USER, [330, 750]);
+    const server = createServer(WITH_COLUMNS);
+    const result = await syncProfile(db, server.transport, USER);
+    expect(result.pushed).toEqual(
+      expect.arrayContaining(['water_button_1_ml', 'water_button_2_ml']),
+    );
+    expect(server.state.row?.water_button_1_ml).toBe(330);
+    expect(server.state.row?.water_button_2_ml).toBe(750);
+  });
+
+  it('come down to another phone of the same account', async () => {
+    const db = phone();
+    await saveProfile(db, USER, { displayName: 'אפק' });
+    const server = createServer({ ...WITH_COLUMNS, water_button_1_ml: 330, water_button_2_ml: 750 });
+    const result = await syncProfile(db, server.transport, USER);
+    expect(result.pulled).toEqual(
+      expect.arrayContaining(['water_button_1_ml', 'water_button_2_ml']),
+    );
+    expect(await getWaterButtons(db, USER)).toEqual([330, 750]);
+  });
+
+  it('are left alone by a server that does not have them yet, and the rest still syncs', async () => {
+    const db = phone();
+    await saveProfile(db, USER, { displayName: 'אפק' });
+    await setWaterButtons(db, USER, [330, 750]);
+    // A server before 0019: no such columns. Sending them would refuse the whole update.
+    const server = createServer();
+    const result = await syncProfile(db, server.transport, USER);
+    expect(result.pushed).toContain('display_name');
+    expect(result.pushed).not.toContain('water_button_1_ml');
+    expect(server.state.updates.every((update) => !('water_button_1_ml' in update))).toBe(true);
+    expect(server.state.row?.display_name).toBe('אפק');
+    // And they are still on the phone, for when the server catches up.
+    expect(await getWaterButtons(db, USER)).toEqual([330, 750]);
+  });
+
+  it('keep one button changed here and the other changed elsewhere', async () => {
+    const db = phone();
+    await saveProfile(db, USER, { displayName: 'אפק' });
+    await setWaterButtons(db, USER, [330, 750]);
+    const server = createServer(WITH_COLUMNS);
+    await syncProfile(db, server.transport, USER);
+    // Another phone changes the second button; this one changes the first.
+    server.state.set({ water_button_2_ml: 1000 });
+    await setWaterButtons(db, USER, [400, 750]);
+    await syncProfile(db, server.transport, USER);
+    expect(await getWaterButtons(db, USER)).toEqual([400, 1000]);
+    expect(server.state.row?.water_button_1_ml).toBe(400);
+    expect(server.state.row?.water_button_2_ml).toBe(1000);
   });
 });
