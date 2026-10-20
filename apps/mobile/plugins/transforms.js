@@ -198,8 +198,36 @@ function addUploadSigning(gradle) {
     );
 }
 
+/**
+ * Declare a permission for old Android versions only, whatever a library declared.
+ *
+ * A library's manifest asks for a permission on every version; the app's own declaration with
+ * `maxSdkVersion` narrows it, and `tools:replace` makes the merger keep the app's bound instead
+ * of dropping it in favour of the library's open-ended one. Works on the parsed manifest object
+ * that `withAndroidManifest` hands a plugin (`{ manifest: { 'uses-permission': [{ $: … }] } }`).
+ */
+function limitPermission(androidManifest, name, maxSdkVersion) {
+  const manifest = androidManifest.manifest;
+  if (!manifest) throw new Error('limitPermission: no <manifest> to edit.');
+  manifest.$ = manifest.$ ?? {};
+  manifest.$['xmlns:tools'] = manifest.$['xmlns:tools'] ?? 'http://schemas.android.com/tools';
+  const permissions = (manifest['uses-permission'] ?? []).filter(
+    (entry) => entry.$?.['android:name'] !== name,
+  );
+  permissions.push({
+    $: {
+      'android:name': name,
+      'android:maxSdkVersion': String(maxSdkVersion),
+      'tools:replace': 'android:maxSdkVersion',
+    },
+  });
+  manifest['uses-permission'] = permissions;
+  return androidManifest;
+}
+
 module.exports = {
   addHealthPermissionDelegate,
+  limitPermission,
   addHeartRatePackage,
   addUploadSigning,
   addWearableDependency,

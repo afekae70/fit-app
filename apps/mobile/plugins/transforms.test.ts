@@ -14,6 +14,14 @@ import { createRequire } from 'node:module';
 
 import { describe, expect, it } from 'vitest';
 
+/** The shape `withAndroidManifest` hands a plugin: xml2js, attributes under `$`. */
+interface ParsedManifest {
+  manifest: {
+    $?: Record<string, string>;
+    'uses-permission'?: { $: Record<string, string> }[];
+  };
+}
+
 // The plugins are CommonJS, because Expo loads them with `require`.
 const require = createRequire(import.meta.url);
 const {
@@ -21,9 +29,11 @@ const {
   addHeartRatePackage,
   addUploadSigning,
   addWearableDependency,
+  limitPermission,
   readResourceEntries,
 } = require('./transforms.js') as {
   addHealthPermissionDelegate: (source: string) => string;
+  limitPermission: (manifest: ParsedManifest, name: string, maxSdk: number) => ParsedManifest;
   addHeartRatePackage: (source: string) => string;
   addUploadSigning: (source: string) => string;
   addWearableDependency: (source: string) => string;
@@ -289,5 +299,47 @@ describe('readResourceEntries', () => {
 
   it('finds nothing in a file with none', () => {
     expect(readResourceEntries('<resources/>', 'color')).toEqual([]);
+  });
+});
+
+describe('limitPermission', () => {
+  const WRITE = 'android.permission.WRITE_EXTERNAL_STORAGE';
+  const parsed = (): ParsedManifest => ({
+    manifest: {
+      $: { 'xmlns:android': 'http://schemas.android.com/apk/res/android' },
+      'uses-permission': [
+        { $: { 'android:name': 'android.permission.CAMERA' } },
+        { $: { 'android:name': WRITE } },
+      ],
+    },
+  });
+  const entries = (manifest: ParsedManifest) =>
+    (manifest.manifest['uses-permission'] ?? []).filter((e) => e.$['android:name'] === WRITE);
+
+  it('declares the permission up to the given version, and makes the merger keep that bound', () => {
+    const [entry] = entries(limitPermission(parsed(), WRITE, 28));
+    expect(entry?.$).toEqual({
+      'android:name': WRITE,
+      'android:maxSdkVersion': '28',
+      'tools:replace': 'android:maxSdkVersion',
+    });
+  });
+
+  it('declares the tools namespace that tools:replace needs', () => {
+    expect(limitPermission(parsed(), WRITE, 28).manifest.$?.['xmlns:tools']).toBe(
+      'http://schemas.android.com/tools',
+    );
+  });
+
+  it('leaves the other permissions alone, and does it once however many times it runs', () => {
+    const twice = limitPermission(limitPermission(parsed(), WRITE, 28), WRITE, 28);
+    expect(entries(twice)).toHaveLength(1);
+    expect(twice.manifest['uses-permission']?.[0]?.$['android:name']).toBe(
+      'android.permission.CAMERA',
+    );
+  });
+
+  it('refuses a manifest with nothing in it', () => {
+    expect(() => limitPermission({} as ParsedManifest, WRITE, 28)).toThrow();
   });
 });
