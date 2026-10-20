@@ -24,7 +24,7 @@
     "android": {
       "//blockedPermissions": "expo-audio's library manifest declares the microphone permission for recording, which this app never does. Blocked so a beep does not add a microphone entry to the app's permissions. The camera is NOT blocked: it used to be, when the only picture was a profile picture from the gallery, and is now what the meal scan (app/food-scan.tsx) photographs a plate with. It is asked for when that button is pressed and nowhere else.",
       "//blockedPermissions2": "And three more, for Google Play, which reads a manifest literally. FOREGROUND_SERVICE and FOREGROUND_SERVICE_MEDIA_PLAYBACK come from expo-audio, which can run lock-screen controls as a foreground service; this app plays a beep and never starts one, and Play wants every declared foreground-service type justified with a video of the feature. The services themselves are removed by plugins/withStoreManifest. SYSTEM_ALERT_WINDOW is in Expo's template manifest for the developer menu's overlay; a release build has no developer menu, and 'display over other apps' is not something to ask a stranger's phone for.",
-      "//blockedPermissions3": "And two that expo-screen-capture declares for telling an app a screenshot was taken, which this app does not ask: READ_MEDIA_IMAGES (to look at the screenshot) and DETECT_SCREEN_CAPTURE. What it is here for - blocking screenshots of the progress photos (src/progressPhotos/PhotoLock.tsx) - sets a flag on the window and needs no permission at all. A photo-library permission would be the opposite of the point, and Google Play asks every app that declares one to justify it.",
+      "//blockedPermissions3": "And READ_MEDIA_IMAGES, which expo-screen-capture declares for telling an app a screenshot was taken (on Android 13 and older it watches the photo library); this app never asks. DETECT_SCREEN_CAPTURE must NOT be blocked: on Android 14 and newer the library registers its screenshot callback the moment it loads, whether or not anything listens, and without that permission the app crashes on every launch - it did, on 2026-10-20, until the block was taken out. It is a normal permission, granted at install with no prompt. What the library is here for - blocking screenshots of the progress photos (src/progressPhotos/PhotoLock.tsx) - is a flag on the window and needs nothing else.",
       "//blockedPermissions4": "READ_EXTERNAL_STORAGE, which expo-image-picker and expo-file-system declare and nothing here uses: every file the app keeps is in its own folder and the gallery is reached through the system picker. Its partner WRITE_EXTERNAL_STORAGE is limited to Android 9 and older by plugins/withStoragePermissions, because the camera needs it there.",
       "blockedPermissions": [
         "android.permission.RECORD_AUDIO",
@@ -32,7 +32,6 @@
         "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
         "android.permission.SYSTEM_ALERT_WINDOW",
         "android.permission.READ_MEDIA_IMAGES",
-        "android.permission.DETECT_SCREEN_CAPTURE",
         "android.permission.READ_EXTERNAL_STORAGE"
       ],
       "package": "com.afeka.fitapp",

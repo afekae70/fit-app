@@ -8,8 +8,11 @@
  *    ones applied, or start including files, these fail.
  *  - **In the app's own folder**, which no other app can read.
  *  - **Behind a fingerprint**, by the rules in `lockRules.ts`.
- *  - **Unasked-for permissions blocked.** The screenshot blocker's library declares photo-library
- *    access and screenshot detection, for features this app does not use.
+ *  - **Unasked-for permissions blocked** — but not the one the screenshot blocker cannot start
+ *    without. Blocking DETECT_SCREEN_CAPTURE crashed the app on every launch on 2026-10-20: on
+ *    Android 14 and newer, expo-screen-capture registers its screenshot callback as soon as it
+ *    loads (`OnCreate` in its ScreenCaptureModule.kt), and that call needs the permission. I had
+ *    assumed it was only for screenshot listeners; the test written on that assumption passed.
  */
 
 import { readFileSync } from 'node:fs';
@@ -71,12 +74,26 @@ describe('progress photos and Android backup', () => {
     expect(files).toContain("new Directory(Paths.document, 'progress-photos', userId)");
   });
 
-  it('blocks the permissions the screenshot blocker brings and does not need', () => {
-    expect(appJson.expo.android.blockedPermissions).toEqual(
-      expect.arrayContaining([
-        'android.permission.READ_MEDIA_IMAGES',
-        'android.permission.DETECT_SCREEN_CAPTURE',
-      ]),
+  it('blocks the photo-library permission the screenshot blocker brings and does not need', () => {
+    expect(appJson.expo.android.blockedPermissions).toContain(
+      'android.permission.READ_MEDIA_IMAGES',
+    );
+  });
+
+  it('never blocks the permission the screenshot blocker needs to start at all', () => {
+    // Read from the library itself: while it registers its callback on load, the permission
+    // has to be there, or Android ends the app before anything is drawn.
+    const module = readFileSync(
+      join(
+        mobile,
+        '../../node_modules/expo-screen-capture/android/src/main/java/expo/modules/screencapture/ScreenCaptureModule.kt',
+      ),
+      'utf8',
+    );
+    const registersOnLoad = /OnCreate \{[\s\S]*?registerCallback\(\)/.test(module);
+    expect(registersOnLoad).toBe(true);
+    expect(appJson.expo.android.blockedPermissions).not.toContain(
+      'android.permission.DETECT_SCREEN_CAPTURE',
     );
   });
 });
