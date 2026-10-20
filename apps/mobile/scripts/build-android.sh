@@ -78,7 +78,10 @@ case "${1:-apk}" in
     fi
     ./gradlew :app:assembleRelease
     version="$(node -p "require('../app.json').expo.version")"
-    out="${NOVAFIT_SHARE_DIR:-$HOME/Desktop}/NovaFit-${version}-$(date +%Y%m%d).apk"
+    # The desktop Windows actually shows, asked of Windows: with OneDrive backing up the desktop
+    # it is not $HOME/Desktop, and a file put there is in a folder nobody sees (2026-10-20).
+    desktop="$(powershell.exe -NoProfile -Command "[Console]::OutputEncoding=[Text.Encoding]::UTF8; [Environment]::GetFolderPath('Desktop')" | tr -d '\r')"
+    out="${NOVAFIT_SHARE_DIR:-$(cygpath -u "$desktop")}/NovaFit-${version}-$(date +%Y%m%d).apk"
     cp app/build/outputs/apk/release/app-release.apk "$out"
     echo "Shareable APK: $out"
     ;;
