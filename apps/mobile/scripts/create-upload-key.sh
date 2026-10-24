@@ -31,6 +31,8 @@
 
 set -euo pipefail
 
+# The folder, file and alias keep the app's first name (it is JustFit now): the upload key was
+# made under them, Google Play knows the app by that key, and nothing user-facing shows them.
 dir="$HOME/.novafit"
 keystore="$dir/novafit-upload.keystore"
 properties="$dir/upload-key.properties"

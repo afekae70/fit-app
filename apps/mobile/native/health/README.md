@@ -102,6 +102,6 @@ moment the switch is turned on. This was shipped once without it, and that is ex
 ## Samsung Health does not read it automatically
 
 Health Connect is the store; Samsung Health is another app that reads it, and only once the user
-allows NovaFit's data through: Samsung Health → Settings → Health Connect → allow. Until then the
+allows JustFit's data through: Samsung Health → Settings → Health Connect → allow. Until then the
 workouts are in Health Connect (visible in its own "Browse data" screen) and nowhere else, which
 looks exactly like a failed write but is not one.

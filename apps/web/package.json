@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "NovaFit for coaches: a web dashboard over the same Supabase project the app syncs to",
+  "description": "JustFit for coaches: a web dashboard over the same Supabase project the app syncs to",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

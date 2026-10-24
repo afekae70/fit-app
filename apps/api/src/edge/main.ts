@@ -15,7 +15,7 @@
  *
  * ## What is deployed
  *
- * Not this file: `edge/novafit-ai.js`, the bundle `scripts/build-edge.mjs` makes from it,
+ * Not this file: `edge/justfit-ai.js`, the bundle `scripts/build-edge.mjs` makes from it,
  * with everything it imports folded into one file. This and its neighbours use only what
  * every modern runtime has, so the same code is typechecked and tested here under Node.
  *

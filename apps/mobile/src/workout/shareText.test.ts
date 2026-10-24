@@ -11,7 +11,7 @@ const labels: ShareLabels = {
   minutes: (count) => `${count} min`,
   sets: (count) => (count === 1 ? '1 set' : `${count} sets`),
   more: (count) => `and ${count} more`,
-  footer: 'Logged with NovaFit',
+  footer: 'Logged with JustFit',
 };
 
 const legs: ShareInput = {
@@ -38,7 +38,7 @@ describe('a workout as text', () => {
         '• Romanian Deadlift — 80 kg × 10',
         '• Plank — 3 sets',
         '',
-        'Logged with NovaFit',
+        'Logged with JustFit',
       ].join('\n'),
     );
   });
@@ -75,7 +75,7 @@ describe('a workout as text', () => {
   it('is tidy for a workout with no exercises at all', () => {
     const text = workoutShareText({ ...legs, sets: 0, volume: null, exercises: [] }, labels);
     expect(text).toBe(
-      ['💪 Legs', 'Thursday, 8 October · 52 min', '', 'Logged with NovaFit'].join('\n'),
+      ['💪 Legs', 'Thursday, 8 October · 52 min', '', 'Logged with JustFit'].join('\n'),
     );
     expect(text).not.toMatch(/\n\n\n/);
   });
@@ -94,7 +94,7 @@ describe('a workout as text', () => {
         minutes: (count) => `${count} דק׳`,
         sets: (count) => `${count} סטים`,
         more: (count) => `ועוד ${count}`,
-        footer: 'נרשם ב-NovaFit',
+        footer: 'נרשם ב-JustFit',
       },
     );
     expect(text.split('\n')).toEqual([
@@ -103,7 +103,7 @@ describe('a workout as text', () => {
       '',
       '• סקוואט — 100 ק"ג × 8',
       '',
-      'נרשם ב-NovaFit',
+      'נרשם ב-JustFit',
     ]);
   });
 });

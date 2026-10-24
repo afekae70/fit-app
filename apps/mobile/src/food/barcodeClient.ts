@@ -28,7 +28,7 @@ const TIMEOUT_MS = 12_000;
  * Who is asking, which the database asks every client to say. The app and where its source
  * is — nothing about the person or the phone.
  */
-const USER_AGENT = `NovaFit/${Constants.expoConfig?.version ?? '0'} (https://github.com/afekae70/fit-app)`;
+const USER_AGENT = `JustFit/${Constants.expoConfig?.version ?? '0'} (https://github.com/afekae70/fit-app)`;
 
 /** Look a barcode up. Never throws: every way it can go wrong is a reason. */
 export async function lookUpBarcode(raw: string): Promise<BarcodeOutcome> {

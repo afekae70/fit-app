@@ -197,7 +197,7 @@ that passes the request to Google's Gemini on its free tier, so they cost nothin
 Fastify service in `apps/api` can still serve the coach, but it is switched off and the app
 does not ask it (`apiBaseUrl` in `app.json` is empty).
 
-**What is deployed** is `apps/api/edge/novafit-ai.js` — a single generated file. Its sources
+**What is deployed** is `apps/api/edge/justfit-ai.js` — a single generated file. Its sources
 are `apps/api/src/edge/`; after changing them:
 
 ```bash
@@ -207,7 +207,7 @@ npm run build:edge -w @fit/api
 and commit the result. A test fails if the committed file is not what the sources produce.
 
 **Deploying it** is done by hand, in the Supabase dashboard: Edge Functions → the function →
-Code → replace everything with the contents of `novafit-ai.js` → Deploy. The function is listed
+Code → replace everything with the contents of `justfit-ai.js` → Deploy. The function is listed
 as `scan-food` and served at `…/functions/v1/smooth-processor`; that last part is `aiFunction`
 in `app.json`.
 

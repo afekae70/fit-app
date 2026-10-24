@@ -10,7 +10,7 @@ Every claim here is true of version 1.0.0. If a feature changes, change this tex
 
 ### title
 
-NovaFit – אימונים ותזונה
+JustFit: להתמיד בקלות
 
 ### short
 
@@ -18,7 +18,7 @@ NovaFit – אימונים ותזונה
 
 ### full
 
-NovaFit הוא יומן אימונים ותזונה בעברית, שנבנה כדי שיהיה קל להתמיד.
+JustFit הוא יומן אימונים ותזונה בעברית, שנבנה כדי שיהיה קל להתמיד.
 
 אימונים
 • רישום סטים, משקלים וחזרות תוך כדי האימון, עם טיימר מנוחה ושיאים אישיים
@@ -53,7 +53,7 @@ NovaFit הוא יומן אימונים ותזונה בעברית, שנבנה כ�
 
 ### title
 
-NovaFit – Workouts & Nutrition
+JustFit:For easier persistence
 
 ### short
 
@@ -61,7 +61,7 @@ Workout log, food and water tracking, an AI coach and progress — with no ads.
 
 ### full
 
-NovaFit is a workout and nutrition log, built to make it easy to keep going. Hebrew first, with English throughout.
+JustFit is a workout and nutrition log, built to make it easy to keep going. Hebrew first, with English throughout.
 
 Workouts
 • Log sets, weights and reps as you train, with a rest timer and personal records
@@ -96,8 +96,8 @@ Privacy
 
 ### he-IL
 
-הגרסה הראשונה של NovaFit ב-Google Play.
+הגרסה הראשונה של JustFit ב-Google Play.
 
 ### en-US
 
-The first release of NovaFit on Google Play.
+The first release of JustFit on Google Play.

@@ -4,7 +4,7 @@
   UI with no i18next behind it, on the watch of the person it was built for.
 -->
 <resources>
-    <string name="app_name">NovaFit</string>
+    <string name="app_name">JustFit</string>
     <string name="channel_name">מדידת דופק</string>
     <string name="measuring">מודד דופק לאימון</string>
     <string name="waiting">ממתין לחיישן…</string>

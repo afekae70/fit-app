@@ -251,6 +251,8 @@ export function buildHealthRecords(
   // lives in the native package, which this module stays clear of.
   const recordingMethod = 1;
   const metadata = (suffix: string) => ({
+    // The app's first name, kept on purpose since it became JustFit: Health Connect matches a
+    // record by this id, and a new prefix would store every workout already sent a second time.
     clientRecordId: `novafit-session-${session.id}${suffix}`,
     clientRecordVersion,
     recordingMethod,

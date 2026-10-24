@@ -110,7 +110,7 @@ function addWearableDependency(gradle) {
   const indent = anchor[1];
   const added = [
     anchor[0],
-    `${indent}// The channel to the NovaFit app on the watch. Added by plugins/withHeartRateBridge.`,
+    `${indent}// The channel to the JustFit app on the watch. Added by plugins/withHeartRateBridge.`,
     `${indent}implementation("${WEARABLE_DEPENDENCY}:${WEARABLE_VERSION}")`,
   ].join('\n');
 

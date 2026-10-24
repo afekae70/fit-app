@@ -45,7 +45,7 @@ const extra = (JSON.parse(readFileSync(path.join(here, '../mobile/app.json'), 'u
  */
 function securityHeaders(supabaseUrl: string): Plugin {
   return {
-    name: 'novafit-security-meta',
+    name: 'justfit-security-meta',
     apply: 'build',
     // Straight after the charset, which has to stay first, and ahead of every script.
     transformIndexHtml: (html) => {

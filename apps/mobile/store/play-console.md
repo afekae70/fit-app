@@ -1,6 +1,6 @@
 # Google Play Console — what to answer, form by form
 
-For NovaFit 1.0.0 (`com.afeka.fitapp`, version code 2). Every answer is checked against the code
+For JustFit 1.0.0 (`com.afeka.fitapp`, version code 2). Every answer is checked against the code
 and the privacy policy as of that version; if the app changes what it collects or sends, this
 file and the Data safety form change with it. Play Console is the account owner's — these are
 answers to paste or choose, not steps anyone else can take.
@@ -13,7 +13,7 @@ answers to paste or choose, not steps anyone else can take.
 - **App signing:** choose *Use Google-generated key* (Play App Signing). Upload the bundle signed
   with the upload key on this machine (`~/.novafit/`). People who installed the shared APK will
   need to uninstall it once to move to the Play version.
-- **Create app:** name `NovaFit`, default language Hebrew (he-IL), App (not game), Free.
+- **Create app:** name `JustFit`, default language Hebrew (he-IL), App (not game), Free.
 
 ## Main store listing
 
@@ -82,7 +82,7 @@ party (Google, through the Gemini API behind the AI coach and meal scan). A trai
 by the coach they connected to is not "sharing" in Play's sense: it is the user's own action,
 done on purpose. No data is used for advertising or analytics, and none is sold.
 
-| Play data type | What it is in NovaFit | Collected | Shared (Google Gemini) | Required? | Purpose |
+| Play data type | What it is in JustFit | Collected | Shared (Google Gemini) | Required? | Purpose |
 |---|---|---|---|---|---|
 | Personal info → Name | Display name | Yes | No | Optional | App functionality |
 | Personal info → Email address | Sign-in email | Yes | No | Required | Account management, App functionality |

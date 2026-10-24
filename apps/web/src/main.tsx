@@ -28,7 +28,7 @@ if (root && framed) {
   link.href = window.location.href;
   link.target = '_top';
   link.rel = 'noopener';
-  link.textContent = 'NovaFit למאמנים נפתח רק בחלון משלו — לחץ כאן';
+  link.textContent = 'JustFit למאמנים נפתח רק בחלון משלו — לחץ כאן';
   root.replaceChildren(link);
 } else if (root) {
   createRoot(root).render(

@@ -24,6 +24,7 @@ export function getSupabase(): SupabaseClient | null {
       detectSessionInUrl: false,
       // Its own key, so a coach who is also signed in to anything else on this origin is not
       // signed in or out of it by this page.
+      // The app's first name, kept: renaming the key would sign every coach out.
       storageKey: 'novafit-coach-session',
     },
   });

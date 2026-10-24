@@ -7,7 +7,7 @@
  */
 
 export const he = {
-  appName: 'NovaFit',
+  appName: 'JustFit',
   appSub: 'למאמנים',
 
   signIn: {

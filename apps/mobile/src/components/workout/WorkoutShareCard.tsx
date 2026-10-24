@@ -51,7 +51,7 @@ export function WorkoutShareCard({
 
       <View style={s.top}>
         <View style={s.brandRow}>
-          <Text style={s.brand}>NOVAFIT</Text>
+          <Text style={s.brand}>JUSTFIT</Text>
           <Text style={s.when} numberOfLines={1}>
             {model.when}
           </Text>

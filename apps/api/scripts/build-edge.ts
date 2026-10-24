@@ -1,5 +1,5 @@
 /**
- * Makes the one file that is deployed as the Supabase function: `edge/novafit-ai.js`.
+ * Makes the one file that is deployed as the Supabase function: `edge/justfit-ai.js`.
  *
  *   npm run build:edge -w @fit/api
  *
@@ -32,7 +32,7 @@ import { build } from 'esbuild';
 const API_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 /** Where the bundle is kept, relative to the API workspace. */
-export const EDGE_BUNDLE = 'edge/novafit-ai.js';
+export const EDGE_BUNDLE = 'edge/justfit-ai.js';
 
 const BANNER = `// @ts-nocheck
 /*

@@ -12,7 +12,7 @@ import com.google.android.gms.wearable.Wearable
 /**
  * The phone's end of the heart-rate bridge.
  *
- * The NovaFit app on the watch reads the sensor and sends each reading over the Wearable Data
+ * The JustFit app on the watch reads the sensor and sends each reading over the Wearable Data
  * Layer; this hears them and hands them to JavaScript as `novafit-heart-rate` events. It also
  * carries the two messages that go the other way: start measuring, stop measuring.
  *
@@ -113,6 +113,8 @@ class HeartRateModule(private val reactContext: ReactApplicationContext) :
     }
 
     companion object {
+        // These keep the app's first name (it is JustFit now): they are the protocol with the
+        // watch app, and must match HeartRateService on the watch exactly.
         const val NAME = "NovaFitHeartRate"
 
         /** The JavaScript event. Changing it means changing liveHeartRate.ts too. */

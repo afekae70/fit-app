@@ -13,6 +13,7 @@ import { darkColors, lightColors, type ColorPalette } from '@fit/shared/design';
 
 export type ThemeChoice = 'system' | 'light' | 'dark';
 
+// The app's first name, kept: a new key would forget every coach's chosen theme.
 const STORAGE_KEY = 'novafit-coach-theme';
 
 /** `surfaceRaised` → `--surface-raised`. */

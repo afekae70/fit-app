@@ -1,7 +1,7 @@
 /**
  * The live heart rate, as the workout screen receives it.
  *
- * The readings come from the NovaFit app on the watch. Samsung Health does not stream to other
+ * The readings come from the JustFit app on the watch. Samsung Health does not stream to other
  * apps, and Health Connect is a store of past records, not a feed — so the only way to a number
  * that changes while you are mid-set is a small app on the wrist that reads the sensor and sends
  * each reading across to the phone. That app is in native/wear; the phone's half of the bridge is
@@ -21,6 +21,9 @@ import { DeviceEventEmitter, NativeModules, Platform } from 'react-native';
 import { isFresh, isPlausibleBpm, type HeartRateSample } from './heartRate.js';
 
 /** The event the native module emits. Changing it means changing the Kotlin too. */
+// This name, the module's and the watch paths keep the app's first name (it is JustFit now):
+// they are the protocol between the phone and the watch app already installed, and both sides
+// have to change together or not at all.
 const EVENT = 'novafit-heart-rate';
 
 interface NativeHeartRate {

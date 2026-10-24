@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "NovaFit",
+    "name": "JustFit",
     "slug": "fit-app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -89,7 +89,7 @@
         "expo-secure-store",
         {
           "//": "The sentence iOS shows the first time the entry lock (auth/appLock.ts) asks for Face ID. Without one the system ends the app instead of asking.",
-          "faceIDPermission": "Unlock NovaFit with Face ID instead of typing your password."
+          "faceIDPermission": "Unlock JustFit with Face ID instead of typing your password."
         }
       ],
       [

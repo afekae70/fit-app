@@ -72,7 +72,7 @@ on the same Wi-Fi:
    **not** the pairing port.
 5. `adb -s <address>:<port> install -r wear-release.apk`
 
-Open NovaFit on the watch once and allow the sensor. After that the phone drives it.
+Open JustFit on the watch once and allow the sensor. After that the phone drives it.
 
 ## Decisions worth knowing before changing anything
 
