@@ -29,6 +29,7 @@ import { useTheme } from '../ThemeProvider.js';
 import { fontSize, lineHeight, spacing, type ColorPalette } from '../theme.js';
 import { Text } from './Text.js';
 import { Banner, Button, Card, Hint, SectionTitle } from './ui.js';
+import { ReportAiButton } from './ReportAiButton.js';
 
 export function WeeklyReviewCard({ index }: { index?: number }) {
   const { t, i18n } = useTranslation();
@@ -100,6 +101,7 @@ export function WeeklyReviewCard({ index }: { index?: number }) {
       {review ? (
         <View style={styles.body}>
           <Text style={styles.text}>{review.text}</Text>
+          <ReportAiButton kind="weekly_review" text={review.text} />
           <Hint>{t('coach.weekly.writtenOn', { date: day(review.writtenOn) })}</Hint>
         </View>
       ) : null}

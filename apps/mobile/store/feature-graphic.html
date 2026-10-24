@@ -1,0 +1,89 @@
+<!doctype html>
+<!--
+  Google Play's feature graphic: 1024 × 500, shown at the top of the store page and cropped on
+  some screens, so nothing that matters sits near the edges. Rendered to PNG by render.sh.
+  The app's own palette (packages/shared/src/design/palette.ts) and font.
+-->
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      @font-face {
+        font-family: Rubik;
+        font-weight: 500;
+        src: url('../assets/fonts/Rubik-Medium.ttf');
+      }
+      @font-face {
+        font-family: Rubik;
+        font-weight: 800;
+        src: url('../assets/fonts/Rubik-ExtraBold.ttf');
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1024px;
+        height: 500px;
+        overflow: hidden;
+      }
+      body {
+        font-family: Rubik, sans-serif;
+        background:
+          radial-gradient(circle at 18% 30%, #f4ddf1 0, transparent 46%),
+          radial-gradient(circle at 85% 80%, #e6dffa 0, transparent 50%),
+          linear-gradient(135deg, #efebfa 0%, #f6f3fe 55%, #ede7fb 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 56px;
+        color: #241c3d;
+      }
+      .logo {
+        width: 330px;
+        height: 330px;
+        border-radius: 72px;
+        background: #ffffff;
+        box-shadow: 0 24px 60px rgba(42, 27, 87, 0.16);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+      }
+      .logo img {
+        width: 320px;
+        height: 320px;
+      }
+      .words {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        max-width: 470px;
+      }
+      .name {
+        font-weight: 800;
+        font-size: 84px;
+        letter-spacing: -1px;
+        color: #5b3fb0;
+        direction: ltr;
+        text-align: right;
+      }
+      .tagline {
+        font-weight: 800;
+        font-size: 38px;
+        line-height: 1.2;
+      }
+      .sub {
+        font-weight: 500;
+        font-size: 24px;
+        color: #473a6b;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="logo"><img src="../assets/icon.png" alt="" /></div>
+    <div class="words">
+      <div class="name">NovaFit</div>
+      <div class="tagline">אימונים, תזונה ומים — הכול במקום אחד</div>
+      <div class="sub">יומן אימונים · מאמן AI · מעקב התקדמות</div>
+    </div>
+  </body>
+</html>

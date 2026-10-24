@@ -46,6 +46,7 @@ import { useTheme } from '../src/ThemeProvider.js';
 import { fontSize, fontWeight, radius, shadow, spacing, type ColorPalette } from '../src/theme.js';
 import { Brain, ChartLineUp, LockKey, Plug } from 'phosphor-react-native';
 import { IconText } from '../src/components/Glyph.js';
+import { ReportAiButton } from '../src/components/ReportAiButton.js';
 
 /** Placeholder shown from send() until the first token, tool call, or error arrives. */
 interface PendingBubble {
@@ -389,6 +390,10 @@ export default function CoachChatScreen() {
                 <Text style={styles.bubbleText}>{bubble.text}</Text>
                 {bubble.interrupted ? (
                   <Text style={styles.interruptedNote}>{t('coach.cutShort')}</Text>
+                ) : null}
+                {/* Every answer the model wrote can be flagged from where it is read. */}
+                {bubble.role !== 'user' && bubble.text.trim() !== '' ? (
+                  <ReportAiButton kind="coach_reply" text={bubble.text} />
                 ) : null}
               </View>
             );

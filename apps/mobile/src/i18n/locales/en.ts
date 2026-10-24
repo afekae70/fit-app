@@ -871,6 +871,22 @@ export const en = {
       not_saved: 'Could not save the photo. Try again.',
     },
   },
+  aiReport: {
+    button: 'Report the coach’s answer',
+    short: 'Report',
+    title: 'Report this answer',
+    message:
+      'What is wrong with this answer? The report is sent to us with the text of the answer only, so we can look at it and improve the coach.',
+    reason_offensive: 'Offensive or inappropriate',
+    reason_harmful: 'Could harm someone’s health',
+    reason_wrong: 'Not correct',
+    reason_other: 'Something else',
+    thanksTitle: 'Thank you',
+    outcome_sent: 'The report was sent. We will look at the answer.',
+    outcome_sign_in_required: 'You need to be signed in to send a report.',
+    outcome_too_many: 'You have sent many reports today. You can try again tomorrow.',
+    outcome_failed: 'The report could not be sent. Check your connection and try again.',
+  },
   syncTrouble: {
     failed:
       'Syncing with the cloud did not work. Your data is safe on this phone, and the app will try again the next time it is opened.',

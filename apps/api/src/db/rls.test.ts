@@ -568,3 +568,39 @@ describe('functions that act on a trainee', () => {
     });
   });
 });
+
+describe('reports of the AI coach’s answers', () => {
+  const body =
+    /CREATE TABLE IF NOT EXISTS public\.ai_reports \(([\s\S]*?)\n\);/.exec(sql)?.[1] ?? '';
+  const policies = [...sql.matchAll(/CREATE POLICY (\w+) ON public\.ai_reports\s+FOR (\w+)/g)];
+
+  it('is a table with row level security', () => {
+    expect(body).not.toBe('');
+    expect(sql).toMatch(/ALTER TABLE public\.ai_reports ENABLE ROW LEVEL SECURITY;/);
+  });
+
+  it('lets a client add a report and do nothing else with any report, its own included', () => {
+    expect(policies.map((policy) => policy[2])).toEqual(['INSERT']);
+    expect(sql).toMatch(/WITH CHECK \(\(SELECT auth\.uid\(\)\) = user_id\)/);
+    for (const role of ['PUBLIC', 'anon', 'authenticated']) {
+      expect(sql).toMatch(new RegExp(String.raw`REVOKE ALL ON public\.ai_reports FROM ${role};`));
+    }
+  });
+
+  it('never lets a client say whose report it is: the account is filled in by the server', () => {
+    const grant = /GRANT INSERT \(([^)]+)\) ON public\.ai_reports TO authenticated;/.exec(sql)?.[1];
+    expect(grant?.split(',').map((column) => column.trim())).toEqual(['kind', 'reason', 'content']);
+    expect(body).toMatch(/user_id\s+uuid NOT NULL DEFAULT auth\.uid\(\)/);
+    expect(sql).not.toMatch(/GRANT\s+(ALL|SELECT|UPDATE|DELETE)[^;]*ON\s+public\.ai_reports/i);
+  });
+
+  it('keeps what can be sent to the kinds, reasons and length the app sends', () => {
+    expect(body).toContain(`kind IN ('coach_reply', 'weekly_review', 'daily_brief')`);
+    expect(body).toContain(`reason IN ('offensive', 'harmful', 'wrong', 'other')`);
+    expect(body).toContain('char_length(content) BETWEEN 1 AND 4000');
+  });
+
+  it('goes with the account when the account is deleted', () => {
+    expect(body).toMatch(/REFERENCES public\.profiles \(id\) ON DELETE CASCADE/);
+  });
+});

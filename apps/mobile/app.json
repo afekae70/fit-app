@@ -2,7 +2,7 @@
   "expo": {
     "name": "NovaFit",
     "slug": "fit-app",
-    "version": "0.1.0",
+    "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "//splash": "The lavender the logo sits on, so the native launch frame does not flash white before the app can draw its own entrance (see SplashOverlay).",
@@ -36,7 +36,7 @@
       ],
       "package": "com.afeka.fitapp",
       "//versionCode": "Google Play accepts each number once: every bundle uploaded has to carry one higher than any before it, whether or not that upload was ever released. Raise it for each upload. It is invisible to users - what they see is `version`, above.",
-      "versionCode": 1,
+      "versionCode": 2,
       "adaptiveIcon": {
         "backgroundColor": "#FBFBFC",
         "foregroundImage": "./assets/android-icon-foreground.png",

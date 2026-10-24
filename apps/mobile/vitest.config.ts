@@ -6,7 +6,7 @@ export default defineConfig({
     // Only the pure-logic layer is tested here. React Native components need a native
     // runtime and are verified by bundling + on-device use, not by vitest.
     // Plus the config plugins' string transforms, which are as pure as anything in src/.
-    include: ['src/**/*.test.ts', 'plugins/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'plugins/**/*.test.ts', 'store/**/*.test.ts'],
     server: {
       deps: {
         // Vite does not yet know `node:sqlite` (added in Node 22) and tries to resolve it as

@@ -60,6 +60,7 @@ import { useTheme } from '../src/ThemeProvider.js';
 import { fontSize, spacing, type ColorPalette } from '../src/theme.js';
 import { Brain, Fire } from 'phosphor-react-native';
 import { Glyph } from '../src/components/Glyph.js';
+import { ReportAiButton } from '../src/components/ReportAiButton.js';
 
 type SexChoice = 'male' | 'female';
 
@@ -296,6 +297,7 @@ export default function NutritionScreen() {
             <View style={styles.streakTextCol}>
               <Text style={styles.briefTitle}>{t('coach.dailyBriefTitle')}</Text>
               <Text style={styles.briefText}>{brief}</Text>
+              <ReportAiButton kind="daily_brief" text={brief} />
             </View>
           </View>
         </Card>
