@@ -56,12 +56,19 @@ No, the app does not contain ads.
 - Shares the user's location with others: **No**
 - Digital purchases: **No**
 - Generates content with AI: **Yes** — text answers from the AI coach; users can report any
-  answer in the app
+  answer in the app. The AI features are for 18 and over only (see Target audience).
 
 ### Target audience and content
 
-- Target age groups: **18 and over** only (the free Gemini API behind the AI coach is for adults;
-  the privacy policy and sign-up must say the same — see the open decision below)
+- Target age groups: **16–17** and **18 and over** (decided by the user, 2026-10-24).
+  - Sign-up's age ruler starts at 16, and the privacy policy says "16 and over".
+  - The free Gemini API behind the coach, the daily note, the weekly review and the meal scan
+    is for adults only. So those four are closed under 18: the server function reads the
+    caller's date of birth from their own profile row and refuses (403 `age_restricted`, or
+    `age_unknown` with no date) before anything is counted or sent to Google. The app hides the
+    same features, using the same rule (`aiAgeVerdict` in `packages/shared`).
+  - Nothing in the app is aimed at children, so the Families policy does not apply (it covers
+    audiences under 13).
 - Appeals to children: **No**
 
 ### News app
@@ -117,8 +124,3 @@ No / None / No.
 
 No — the app declares no advertising ID permission and uses none.
 
-## Open decision before submitting
-
-**Minimum age.** The privacy policy says the app is not intended for under 16; sign-up allows
-13; Google's free Gemini API is for users 18 and over. Recommended: 18 everywhere — the policy,
-the sign-up age ruler and the target audience above.

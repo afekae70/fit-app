@@ -48,6 +48,7 @@ import { COACH_PERSONA, hasUsableContext, renderContext } from '../ai/context.js
 import { REFUSAL_FINISH_REASONS, toGeminiSchema } from '../ai/gemini-schema.js';
 import {
   bearerToken,
+  ageVerdict,
   countAgainstLimit,
   googleErrorCode,
   jsonResponse,
@@ -74,6 +75,8 @@ export type CoachError =
   | 'daily_limit'
   | 'ai_busy'
   | 'not_set_up'
+  | 'age_restricted'
+  | 'age_unknown'
   | 'server_error';
 
 const STATUS: Record<CoachError, number> = {
@@ -84,6 +87,8 @@ const STATUS: Record<CoachError, number> = {
   daily_limit: 429,
   ai_busy: 503,
   not_set_up: 503,
+  age_restricted: 403,
+  age_unknown: 403,
   server_error: 500,
 };
 
@@ -99,6 +104,8 @@ const MESSAGE: Record<CoachError, string> = {
   daily_limit: 'You have reached the number of coach messages for today.',
   ai_busy: 'The coach is busy right now. Try again in a few minutes.',
   not_set_up: 'The coach has not been switched on in the server yet.',
+  age_restricted: 'The AI coach is for ages 18 and over.',
+  age_unknown: 'Add your date of birth to your profile to use the AI coach.',
   server_error: 'The coach is unavailable.',
 };
 
@@ -423,7 +430,14 @@ export async function handleCoach(request: Request, deps: EdgeDeps): Promise<Res
   const key = deps.env('GEMINI_API_KEY');
   if (!key) return refuse('not_set_up');
 
-  if ((await signedInUser(deps, token)) === null) return refuse('sign_in_required');
+  const userId = await signedInUser(deps, token);
+  if (userId === null) return refuse('sign_in_required');
+
+  // Google's Gemini API terms are for 18 and over (see AI_MIN_AGE). Before a turn is counted.
+  const age = await ageVerdict(deps, token, userId);
+  if (age === 'minor') return refuse('age_restricted');
+  if (age === 'unknown') return refuse('age_unknown');
+  if (age === 'server_error') return refuse('server_error');
 
   // A row in `coach_turns`, whose trigger refuses past the day's allowance (drizzle/0016).
   const counted = await countAgainstLimit(deps, token, 'coach_turns', 'coach_limit');

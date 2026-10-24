@@ -61,6 +61,7 @@ import { fontSize, spacing, type ColorPalette } from '../src/theme.js';
 import { Brain, Fire } from 'phosphor-react-native';
 import { Glyph } from '../src/components/Glyph.js';
 import { ReportAiButton } from '../src/components/ReportAiButton.js';
+import { useAiAge } from '../src/coach/useAiAge.js';
 
 type SexChoice = 'male' | 'female';
 
@@ -99,13 +100,15 @@ export default function NutritionScreen() {
   const [hydrated, setHydrated] = useState(false);
   const [streak, setStreak] = useState<WorkoutStreak | null>(null);
   const [brief, setBrief] = useState<string | null>(null);
+  const aiAge = useAiAge();
 
   // Once per mount, not on every focus: the brief is cached per calendar day (see
   // getDailyBrief), so refetching on every tab switch would only add repeat network calls on the
   // days it fails, never a fresher result on the days it succeeds.
   useEffect(() => {
     const accessToken = session?.access_token;
-    if (!accessToken || !API_BASE_URL) return;
+    // The brief is written by the AI, which is for 18 and over (AI_MIN_AGE).
+    if (!accessToken || !API_BASE_URL || aiAge !== 'adult') return;
     let cancelled = false;
     void (async () => {
       const db = await getExecutor();
@@ -122,7 +125,7 @@ export default function NutritionScreen() {
     return () => {
       cancelled = true;
     };
-  }, [userId, session?.access_token, isHebrew]);
+  }, [userId, session?.access_token, isHebrew, aiAge]);
 
   // useFocusEffect rather than useEffect: a workout gets finished on another tab, so coming back
   // to Today must show the fresh streak rather than whatever it was on first mount.
@@ -290,7 +293,7 @@ export default function NutritionScreen() {
         </Card>
       ) : null}
 
-      {brief ? (
+      {brief && aiAge === 'adult' ? (
         <Card index={1} tone="accent" style={styles.briefCard}>
           <View style={styles.briefRow}>
             <Glyph icon={Brain} style={styles.briefEmoji} weight="duotone" />

@@ -75,6 +75,8 @@ import {
   type ScanFailure,
 } from '../src/food/scanEstimate.js';
 import { hapticLight, hapticSuccess } from '../src/haptics.js';
+import { AiAgeNotice } from '../src/components/AiAgeNotice.js';
+import { useAiAge } from '../src/coach/useAiAge.js';
 import { useTheme } from '../src/ThemeProvider.js';
 import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../src/theme.js';
 
@@ -121,6 +123,8 @@ export default function FoodScanScreen() {
   const date = /^\d{4}-\d{2}-\d{2}$/.test(params.date ?? '') ? params.date! : localDate(new Date());
 
   const [stage, setStage] = useState<Stage>({ kind: 'ask' });
+  // The food screen offers no way here under 18 (AI_MIN_AGE); this is for any other way in.
+  const aiAge = useAiAge();
   const [lines, setLines] = useState<Line[]>([]);
   const [saving, setSaving] = useState(false);
   // A scan that is answered after the person has started another must not replace it.
@@ -213,7 +217,18 @@ export default function FoodScanScreen() {
       >
         <ScreenHeader title={t('foodScan.title')} />
 
-        {stage.kind === 'ask' ? (
+        {aiAge === 'minor' || aiAge === 'unknown' ? (
+          <>
+            <AiAgeNotice verdict={aiAge} />
+            <Button
+              label={t('foodScan.byHand')}
+              variant="ghost"
+              onPress={() => router.replace({ pathname: '/food-add', params: { date } })}
+            />
+          </>
+        ) : null}
+
+        {stage.kind === 'ask' && aiAge === 'adult' ? (
           <>
             <Card style={styles.invite}>
               <View style={styles.inviteIcon}>

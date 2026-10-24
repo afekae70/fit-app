@@ -24,6 +24,8 @@ import {
 const PHOTO = 'A'.repeat(400);
 
 interface World {
+  /** The caller's date of birth; null for none. Default: an adult. */
+  birthDate?: string | null;
   /** The auth server's answer for the token: a user id, or null for "not a session". */
   user?: string | null;
   /** What inserting the scan row returns. */
@@ -68,6 +70,10 @@ function world(setup: World = {}) {
     if (url.endsWith('/auth/v1/user')) {
       const user = setup.user === undefined ? 'user-1' : setup.user;
       return user === null ? answer(401, { msg: 'invalid' }) : answer(200, { id: user });
+    }
+    if (url.includes('/rest/v1/profiles?')) {
+      const birthDate = setup.birthDate === undefined ? '1990-05-01' : setup.birthDate;
+      return answer(200, [{ birth_date: birthDate }]);
     }
     if (url.endsWith('/rest/v1/food_scans')) {
       const count = setup.count ?? { status: 201 };
@@ -246,11 +252,13 @@ describe('the daily limit', () => {
     const order = calls.map((call) =>
       call.url.endsWith('/auth/v1/user')
         ? 'auth'
-        : call.url.endsWith('/rest/v1/food_scans')
-          ? 'count'
-          : 'model',
+        : call.url.includes('/rest/v1/profiles?')
+          ? 'age'
+          : call.url.endsWith('/rest/v1/food_scans')
+            ? 'count'
+            : 'model',
     );
-    expect(order).toEqual(['auth', 'count', 'model']);
+    expect(order).toEqual(['auth', 'age', 'count', 'model']);
 
     const count = calls.find((call) => call.url.endsWith('/rest/v1/food_scans'))!;
     expect(count.init?.method).toBe('POST');
@@ -535,5 +543,28 @@ describe('what the model says is not taken on trust', () => {
     expect(readEstimate(JSON.stringify({ is_food: true, confidence: 'high' }))).toBeNull();
     expect(readEstimate('null')).toBeNull();
     expect(readEstimate('')).toBeNull();
+  });
+});
+
+describe('the age the AI is for', () => {
+  it('refuses someone under 18 before the scan is counted or the model asked', async () => {
+    const { deps, calls } = world({ birthDate: '2011-02-01' });
+    const response = await handle(request(), deps);
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: 'age_restricted' });
+    expect(calls.some((call) => call.url.endsWith('/rest/v1/food_scans'))).toBe(false);
+    expect(calls.some((call) => call.url.includes('generativelanguage.googleapis.com'))).toBe(
+      false,
+    );
+  });
+
+  it('refuses an account with no date of birth', async () => {
+    const { deps } = world({ birthDate: null });
+    expect(await (await handle(request(), deps)).json()).toEqual({ error: 'age_unknown' });
+  });
+
+  it('scans for an adult as before', async () => {
+    const { deps } = world({ birthDate: '1999-12-31' });
+    expect((await handle(request(), deps)).status).toBe(200);
   });
 });

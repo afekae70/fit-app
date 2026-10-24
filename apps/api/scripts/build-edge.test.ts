@@ -40,14 +40,19 @@ const ENV: Record<string, string> = {
   GEMINI_API_KEY: 'gemini-key',
 };
 
-/** Auth says yes, the count says yes, and the first model answers. */
-function services(answer: (url: string) => Response) {
+/** Auth says yes, the caller is an adult, the count says yes, and the first model answers. */
+function services(answer: (url: string) => Response, birthDate: string | null = '1990-05-01') {
   const asked: string[] = [];
   const fake = ((input: Parameters<typeof fetch>[0]) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     asked.push(url);
     if (url.endsWith('/auth/v1/user')) {
       return Promise.resolve(new Response(JSON.stringify({ id: 'user-1' }), { status: 200 }));
+    }
+    if (url.includes('/rest/v1/profiles?')) {
+      return Promise.resolve(
+        new Response(JSON.stringify([{ birth_date: birthDate }]), { status: 200 }),
+      );
     }
     if (url.includes('/rest/v1/')) return Promise.resolve(new Response(null, { status: 201 }));
     return Promise.resolve(answer(url));
@@ -56,6 +61,38 @@ function services(answer: (url: string) => Response) {
 }
 
 const FUNCTION = 'https://project.supabase.co/functions/v1/smooth-processor';
+
+/** A question the coach accepts, so that what is tested is what comes after the body. */
+const COACH_BODY = {
+  context: {
+    locale: 'he',
+    profile: {
+      ageYears: 31,
+      sex: 'male',
+      heightCm: 178,
+      weightKg: 82,
+      activityLevel: 'moderate',
+      goal: 'cut',
+    },
+    targets: {
+      bmi: 25.9,
+      bmrKcal: 1790,
+      tdeeKcal: 2770,
+      calorieTarget: 2270,
+      proteinG: 164,
+      carbsG: 230,
+      fatG: 76,
+    },
+    weightTrend: { currentKg: 82, kgPerWeek: -0.4, isReliable: true, measurementCount: 12 },
+    exercises: [],
+    adherence: [],
+    availableEquipment: [],
+    planName: null,
+  },
+  messages: [{ role: 'user', content: 'שלום' }],
+};
+
+const MEAL_BODY = { image: 'A'.repeat(600), mimeType: 'image/jpeg' };
 
 const post = (url: string, body: unknown, token: string | null = 'user-token') =>
   new Request(url, {
@@ -100,37 +137,7 @@ describe('the bundle that is deployed', () => {
         }),
     );
 
-    const response = await route(
-      post(`${FUNCTION}/coach/chat`, {
-        context: {
-          locale: 'he',
-          profile: {
-            ageYears: 31,
-            sex: 'male',
-            heightCm: 178,
-            weightKg: 82,
-            activityLevel: 'moderate',
-            goal: 'cut',
-          },
-          targets: {
-            bmi: 25.9,
-            bmrKcal: 1790,
-            tdeeKcal: 2770,
-            calorieTarget: 2270,
-            proteinG: 164,
-            carbsG: 230,
-            fatG: 76,
-          },
-          weightTrend: { currentKg: 82, kgPerWeek: -0.4, isReliable: true, measurementCount: 12 },
-          exercises: [],
-          adherence: [],
-          availableEquipment: [],
-          planName: null,
-        },
-        messages: [{ role: 'user', content: 'שלום' }],
-      }),
-      deps,
-    );
+    const response = await route(post(`${FUNCTION}/coach/chat`, COACH_BODY), deps);
 
     expect(response.status).toBe(200);
     expect(await response.text()).toBe(
@@ -138,6 +145,7 @@ describe('the bundle that is deployed', () => {
     );
     expect(asked.map((url) => new URL(url).pathname)).toEqual([
       '/auth/v1/user',
+      '/rest/v1/profiles',
       '/rest/v1/coach_turns',
       expect.stringMatching(/^\/v1beta\/models\/[^:]+:streamGenerateContent$/),
     ]);
@@ -162,12 +170,10 @@ describe('the bundle that is deployed', () => {
         ),
     );
 
-    const response = await route(
-      post(FUNCTION, { image: 'A'.repeat(600), mimeType: 'image/jpeg' }),
-      deps,
-    );
+    const response = await route(post(FUNCTION, MEAL_BODY), deps);
     expect(asked.map((url) => new URL(url).pathname)).toEqual([
       '/auth/v1/user',
+      '/rest/v1/profiles',
       '/rest/v1/food_scans',
       expect.stringMatching(/^\/v1beta\/models\/[^:]+:generateContent$/),
     ]);
@@ -176,6 +182,25 @@ describe('the bundle that is deployed', () => {
       confidence: 'medium',
       items: [{ name: 'אורז לבן', grams: 180, calories: 234 }],
     });
+  });
+
+  it('turns away someone under 18 on both addresses, before any count or model', async () => {
+    const route = await bundled();
+    const { deps, asked } = services(() => new Response('{}', { status: 500 }), '2011-03-03');
+    for (const [url, body] of [
+      [FUNCTION, MEAL_BODY],
+      [`${FUNCTION}/coach/chat`, COACH_BODY],
+    ] as const) {
+      const response = await route(post(url, body), deps);
+      expect(response.status, url).toBe(403);
+      expect(((await response.json()) as { error: string }).error, url).toBe('age_restricted');
+    }
+    expect(asked.map((url) => new URL(url).pathname)).toEqual([
+      '/auth/v1/user',
+      '/rest/v1/profiles',
+      '/auth/v1/user',
+      '/rest/v1/profiles',
+    ]);
   });
 
   it('turns away a caller with no token on both addresses', async () => {

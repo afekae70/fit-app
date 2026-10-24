@@ -89,6 +89,8 @@ interface Scripted {
 
 interface World {
   user?: string | null;
+  /** The caller's date of birth on their profile; null for none. Default: an adult. */
+  birthDate?: string | null;
   count?: { status: number; body?: unknown };
   /** By `<model>:<method>`, or just `<model>` for both methods. Unlisted answer 404. */
   models?: Record<string, Scripted | 'throw'>;
@@ -113,6 +115,11 @@ function world(setup: World = {}) {
     if (url.endsWith('/auth/v1/user')) {
       const user = setup.user === undefined ? 'user-1' : setup.user;
       return user === null ? json(401, { msg: 'invalid' }) : json(200, { id: user });
+    }
+    if (url.includes('/rest/v1/profiles?')) {
+      // An adult unless the test says otherwise; null is a profile with no date of birth.
+      const birthDate = setup.birthDate === undefined ? '1990-05-01' : setup.birthDate;
+      return json(200, [{ birth_date: birthDate }]);
     }
     if (url.endsWith('/rest/v1/coach_turns')) {
       const count = setup.count ?? { status: 201 };
@@ -401,11 +408,13 @@ describe('the daily limit', () => {
     const order = calls.map((call) =>
       call.url.endsWith('/auth/v1/user')
         ? 'auth'
-        : call.url.endsWith('/rest/v1/coach_turns')
-          ? 'count'
-          : 'model',
+        : call.url.includes('/rest/v1/profiles?')
+          ? 'age'
+          : call.url.endsWith('/rest/v1/coach_turns')
+            ? 'count'
+            : 'model',
     );
-    expect(order).toEqual(['auth', 'count', 'model']);
+    expect(order).toEqual(['auth', 'age', 'count', 'model']);
 
     const count = calls.find((call) => call.url.endsWith('/rest/v1/coach_turns'))!;
     expect(new Headers(count.init?.headers).get('Authorization')).toBe('Bearer user-token');
@@ -821,5 +830,38 @@ describe('one function, two jobs', () => {
       deps,
     );
     expect(((await response.json()) as { message?: string }).message).toContain('coach');
+  });
+});
+
+describe('the age the AI is for', () => {
+  it('answers an adult', async () => {
+    const { deps } = world({ birthDate: '2000-01-01' });
+    expect((await handleCoach(request(), deps)).status).toBe(200);
+  });
+
+  it('refuses someone under 18, before a turn is counted or the model asked', async () => {
+    const { deps, calls } = world({ birthDate: '2010-06-15' });
+    const response = await handleCoach(request(), deps);
+    expect(response.status).toBe(403);
+    expect((await refusal(response)).error).toBe('age_restricted');
+    expect(calls.some((call) => call.url.endsWith('/rest/v1/coach_turns'))).toBe(false);
+    expect(modelCalls(calls)).toEqual([]);
+  });
+
+  it('refuses an account with no date of birth, since its age cannot be checked', async () => {
+    const { deps, calls } = world({ birthDate: null });
+    const response = await handleCoach(request(), deps);
+    expect(response.status).toBe(403);
+    expect((await refusal(response)).error).toBe('age_unknown');
+    expect(modelCalls(calls)).toEqual([]);
+  });
+
+  it('asks for the caller’s own row, with the caller’s own token', async () => {
+    const { deps, calls } = world();
+    await (await handleCoach(request(), deps)).text();
+    const age = calls.find((call) => call.url.includes('/rest/v1/profiles?'))!;
+    expect(age.url).toContain('select=birth_date');
+    expect(age.url).toContain('id=eq.user-1');
+    expect(new Headers(age.init?.headers).get('Authorization')).toBe('Bearer user-token');
   });
 });

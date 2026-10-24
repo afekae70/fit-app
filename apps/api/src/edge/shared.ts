@@ -8,6 +8,8 @@
  * same way, and that beginning is here once rather than twice.
  */
 
+import { aiAgeVerdict, type AiAgeVerdict } from '@fit/shared/calculations';
+
 /** Everything the function reaches outside itself for, so a test can stand in for all of it. */
 export interface EdgeDeps {
   fetch: typeof fetch;
@@ -34,6 +36,36 @@ export function modelsToTry(deps: EdgeDeps): string[] {
     .map((model) => model.trim())
     .filter((model) => /^[a-z0-9.-]+$/i.test(model));
   return named.length > 0 ? named : DEFAULT_MODELS;
+}
+
+/** What `aiAgeVerdict` says, or `server_error` when the row could not be read. */
+export type AgeVerdict = AiAgeVerdict | 'server_error';
+
+/**
+ * The caller's age, from their own profile row, read as the caller — row level security lets
+ * an account read its own row and no other, so this needs no key beyond theirs.
+ */
+export async function ageVerdict(
+  deps: EdgeDeps,
+  token: string,
+  userId: string,
+  today: Date = new Date(),
+): Promise<AgeVerdict> {
+  const base = deps.env('SUPABASE_URL');
+  const anon = deps.env('SUPABASE_ANON_KEY');
+  if (!base || !anon) return 'server_error';
+  try {
+    const response = await deps.fetch(
+      `${base}/rest/v1/profiles?select=birth_date&id=eq.${encodeURIComponent(userId)}`,
+      { headers: { Authorization: `Bearer ${token}`, apikey: anon, Accept: 'application/json' } },
+    );
+    if (!response.ok) return 'server_error';
+    const rows: unknown = await response.json();
+    if (!Array.isArray(rows) || rows.length === 0) return 'unknown';
+    return aiAgeVerdict((rows[0] as { birth_date?: unknown }).birth_date, today);
+  } catch {
+    return 'server_error';
+  }
 }
 
 /** The token a request carries, or undefined. */

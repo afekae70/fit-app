@@ -47,6 +47,8 @@ import { fontSize, fontWeight, radius, shadow, spacing, type ColorPalette } from
 import { Brain, ChartLineUp, LockKey, Plug } from 'phosphor-react-native';
 import { IconText } from '../src/components/Glyph.js';
 import { ReportAiButton } from '../src/components/ReportAiButton.js';
+import { AiAgeNotice } from '../src/components/AiAgeNotice.js';
+import { useAiAge } from '../src/coach/useAiAge.js';
 
 /** Placeholder shown from send() until the first token, tool call, or error arrives. */
 interface PendingBubble {
@@ -85,7 +87,9 @@ export default function CoachChatScreen() {
   const isHebrew = i18n.language === 'he';
   const { session, isConfigured } = useAuth();
   const userId = useCurrentUserId();
-  const canChat = API_BASE_URL !== null && isConfigured && session != null;
+  // 18 and over (AI_MIN_AGE); null while the profile is read, and nothing is offered until then.
+  const aiAge = useAiAge();
+  const canChat = API_BASE_URL !== null && isConfigured && session != null && aiAge === 'adult';
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -331,6 +335,8 @@ export default function CoachChatScreen() {
           // Distinct from the API-not-configured state above: the server is reachable, but
           // there is no Supabase project wired up yet to mint a token it would accept.
           <EmptyState icon={LockKey} title={t('coach.authNotConfigured')} hint={t('coach.authNotConfiguredHint')} />
+        ) : aiAge === null ? null : aiAge !== 'adult' ? (
+          <AiAgeNotice verdict={aiAge} />
         ) : bubbles.length === 0 ? (
           <>
             <EmptyState icon={Brain} title={t('coach.empty')} hint={t('coach.emptyHint')} />

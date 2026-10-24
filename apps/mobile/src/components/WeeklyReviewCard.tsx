@@ -30,6 +30,7 @@ import { fontSize, lineHeight, spacing, type ColorPalette } from '../theme.js';
 import { Text } from './Text.js';
 import { Banner, Button, Card, Hint, SectionTitle } from './ui.js';
 import { ReportAiButton } from './ReportAiButton.js';
+import { useAiAge } from '../coach/useAiAge.js';
 
 export function WeeklyReviewCard({ index }: { index?: number }) {
   const { t, i18n } = useTranslation();
@@ -37,6 +38,7 @@ export function WeeklyReviewCard({ index }: { index?: number }) {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const userId = useCurrentUserId();
   const { session } = useAuth();
+  const aiAge = useAiAge();
 
   const [review, setReview] = useState<WeeklyReview | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -60,7 +62,8 @@ export function WeeklyReviewCard({ index }: { index?: number }) {
 
   const accessToken = session?.access_token ?? null;
   const canAsk = API_BASE_URL !== null && accessToken !== null;
-  if (!loaded || (!canAsk && !review)) return null;
+  // Not for under 18s (AI_MIN_AGE), and the Progress screen has plenty without it.
+  if (!loaded || aiAge !== 'adult' || (!canAsk && !review)) return null;
 
   const today = localDate(new Date());
   const waitUntil = nextReviewOn(review, today);

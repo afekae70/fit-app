@@ -86,6 +86,7 @@ import { localDate, parseLocalDate } from '../src/db/schedule.js';
 import { progressTowards, sumDay } from '../src/food/foodMath.js';
 import { hapticLight, hapticSuccess } from '../src/haptics.js';
 import { isRtlLanguage, type Language } from '../src/i18n/index.js';
+import { useAiAge } from '../src/coach/useAiAge.js';
 import { useTheme } from '../src/ThemeProvider.js';
 import { fontSize, fontWeight, radius, shadow, spacing, type ColorPalette } from '../src/theme.js';
 
@@ -101,6 +102,7 @@ export default function FoodLogScreen() {
   const [entries, setEntries] = useState<FoodEntryRow[]>([]);
   const [targets, setTargets] = useState<ComputedTargets | null>(null);
   const [meals, setMeals] = useState<SavedMeal[]>([]);
+  const aiAge = useAiAge();
   // Keeping a meal: which of the day's entries are in it, or null when nothing is being kept.
   const [picking, setPicking] = useState<ReadonlySet<string> | null>(null);
   const [mealName, setMealName] = useState('');
@@ -346,12 +348,15 @@ export default function FoodLogScreen() {
             label={t('food.add')}
             onPress={() => router.push({ pathname: '/food-add', params: { date } })}
           />
-          {/* The quicker way in for a whole plate: a photograph, and an estimate to correct. */}
-          <Button
-            label={t('food.scan')}
-            variant="secondary"
-            onPress={() => router.push({ pathname: '/food-scan', params: { date } })}
-          />
+          {/* The quicker way in for a whole plate: a photograph, and an estimate to correct.
+              The estimate is the AI's, so 18 and over (AI_MIN_AGE). */}
+          {aiAge === 'adult' ? (
+            <Button
+              label={t('food.scan')}
+              variant="secondary"
+              onPress={() => router.push({ pathname: '/food-scan', params: { date } })}
+            />
+          ) : null}
           {/* For anything in a packet: the label itself, read from the barcode. */}
           <Button
             label={t('food.barcode')}

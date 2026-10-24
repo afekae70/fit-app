@@ -148,9 +148,12 @@ export function heightRange(unit: UnitPreference): RulerRange {
     : { min: 120, max: 230, step: 1, initial: 170, decimals: 0, mediumEvery: 5, majorEvery: 10 };
 }
 
-/** Thirteen is the youngest the app's store listing allows, not an opinion about training. */
+/**
+ * Sixteen is the youngest the app's store listing allows, not an opinion about training. The AI
+ * features start at 18 (`AI_MIN_AGE`); everything else is open from here.
+ */
 export const AGE_RANGE: RulerRange = {
-  min: 13,
+  min: 16,
   max: 90,
   step: 1,
   initial: 25,

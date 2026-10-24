@@ -361,6 +361,8 @@ export const en = {
       needsData: 'Log a workout or a weigh-in first, so the coach has something to go on.',
       offline: 'Could not reach the coach. Check your connection.',
       timeout: 'The coach took too long to answer. Try again.',
+      ageRestricted: 'The AI coach is for ages 18 and over.',
+      ageUnknown: 'Add your age to your profile to use the coach.',
     },
     weekly: {
       title: 'Weekly review from the coach',
@@ -805,6 +807,8 @@ export const en = {
       ai_busy: 'The recognition service is busy. Try again in a few minutes, or add by hand.',
       not_readable: 'We could not read the photo. Try again, in good light.',
       not_set_up: 'Scanning has not been switched on in the server yet.',
+      age_restricted: 'Meal scanning is for ages 18 and over. You can add food by hand.',
+      age_unknown: 'Add your age to your profile to scan a meal. Meanwhile, add food by hand.',
       server_error: 'Something went wrong on the server. Try again.',
       offline: 'No connection, or the server did not answer. Try again.',
       camera_denied:
@@ -870,6 +874,14 @@ export const en = {
       too_large: 'That photo is too large (over 10MB). Try another one.',
       not_saved: 'Could not save the photo. Try again.',
     },
+  },
+  aiAge: {
+    minorTitle: 'The AI features are for ages 18 and over',
+    minorBody:
+      'The coach, meal scanning and summaries run on Google’s Gemini, whose terms allow it only from age 18. Everything else in the app — workouts, nutrition, weight and water — is fully yours.',
+    unknownTitle: 'No age on your profile',
+    unknownBody: 'The AI tools are for ages 18 and over, so they need an age on your profile.',
+    addBirthDate: 'Add your age to your profile',
   },
   aiReport: {
     button: 'Report the coach’s answer',

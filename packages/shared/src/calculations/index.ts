@@ -8,6 +8,7 @@
 
 export * from './constants.js';
 export * from './anthropometry.js';
+export * from './aiAge.js';
 export * from './energy.js';
 export * from './strength.js';
 export * from './plates.js';

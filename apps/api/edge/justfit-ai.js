@@ -5947,6 +5947,10 @@ var FOOD_SCAN_ERRORS = [
   "ai_busy",
   /** The model answered with something that is not an estimate. */
   "not_readable",
+  /** The account's owner is under 18: Google's Gemini API terms are for adults (AI_MIN_AGE). */
+  "age_restricted",
+  /** The account has no date of birth, so its age cannot be checked against the above. */
+  "age_unknown",
   /** The server half is not finished being set up: no key, or the table is missing. */
   "not_set_up",
   /** Anything else on the server's side. */
@@ -6152,11 +6156,48 @@ var REFUSAL_FINISH_REASONS = /* @__PURE__ */ new Set([
   "IMAGE_PROHIBITED_CONTENT"
 ]);
 
+// ../../packages/shared/src/calculations/anthropometry.ts
+function ageInYears(birthDate, on = /* @__PURE__ */ new Date()) {
+  let age = on.getUTCFullYear() - birthDate.getUTCFullYear();
+  const monthDelta = on.getUTCMonth() - birthDate.getUTCMonth();
+  const dayDelta = on.getUTCDate() - birthDate.getUTCDate();
+  if (monthDelta < 0 || monthDelta === 0 && dayDelta < 0) {
+    age -= 1;
+  }
+  return age;
+}
+
+// ../../packages/shared/src/calculations/aiAge.ts
+var AI_MIN_AGE = 18;
+function aiAgeVerdict(birthDate, on = /* @__PURE__ */ new Date()) {
+  if (typeof birthDate !== "string" || !/^\d{4}-\d{2}-\d{2}/.test(birthDate)) return "unknown";
+  const born = /* @__PURE__ */ new Date(`${birthDate.slice(0, 10)}T00:00:00Z`);
+  if (Number.isNaN(born.getTime())) return "unknown";
+  return ageInYears(born, on) >= AI_MIN_AGE ? "adult" : "minor";
+}
+
 // src/edge/shared.ts
 var DEFAULT_MODELS = ["gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-2.5-flash"];
 function modelsToTry(deps) {
   const named = (deps.env("GEMINI_MODELS") ?? "").split(",").map((model) => model.trim()).filter((model) => /^[a-z0-9.-]+$/i.test(model));
   return named.length > 0 ? named : DEFAULT_MODELS;
+}
+async function ageVerdict(deps, token, userId, today = /* @__PURE__ */ new Date()) {
+  const base = deps.env("SUPABASE_URL");
+  const anon = deps.env("SUPABASE_ANON_KEY");
+  if (!base || !anon) return "server_error";
+  try {
+    const response = await deps.fetch(
+      `${base}/rest/v1/profiles?select=birth_date&id=eq.${encodeURIComponent(userId)}`,
+      { headers: { Authorization: `Bearer ${token}`, apikey: anon, Accept: "application/json" } }
+    );
+    if (!response.ok) return "server_error";
+    const rows = await response.json();
+    if (!Array.isArray(rows) || rows.length === 0) return "unknown";
+    return aiAgeVerdict(rows[0].birth_date, today);
+  } catch {
+    return "server_error";
+  }
 }
 function bearerToken(request) {
   return /^Bearer\s+(.+)$/i.exec(request.headers.get("Authorization") ?? "")?.[1]?.trim();
@@ -6225,6 +6266,8 @@ var STATUS = {
   daily_limit: 429,
   ai_busy: 503,
   not_set_up: 503,
+  age_restricted: 403,
+  age_unknown: 403,
   server_error: 500
 };
 var MESSAGE = {
@@ -6235,6 +6278,8 @@ var MESSAGE = {
   daily_limit: "You have reached the number of coach messages for today.",
   ai_busy: "The coach is busy right now. Try again in a few minutes.",
   not_set_up: "The coach has not been switched on in the server yet.",
+  age_restricted: "The AI coach is for ages 18 and over.",
+  age_unknown: "Add your date of birth to your profile to use the AI coach.",
   server_error: "The coach is unavailable."
 };
 var refuse = (error, extra = {}) => jsonResponse({ error, message: MESSAGE[error], ...extra }, STATUS[error]);
@@ -6428,7 +6473,12 @@ async function handleCoach(request, deps) {
   if (!hasUsableContext(parsed.data.context)) return refuse("insufficient_context");
   const key = deps.env("GEMINI_API_KEY");
   if (!key) return refuse("not_set_up");
-  if (await signedInUser(deps, token) === null) return refuse("sign_in_required");
+  const userId = await signedInUser(deps, token);
+  if (userId === null) return refuse("sign_in_required");
+  const age = await ageVerdict(deps, token, userId);
+  if (age === "minor") return refuse("age_restricted");
+  if (age === "unknown") return refuse("age_unknown");
+  if (age === "server_error") return refuse("server_error");
   const counted = await countAgainstLimit(deps, token, "coach_turns", "coach_limit");
   if (counted !== "ok") return refuse(counted);
   const hangUp = new AbortController();
@@ -6628,6 +6678,8 @@ var STATUS2 = {
   ai_busy: 503,
   not_readable: 422,
   not_set_up: 503,
+  age_restricted: 403,
+  age_unknown: 403,
   server_error: 500
 };
 var refuse2 = (error) => jsonResponse({ error }, STATUS2[error]);
@@ -6658,7 +6710,12 @@ async function handle(request, deps) {
   const language = body.language === "en" ? "en" : "he";
   const key = deps.env("GEMINI_API_KEY");
   if (!key) return refuse2("not_set_up");
-  if (await signedInUser(deps, token) === null) return refuse2("sign_in_required");
+  const userId = await signedInUser(deps, token);
+  if (userId === null) return refuse2("sign_in_required");
+  const age = await ageVerdict(deps, token, userId);
+  if (age === "minor") return refuse2("age_restricted");
+  if (age === "unknown") return refuse2("age_unknown");
+  if (age === "server_error") return refuse2("server_error");
   const counted = await countAgainstLimit(deps, token, "food_scans", "scan_limit");
   if (counted !== "ok") return refuse2(counted);
   for (const model of modelsToTry(deps)) {

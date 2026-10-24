@@ -45,6 +45,7 @@
 
 import {
   bearerToken,
+  ageVerdict,
   countAgainstLimit,
   googleErrorCode,
   jsonResponse,
@@ -86,6 +87,8 @@ export type ScanError =
   | 'ai_busy'
   | 'not_readable'
   | 'not_set_up'
+  | 'age_restricted'
+  | 'age_unknown'
   | 'server_error';
 
 export interface ScanItem {
@@ -305,6 +308,8 @@ const STATUS: Record<ScanError, number> = {
   ai_busy: 503,
   not_readable: 422,
   not_set_up: 503,
+  age_restricted: 403,
+  age_unknown: 403,
   server_error: 500,
 };
 
@@ -346,7 +351,14 @@ export async function handle(request: Request, deps: ScanDeps): Promise<Response
   const key = deps.env('GEMINI_API_KEY');
   if (!key) return refuse('not_set_up');
 
-  if ((await signedInUser(deps, token)) === null) return refuse('sign_in_required');
+  const userId = await signedInUser(deps, token);
+  if (userId === null) return refuse('sign_in_required');
+
+  // Google's Gemini API terms are for 18 and over (see AI_MIN_AGE). Before a scan is counted.
+  const age = await ageVerdict(deps, token, userId);
+  if (age === 'minor') return refuse('age_restricted');
+  if (age === 'unknown') return refuse('age_unknown');
+  if (age === 'server_error') return refuse('server_error');
 
   // A row in `food_scans`, whose trigger refuses the forty-first of the day (drizzle/0015).
   const counted = await countAgainstLimit(deps, token, 'food_scans', 'scan_limit');

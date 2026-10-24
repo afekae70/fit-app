@@ -29,6 +29,9 @@ export const COACH_FAILURES = {
   refused: 'coach.refused',
   // A weekly review asked for before a week has passed since the last (`weeklyReview.ts`).
   too_soon: 'coach.weekly.tooSoon',
+  // The server's own age check (AI_MIN_AGE), for a build or a profile that did not stop it first.
+  age_restricted: 'coach.failed.ageRestricted',
+  age_unknown: 'coach.failed.ageUnknown',
   // Nothing the person can act on, and nothing they would learn from the detail: the request
   // was malformed or the server broke. The detail is in the log, where it is of use.
   invalid_request: 'coach.unavailable',

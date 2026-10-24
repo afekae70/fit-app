@@ -73,6 +73,10 @@ export const FOOD_SCAN_ERRORS = [
   'ai_busy',
   /** The model answered with something that is not an estimate. */
   'not_readable',
+  /** The account's owner is under 18: Google's Gemini API terms are for adults (AI_MIN_AGE). */
+  'age_restricted',
+  /** The account has no date of birth, so its age cannot be checked against the above. */
+  'age_unknown',
   /** The server half is not finished being set up: no key, or the table is missing. */
   'not_set_up',
   /** Anything else on the server's side. */

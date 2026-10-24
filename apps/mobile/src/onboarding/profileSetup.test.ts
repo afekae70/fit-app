@@ -86,9 +86,9 @@ describe('the step count the sign-up form and the questions share', () => {
 
 describe('rulers', () => {
   it('has a tick for both ends', () => {
-    expect(tickCount(AGE_RANGE)).toBe(78);
-    expect(valueAtIndex(AGE_RANGE, 0)).toBe(13);
-    expect(valueAtIndex(AGE_RANGE, 77)).toBe(90);
+    expect(tickCount(AGE_RANGE)).toBe(75);
+    expect(valueAtIndex(AGE_RANGE, 0)).toBe(16);
+    expect(valueAtIndex(AGE_RANGE, 74)).toBe(90);
   });
 
   it('reads half kilos without floating-point crumbs', () => {
@@ -146,7 +146,7 @@ describe('rulers', () => {
         .filter((index) => tickKind(range, index) === 'major')
         .map((index) => valueAtIndex(range, index));
 
-    // Ages start at 13 and pounds at 66; neither is where a number belongs.
+    // Ages start at 16 and pounds at 66; neither is where a number belongs.
     expect(labelled(AGE_RANGE)).toEqual([20, 30, 40, 50, 60, 70, 80, 90]);
     expect(labelled(weightRange('imperial')).slice(0, 3)).toEqual([70, 80, 90]);
     expect(labelled(weightRange('metric')).slice(0, 4)).toEqual([30, 35, 40, 45]);
@@ -189,7 +189,7 @@ describe('a number that is typed instead of dragged', () => {
   it('holds a number from off the scale at the end of it', () => {
     expect(parseTyped(kg, '7')).toBe(30);
     expect(parseTyped(kg, '700')).toBe(250);
-    expect(parseTyped(AGE_RANGE, '5')).toBe(13);
+    expect(parseTyped(AGE_RANGE, '5')).toBe(16);
   });
 
   it.each(['', '   ', '.', 'abc', '8..2', '-'])('gives nothing back for %j', (text) => {

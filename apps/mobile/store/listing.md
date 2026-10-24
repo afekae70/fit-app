@@ -40,6 +40,7 @@ JustFit הוא יומן אימונים ותזונה בעברית, שנבנה כ�
 • שאלות ותשובות על אימונים ותזונה, סיכום שבועי והערה יומית
 • כל הצעה של המאמן מוצגת לך לאישור — שום דבר לא משתנה בלי שתבחר
 • אפשר לדווח מתוך האפליקציה על כל תשובה של המאמן
+• המאמן ה-AI וסריקת הארוחות זמינים מגיל 18; כל השאר פתוח מגיל 16
 
 מאמן אישי
 • מתחברים למאמן עם קוד, ובוחרים בדיוק מה הוא רואה: משקל, תזונה ותמונות — כל אחד כבוי עד שתדליק אותו
@@ -83,6 +84,7 @@ AI coach
 • Questions and answers about training and food, a weekly review and a daily note
 • Every suggestion is shown to you to accept — nothing changes unless you choose
 • Any answer from the coach can be reported from inside the app
+• The AI coach and meal scanning are for ages 18 and over; everything else is open from 16
 
 Personal coach
 • Connect to a coach with a code, and choose exactly what they see: weight, food and photos — each off until you turn it on
