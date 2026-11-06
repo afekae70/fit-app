@@ -3,7 +3,7 @@
   The widget's face.
 
   RemoteViews supports a small subset of the view system — no custom fonts, no gradients, no
-  shadows — so this is the palette's sand card, its purple accent, and three lines of text.
+  shadows — so this is the palette's lavender card, its violet accent, and three lines of text.
   Anything cleverer would not render in the launcher.
 
   Nothing here names a colour: they are all resources with a `values-night` twin, so the launcher

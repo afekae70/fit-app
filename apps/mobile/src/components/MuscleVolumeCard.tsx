@@ -150,7 +150,7 @@ const createStyles = (colors: ColorPalette) =>
       backgroundColor: colors.surfaceRaised,
       overflow: 'hidden',
     },
-    fill: { height: 8, borderRadius: radius.pill, backgroundColor: colors.info },
+    fill: { height: 8, borderRadius: radius.pill, backgroundColor: colors.accent },
     // Under the usual range, and over it. Both are worth seeing and neither is an error, so
     // neither uses the app's danger colour.
     fillLow: { backgroundColor: colors.borderStrong },

@@ -7,10 +7,10 @@
   changes — which is the whole mechanism by which the widget follows the device.
 -->
 <resources>
-    <color name="widget_surface">#173123</color>
-    <color name="widget_edge">#2A4838</color>
-    <color name="widget_text">#F5ECDC</color>
-    <color name="widget_muted">#C2B396</color>
-    <color name="widget_accent">#C77DFF</color>
-    <color name="widget_on_accent">#102419</color>
+    <color name="widget_surface">#201A38</color>
+    <color name="widget_edge">#332B52</color>
+    <color name="widget_text">#EEEAFB</color>
+    <color name="widget_muted">#9A8FBE</color>
+    <color name="widget_accent">#A78BFA</color>
+    <color name="widget_on_accent">#161226</color>
 </resources>

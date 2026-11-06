@@ -1,7 +1,7 @@
 /**
  * The one button on a screen that is the thing to press.
  *
- * Filled with the accent's own gradient — the electric purple deepening into its darker rung —
+ * Filled with the logo's own gradient — the violet it starts as and the pink it fades into —
  * which the rest of the app holds back precisely so that it means something here. Used where
  * someone arrives and where they are carried forward: signing in, each step of setting up.
  *
@@ -76,7 +76,7 @@ export function BrandButton({
       >
         {disabled ? null : (
           <LinearGradient
-            colors={[colors.accent, colors.accentLift]}
+            colors={[colors.accent, colors.info]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={StyleSheet.absoluteFill}

@@ -720,7 +720,7 @@ const createStyles = (colors: ColorPalette) =>
       overflow: 'hidden',
     },
     dayTrackToday: { borderWidth: 2, borderColor: colors.accentBorder },
-    dayFill: { height: '100%', borderRadius: radius.pill, backgroundColor: colors.info },
+    dayFill: { height: '100%', borderRadius: radius.pill, backgroundColor: colors.accent },
     dayLabelToday: { color: colors.accent, fontWeight: '700' },
     statValueRow: { flexDirection: 'row', alignItems: 'baseline', gap: 1 },
     statSun: { backgroundColor: colors.tileSun },

@@ -23,7 +23,7 @@ import { Text } from './Text.js';
 import { useTheme } from '../ThemeProvider.js';
 import { useUnit } from '../UnitsProvider.js';
 import { kgToDisplay, weightUnitKey } from '../units.js';
-import { fontSize, fontWeight, mix, radius, spacing, type ColorPalette } from '../theme.js';
+import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../theme.js';
 
 const EXERCISE_BY_KEY = new Map<string, ExerciseSeed>(
   EXERCISE_SEED.map((exercise) => [exercise.nameEn, exercise]),
@@ -122,13 +122,12 @@ export function ConsistencyGrid({ days }: { days: readonly TrainingDay[] }) {
     return out;
   }, [days]);
 
-  // The data colour, not the accent: see ChartBar.
   const shades = [
     colors.surfaceRaised,
-    mix(colors.info, colors.surface, 0.3),
-    mix(colors.info, colors.surface, 0.6),
-    colors.info,
-    colors.info,
+    colors.accentSoft,
+    colors.accentBorder,
+    colors.accent,
+    colors.accent,
   ];
 
   return (

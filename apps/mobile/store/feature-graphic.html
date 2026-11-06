@@ -2,8 +2,7 @@
 <!--
   Google Play's feature graphic: 1024 × 500, shown at the top of the store page and cropped on
   some screens, so nothing that matters sits near the edges. Rendered to PNG by render.sh.
-  The app's own palette (packages/shared/src/design/palette.ts) and font, in its proportions:
-  forest green for the ground, sand for the words, the purple only on the name.
+  The app's own palette (packages/shared/src/design/palette.ts) and font.
 -->
 <html lang="he" dir="rtl">
   <head>
@@ -29,30 +28,29 @@
       body {
         font-family: Rubik, sans-serif;
         background:
-          radial-gradient(circle at 80% 30%, rgba(227, 201, 148, 0.16) 0, transparent 46%),
-          radial-gradient(circle at 15% 85%, rgba(199, 125, 255, 0.12) 0, transparent 42%),
-          linear-gradient(135deg, #1e4632 0%, #173123 55%, #102419 100%);
+          radial-gradient(circle at 18% 30%, #f4ddf1 0, transparent 46%),
+          radial-gradient(circle at 85% 80%, #e6dffa 0, transparent 50%),
+          linear-gradient(135deg, #efebfa 0%, #f6f3fe 55%, #ede7fb 100%);
         display: flex;
         align-items: center;
         justify-content: center;
         gap: 56px;
-        color: #f5ecdc;
+        color: #241c3d;
       }
       .logo {
         width: 330px;
         height: 330px;
         border-radius: 72px;
-        box-shadow:
-          0 0 0 2px rgba(227, 201, 148, 0.28),
-          0 24px 60px rgba(0, 0, 0, 0.35);
+        background: #ffffff;
+        box-shadow: 0 24px 60px rgba(42, 27, 87, 0.16);
         display: flex;
         align-items: center;
         justify-content: center;
         overflow: hidden;
       }
       .logo img {
-        width: 330px;
-        height: 330px;
+        width: 320px;
+        height: 320px;
       }
       .words {
         display: flex;
@@ -64,7 +62,7 @@
         font-weight: 800;
         font-size: 84px;
         letter-spacing: -1px;
-        color: #c77dff;
+        color: #5b3fb0;
         direction: ltr;
         text-align: right;
       }
@@ -76,7 +74,7 @@
       .sub {
         font-weight: 500;
         font-size: 24px;
-        color: #c2b396;
+        color: #473a6b;
       }
     </style>
   </head>

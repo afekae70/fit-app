@@ -1,9 +1,27 @@
 /**
- * Design tokens.
+ * Design tokens — Aurora.
  *
- * The colours are the Forest palette — forest green, sand beige and electric purple, at about
- * 60 / 30 / 10 — and are described where they are defined, in `@fit/shared/design`. This file
- * holds the rest of the system: spacing, radius, depth, type and motion.
+ * Taken from the app's own logo: the violet of the figure, the pink it fades into, and the pale
+ * lavender it sits on. A daylight scheme — a lavender ground, white cards that lift off it with a
+ * wide, faint shadow, and the violet reserved for anything live or actionable. The night palette
+ * is the same scheme after dark, the same accent and the same rhythm, rather than a second design.
+ *
+ * Cards lift by shadow here rather than by outline. On a coloured ground a white card is already
+ * a clear step, and six outlined boxes down a screen read as a grid competing with its contents;
+ * `shadow` below carries that weight instead, and borders are kept for the few things that are
+ * genuinely edges.
+ *
+ * Nocturne expresses its derived colours as `color-mix(in srgb, X n%, transparent)` layered over
+ * the ground. React Native has no `color-mix` and no alpha compositing against an implicit
+ * parent, so every one of those is resolved here to the solid hex it produces **over that
+ * palette's own background**. That is why the same conceptual token differs between the two
+ * palettes by more than a lightness flip: `--accent-soft` is the accent at 14% over `#161826` in
+ * the dark palette and at 12% over `#e4e7f5` in the light one, which are unrelated hex values.
+ *
+ * Two palettes share one shape (`ColorPalette`) so every screen is written once against
+ * `colors.xxx`. `warning`, `info` and the macro hues have no Nocturne token of their own; they
+ * are tuned into the same family rather than carried over from the old palette, where saturated
+ * primaries would have read as foreign against this ground.
  *
  * The accent stays a single colour used sparingly: the primary action, live data, nothing else.
  * When every card has an accent border, none of them read as important.
@@ -13,7 +31,7 @@
 // colours. Re-exported here so that every screen keeps importing it from where it always has.
 import { darkColors } from '@fit/shared/design';
 
-export { darkColors, lightColors, mix, type ColorPalette } from '@fit/shared/design';
+export { darkColors, lightColors, type ColorPalette } from '@fit/shared/design';
 
 /** Default export for the rare theme-agnostic case. Components should use `useTheme()`. */
 export const colors = darkColors;

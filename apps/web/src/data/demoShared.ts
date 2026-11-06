@@ -280,12 +280,12 @@ export function demoPhotoUrl(photo: CoachPhoto, shape: number): string {
     `Q${cx},120 ${cx - torso},150 Z`,
   ].join(' ');
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 400" width="300" height="400">
-<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F3EBDB"/><stop offset="1" stop-color="#E8DCC3"/></linearGradient></defs>
+<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#EDE7FB"/><stop offset="1" stop-color="#D9CEF6"/></linearGradient></defs>
 <rect width="300" height="400" fill="url(#g)"/>
-<circle cx="${cx}" cy="92" r="34" fill="#6F9A7E"/>
-<path d="${body}" fill="#6F9A7E"/>
+<circle cx="${cx}" cy="92" r="34" fill="#9C86DE"/>
+<path d="${body}" fill="#9C86DE"/>
 <rect x="0" y="362" width="300" height="38" fill="#ffffff" fill-opacity="0.72"/>
-<text x="150" y="387" font-family="Rubik, Arial, sans-serif" font-size="16" fill="#15301F" text-anchor="middle" direction="rtl">תמונה לדוגמה</text>
+<text x="150" y="387" font-family="Rubik, Arial, sans-serif" font-size="16" fill="#4B3A8C" text-anchor="middle" direction="rtl">תמונה לדוגמה</text>
 </svg>`;
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
