@@ -28,15 +28,20 @@ function declarations(palette: ColorPalette): string {
 /**
  * The colours a chart tells its lines apart by, in this order and never cycled.
  *
- * The app's own violet, amber and pink — the family its macros are drawn in — each nudged until
- * the three pass the colour-vision checks (the dataviz validator: lightness band, chroma, and
- * separation under protanopia, deuteranopia and tritanopia) against that scheme's card colour.
- * They are a step apart from the palette's tokens because the tokens were chosen to be read as
- * text and buttons, and a line on a chart has other work to do.
+ * The palette's own three, the data colour first: forest green by day and sand at night, as the
+ * app draws its charts (`info`), then the other of the two, then purple last. Purple is the
+ * accent and is held to a tenth of the screen, and a single-series bar chart is a lot of screen.
+ *
+ * Each is nudged until the three hold 3:1
+ * on that scheme's card and stay apart under protanopia, deuteranopia and tritanopia (OKLab
+ * distance of 13 or more between every pair, 22 or more with full colour vision). The sand and
+ * the green are pulled apart in lightness, because by hue alone they collapse for a red-green
+ * colour-blind reader. They are a step apart from the palette's tokens because the tokens were
+ * chosen to be read as text and buttons, and a line on a chart has other work to do.
  */
 export const SERIES = {
-  light: ['#7C5CD6', '#A8811A', '#C2457F'],
-  dark: ['#8F70EE', '#B98A35', '#CF5E8C'],
+  light: ['#1F5C40', '#A9832E', '#7A3BE0'],
+  dark: ['#DDB866', '#3F9A6C', '#B77CF5'],
 } as const;
 
 const seriesDeclarations = (colours: readonly string[]) =>

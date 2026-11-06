@@ -10,10 +10,10 @@
   Merge into android/app/src/main/res/values/colors.xml.
 -->
 <resources>
-    <color name="widget_surface">#FFFFFF</color>
-    <color name="widget_edge">#E3DCF5</color>
-    <color name="widget_text">#18213A</color>
-    <color name="widget_muted">#6E7A9B</color>
-    <color name="widget_accent">#7C5CD6</color>
+    <color name="widget_surface">#FBF7EE</color>
+    <color name="widget_edge">#DDD2BC</color>
+    <color name="widget_text">#15301F</color>
+    <color name="widget_muted">#435C4D</color>
+    <color name="widget_accent">#7422DE</color>
     <color name="widget_on_accent">#FFFFFF</color>
 </resources>

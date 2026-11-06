@@ -2,7 +2,7 @@
  * The picture at the top of each setup question.
  *
  * Drawn rather than photographed, and from what the app already carries: the icon set, and the
- * violet-to-pink of the logo. A photograph of somebody else's body at the top of "what do you
+ * accent's purple gradient. A photograph of somebody else's body at the top of "what do you
  * weigh?" says something this app does not want to say, has to be licensed, and costs every
  * install a megabyte or two for a screen seen once. An emblem in the brand's own colours says
  * what the question is about and nothing else.
@@ -129,7 +129,7 @@ export function StepArt({ icon: IconComponent }: { icon: Icon }) {
           >
             <View style={styles.discShadow}>
               <LinearGradient
-                colors={[colors.accent, colors.info]}
+                colors={[colors.accent, colors.accentLift]}
                 start={{ x: 0.1, y: 0 }}
                 end={{ x: 0.9, y: 1 }}
                 style={styles.disc}

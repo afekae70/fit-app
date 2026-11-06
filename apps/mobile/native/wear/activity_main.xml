@@ -6,13 +6,13 @@
   reaching for glass that is not there. The padding is a percentage of nothing clever, just enough
   that the widest thing here, a three-digit heart rate, clears the bezel on the smallest watch.
 
-  The app's violet ground and its accent, as literals: this is a separate APK with none of the
+  The app's forest-green ground, sand type and purple accent, as literals: this is a separate APK with none of the
   phone app's palette in it, and four colours are not worth a theme.
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#161226"
+    android:background="#102419"
     android:gravity="center"
     android:orientation="vertical"
     android:padding="24dp">
@@ -23,7 +23,7 @@
         android:layout_height="wrap_content"
         android:fontFeatureSettings="tnum"
         android:text="--"
-        android:textColor="#EEEAFB"
+        android:textColor="#F5ECDC"
         android:textSize="54sp"
         android:textStyle="bold" />
 
@@ -33,7 +33,7 @@
         android:layout_height="wrap_content"
         android:gravity="center"
         android:text="@string/waiting"
-        android:textColor="#9A8FBE"
+        android:textColor="#C2B396"
         android:textSize="13sp" />
 
     <Button
@@ -47,7 +47,7 @@
         android:paddingEnd="18dp"
         android:text="@string/stop"
         android:textAllCaps="false"
-        android:textColor="#161226"
+        android:textColor="#102419"
         android:textSize="14sp"
         android:textStyle="bold" />
 </LinearLayout>

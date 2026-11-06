@@ -18,6 +18,13 @@
  *
  * Scaling squashes the rounded top while it grows. That lasts a quarter of a second and reads
  * as the bar being drawn; animating `height` instead would relayout the whole chart per frame.
+ *
+ * ## Colour
+ *
+ * Drawn in `info` — sand at night, forest green by day — and not in the accent. A chart is most
+ * of a progress screen, and in purple it alone took the screen past the tenth that purple is
+ * allowed (see the palette). The steps toward the card are mixed in code: there is no token for
+ * "sand at half strength on this card".
  */
 
 import { LinearGradient } from 'expo-linear-gradient';
@@ -25,7 +32,7 @@ import { useEffect, useRef } from 'react';
 import { Animated, Easing, StyleSheet, View } from 'react-native';
 
 import { useTheme } from '../ThemeProvider.js';
-import { duration, radius, stagger } from '../theme.js';
+import { duration, mix, radius, stagger } from '../theme.js';
 import { useReduceMotion } from './motion.js';
 
 export interface ChartBarProps {
@@ -82,7 +89,9 @@ export function ChartBar({
         <LinearGradient
           // Strongest at the top, where the value is read, easing off toward the baseline.
           colors={
-            muted ? [colors.accentBorder, colors.accentSoft] : [colors.accent, colors.accentBorder]
+            muted
+              ? [mix(colors.info, colors.surface, 0.45), mix(colors.info, colors.surface, 0.25)]
+              : [colors.info, mix(colors.info, colors.surface, 0.6)]
           }
           start={{ x: 0, y: 0 }}
           end={{ x: 0, y: 1 }}

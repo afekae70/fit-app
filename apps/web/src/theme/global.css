@@ -1214,11 +1214,12 @@ a.card:hover,
 }
 
 .day-cell.done {
-  background: var(--accent);
+  background: var(--series-1);
 }
 
+/* An extra session is the one thing in the grid worth the accent. */
 .day-cell.extra {
-  background: var(--info);
+  background: var(--accent);
 }
 
 .day-cell.missed {
@@ -1265,7 +1266,7 @@ a.card:hover,
 .hbar-fill {
   height: 100%;
   border-radius: 999px;
-  background: var(--accent);
+  background: var(--series-1);
 }
 
 .hbar-value {

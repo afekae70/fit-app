@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { darkColors, lightColors, type ColorPalette } from './palette.js';
+import { darkColors, lightColors, mix, type ColorPalette } from './palette.js';
 
 function luminance(hex: string): number {
   const channel = (offset: number) => {
@@ -104,6 +104,20 @@ describe.each(PALETTES)('the %s palette', (_, palette) => {
     expect(on('text')).toBeGreaterThan(on('textSecondary'));
     expect(on('textSecondary')).toBeGreaterThan(on('textMuted'));
     expect(on('textMuted')).toBeGreaterThan(on('textFaint'));
+  });
+});
+
+describe('laying one colour over another', () => {
+  it('runs from the ground to the colour', () => {
+    expect(mix('#FFFFFF', '#000000', 0)).toBe('#000000');
+    expect(mix('#FFFFFF', '#000000', 1)).toBe('#FFFFFF');
+    expect(mix('#FFFFFF', '#000000', 0.5)).toBe('#808080');
+    expect(mix('#e3c994', '#173123', 0.25)).toBe('#4A573F');
+  });
+
+  it('keeps a strength out of range to the ends', () => {
+    expect(mix('#C77DFF', '#102419', 2)).toBe('#C77DFF');
+    expect(mix('#C77DFF', '#102419', -1)).toBe('#102419');
   });
 });
 

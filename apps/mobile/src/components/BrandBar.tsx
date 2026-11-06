@@ -18,7 +18,7 @@
  * The app icon used to sit beside the name. It is drawn to be read at launcher size against a
  * home screen, and shrunk into a row above the app's own content it read as a sticker rather
  * than a mark. The name alone carries the same thing without competing with the screen — in the
- * brand's own violet, over a wash of it that fades out before the page begins, which is as much
+ * brand's own purple, over a wash of it that fades out before the page begins, which is as much
  * of the logo as belongs above someone's training.
  */
 
