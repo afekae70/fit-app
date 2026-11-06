@@ -16,17 +16,19 @@ import {
   renameSession,
   startSession,
 } from '../db/workouts.js';
-import { listExerciseBests, listWorkoutPoints } from '../db/workoutProgress.js';
+import { listSessionSets, listWorkoutPoints } from '../db/workoutProgress.js';
+import { NO_TALLY, type Tally } from './setBySet.js';
 import {
   byMonth,
   changeFrom,
-  exerciseChanges,
   groupByWorkout,
   latestComparison,
   localMonth,
   metricOf,
   minutesOf,
+  monthTallies,
   sessionsWithChange,
+  talliesAlongLine,
   valueOf,
   workoutKey,
   type SessionPoint,
@@ -45,8 +47,8 @@ const point = (
   name,
   startedAt: new Date(year, month - 1, day, 18, 0).toISOString(),
   endedAt: new Date(year, month - 1, day, 19, 0).toISOString(),
-  volumeKg: 0,
   sets: 0,
+  reps: 0,
   distanceM: 0,
   ...over,
 });
@@ -86,12 +88,18 @@ describe('which workouts are the same workout', () => {
 });
 
 describe('what a workout is measured by', () => {
-  it('is the weight moved, for a workout that ever moved any', () => {
+  it('is the sets, for a workout that ever had a set with reps — never weight x reps', () => {
     const [line] = groupByWorkout([
-      point('a', 'Legs', 2026, 10, 1, { volumeKg: 0 }),
-      point('b', 'Legs', 2026, 10, 8, { volumeKg: 8000, distanceM: 400 }),
+      point('a', 'Legs', 2026, 10, 1),
+      point('b', 'Legs', 2026, 10, 8, { sets: 12, reps: 96, distanceM: 400 }),
     ]);
-    expect(metricOf(line!)).toBe('volume');
+    expect(metricOf(line!)).toBe('strength');
+    expect(valueOf(line!.sessions[1]!, 'strength')).toBe(12);
+  });
+
+  it('counts a bodyweight workout as strength: reps without a weight are still sets', () => {
+    const [line] = groupByWorkout([point('a', 'Calisthenics', 2026, 10, 1, { sets: 6, reps: 60 })]);
+    expect(metricOf(line!)).toBe('strength');
   });
 
   it('is the distance, for one that moved no weight and covered some ground', () => {
@@ -130,10 +138,10 @@ describe('how much better', () => {
 describe('the latest workout against the one before it', () => {
   it('compares the last two of the same name', () => {
     const [line] = groupByWorkout([
-      point('a', 'Legs', 2026, 10, 1, { volumeKg: 7000 }),
-      point('b', 'Legs', 2026, 10, 8, { volumeKg: 8000 }),
-      point('c', 'Legs', 2026, 10, 15, { volumeKg: 8400 }),
-      point('p', 'Push', 2026, 10, 16, { volumeKg: 99999 }),
+      point('a', 'Legs', 2026, 10, 1, { distanceM: 7000 }),
+      point('b', 'Legs', 2026, 10, 8, { distanceM: 8000 }),
+      point('c', 'Legs', 2026, 10, 15, { distanceM: 8400 }),
+      point('p', 'Push', 2026, 10, 16, { distanceM: 99999 }),
     ]).filter((entry) => entry.key === 'legs');
 
     const comparison = latestComparison(line!);
@@ -145,7 +153,7 @@ describe('the latest workout against the one before it', () => {
   });
 
   it('has nothing to compare the first time a workout is done', () => {
-    const [line] = groupByWorkout([point('a', 'Legs', 2026, 10, 1, { volumeKg: 7000 })]);
+    const [line] = groupByWorkout([point('a', 'Legs', 2026, 10, 1, { distanceM: 7000 })]);
     const comparison = latestComparison(line!);
     expect(comparison.previous).toBeNull();
     expect(comparison.previousValue).toBeNull();
@@ -155,16 +163,16 @@ describe('the latest workout against the one before it', () => {
 
 describe('month against month', () => {
   const legs = groupByWorkout([
-    point('a', 'Legs', 2026, 8, 5, { volumeKg: 6000 }),
-    point('b', 'Legs', 2026, 8, 19, { volumeKg: 7000 }),
+    point('a', 'Legs', 2026, 8, 5, { distanceM: 6000 }),
+    point('b', 'Legs', 2026, 8, 19, { distanceM: 7000 }),
     // September: none. A month off.
-    point('c', 'Legs', 2026, 10, 1, { volumeKg: 7000 }),
-    point('d', 'Legs', 2026, 10, 8, { volumeKg: 8000 }),
-    point('e', 'Legs', 2026, 10, 15, { volumeKg: 9000 }),
+    point('c', 'Legs', 2026, 10, 1, { distanceM: 7000 }),
+    point('d', 'Legs', 2026, 10, 8, { distanceM: 8000 }),
+    point('e', 'Legs', 2026, 10, 15, { distanceM: 9000 }),
   ])[0]!;
 
   it('counts the workouts of each month, and their typical and best numbers', () => {
-    expect(byMonth(legs, 'volume')).toEqual([
+    expect(byMonth(legs, 'distance')).toEqual([
       { month: '2026-08', sessions: 2, average: 6500, best: 7000, change: null },
       {
         month: '2026-10',
@@ -179,17 +187,17 @@ describe('month against month', () => {
   it('judges a month by its typical workout, not by how many there were', () => {
     // Three workouts at the same weight as last month's two is not progress.
     const flat = groupByWorkout([
-      point('a', 'Legs', 2026, 9, 5, { volumeKg: 8000 }),
-      point('b', 'Legs', 2026, 9, 19, { volumeKg: 8000 }),
-      point('c', 'Legs', 2026, 10, 1, { volumeKg: 8000 }),
-      point('d', 'Legs', 2026, 10, 8, { volumeKg: 8000 }),
-      point('e', 'Legs', 2026, 10, 15, { volumeKg: 8000 }),
+      point('a', 'Legs', 2026, 9, 5, { distanceM: 8000 }),
+      point('b', 'Legs', 2026, 9, 19, { distanceM: 8000 }),
+      point('c', 'Legs', 2026, 10, 1, { distanceM: 8000 }),
+      point('d', 'Legs', 2026, 10, 8, { distanceM: 8000 }),
+      point('e', 'Legs', 2026, 10, 15, { distanceM: 8000 }),
     ])[0]!;
-    expect(byMonth(flat, 'volume').at(-1)).toMatchObject({ sessions: 3, change: 0 });
+    expect(byMonth(flat, 'distance').at(-1)).toMatchObject({ sessions: 3, change: 0 });
   });
 
   it('leaves out a month the workout was not done in, and compares across the gap', () => {
-    const months = byMonth(legs, 'volume');
+    const months = byMonth(legs, 'distance');
     expect(months.map((entry) => entry.month)).toEqual(['2026-08', '2026-10']);
     expect(months[1]!.change).not.toBeNull();
   });
@@ -197,10 +205,10 @@ describe('month against month', () => {
   it('keeps only the most recent months asked for', () => {
     const long = groupByWorkout(
       Array.from({ length: 9 }, (_unused, index) =>
-        point(`s${index}`, 'Legs', 2026, index + 1, 10, { volumeKg: 5000 + index * 100 }),
+        point(`s${index}`, 'Legs', 2026, index + 1, 10, { distanceM: 5000 + index * 100 }),
       ),
     )[0]!;
-    const months = byMonth(long, 'volume', 6);
+    const months = byMonth(long, 'distance', 6);
     expect(months.map((entry) => entry.month)).toEqual([
       '2026-04',
       '2026-05',
@@ -222,11 +230,11 @@ describe('month against month', () => {
 describe('every workout beside the one before it', () => {
   it('is newest first, each with its change', () => {
     const [line] = groupByWorkout([
-      point('a', 'Legs', 2026, 10, 1, { volumeKg: 8000 }),
-      point('b', 'Legs', 2026, 10, 8, { volumeKg: 8800 }),
-      point('c', 'Legs', 2026, 10, 15, { volumeKg: 7920 }),
+      point('a', 'Legs', 2026, 10, 1, { distanceM: 8000 }),
+      point('b', 'Legs', 2026, 10, 8, { distanceM: 8800 }),
+      point('c', 'Legs', 2026, 10, 15, { distanceM: 7920 }),
     ]);
-    const rows = sessionsWithChange(line!, 'volume');
+    const rows = sessionsWithChange(line!, 'distance');
     expect(rows.map((row) => row.session.id)).toEqual(['c', 'b', 'a']);
     expect(rows[0]!.change).toBeCloseTo(-0.1);
     expect(rows[1]!.change).toBeCloseTo(0.1);
@@ -234,65 +242,54 @@ describe('every workout beside the one before it', () => {
   });
 });
 
-describe('lift by lift', () => {
-  const best = (exerciseKey: string, weightKg: number | null, reps: number | null) => ({
-    exerciseKey,
-    weightKg,
-    reps,
-  });
+describe('set by set along a workout', () => {
+  const legs = groupByWorkout([
+    point('a', 'Legs', 2026, 9, 24, { sets: 3, reps: 24 }),
+    point('b', 'Legs', 2026, 10, 1, { sets: 3, reps: 24 }),
+    point('c', 'Legs', 2026, 10, 8, { sets: 4, reps: 30 }),
+    point('d', 'Legs', 2026, 11, 5, { sets: 4, reps: 30 }),
+  ])[0]!;
+  const tally = (over: Partial<Tally>): Tally => ({ ...NO_TALLY, ...over });
+  /** What each session's sets came to against the one before, as the caller would read them. */
+  const between: Record<string, Tally> = {
+    'b<a': tally({ up: 2, same: 1 }),
+    'c<b': tally({ up: 1, same: 2, added: 1 }),
+    'd<c': tally({ same: 3, down: 1 }),
+  };
 
-  it('is up for a heavier set, or the same weight for more reps', () => {
-    const changes = exerciseChanges(
-      [best('Back Squat', 102.5, 8), best('Leg Press', 200, 12)],
-      [best('Back Squat', 100, 8), best('Leg Press', 200, 10)],
-    );
-    expect(changes.map((change) => change.direction)).toEqual(['up', 'up']);
-  });
-
-  it('is down for a lighter set, even with more reps, and for the same weight with fewer', () => {
-    const changes = exerciseChanges(
-      [best('Back Squat', 95, 12), best('Leg Press', 200, 8)],
-      [best('Back Squat', 100, 8), best('Leg Press', 200, 10)],
-    );
-    expect(changes.map((change) => change.direction)).toEqual(['down', 'down']);
-  });
-
-  it('is the same for the same', () => {
-    expect(
-      exerciseChanges([best('Back Squat', 100, 8)], [best('Back Squat', 100, 8)])[0]!.direction,
-    ).toBe('same');
-  });
-
-  it('compares an exercise done without weight on its reps', () => {
-    expect(
-      exerciseChanges([best('Push-up', null, 15)], [best('Push-up', null, 12)])[0]!.direction,
-    ).toBe('up');
-  });
-
-  it('marks an exercise that was not done last time as new, and does not list one that was dropped', () => {
-    const changes = exerciseChanges(
-      [best('Back Squat', 100, 8), best('Hip Thrust', 80, 10)],
-      [best('Back Squat', 100, 8), best('Leg Extension', 50, 12)],
-    );
-    expect(changes.map((change) => [change.exerciseKey, change.direction])).toEqual([
-      ['Back Squat', 'same'],
-      ['Hip Thrust', 'new'],
+  it('gives every session but the first its sets against the one before it', () => {
+    const along = talliesAlongLine(legs, (latest, previous) => between[`${latest}<${previous}`]!);
+    expect(along.map((entry) => [entry.session.id, entry.tally])).toEqual([
+      ['a', null],
+      ['b', between['b<a']],
+      ['c', between['c<b']],
+      ['d', between['d<c']],
     ]);
   });
 
-  it('keeps the latest workout’s order, and tells an exercise done twice once', () => {
-    const changes = exerciseChanges(
-      [best('Leg Press', 200, 10), best('Back Squat', 100, 8), best('Leg Press', 180, 12)],
-      [],
-    );
-    expect(changes.map((change) => change.exerciseKey)).toEqual(['Leg Press', 'Back Squat']);
-    expect(changes[0]!.latest.weightKg).toBe(200);
+  it('credits each month with the sets that got better and worse in it', () => {
+    const along = talliesAlongLine(legs, (latest, previous) => between[`${latest}<${previous}`]!);
+    expect(
+      monthTallies(along).map(({ month, sessions, improved, worse }) => ({
+        month,
+        sessions,
+        improved,
+        worse,
+      })),
+    ).toEqual([
+      // The first leg day ever has nothing to be better than.
+      { month: '2026-09', sessions: 1, improved: 0, worse: 0 },
+      // An added set is progress, the same as a heavier one.
+      { month: '2026-10', sessions: 2, improved: 4, worse: 0 },
+      { month: '2026-11', sessions: 1, improved: 0, worse: 1 },
+    ]);
+  });
+
+  it('keeps only the most recent months asked for', () => {
+    const along = talliesAlongLine(legs, () => tally({ up: 1 }));
+    expect(monthTallies(along, 2).map((month) => month.month)).toEqual(['2026-10', '2026-11']);
   });
 });
-
-/* -------------------------------------------------------------------------- */
-/* The query                                                                   */
-/* -------------------------------------------------------------------------- */
 
 describe('reading the lines from the training log', () => {
   const USER = 'user-1';
@@ -348,7 +345,7 @@ describe('reading the lines from the training log', () => {
       { weightKg: 100, reps: 7 },
     ]);
     expect(await listWorkoutPoints(db, USER)).toEqual([
-      expect.objectContaining({ id, name: 'Legs', volumeKg: 1500, sets: 2, distanceM: 0 }),
+      expect.objectContaining({ id, name: 'Legs', sets: 2, reps: 15, distanceM: 0 }),
     ]);
   });
 
@@ -359,7 +356,7 @@ describe('reading the lines from the training log', () => {
       { weightKg: 100, reps: 8, done: false },
     ]);
     const [legs] = await listWorkoutPoints(db, USER);
-    expect(legs).toMatchObject({ volumeKg: 800, sets: 1 });
+    expect(legs).toMatchObject({ sets: 1, reps: 8 });
   });
 
   it('calls a workout started from the plan by its plan day’s name', async () => {
@@ -397,12 +394,12 @@ describe('reading the lines from the training log', () => {
     expect(lines[0]!.sessions).toHaveLength(2);
   });
 
-  it('finds the best working set of each exercise, in the workout’s order', async () => {
+  it('reads every working set of each exercise, by workout, in the order they were done', async () => {
     const sessionId = await startSession(db, USER, newId, {}, clock);
     const squat = await addExerciseToSession(db, newId, sessionId, 'Back Squat', clock);
-    const press = await addExerciseToSession(db, newId, sessionId, 'Leg Press', clock);
     const pushup = await addExerciseToSession(db, newId, sessionId, 'Push-up', clock);
     const skipped = await addExerciseToSession(db, newId, sessionId, 'Leg Extension', clock);
+    const squatAgain = await addExerciseToSession(db, newId, sessionId, 'Back Squat', clock);
     const add = async (
       exerciseId: string,
       weightKg: number | null,
@@ -418,22 +415,30 @@ describe('reading the lines from the training log', () => {
       );
       if (extra.done !== false) await markSetDone(db, id, true, clock);
     };
-    await add(squat, 120, 3, { warmup: true });
+    await add(squat, 60, 5, { warmup: true });
     await add(squat, 100, 8);
     await add(squat, 105, 6);
-    await add(squat, 105, 7);
     await add(squat, 110, 5, { done: false });
-    await add(press, 200, 10);
     await add(pushup, null, 12);
-    await add(pushup, null, 15);
     await add(skipped, 50, 12, { done: false });
+    await add(squatAgain, 90, 10);
     await finishSession(db, USER, sessionId, {}, clock);
+    const other = await workout('Legs', [{ weightKg: 80, reps: 8 }]);
 
-    expect(await listExerciseBests(db, USER, sessionId)).toEqual([
-      { exerciseKey: 'Back Squat', weightKg: 105, reps: 7 },
-      { exerciseKey: 'Leg Press', weightKg: 200, reps: 10 },
-      { exerciseKey: 'Push-up', weightKg: null, reps: 15 },
+    const set = (weightKg: number | null, reps: number) => ({
+      weightKg,
+      reps,
+      durationSeconds: null,
+      distanceM: null,
+    });
+    const bySession = await listSessionSets(db, USER, [sessionId, other, 'not-a-session']);
+    expect(bySession.get(sessionId)).toEqual([
+      // The squat done again later in the workout is more sets of the squat, in order.
+      { exerciseKey: 'Back Squat', sets: [set(100, 8), set(105, 6), set(90, 10)] },
+      { exerciseKey: 'Push-up', sets: [set(null, 12)] },
     ]);
-    expect(await listExerciseBests(db, 'someone-else', sessionId)).toEqual([]);
+    expect(bySession.get(other)).toEqual([{ exerciseKey: 'Back Squat', sets: [set(80, 8)] }]);
+    expect(bySession.has('not-a-session')).toBe(false);
+    expect((await listSessionSets(db, 'someone-else', [sessionId])).size).toBe(0);
   });
 });

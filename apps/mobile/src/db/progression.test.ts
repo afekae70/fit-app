@@ -21,7 +21,8 @@ import {
   summariseAllProgress,
   summariseExerciseProgress,
   toCoachDigest,
-  weeklyVolume,
+  weeklySets,
+  listExerciseSessions,
 } from './progression.js';
 import { createTestExecutor } from './testUtils.js';
 import {
@@ -39,11 +40,11 @@ let db: SqlExecutor;
 let counter = 0;
 const newId = () => `id-${String(++counter).padStart(3, '0')}`;
 
-/** Log one finished session containing a single exercise with the given sets. */
+/** Log one finished session containing a single exercise with the given sets, all ticked off. */
 async function logSession(
   dayOffset: number,
   exerciseKey: string,
-  sets: { weightKg: number; reps: number; isWarmup?: boolean }[],
+  sets: { weightKg: number | null; reps: number; isWarmup?: boolean }[],
   userId = USER,
   /** Which workout this is — a plan day, so two gyms can be told apart. */
   planDayId?: string,
@@ -51,7 +52,9 @@ async function logSession(
   const clock = () => new Date(Date.UTC(2026, 5, 1 + dayOffset, 10)).toISOString();
   const sessionId = await startSession(db, userId, newId, { planDayId }, clock);
   const exerciseId = await addExerciseToSession(db, newId, sessionId, exerciseKey, clock);
-  for (const set of sets) await addSet(db, newId, exerciseId, set, clock);
+  for (const set of sets) {
+    await markSetDone(db, await addSet(db, newId, exerciseId, set, clock), true, clock);
+  }
   await finishSession(db, userId, sessionId, {}, clock);
   return sessionId;
 }
@@ -135,7 +138,7 @@ describe('getExerciseProgression', () => {
     expect(await getExerciseProgression(db, USER, 'Preacher Curl')).toEqual([]);
   });
 
-  it('never mixes another user\'s sessions into this user\'s progression', async () => {
+  it("never mixes another user's sessions into this user's progression", async () => {
     await logSession(0, 'Barbell Curl', [{ weightKg: 30, reps: 10 }], 'user-2');
 
     // USER has no Barbell Curl history at all — user-2's sessions must not leak in.
@@ -165,7 +168,7 @@ describe('listTrainedExercises', () => {
     expect(await listTrainedExercises(db, USER)).toEqual([]);
   });
 
-  it('never lists another user\'s trained exercises', async () => {
+  it("never lists another user's trained exercises", async () => {
     await logSession(0, 'Barbell Curl', [{ weightKg: 30, reps: 10 }], 'user-2');
     expect(await listTrainedExercises(db, USER)).toEqual([]);
   });
@@ -201,7 +204,9 @@ describe('summariseExerciseProgress', () => {
     await logSession(14, 'Barbell Curl', [{ weightKg: 37.5, reps: 8 }]);
 
     // One ordinary session after a personal best is training variance, not a plateau.
-    expect((await summariseExerciseProgress(db, USER, 'Barbell Curl'))?.assessment.isStalling).toBe(false);
+    expect((await summariseExerciseProgress(db, USER, 'Barbell Curl'))?.assessment.isStalling).toBe(
+      false,
+    );
   });
 
   it('returns null rather than an empty summary for unknown history', async () => {
@@ -287,8 +292,8 @@ describe('progress screen aggregates', () => {
   // A fixed "today" so week boundaries never depend on when the suite runs.
   const TODAY = new Date(2026, 5, 17); // Wednesday 17 June 2026
 
-  it('weeklyVolume returns one entry per week, ending on the current week', async () => {
-    const weeks = await weeklyVolume(db, USER, 4, TODAY);
+  it('weeklySets returns one entry per week, ending on the current week', async () => {
+    const weeks = await weeklySets(db, USER, 4, TODAY);
     expect(weeks).toHaveLength(4);
     // Mondays, ascending, seven days apart.
     expect(weeks.map((w) => w.weekStart)).toEqual([
@@ -299,30 +304,40 @@ describe('progress screen aggregates', () => {
     ]);
   });
 
-  it('weeklyVolume keeps untrained weeks at zero rather than dropping them', async () => {
+  it('weeklySets keeps untrained weeks at zero rather than dropping them', async () => {
     // Dropping them would slide the bars together and make a fortnight off look like a flat
     // healthy line — the exact thing the chart exists to reveal.
-    const weeks = await weeklyVolume(db, USER, 4, TODAY);
-    expect(weeks.every((w) => w.volumeKg === 0)).toBe(true);
+    const weeks = await weeklySets(db, USER, 4, TODAY);
+    expect(weeks.every((w) => w.sets === 0)).toBe(true);
   });
 
-  it('weeklyVolume sums working-set volume into the right week', async () => {
+  it('weeklySets counts working sets into the right week, not the kilograms moved', async () => {
     // logSession's clock is 1 June + dayOffset, so offset 15 is 16 June — the current week.
-    await logSession(15, 'Barbell Curl', [{ weightKg: 30, reps: 10 }]);
+    await logSession(15, 'Barbell Curl', [
+      { weightKg: 30, reps: 10 },
+      { weightKg: 300, reps: 1 },
+    ]);
+    await logSession(15, 'Pull-up', [{ weightKg: null, reps: 8 }]);
 
-    const weeks = await weeklyVolume(db, USER, 4, TODAY);
+    const weeks = await weeklySets(db, USER, 4, TODAY);
     const current = weeks[weeks.length - 1];
     expect(current?.weekStart).toBe('2026-06-15');
-    expect(current?.volumeKg).toBe(300);
+    // Three sets, whatever was on the bar — and one with nothing on it counts too.
+    expect(current?.sets).toBe(3);
   });
 
-  it('weeklyVolume ignores warmups', async () => {
+  it('weeklySets ignores warm-ups and sets that were never ticked off', async () => {
     await logSession(15, 'Barbell Curl', [
       { weightKg: 100, reps: 10, isWarmup: true },
       { weightKg: 30, reps: 10 },
     ]);
-    const weeks = await weeklyVolume(db, USER, 4, TODAY);
-    expect(weeks[weeks.length - 1]?.volumeKg).toBe(300);
+    const clock = () => new Date(Date.UTC(2026, 5, 16, 11)).toISOString();
+    const open = await startSession(db, USER, newId, {}, clock);
+    const exercise = await addExerciseToSession(db, newId, open, 'Barbell Curl', clock);
+    await addSet(db, newId, exercise, { weightKg: 30, reps: 10 }, clock);
+
+    const weeks = await weeklySets(db, USER, 4, TODAY);
+    expect(weeks[weeks.length - 1]?.sets).toBe(1);
   });
 
   it('consistencyHeat returns whole weeks of days', async () => {
@@ -340,10 +355,12 @@ describe('progress screen aggregates', () => {
   });
 
   it('consistencyHeat buckets by quartile, so one huge day cannot flatten the rest', async () => {
-    await logSession(10, 'Barbell Curl', [{ weightKg: 20, reps: 10 }]); // 200
-    await logSession(11, 'Barbell Curl', [{ weightKg: 30, reps: 10 }]); // 300
-    await logSession(12, 'Barbell Curl', [{ weightKg: 40, reps: 10 }]); // 400
-    await logSession(13, 'Barbell Curl', [{ weightKg: 900, reps: 10 }]); // 9000, the outlier
+    const sets = (count: number) =>
+      Array.from({ length: count }, () => ({ weightKg: 20, reps: 10 }));
+    await logSession(10, 'Barbell Curl', sets(2));
+    await logSession(11, 'Barbell Curl', sets(3));
+    await logSession(12, 'Barbell Curl', sets(4));
+    await logSession(13, 'Barbell Curl', sets(40)); // the outlier
 
     const days = await consistencyHeat(db, USER, 4, TODAY);
     const levels = days.filter((d) => d.level > 0).map((d) => d.level);
@@ -384,7 +401,7 @@ describe('progress screen aggregates', () => {
   it('all three ignore another user entirely', async () => {
     await logSession(15, 'Barbell Curl', [{ weightKg: 30, reps: 10 }], 'user-2');
 
-    expect((await weeklyVolume(db, USER, 4, TODAY)).every((w) => w.volumeKg === 0)).toBe(true);
+    expect((await weeklySets(db, USER, 4, TODAY)).every((w) => w.sets === 0)).toBe(true);
     expect((await consistencyHeat(db, USER, 4, TODAY)).every((d) => d.level === 0)).toBe(true);
     expect(await personalRecords(db, USER)).toEqual([]);
   });
@@ -519,7 +536,13 @@ describe('comparing a lift against its own kind of workout', () => {
 
   it('still leaves the open session out while scoped', async () => {
     await twoGyms();
-    const today = await logSession(100, 'Leg Press', [{ weightKg: 110, reps: 8 }], USER, 'plan-day-A');
+    const today = await logSession(
+      100,
+      'Leg Press',
+      [{ weightKg: 110, reps: 8 }],
+      USER,
+      'plan-day-A',
+    );
 
     const scoped = await getExerciseProgression(db, USER, 'Leg Press', 30, today, {
       planDayId: 'plan-day-A',
@@ -562,5 +585,57 @@ describe('setCountsSince', () => {
 
     const counts = await setCountsSince(db, USER, new Date(Date.UTC(2026, 5, 1)).toISOString());
     expect(counts).toEqual([{ exerciseKey: 'Barbell Curl', sets: 1 }]);
+  });
+});
+
+describe('an exercise, session by session', () => {
+  it('lists every ticked working set of each session, oldest first, including long and bodyweight sets', async () => {
+    const first = await logSession(0, 'Back Squat', [
+      { weightKg: 60, reps: 5, isWarmup: true },
+      { weightKg: 100, reps: 8 },
+      { weightKg: 100, reps: 15 },
+    ]);
+    const second = await logSession(7, 'Back Squat', [{ weightKg: null, reps: 20 }]);
+    await logSession(8, 'Bench Press', [{ weightKg: 80, reps: 8 }]);
+
+    const sessions = await listExerciseSessions(db, USER, 'Back Squat');
+    expect(sessions.map((session) => session.sessionId)).toEqual([first, second]);
+    // A set of 15 is a set: unlike the estimated-maximum history, nothing is capped at 12.
+    expect(sessions[0]!.sets.map((set) => [set.weightKg, set.reps])).toEqual([
+      [100, 8],
+      [100, 15],
+    ]);
+    expect(sessions[1]!.sets.map((set) => [set.weightKg, set.reps])).toEqual([[null, 20]]);
+    expect(await listExerciseSessions(db, 'user-2', 'Back Squat')).toEqual([]);
+  });
+
+  it('keeps the most recent sessions asked for', async () => {
+    for (let day = 0; day < 5; day++) {
+      await logSession(day, 'Back Squat', [{ weightKg: 100 + day, reps: 5 }]);
+    }
+    const sessions = await listExerciseSessions(db, USER, 'Back Squat', 2);
+    expect(sessions.map((session) => session.sets[0]!.weightKg)).toEqual([103, 104]);
+  });
+
+  it('gives the progress summary the sets of the last two sessions and the heaviest set', async () => {
+    await logSession(0, 'Back Squat', [{ weightKg: 110, reps: 3 }]);
+    await logSession(7, 'Back Squat', [
+      { weightKg: 100, reps: 8 },
+      { weightKg: 100, reps: 8 },
+    ]);
+    await logSession(14, 'Back Squat', [
+      { weightKg: 102.5, reps: 8 },
+      { weightKg: 100, reps: 7 },
+    ]);
+    const summary = await summariseExerciseProgress(db, USER, 'Back Squat');
+    expect(summary?.latestSets.map((set) => [set.weightKg, set.reps])).toEqual([
+      [102.5, 8],
+      [100, 7],
+    ]);
+    expect(summary?.previousSets?.map((set) => [set.weightKg, set.reps])).toEqual([
+      [100, 8],
+      [100, 8],
+    ]);
+    expect(summary?.heaviest).toMatchObject({ weightKg: 110, reps: 3 });
   });
 });

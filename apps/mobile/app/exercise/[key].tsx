@@ -6,9 +6,10 @@
  * Reached by tapping its name, which is where someone already looks when they want to know
  * whether they are getting stronger at it.
  *
- * Everything here is read-only and derived. The numbers come from `progression.ts`, which the
- * suggestion engine and the progress tab already read, so this page can never disagree with the
- * advice on the workout card.
+ * Everything here is read-only and derived. It is read the way a lifter reads it — the weight,
+ * the reps and the number of sets — never by weight x reps added up: the chart is the heaviest
+ * set of each session, and each session in the list shows its sets and how they stood, set by
+ * set, against the session before (see `progress/setBySet.ts`).
  */
 
 import { EXERCISE_BY_KEY, EQUIPMENT_SEED } from '@fit/shared/catalog';
@@ -25,15 +26,13 @@ import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
 import { ExerciseVisual } from '../../src/components/ExerciseVisual.js';
 import { Card, EmptyState, Hint, ScreenHeader, SectionTitle, SkeletonScreen } from '../../src/components/ui.js';
 import { getExecutor } from '../../src/db/provider.js';
-import {
-  getExerciseProgression,
-  summariseExerciseProgress,
-  type ExerciseProgressSummary,
-  type ExerciseSessionBest,
-} from '../../src/db/progression.js';
+import { listExerciseSessions, type ExerciseSession } from '../../src/db/progression.js';
+import { TallyChip, useSetText } from '../../src/components/WorkoutProgressList.js';
+import { pairSets, tallyOf, topSet, type WorkingSet } from '../../src/progress/setBySet.js';
 import { useTheme } from '../../src/ThemeProvider.js';
 import { useUnit } from '../../src/UnitsProvider.js';
-import { formatVolume, kgToDisplay, weightUnitKey } from '../../src/units.js';
+import { kgToDisplay, weightUnitKey } from '../../src/units.js';
+import { formatDuration } from '../../src/workout/cardioTimer.js';
 import { radius, shadow, spacing, type ColorPalette } from '../../src/theme.js';
 import { ChartBar } from '../../src/components/ChartBar.js';
 import { ChartLineUp } from 'phosphor-react-native';
@@ -50,8 +49,8 @@ export default function ExerciseRecordScreen() {
   const { colors } = useTheme();
   const s = useMemo(() => createStyles(colors), [colors]);
 
-  const [sessions, setSessions] = useState<ExerciseSessionBest[] | null>(null);
-  const [summary, setSummary] = useState<ExerciseProgressSummary | null>(null);
+  const [sessions, setSessions] = useState<ExerciseSession[] | null>(null);
+  const setText = useSetText();
   /** The session whose bar was touched, by position; null reads the latest. */
   const [chosen, setChosen] = useState<number | null>(null);
 
@@ -60,8 +59,7 @@ export default function ExerciseRecordScreen() {
       if (!key) return;
       void (async () => {
         const db = await getExecutor();
-        setSessions(await getExerciseProgression(db, userId, key));
-        setSummary(await summariseExerciseProgress(db, userId, key));
+        setSessions(await listExerciseSessions(db, userId, key));
       })();
     }, [key, userId]),
   );
@@ -81,19 +79,42 @@ export default function ExerciseRecordScreen() {
   // Newest first for reading, oldest first for the chart — the two want opposite orders, and
   // the query is the one that knows which way it came.
   const newestFirst = [...sessions].reverse();
-  const peak = Math.max(...sessions.map((session) => session.best_e1rm_kg), 1);
+  // The bar is the session's heaviest set; for an exercise done without weight, its most reps.
+  const weighted = sessions.some((session) => topSet(session.sets) !== null);
+  const barOf = (session: ExerciseSession) =>
+    weighted
+      ? (topSet(session.sets)?.weightKg ?? 0)
+      : Math.max(0, ...session.sets.map((set) => set.reps ?? 0));
+  const bestOf = (session: ExerciseSession): WorkingSet | null =>
+    topSet(session.sets) ??
+    session.sets.reduce<WorkingSet | null>(
+      (best, set) => (best === null || (set.reps ?? 0) > (best.reps ?? 0) ? set : best),
+      null,
+    );
+  const peak = Math.max(...sessions.map(barOf), 1);
   const picked = chosen !== null && chosen < sessions.length ? chosen : null;
   const shownSession = sessions[picked ?? sessions.length - 1];
   /** One session in a line: when, and the set the bar was drawn from. */
-  const readout = (session: ExerciseSessionBest) =>
-    `${new Date(session.started_at).toLocaleDateString(i18n.language, {
+  const readout = (session: ExerciseSession) =>
+    `${new Date(session.startedAt).toLocaleDateString(i18n.language, {
       day: 'numeric',
       month: 'short',
-    })} · ${kgToDisplay(session.top_weight_kg, unit)} ${unitLabel} × ${session.top_reps}`;
-  const heaviest = sessions.reduce<ExerciseSessionBest | null>(
-    (best, session) => (best === null || session.top_weight_kg > best.top_weight_kg ? session : best),
-    null,
-  );
+    })} · ${setText(bestOf(session))}`;
+  const heaviest = topSet(sessions.flatMap((session) => session.sets));
+  const latest = sessions.at(-1);
+  /** A session's sets in a line: "80×8 · 80×8 · 77.5×7 kg", the unit said once. */
+  const setsLine = (sets: readonly WorkingSet[]) => {
+    const parts = sets.map((set) => {
+      if (set.weightKg !== null && set.weightKg > 0) {
+        return `${kgToDisplay(set.weightKg, unit)}×${set.reps ?? 0}`;
+      }
+      if (set.reps !== null) return `×${set.reps}`;
+      if (set.durationSeconds !== null) return formatDuration(set.durationSeconds);
+      return '—';
+    });
+    const anyWeight = sets.some((set) => set.weightKg !== null && set.weightKg > 0);
+    return `${parts.join(' · ')}${anyWeight ? ` ${unitLabel}` : ''}`;
+  };
 
   return (
     <ScrollView
@@ -122,13 +143,12 @@ export default function ExerciseRecordScreen() {
         <>
           <View style={s.tiles}>
             <Tile
-              value={summary?.bestE1rm ? String(kgToDisplay(summary.bestE1rm, unit)) : '—'}
-              unit={unitLabel}
-              label={t('record.best')}
+              value={latest ? setText(bestOf(latest)) : '—'}
+              label={t('record.workingWeight')}
               styles={s}
             />
             <Tile
-              value={heaviest ? `${kgToDisplay(heaviest.top_weight_kg, unit)}×${heaviest.top_reps}` : '—'}
+              value={heaviest ? setText(heaviest) : '—'}
               label={t('record.heaviestSet')}
               styles={s}
             />
@@ -149,7 +169,7 @@ export default function ExerciseRecordScreen() {
             <View style={[s.chart, { height: CHART_HEIGHT }]}>
               {sessions.map((session, index) => (
                 <Pressable
-                  key={session.session_id}
+                  key={session.sessionId}
                   onPress={() => setChosen(picked === index ? null : index)}
                   accessibilityRole="button"
                   accessibilityLabel={readout(session)}
@@ -160,7 +180,7 @@ export default function ExerciseRecordScreen() {
                   <ChartBar
                     index={index}
                     dimmed={picked !== null && picked !== index}
-                    height={Math.max(6, (session.best_e1rm_kg / peak) * CHART_HEIGHT)}
+                    height={Math.max(6, (barOf(session) / peak) * CHART_HEIGHT)}
                   />
                 </Pressable>
               ))}
@@ -168,31 +188,30 @@ export default function ExerciseRecordScreen() {
           </Card>
 
           <SectionTitle>{t('record.sessionList')}</SectionTitle>
-          {newestFirst.map((session) => (
+          {newestFirst.map((session, index) => {
+            // The one before it in time is the next one down the list.
+            const before = newestFirst[index + 1];
+            return (
             <Pressable
-              key={session.session_id}
-              onPress={() => router.push({ pathname: '/session/[id]', params: { id: session.session_id } })}
+              key={session.sessionId}
+              onPress={() => router.push({ pathname: '/session/[id]', params: { id: session.sessionId } })}
               accessibilityRole="button"
               style={({ pressed }) => [s.row, pressed && s.pressed]}
             >
               <View style={s.rowMain}>
                 <Text style={s.rowDate}>
-                  {new Date(session.started_at).toLocaleDateString(i18n.language, {
+                  {new Date(session.startedAt).toLocaleDateString(i18n.language, {
                     day: 'numeric',
                     month: 'long',
                     year: 'numeric',
                   })}
                 </Text>
-                <Text style={s.rowMeta}>
-                  {t('record.topSet')}: {kgToDisplay(session.top_weight_kg, unit)} {unitLabel} ×{' '}
-                  {session.top_reps} · {session.working_sets} {t('history.sets')}
-                </Text>
+                <Text style={s.rowMeta}>{setsLine(session.sets)}</Text>
               </View>
-              <Text style={s.rowVolume}>
-                {formatVolume(session.total_volume_load, unit)} {unitLabel}
-              </Text>
+              <TallyChip tally={before ? tallyOf(pairSets(session.sets, before.sets)) : null} />
             </Pressable>
-          ))}
+            );
+          })}
         </>
       )}
     </ScrollView>
@@ -245,7 +264,6 @@ const createStyles = (colors: ColorPalette) =>
     rowMain: ViewStyle;
     rowDate: TextStyle;
     rowMeta: TextStyle;
-    rowVolume: TextStyle;
     pressed: ViewStyle;
   }>({
     screen: { flex: 1 },
@@ -307,6 +325,5 @@ const createStyles = (colors: ColorPalette) =>
     rowMain: { flex: 1, gap: 3 },
     rowDate: { color: colors.text, fontSize: 16, fontWeight: '500', textAlign: 'auto' },
     rowMeta: { color: colors.textMuted, fontSize: 12, textAlign: 'auto' },
-    rowVolume: { color: colors.textMuted, fontSize: 12, fontVariant: ['tabular-nums'] },
     pressed: { opacity: 0.7 },
   });

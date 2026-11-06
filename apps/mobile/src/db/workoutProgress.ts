@@ -3,10 +3,11 @@
  *
  * The database half of `progress/workoutProgress.ts`, which says what the numbers mean. This
  * only fetches them: every finished workout that has a name, with what it came to, and the
- * best set of each exercise in one workout.
+ * working sets of each exercise in any of them.
  */
 
-import type { ExerciseBest, SessionPoint } from '../progress/workoutProgress.js';
+import type { ExerciseSets } from '../progress/setBySet.js';
+import type { SessionPoint } from '../progress/workoutProgress.js';
 import type { SqlExecutor } from './executor.js';
 
 /**
@@ -17,7 +18,7 @@ import type { SqlExecutor } from './executor.js';
  * again. A workout with neither is left out: it belongs to no line.
  *
  * Only sets that were ticked off and are not warm-ups count, the same line the history and the
- * weekly volume draw, so a workout's number here is the number shown for it everywhere else.
+ * weekly sets draw, so a workout's number here is the number shown for it everywhere else.
  */
 export async function listWorkoutPoints(db: SqlExecutor, userId: string): Promise<SessionPoint[]> {
   const rows = await db.all<{
@@ -25,22 +26,22 @@ export async function listWorkoutPoints(db: SqlExecutor, userId: string): Promis
     name: string;
     started_at: string;
     ended_at: string | null;
-    volume_kg: number | null;
     sets: number | null;
+    reps: number | null;
     distance_m: number | null;
   }>(
     `SELECT ws.id,
             COALESCE(NULLIF(TRIM(ws.name), ''), NULLIF(TRIM(pd.name), '')) AS name,
             ws.started_at,
             ws.ended_at,
-            (SELECT SUM(s.weight_kg * s.reps)
-               FROM sets s JOIN session_exercises se ON se.id = s.session_exercise_id
-              WHERE se.session_id = ws.id AND se.deleted_at IS NULL AND s.deleted_at IS NULL
-                AND s.done_at IS NOT NULL AND s.is_warmup = 0) AS volume_kg,
             (SELECT COUNT(*)
                FROM sets s JOIN session_exercises se ON se.id = s.session_exercise_id
               WHERE se.session_id = ws.id AND se.deleted_at IS NULL AND s.deleted_at IS NULL
                 AND s.done_at IS NOT NULL AND s.is_warmup = 0) AS sets,
+            (SELECT SUM(s.reps)
+               FROM sets s JOIN session_exercises se ON se.id = s.session_exercise_id
+              WHERE se.session_id = ws.id AND se.deleted_at IS NULL AND s.deleted_at IS NULL
+                AND s.done_at IS NOT NULL AND s.is_warmup = 0) AS reps,
             (SELECT SUM(s.distance_m)
                FROM sets s JOIN session_exercises se ON se.id = s.session_exercise_id
               WHERE se.session_id = ws.id AND se.deleted_at IS NULL AND s.deleted_at IS NULL
@@ -57,55 +58,67 @@ export async function listWorkoutPoints(db: SqlExecutor, userId: string): Promis
     name: row.name,
     startedAt: row.started_at,
     endedAt: row.ended_at,
-    volumeKg: row.volume_kg ?? 0,
     sets: row.sets ?? 0,
+    reps: row.reps ?? 0,
     distanceM: row.distance_m ?? 0,
   }));
 }
 
+/** How many ids go into one `IN (…)`: well under SQLite's limit on bound values. */
+const CHUNK = 400;
+
 /**
- * The best working set of each exercise in one workout, in the order they were done.
+ * The working sets of each exercise in each of the given workouts of this account.
  *
- * Heaviest first, and the most reps among the heaviest — the same "best set" the finished
- * workout's own screen marks. An exercise with no weight on any set is told by its most reps.
- * One with no finished working set at all is not in the list: nothing was done to compare.
+ * By workout id; each workout's exercises in the order they were done, each exercise's sets in
+ * the order they were done. Only sets that were ticked off and are not warm-ups — the sets that
+ * are compared set by set (see `progress/setBySet.ts`). An exercise done twice in one workout
+ * is one exercise with the sets of both, in order: the second time is more sets of it, not
+ * another lift. A workout with no such set is not in the map.
  */
-export async function listExerciseBests(
+export async function listSessionSets(
   db: SqlExecutor,
   userId: string,
-  sessionId: string,
-): Promise<ExerciseBest[]> {
-  const rows = await db.all<{
-    exercise_id: string;
-    exercise_key: string;
-    weight_kg: number | null;
-    reps: number | null;
-  }>(
-    `SELECT se.id AS exercise_id, se.exercise_key, s.weight_kg, s.reps
-       FROM session_exercises se
-       JOIN workout_sessions ws ON ws.id = se.session_id
-       JOIN sets s ON s.session_exercise_id = se.id
-      WHERE se.session_id = ? AND ws.user_id = ?
-        AND se.deleted_at IS NULL AND s.deleted_at IS NULL
-        AND s.done_at IS NOT NULL AND s.is_warmup = 0
-      ORDER BY se.order_index, se.id, s.set_index`,
-    [sessionId, userId],
-  );
-
-  const bests = new Map<string, ExerciseBest>();
-  for (const row of rows) {
-    const current = bests.get(row.exercise_id);
-    const heavier = (row.weight_kg ?? 0) > (current?.weightKg ?? 0);
-    const sameWeightMoreReps =
-      (row.weight_kg ?? 0) === (current?.weightKg ?? 0) && (row.reps ?? 0) > (current?.reps ?? 0);
-    if (!current || heavier || sameWeightMoreReps) {
-      bests.set(row.exercise_id, {
+  sessionIds: readonly string[],
+): Promise<Map<string, ExerciseSets[]>> {
+  const bySession = new Map<string, Map<string, ExerciseSets>>();
+  const unique = [...new Set(sessionIds)];
+  for (let start = 0; start < unique.length; start += CHUNK) {
+    const ids = unique.slice(start, start + CHUNK);
+    const rows = await db.all<{
+      session_id: string;
+      exercise_key: string;
+      weight_kg: number | null;
+      reps: number | null;
+      duration_seconds: number | null;
+      distance_m: number | null;
+    }>(
+      `SELECT se.session_id, se.exercise_key, s.weight_kg, s.reps, s.duration_seconds, s.distance_m
+         FROM session_exercises se
+         JOIN workout_sessions ws ON ws.id = se.session_id
+         JOIN sets s ON s.session_exercise_id = se.id
+        WHERE se.session_id IN (${ids.map(() => '?').join(', ')}) AND ws.user_id = ?
+          AND ws.deleted_at IS NULL AND se.deleted_at IS NULL AND s.deleted_at IS NULL
+          AND s.done_at IS NOT NULL AND s.is_warmup = 0
+        ORDER BY se.session_id, se.order_index, se.id, s.set_index, s.id`,
+      [...ids, userId],
+    );
+    for (const row of rows) {
+      const exercises = bySession.get(row.session_id) ?? new Map<string, ExerciseSets>();
+      bySession.set(row.session_id, exercises);
+      // A Map keeps the order its keys were first set in, which is the order of the workout.
+      const exercise = exercises.get(row.exercise_key) ?? {
         exerciseKey: row.exercise_key,
+        sets: [],
+      };
+      exercises.set(row.exercise_key, exercise);
+      exercise.sets.push({
         weightKg: row.weight_kg,
         reps: row.reps,
+        durationSeconds: row.duration_seconds,
+        distanceM: row.distance_m,
       });
     }
   }
-  // A Map keeps the order its keys were first set in, which is the order of the workout.
-  return [...bests.values()];
+  return new Map([...bySession].map(([id, exercises]) => [id, [...exercises.values()]]));
 }

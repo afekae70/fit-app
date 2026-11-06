@@ -40,7 +40,7 @@ const id = (prefix: string) => `${prefix}-${(seq += 1)}`;
 
 async function logWorkout(
   startedLocal: string,
-  sets: { exercise: string; weight: number; reps: number }[],
+  sets: { exercise: string; weight: number | null; reps: number }[],
   { user = USER, planDayId = null as string | null } = {},
 ): Promise<string> {
   const sessionId = id('ws');
@@ -591,11 +591,14 @@ describe('weekSummary', () => {
     expect(summary.workouts).toBe(1);
   });
 
-  it('reports volume in tonnes to one decimal', async () => {
+  it('counts the working sets of the week, not the kilograms moved', async () => {
     await logWorkout('2026-08-03T09:00:00', [{ exercise: 'Barbell Row', weight: 100, reps: 10 }]);
-    await logWorkout('2026-08-04T09:00:00', [{ exercise: 'Barbell Row', weight: 105, reps: 10 }]);
-    // 1000 + 1050 kg
-    expect((await weekSummary(db, USER, NOW)).volumeTonnes).toBe(2.1);
+    await logWorkout('2026-08-04T09:00:00', [
+      { exercise: 'Barbell Row', weight: 105, reps: 10 },
+      { exercise: 'Pull-up', weight: null, reps: 8 },
+    ]);
+    // A set without a weight is a set all the same.
+    expect((await weekSummary(db, USER, NOW)).sets).toBe(3);
   });
 
   it('counts a personal record once per exercise, not once per heavy set', async () => {
@@ -621,7 +624,7 @@ describe('weekSummary', () => {
   it('is all zeroes for a user with no training', async () => {
     expect(await weekSummary(db, USER, NOW)).toEqual({
       workouts: 0,
-      volumeTonnes: 0,
+      sets: 0,
       personalRecords: 0,
     });
   });
@@ -640,7 +643,7 @@ describe('weekSummary', () => {
 
     const summary = await weekSummary(db, USER, NOW);
     expect(summary.workouts).toBe(1);
-    expect(summary.volumeTonnes).toBe(1);
+    expect(summary.sets).toBe(1);
     expect(summary.personalRecords).toBe(1);
     expect(kept).toBeTruthy();
   });
@@ -799,7 +802,7 @@ describe('getTrainedToday', () => {
 
     const trained = await getTrainedToday(db, USER);
     expect(trained?.setCount).toBe(1);
-    expect(trained?.volumeKg).toBe(640);
+    expect(trained?.reps).toBe(8);
     // Still running: there is a start and no end, so there is no duration to report.
     expect(trained?.finished).toBe(false);
     expect(trained?.minutes).toBeNull();

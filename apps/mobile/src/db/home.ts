@@ -62,7 +62,8 @@ export interface TrainedToday {
   name: string | null;
   /** Working sets ticked off. Warm-ups are a ramp, not the work the card is reporting. */
   setCount: number;
-  volumeKg: number;
+  /** The reps over those sets. Reps, not weight x reps: progress is read by sets and reps. */
+  reps: number;
   /** Null while the session is still open — it has a start but no end to measure against. */
   minutes: number | null;
   /** False while it is still running, which the card says rather than calling it finished. */
@@ -106,9 +107,9 @@ export async function getTrainedToday(
   );
   if (!row) return null;
 
-  const totals = await db.get<{ sets: number; volume: number | null }>(
+  const totals = await db.get<{ sets: number; reps: number | null }>(
     `SELECT COUNT(*) AS sets,
-            SUM(COALESCE(s.weight_kg, 0) * COALESCE(s.reps, 0)) AS volume
+            SUM(COALESCE(s.reps, 0)) AS reps
        FROM sets s
        JOIN session_exercises se ON se.id = s.session_exercise_id AND se.deleted_at IS NULL
       WHERE se.session_id = ?
@@ -122,7 +123,7 @@ export async function getTrainedToday(
     sessionId: row.id,
     name: row.name,
     setCount: totals?.sets ?? 0,
-    volumeKg: Math.round(totals?.volume ?? 0),
+    reps: totals?.reps ?? 0,
     minutes: row.ended_at
       ? Math.max(1, Math.round((Date.parse(row.ended_at) - Date.parse(row.started_at)) / 60000))
       : null,
@@ -550,13 +551,13 @@ export async function monthWeeks(db: SqlExecutor, userId: string, now = new Date
 
 export interface WeekSummary {
   workouts: number;
-  /** Total kg lifted, as tonnes — the unit the card shows. */
-  volumeTonnes: number;
+  /** Working sets ticked off. Sets, not tonnes: progress is read by sets, reps and weight. */
+  sets: number;
   personalRecords: number;
 }
 
 /**
- * Workouts, volume and personal records since the start of the current week.
+ * Workouts, working sets and personal records since the start of the current week.
  *
  * The week starts on Sunday, matching the strip above and the Hebrew calendar the app is written
  * for. A "personal record" here is a set this week that is heavier than anything ever lifted on
@@ -572,12 +573,13 @@ export async function weekSummary(
   start.setDate(start.getDate() - start.getDay());
   const from = localDay(start);
 
-  const totals = await db.get<{ workouts: number; volume: number | null }>(
+  const totals = await db.get<{ workouts: number; sets: number | null }>(
     `SELECT COUNT(DISTINCT ws.id) AS workouts,
-            SUM(COALESCE(s.weight_kg, 0) * COALESCE(s.reps, 0)) AS volume
+            COUNT(s.id)           AS sets
        FROM workout_sessions ws
        LEFT JOIN session_exercises se ON se.session_id = ws.id AND se.deleted_at IS NULL
        LEFT JOIN sets s ON s.session_exercise_id = se.id AND s.deleted_at IS NULL
+                        AND s.is_warmup = 0 AND s.done_at IS NOT NULL
       WHERE ws.user_id = ? AND ws.deleted_at IS NULL
         AND date(ws.started_at, 'localtime') >= ?
         AND ${TRAINED}`,
@@ -609,7 +611,7 @@ export async function weekSummary(
 
   return {
     workouts: totals?.workouts ?? 0,
-    volumeTonnes: Math.round(((totals?.volume ?? 0) / 1000) * 10) / 10,
+    sets: totals?.sets ?? 0,
     personalRecords: records?.n ?? 0,
   };
 }

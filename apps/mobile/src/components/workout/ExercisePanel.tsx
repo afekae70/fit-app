@@ -17,13 +17,14 @@ import { StyleSheet, View, type TextStyle, type ViewStyle } from 'react-native';
 import { Pressable } from '../Pressable.js';
 import { Text } from '../Text.js';
 
-import { exerciseVolume, labelSets, type DerivedSet } from '../../workout/derived.js';
+import { labelSets, type DerivedSet } from '../../workout/derived.js';
+import { liveSetChanges } from '../../progress/setBySet.js';
 import { useTheme } from '../../ThemeProvider.js';
 import type { UnitPreference } from '@fit/shared';
 import { formatPlates, OLYMPIC_BAR, OLYMPIC_BAR_LB, platesPerSide } from '@fit/shared/calculations';
 
 import { useUnit } from '../../UnitsProvider.js';
-import { formatVolume, kgToDisplay, metresToDisplay, weightUnitKey } from '../../units.js';
+import { kgToDisplay, metresToDisplay } from '../../units.js';
 import type { ProgressionAdvice } from '@fit/shared/calculations';
 import { radius, shadow, type ColorPalette } from '../../theme.js';
 import type { DragHandleProps } from '../DragReorderList.js';
@@ -228,7 +229,8 @@ export function ExercisePanel({
   const unit = useUnit();
   const s = useMemo(() => createStyles(colors), [colors]);
 
-  const volume = exerciseVolume(sets);
+  // Each ticked set against the same set last time, for the line under the card.
+  const live = useMemo(() => liveSetChanges(sets, ghosts), [sets, ghosts]);
 
   /*
    * What to put on the bar for the set you are about to do.
@@ -538,11 +540,31 @@ export function ExercisePanel({
         </Pressable>
       ) : null}
 
-      {/* Only once something has been lifted. A live "0 kg" beside an untouched card is a score
-          nobody asked for. */}
-      {volume > 0 ? (
+      {/* Set against set, once one has been ticked: was the second set better than the second
+          set last time? By the weight, then the reps — never weight x reps added up, which the
+          owner asked not to be measured by. Nothing before the first tick: a verdict on an
+          untouched card is a score nobody asked for. */}
+      {live.length > 0 ? (
         <Text style={s.volume}>
-          {formatVolume(volume, unit)} {t(`common.${weightUnitKey(unit)}`)} {t('workout.volume')}
+          {t('workout.vsLastTime')}{' '}
+          {live.map((item, index) => (
+            <Text key={item.position}>
+              {index > 0 ? ' · ' : ''}
+              {t('progress.setN', { n: item.position })}{' '}
+              <Text
+                style={
+                  item.change === 'up'
+                    ? s.liveUp
+                    : item.change === 'down'
+                      ? s.liveDown
+                      : s.liveSame
+                }
+                accessibilityLabel={t(`progress.setChange_${item.change}`)}
+              >
+                {item.change === 'up' ? '▲' : item.change === 'down' ? '▼' : '＝'}
+              </Text>
+            </Text>
+          ))}
         </Text>
       ) : null}
 
@@ -695,6 +717,9 @@ const createStyles = (colors: ColorPalette) =>
     warmupLinkText: TextStyle;
     pressed: ViewStyle;
     volume: TextStyle;
+    liveUp: TextStyle;
+    liveDown: TextStyle;
+    liveSame: TextStyle;
   }>({
     visualBanner: { alignSelf: 'stretch' },
     visualThumb: { width: 56 },
@@ -873,4 +898,7 @@ const createStyles = (colors: ColorPalette) =>
       fontVariant: ['tabular-nums'],
       textAlign: 'center',
     },
+    liveUp: { color: colors.accent, fontWeight: '700' },
+    liveDown: { color: colors.warning, fontWeight: '700' },
+    liveSame: { color: colors.textMuted },
   });

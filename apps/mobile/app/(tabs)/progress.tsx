@@ -35,24 +35,41 @@ import { WeeklyReviewCard } from '../../src/components/WeeklyReviewCard.js';
 import {
   ConsistencyGrid,
   PersonalRecordList,
-  WeeklyVolumeChart,
+  WeeklySetsChart,
 } from '../../src/components/ProgressCharts.js';
-import { WorkoutProgressList } from '../../src/components/WorkoutProgressList.js';
+import {
+  TallyChip,
+  useSetText,
+  WorkoutProgressList,
+} from '../../src/components/WorkoutProgressList.js';
 import {
   consistencyHeat,
   personalRecords,
   summariseAllProgress,
   setCountsSince,
-  weeklyVolume,
+  weeklySets,
   type ExerciseProgressSummary,
   type PersonalRecord,
   type TrainingDay,
-  type WeeklyVolume,
+  type WeeklySets,
 } from '../../src/db/progression.js';
 import { MuscleVolumeCard } from '../../src/components/MuscleVolumeCard.js';
 import { getExecutor } from '../../src/db/provider.js';
-import { listWorkoutPoints } from '../../src/db/workoutProgress.js';
-import { groupByWorkout, type WorkoutLine } from '../../src/progress/workoutProgress.js';
+import { listSessionSets, listWorkoutPoints } from '../../src/db/workoutProgress.js';
+import {
+  exerciseSetChanges,
+  pairSets,
+  tallyOf,
+  topSet,
+  workoutTally,
+  type Tally,
+} from '../../src/progress/setBySet.js';
+import {
+  groupByWorkout,
+  metricOf,
+  setsOf,
+  type WorkoutLine,
+} from '../../src/progress/workoutProgress.js';
 import { useTheme } from '../../src/ThemeProvider.js';
 import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../../src/theme.js';
 import { ChartLineUp } from 'phosphor-react-native';
@@ -84,21 +101,48 @@ export default function ProgressScreen() {
   const userId = useCurrentUserId();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const setText = useSetText();
 
   const [summaries, setSummaries] = useState<ExerciseProgressSummary[]>([]);
-  const [volume, setVolume] = useState<WeeklyVolume[]>([]);
+  const [weekly, setWeekly] = useState<WeeklySets[]>([]);
   const [heat, setHeat] = useState<TrainingDay[]>([]);
   const [records, setRecords] = useState<PersonalRecord[]>([]);
   // Every named workout as a line of its sessions. See progress/workoutProgress.ts.
   const [workouts, setWorkouts] = useState<WorkoutLine[]>([]);
+  // Per workout: its latest session's sets against the one before. Lifting workouts only.
+  const [tallies, setTallies] = useState<ReadonlyMap<string, Tally | null>>(new Map());
   const [muscles, setMuscles] = useState<MuscleWork[]>([]);
   const [loading, setLoading] = useState(true);
 
   const reload = useCallback(async () => {
     const db = await getExecutor();
     setSummaries(await summariseAllProgress(db, userId));
-    setWorkouts(groupByWorkout(await listWorkoutPoints(db, userId)));
-    setVolume(await weeklyVolume(db, userId));
+
+    const lines = groupByWorkout(await listWorkoutPoints(db, userId));
+    const lifting = lines.filter((line) => metricOf(line) === 'strength');
+    const bySession = await listSessionSets(
+      db,
+      userId,
+      lifting.flatMap((line) => line.sessions.slice(-2).map((session) => session.id)),
+    );
+    setTallies(
+      new Map(
+        lifting.map((line) => {
+          const latest = line.sessions.at(-1)!;
+          const previous = line.sessions.at(-2);
+          return [
+            line.key,
+            previous
+              ? workoutTally(
+                  exerciseSetChanges(setsOf(bySession, latest.id), setsOf(bySession, previous.id)),
+                )
+              : null,
+          ];
+        }),
+      ),
+    );
+    setWorkouts(lines);
+    setWeekly(await weeklySets(db, userId));
     setHeat(await consistencyHeat(db, userId));
 
     // Seven days back from now, not "since Monday". A calendar week makes the card almost empty
@@ -147,7 +191,7 @@ export default function ProgressScreen() {
         <Card index={0}>
           <SectionTitle>{t('progress.byWorkout')}</SectionTitle>
           <Hint>{t('progress.byWorkoutHint')}</Hint>
-          <WorkoutProgressList lines={workouts} />
+          <WorkoutProgressList lines={workouts} tallies={tallies} />
         </Card>
       ) : null}
 
@@ -155,11 +199,11 @@ export default function ProgressScreen() {
           a review to show nor a way to ask for one. */}
       <WeeklyReviewCard />
 
-      {volume.some((w) => w.volumeKg > 0) ? (
+      {weekly.some((w) => w.sets > 0) ? (
         <>
           <Card index={0}>
-            <SectionTitle>{t('progress.weeklyVolume')}</SectionTitle>
-            <WeeklyVolumeChart weeks={volume} />
+            <SectionTitle>{t('progress.weeklySets')}</SectionTitle>
+            <WeeklySetsChart weeks={weekly} />
           </Card>
 
           <Card index={1}>
@@ -195,9 +239,11 @@ export default function ProgressScreen() {
             const trend = classify(summary);
             const seed = EXERCISE_BY_KEY.get(summary.exerciseKey);
             const label = seed ? (isHebrew ? seed.nameHe : seed.nameEn) : summary.exerciseKey;
-            const delta = summary.assessment.e1rmDeltaKg ?? 0;
-            const volumeSlope = summary.assessment.volumeSlopePerSession;
             const trendTint = trendColor(trend, colors);
+            // Set by set against the time before: the same reading as a whole workout's.
+            const sinceLast = summary.previousSets
+              ? tallyOf(pairSets(summary.latestSets, summary.previousSets))
+              : null;
 
             return (
               // Offset past the chart cards above so the screen reads as one sequence rather
@@ -215,46 +261,23 @@ export default function ProgressScreen() {
                 <View style={styles.figures}>
                   <View style={styles.figure}>
                     <Text style={styles.figureValue}>
-                      {summary.latestE1rm === null ? '—' : summary.latestE1rm.toFixed(1)}
+                      {setText(topSet(summary.latestSets))}
                     </Text>
-                    <Text style={styles.figureLabel}>
-                      {t('progress.current')} · {t('progress.estimated1rm')}
-                    </Text>
+                    <Text style={styles.figureLabel}>{t('progress.workingWeight')}</Text>
                   </View>
                   <View style={styles.figure}>
-                    <Text style={styles.figureValue}>
-                      {summary.bestE1rm === null ? '—' : summary.bestE1rm.toFixed(1)}
-                    </Text>
-                    <Text style={styles.figureLabel}>{t('progress.best')}</Text>
+                    <Text style={styles.figureValue}>{setText(summary.heaviest)}</Text>
+                    <Text style={styles.figureLabel}>{t('progress.heaviest')}</Text>
                   </View>
                   <View style={styles.figure}>
-                    <Text
-                      style={[
-                        styles.figureValue,
-                        {
-                          color:
-                            delta > 0.5
-                              ? colors.accent
-                              : delta < -0.5
-                                ? colors.danger
-                                : colors.text,
-                        },
-                      ]}
-                    >
-                      {delta > 0 ? '+' : ''}
-                      {delta.toFixed(1)}
-                    </Text>
-                    <Text style={styles.figureLabel}>{t('progress.change')}</Text>
+                    <TallyChip tally={sinceLast} />
+                    <Text style={styles.figureLabel}>{t('progress.vsLastTime')}</Text>
                   </View>
                 </View>
 
                 <Text style={styles.meta}>
+                  {t('progress.setCount', { count: summary.latestSets.length })} ·{' '}
                   {summary.sessionCount} {t('progress.sessions')}
-                  {volumeSlope !== null
-                    ? ` · ${t('progress.volumeTrend')} ${volumeSlope > 0 ? '+' : ''}${Math.round(
-                        volumeSlope,
-                      )} ${t('progress.perSession')}`
-                    : ''}
                 </Text>
 
                 {trend === 'stalling' ? (
@@ -317,7 +340,14 @@ const createStyles = (colors: ColorPalette) =>
     badgeText: { fontSize: fontSize.xxs, fontWeight: fontWeight.bold },
     figures: { flexDirection: 'row', gap: spacing.md },
     figure: { flex: 1 },
-    figureValue: { color: colors.text, fontSize: fontSize.xl, fontWeight: fontWeight.bold },
+    // A set, "102.5 kg × 10", in a third of the card: sized to fit, not to shout.
+    figureValue: {
+      color: colors.text,
+      fontSize: fontSize.md,
+      fontWeight: fontWeight.bold,
+      fontVariant: ['tabular-nums'],
+      textAlign: 'auto',
+    },
     figureLabel: {
       color: colors.textMuted,
       fontSize: fontSize.xxs,

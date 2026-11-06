@@ -17,6 +17,7 @@ import {
   type StallAssessment,
 } from '@fit/shared/calculations';
 
+import { topSet, type WorkingSet } from '../progress/setBySet.js';
 import type { SqlExecutor } from './executor.js';
 import { sameTypeClause, type SessionType } from './sessionType.js';
 
@@ -86,12 +87,87 @@ export async function getExerciseProgression(
      GROUP BY ws.id
      ORDER BY ws.started_at DESC
      LIMIT ?`,
-    [userId, exerciseKey, excludeSessionId ?? null, excludeSessionId ?? null, ...type.params, limit],
+    [
+      userId,
+      exerciseKey,
+      excludeSessionId ?? null,
+      excludeSessionId ?? null,
+      ...type.params,
+      limit,
+    ],
   );
 
   // Query newest-first so LIMIT keeps the most RECENT sessions, then flip: the trend maths
   // needs chronological order. Ordering ascending in SQL would have kept the oldest instead.
   return rows.reverse();
+}
+
+/** One session of one exercise: its working sets, in the order they were done. */
+export interface ExerciseSession {
+  sessionId: string;
+  startedAt: string;
+  sets: WorkingSet[];
+}
+
+/**
+ * The sessions one exercise was done in, oldest first — the latest `limit` of them — each with
+ * its working sets as they were done.
+ *
+ * Unlike `getExerciseProgression`, which feeds the estimated-max arithmetic and so keeps only
+ * sets of 1 to 12 reps with a weight, this keeps every working set that was ticked off: a set
+ * of 15 is a set, and one without a weight is too. It is what the progress screens show — the
+ * weight, the reps and the number of sets — and what they compare set by set.
+ */
+export async function listExerciseSessions(
+  db: SqlExecutor,
+  userId: string,
+  exerciseKey: string,
+  limit = 30,
+): Promise<ExerciseSession[]> {
+  const rows = await db.all<{
+    session_id: string;
+    started_at: string;
+    weight_kg: number | null;
+    reps: number | null;
+    duration_seconds: number | null;
+    distance_m: number | null;
+  }>(
+    `SELECT ws.id AS session_id, ws.started_at,
+            s.weight_kg, s.reps, s.duration_seconds, s.distance_m
+       FROM sets s
+       JOIN session_exercises se ON se.id = s.session_exercise_id AND se.deleted_at IS NULL
+       JOIN workout_sessions ws  ON ws.id = se.session_id AND ws.deleted_at IS NULL
+      WHERE ws.user_id = ? AND se.exercise_key = ?
+        AND s.deleted_at IS NULL AND s.done_at IS NOT NULL AND s.is_warmup = 0
+        AND ws.id IN (
+          SELECT ws2.id
+            FROM sets s2
+            JOIN session_exercises se2 ON se2.id = s2.session_exercise_id AND se2.deleted_at IS NULL
+            JOIN workout_sessions ws2  ON ws2.id = se2.session_id AND ws2.deleted_at IS NULL
+           WHERE ws2.user_id = ? AND se2.exercise_key = ?
+             AND s2.deleted_at IS NULL AND s2.done_at IS NOT NULL AND s2.is_warmup = 0
+           GROUP BY ws2.id
+           ORDER BY MAX(ws2.started_at) DESC
+           LIMIT ?)
+      ORDER BY ws.started_at, ws.id, se.order_index, se.id, s.set_index, s.id`,
+    [userId, exerciseKey, userId, exerciseKey, limit],
+  );
+
+  const sessions: ExerciseSession[] = [];
+  for (const row of rows) {
+    let session = sessions.at(-1);
+    if (session?.sessionId !== row.session_id) {
+      session = { sessionId: row.session_id, startedAt: row.started_at, sets: [] };
+      sessions.push(session);
+    }
+    session.sets.push({
+      weightKg: row.weight_kg,
+      reps: row.reps,
+      durationSeconds: row.duration_seconds,
+      distanceM: row.distance_m,
+    });
+  }
+  return sessions;
 }
 
 /**
@@ -167,6 +243,14 @@ export interface ExerciseProgressSummary {
   bestE1rm: number | null;
   lastPerformedAt: string;
   assessment: StallAssessment;
+  /**
+   * The working sets of the latest session and of the one before it, for the progress tab to
+   * read set by set; and the heaviest set over the sessions read. What the screen shows — the
+   * estimated maximum above is for the verdict and for the coach.
+   */
+  latestSets: WorkingSet[];
+  previousSets: WorkingSet[] | null;
+  heaviest: WorkingSet | null;
 }
 
 /** Every exercise with logged history, most recently performed first. */
@@ -217,6 +301,7 @@ export async function summariseExerciseProgress(
 
   const assessment = assessStall(points);
   const last = sessions[sessions.length - 1];
+  const done = await listExerciseSessions(db, userId, exerciseKey);
 
   return {
     exerciseKey,
@@ -225,6 +310,9 @@ export async function summariseExerciseProgress(
     bestE1rm: assessment.bestE1rmKg,
     lastPerformedAt: last?.started_at ?? '',
     assessment,
+    latestSets: done.at(-1)?.sets ?? [],
+    previousSets: done.at(-2)?.sets ?? null,
+    heaviest: topSet(done.flatMap((session) => session.sets)),
   };
 }
 
@@ -264,7 +352,8 @@ export function toCoachDigest(summaries: readonly ExerciseProgressSummary[]) {
     sessions: s.sessionCount,
     currentE1rmKg: s.latestE1rm === null ? null : Number(s.latestE1rm.toFixed(1)),
     bestE1rmKg: s.bestE1rm === null ? null : Number(s.bestE1rm.toFixed(1)),
-    changeKg: s.assessment.e1rmDeltaKg === null ? null : Number(s.assessment.e1rmDeltaKg.toFixed(1)),
+    changeKg:
+      s.assessment.e1rmDeltaKg === null ? null : Number(s.assessment.e1rmDeltaKg.toFixed(1)),
     volumeTrendPerSession:
       s.assessment.volumeSlopePerSession === null
         ? null
@@ -287,36 +376,42 @@ function localDay(d: Date): string {
 /* Progress screen aggregates                                                  */
 /* -------------------------------------------------------------------------- */
 
-export interface WeeklyVolume {
+export interface WeeklySets {
   /** Monday of the week, `YYYY-MM-DD` in local time. */
   weekStart: string;
-  volumeKg: number;
+  /** Working sets ticked off that week. */
+  sets: number;
 }
 
 /**
- * Working-set volume per week, oldest first, with empty weeks included.
+ * Working sets per week, oldest first, with empty weeks included.
+ *
+ * Sets rather than weight x reps: the owner reads training by sets, reps and the weight on the
+ * bar, and a weekly total of kilograms rewards whichever exercise is heaviest, not the week
+ * that was worked hardest. A set done without a weight counts the same as one with.
  *
  * The gaps are the point. Dropping weeks you did not train would slide the remaining bars
  * together and turn a fortnight off into a flat, healthy-looking line — which is exactly the
  * thing the chart exists to expose.
  */
-export async function weeklyVolume(
+export async function weeklySets(
   db: SqlExecutor,
   userId: string,
   weeks = 8,
   today = new Date(),
-): Promise<WeeklyVolume[]> {
-  const rows = await db.all<{ week: string; volume: number }>(
+): Promise<WeeklySets[]> {
+  const rows = await db.all<{ week: string; sets: number }>(
     `SELECT date(ws.started_at, 'localtime', 'weekday 1', '-7 days') AS week,
-            SUM(COALESCE(s.weight_kg, 0) * COALESCE(s.reps, 0))     AS volume
+            COUNT(*)                                                 AS sets
        FROM sets s
        JOIN session_exercises se ON se.id = s.session_exercise_id AND se.deleted_at IS NULL
        JOIN workout_sessions ws  ON ws.id = se.session_id AND ws.deleted_at IS NULL
       WHERE ws.user_id = ? AND s.is_warmup = 0 AND s.deleted_at IS NULL
+        AND s.done_at IS NOT NULL
       GROUP BY week`,
     [userId],
   );
-  const byWeek = new Map(rows.map((r) => [r.week, r.volume]));
+  const byWeek = new Map(rows.map((r) => [r.week, r.sets]));
 
   // Walk back from this week's Monday so the series always ends on the current week, trained
   // or not — a chart that stops at the last workout hides that you have not trained since.
@@ -324,12 +419,12 @@ export async function weeklyVolume(
   monday.setHours(0, 0, 0, 0);
   monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
 
-  const out: WeeklyVolume[] = [];
+  const out: WeeklySets[] = [];
   for (let i = weeks - 1; i >= 0; i--) {
     const d = new Date(monday);
     d.setDate(d.getDate() - i * 7);
     const key = localDay(d);
-    out.push({ weekStart: key, volumeKg: byWeek.get(key) ?? 0 });
+    out.push({ weekStart: key, sets: byWeek.get(key) ?? 0 });
   }
   return out;
 }
@@ -337,7 +432,7 @@ export async function weeklyVolume(
 export interface TrainingDay {
   /** `YYYY-MM-DD`, local. */
   day: string;
-  /** 0 = untrained, 1..4 = increasing volume. Bucketed, not raw, so one huge day cannot flatten the rest. */
+  /** 0 = untrained, 1..4 = more working sets. Bucketed, not raw, so one huge day cannot flatten the rest. */
   level: number;
 }
 
@@ -354,18 +449,19 @@ export async function consistencyHeat(
   weeks = 16,
   today = new Date(),
 ): Promise<TrainingDay[]> {
-  const rows = await db.all<{ day: string; volume: number }>(
-    `SELECT date(ws.started_at, 'localtime')                    AS day,
-            SUM(COALESCE(s.weight_kg, 0) * COALESCE(s.reps, 0)) AS volume
+  // Sets, not weight x reps: a day of bodyweight work is a day of training too.
+  const rows = await db.all<{ day: string; sets: number }>(
+    `SELECT date(ws.started_at, 'localtime') AS day,
+            COUNT(s.id)                      AS sets
        FROM workout_sessions ws
        LEFT JOIN session_exercises se ON se.session_id = ws.id AND se.deleted_at IS NULL
        LEFT JOIN sets s ON s.session_exercise_id = se.id AND s.deleted_at IS NULL
-                        AND s.is_warmup = 0
+                        AND s.is_warmup = 0 AND s.done_at IS NOT NULL
       WHERE ws.user_id = ? AND ws.deleted_at IS NULL
       GROUP BY day`,
     [userId],
   );
-  const byDay = new Map(rows.map((r) => [r.day, r.volume]));
+  const byDay = new Map(rows.map((r) => [r.day, r.sets]));
 
   const trained = [...byDay.values()].filter((v) => v > 0).sort((a, b) => a - b);
   const quartile = (q: number) =>
@@ -384,13 +480,13 @@ export async function consistencyHeat(
     const d = new Date(end);
     d.setDate(d.getDate() - i);
     const key = localDay(d);
-    const volume = byDay.get(key) ?? 0;
+    const sets = byDay.get(key) ?? 0;
     // A logged session with no working sets still counts as showing up.
     let level = 0;
     if (byDay.has(key)) level = 1;
-    if (volume > q1) level = 2;
-    if (volume > q2) level = 3;
-    if (volume > q3) level = 4;
+    if (sets > q1) level = 2;
+    if (sets > q2) level = 3;
+    if (sets > q3) level = 4;
     out.push({ day: key, level });
   }
   return out;

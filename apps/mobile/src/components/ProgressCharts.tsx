@@ -1,5 +1,5 @@
 /**
- * The three summary blocks from the design's progress screen: weekly volume, a consistency
+ * The three summary blocks from the design's progress screen: sets per week, a consistency
  * grid, and personal records.
  *
  * All three are plain Views. The bars are heights, the grid is a wrapped row of squares, and
@@ -11,7 +11,7 @@
  * bug rather than a wrong figure.
  */
 
-import type { PersonalRecord, TrainingDay, WeeklyVolume } from '../db/progression.js';
+import type { PersonalRecord, TrainingDay, WeeklySets } from '../db/progression.js';
 import { EXERCISE_SEED, type ExerciseSeed } from '@fit/shared/catalog';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -22,7 +22,7 @@ import { Text } from './Text.js';
 
 import { useTheme } from '../ThemeProvider.js';
 import { useUnit } from '../UnitsProvider.js';
-import { formatVolume, kgToDisplay, weightUnitKey } from '../units.js';
+import { kgToDisplay, weightUnitKey } from '../units.js';
 import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../theme.js';
 
 const EXERCISE_BY_KEY = new Map<string, ExerciseSeed>(
@@ -32,35 +32,31 @@ const EXERCISE_BY_KEY = new Map<string, ExerciseSeed>(
 const CHART_HEIGHT = 96;
 
 /**
- * Volume per week as bars, in tonnes — the design's unit, and the only one that stays short.
+ * Working sets per week as bars — sets, not kilograms moved; see `weeklySets`.
  *
  * The bars alone say "more than last week" and not how much. Touching one reads it out above
- * the chart: which week, and its volume in full. With nothing touched the line reads the
- * latest week, which is the number someone opens this screen for; touching the same bar again
- * goes back to it.
+ * the chart: which week, and its sets. With nothing touched the line reads the latest week,
+ * which is the number someone opens this screen for; touching the same bar again goes back.
  */
-export function WeeklyVolumeChart({ weeks }: { weeks: readonly WeeklyVolume[] }) {
+export function WeeklySetsChart({ weeks }: { weeks: readonly WeeklySets[] }) {
   const { t, i18n } = useTranslation();
   const { colors } = useTheme();
-  const unit = useUnit();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [chosen, setChosen] = useState<number | null>(null);
 
-  const peak = Math.max(...weeks.map((w) => w.volumeKg), 1);
+  const peak = Math.max(...weeks.map((w) => w.sets), 1);
   // A week that has since scrolled off the end of the chart cannot stay chosen.
   const picked = chosen !== null && chosen < weeks.length ? chosen : null;
   const shown = weeks[picked ?? weeks.length - 1];
 
-  const readout = (week: WeeklyVolume) => {
+  const readout = (week: WeeklySets) => {
     const date = new Date(`${week.weekStart}T12:00:00`).toLocaleDateString(i18n.language, {
       day: 'numeric',
       month: 'short',
     });
-    const volume =
-      week.volumeKg > 0
-        ? `${formatVolume(week.volumeKg, unit)} ${t(`common.${weightUnitKey(unit)}`)}`
-        : t('progress.weekEmpty');
-    return `${t('progress.weekOf', { date })} · ${volume}`;
+    const sets =
+      week.sets > 0 ? t('progress.setCount', { count: week.sets }) : t('progress.weekEmpty');
+    return `${t('progress.weekOf', { date })} · ${sets}`;
   };
 
   return (
@@ -72,7 +68,7 @@ export function WeeklyVolumeChart({ weeks }: { weeks: readonly WeeklyVolume[] })
       ) : null}
       <View style={[styles.bars, { height: CHART_HEIGHT }]}>
         {weeks.map((week, index) => {
-          const ratio = week.volumeKg / peak;
+          const ratio = week.sets / peak;
           return (
             <Pressable
               key={week.weekStart}
@@ -92,19 +88,14 @@ export function WeeklyVolumeChart({ weeks }: { weeks: readonly WeeklyVolume[] })
                 // A trained week always keeps a visible stub: a 3px sliver still reads as
                 // "trained, lightly", where a zero-height bar is indistinguishable from a
                 // week off — which is the one thing this chart must never blur.
-                height={week.volumeKg > 0 ? Math.max(6, ratio * CHART_HEIGHT) : 0}
+                height={week.sets > 0 ? Math.max(6, ratio * CHART_HEIGHT) : 0}
               />
             </Pressable>
           );
         })}
       </View>
       <View style={styles.axis}>
-        <Text style={styles.axisLabel}>
-          {/* Thousands either way. A tonne of pounds is not a unit anyone uses, so imperial
-              gets "k lb" rather than a converted tonne. */}
-          {(kgToDisplay(peak, unit) / 1000).toFixed(1)}{' '}
-          {unit === 'imperial' ? t('progress.thousandLb') : t('progress.tonnes')}
-        </Text>
+        <Text style={styles.axisLabel}>{t('progress.setCount', { count: peak })}</Text>
         <Text style={styles.axisLabel}>
           {weeks.length} {t('progress.weeks')}
         </Text>
@@ -201,7 +192,8 @@ export function PersonalRecordList({
               </Text>
             </View>
             <Text style={styles.prValue}>
-              {record.weightKg}
+              {/* Stored in kilograms; shown in the reader's unit, as its label says. */}
+              {kgToDisplay(record.weightKg, unit)}
               <Text style={styles.prUnit}> {t(`common.${weightUnitKey(unit)}`)}</Text>
             </Text>
           </View>

@@ -23,14 +23,26 @@
  *
  * ## What is measured
  *
- * One number per workout, chosen for the whole line so that every point on it is the same
- * kind of number: the weight moved (weight x reps over the working sets) if the workout ever
- * moved any; otherwise the distance covered, if it ever covered any; otherwise how long it
- * took. A lifting day, a run and a timed circuit each get the measure that means something
- * for them.
+ * Chosen for the whole line, so that every workout on it is read the same way:
+ *
+ *  - **Strength**, for a workout that ever had a set with reps: set against set, by the weight
+ *    and the reps of each, and by how many sets there were (see `setBySet.ts`). Never by
+ *    weight x reps added up — the owner asked for exactly that, and a total cannot tell a
+ *    heavier set from a longer one.
+ *  - **Distance**, for one that never lifted and covered some ground.
+ *  - **Time**, for one that did neither.
  *
  * Pure functions. The database half is `db/workoutProgress.ts`.
  */
+
+import {
+  addTallies,
+  improved,
+  NO_TALLY,
+  worse,
+  type ExerciseSets,
+  type Tally,
+} from './setBySet.js';
 
 export interface SessionPoint {
   id: string;
@@ -38,15 +50,15 @@ export interface SessionPoint {
   name: string;
   startedAt: string;
   endedAt: string | null;
-  /** Weight x reps over the sets that were done and were not warm-ups, in kilograms. */
-  volumeKg: number;
-  /** How many such sets. */
+  /** How many sets were done that were not warm-ups. */
   sets: number;
+  /** The reps over those sets. */
+  reps: number;
   /** Metres covered, over the same sets. */
   distanceM: number;
 }
 
-export type Metric = 'volume' | 'distance' | 'time';
+export type Metric = 'strength' | 'distance' | 'time';
 
 export interface WorkoutLine {
   /** What the name is compared by. Never shown. */
@@ -86,7 +98,7 @@ export function groupByWorkout(points: readonly SessionPoint[]): WorkoutLine[] {
 
 /** Which number this workout is measured by. See the top of the file. */
 export function metricOf(line: Pick<WorkoutLine, 'sessions'>): Metric {
-  if (line.sessions.some((session) => session.volumeKg > 0)) return 'volume';
+  if (line.sessions.some((session) => session.reps > 0)) return 'strength';
   if (line.sessions.some((session) => session.distanceM > 0)) return 'distance';
   return 'time';
 }
@@ -98,9 +110,12 @@ export function minutesOf(point: Pick<SessionPoint, 'startedAt' | 'endedAt'>): n
   return minutes > 0 ? minutes : 0;
 }
 
-/** One workout's number: kilograms, metres or minutes, according to the line's measure. */
+/**
+ * One workout's number: sets, metres or minutes, according to the line's measure. For strength
+ * the sets are only the count; whether they got better is `talliesAlongLine`'s question.
+ */
 export function valueOf(point: SessionPoint, metric: Metric): number {
-  if (metric === 'volume') return point.volumeKg;
+  if (metric === 'strength') return point.sets;
   if (metric === 'distance') return point.distanceM;
   return minutesOf(point);
 }
@@ -209,66 +224,71 @@ export function sessionsWithChange(
 }
 
 /* -------------------------------------------------------------------------- */
-/* Lift by lift                                                                */
+/* Set by set, along the line                                                  */
 /* -------------------------------------------------------------------------- */
 
-/** The best working set of one exercise in one workout. */
-export interface ExerciseBest {
-  exerciseKey: string;
-  weightKg: number | null;
-  reps: number | null;
-}
-
-export type Direction = 'up' | 'down' | 'same' | 'new';
-
-export interface ExerciseChange {
-  exerciseKey: string;
-  latest: ExerciseBest;
-  previous: ExerciseBest | null;
-  direction: Direction;
+export interface SessionTally {
+  session: SessionPoint;
+  /** Its sets against the session before it on the line; null for the first. */
+  tally: Tally | null;
 }
 
 /**
- * Whether a best set is better than another: heavier, or the same weight for more reps.
- *
- * An exercise done without weight compares on reps alone. One that went from no weight to
- * some weight has gone up, whatever the reps did.
+ * Every session of a strength line beside how its sets stood against the session before it,
+ * oldest first. `tallyBetween` does the set-by-set reading of two sessions (it is handed the
+ * sessions' ids, and knows where their sets are).
  */
-function compare(latest: ExerciseBest, previous: ExerciseBest): Direction {
-  const weightNow = latest.weightKg ?? 0;
-  const weightThen = previous.weightKg ?? 0;
-  if (weightNow !== weightThen) return weightNow > weightThen ? 'up' : 'down';
-  const repsNow = latest.reps ?? 0;
-  const repsThen = previous.reps ?? 0;
-  if (repsNow !== repsThen) return repsNow > repsThen ? 'up' : 'down';
-  return 'same';
+export function talliesAlongLine(
+  line: WorkoutLine,
+  tallyBetween: (latestId: string, previousId: string) => Tally,
+): SessionTally[] {
+  return line.sessions.map((session, index) => {
+    const before = index > 0 ? line.sessions[index - 1]! : null;
+    return { session, tally: before ? tallyBetween(session.id, before.id) : null };
+  });
+}
+
+export interface MonthTally {
+  /** `YYYY-MM`. */
+  month: string;
+  /** How many times the workout was done that month. */
+  sessions: number;
+  /** Sets that were better than the same set the session before, over the month. */
+  improved: number;
+  /** And sets that were worse. */
+  worse: number;
+  tally: Tally;
 }
 
 /**
- * The lifts of the latest workout, each against the same lift the time before.
+ * What a strength workout's months came to, oldest first: the last `limit` months it was done in.
  *
- * In the latest workout's order. An exercise that was not in the previous one is `new`; one
- * that was in the previous and not the latest is not listed — this is a reading of today's
- * workout, not a list of what was left out of it.
+ * Each session counts against the one before it — which may be in the month before — so a month
+ * is credited with the progress made in it. A month the workout was not done in is left out
+ * rather than drawn as nothing; the first session ever has nothing to count against.
  */
-export function exerciseChanges(
-  latest: readonly ExerciseBest[],
-  previous: readonly ExerciseBest[],
-): ExerciseChange[] {
-  const before = new Map(previous.map((best) => [best.exerciseKey, best]));
-  const seen = new Set<string>();
-  const changes: ExerciseChange[] = [];
-  for (const best of latest) {
-    // The same exercise twice in one workout is told once, by its first appearance.
-    if (seen.has(best.exerciseKey)) continue;
-    seen.add(best.exerciseKey);
-    const then = before.get(best.exerciseKey) ?? null;
-    changes.push({
-      exerciseKey: best.exerciseKey,
-      latest: best,
-      previous: then,
-      direction: then ? compare(best, then) : 'new',
-    });
+export function monthTallies(along: readonly SessionTally[], limit = 6): MonthTally[] {
+  const months = new Map<string, { sessions: number; tally: Tally }>();
+  for (const { session, tally } of along) {
+    const month = localMonth(session.startedAt);
+    const entry = months.get(month) ?? { sessions: 0, tally: { ...NO_TALLY } };
+    entry.sessions += 1;
+    if (tally) entry.tally = addTallies(entry.tally, tally);
+    months.set(month, entry);
   }
-  return changes;
+  return [...months.keys()]
+    .sort()
+    .map((month) => {
+      const { sessions, tally } = months.get(month)!;
+      return { month, sessions, improved: improved(tally), worse: worse(tally), tally };
+    })
+    .slice(-limit);
+}
+
+/** The sets of one session, from a map that may not have it. */
+export function setsOf(
+  bySession: ReadonlyMap<string, readonly ExerciseSets[]>,
+  sessionId: string,
+): readonly ExerciseSets[] {
+  return bySession.get(sessionId) ?? [];
 }

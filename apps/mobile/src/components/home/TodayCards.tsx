@@ -361,7 +361,7 @@ export function WeekSummaryRow({ summary }: { summary: WeekSummary }) {
   return (
     <View style={s.summaryRow}>
       <Stat value={summary.workouts} label={t('home.statWorkouts')} tone="sun" />
-      <Stat value={summary.volumeTonnes} decimals={1} unit="t" label={t('home.statVolume')} tone="coral" />
+      <Stat value={summary.sets} label={t('home.statSets')} tone="coral" />
       <Stat value={summary.personalRecords} label={t('home.statPrs')} />
     </View>
   );
@@ -958,7 +958,6 @@ export function TrainedTodayCard({
   const { t } = useTranslation();
   const { colors } = useTheme();
   const s = useMemo(() => createStyles(colors), [colors]);
-  const unit = useUnit();
 
   return (
     <View style={s.doneCard}>
@@ -973,9 +972,7 @@ export function TrainedTodayCard({
 
       <Text style={s.doneStats}>
         {trained.setCount} {t('common.sets')}
-        {trained.volumeKg > 0
-          ? ` · ${kgToDisplay(trained.volumeKg, unit)} ${t(`common.${weightUnitKey(unit)}`)}`
-          : ''}
+        {trained.reps > 0 ? ` · ${trained.reps} ${t('common.reps')}` : ''}
         {trained.minutes !== null ? ` · ${trained.minutes} ${t('home.minutes')}` : ''}
       </Text>
 
