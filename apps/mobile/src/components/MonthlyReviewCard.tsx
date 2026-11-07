@@ -16,6 +16,12 @@
  * to that area. Each exercise is a row that opens in place: its best sets of the month
  * against the sets before, and the tip. Nothing here animates beyond the card's own entrance, so
  * there is no driver to mix (see CLAUDE.md).
+ *
+ * The list scrolls inside the card (asked for: "a sub-scroll in the monthly progress part"). The
+ * month, the totals and the shortcuts stay where they are; what is below them sits in a box about
+ * half the screen tall with its own scroll, so the charts further down the screen are not behind
+ * every exercise of the month. `nestedScrollEnabled` is what lets it scroll inside the screen's
+ * own ScrollView on Android.
  */
 
 import { EXERCISE_BY_KEY } from '@fit/shared/catalog';
@@ -41,9 +47,16 @@ import {
 } from '@fit/shared/progress';
 import { router, useFocusEffect } from 'expo-router';
 import { CaretDown, CaretLeft, CaretRight, CaretUp, Check } from 'phosphor-react-native';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { StyleSheet, View, type TextStyle, type ViewStyle } from 'react-native';
+import {
+  ScrollView,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+  type TextStyle,
+  type ViewStyle,
+} from 'react-native';
 
 import { useCurrentUserId } from '../auth/CurrentUserProvider.js';
 import { listTrainingMonths, loadMonthHistory } from '../db/monthlyReview.js';
@@ -97,6 +110,10 @@ export function MonthlyReviewCard({
   const [month, setMonth] = useState<string | null>(null);
   const [shown, setShown] = useState<Shown | null>(null);
   const [open, setOpen] = useState<string | null>(null);
+  const { height: screenHeight } = useWindowDimensions();
+  // The list's own scroll, put back to the top whenever what it lists changes.
+  const inner = useRef<ScrollView>(null);
+  const toTop = () => inner.current?.scrollTo({ y: 0, animated: false });
   const [statusFilter, setStatusFilter] = useState<MonthStatus | null>(null);
   const [areaFilter, setAreaFilter] = useState<BodyArea | null>(null);
   // Bumped on every read of the months, so the month shown is read again with them.
@@ -183,6 +200,7 @@ export function MonthlyReviewCard({
 
   const move = (to: string | undefined) => {
     if (!to) return;
+    toTop();
     hapticLight();
     setOpen(null);
     setMonth(to);
@@ -213,18 +231,21 @@ export function MonthlyReviewCard({
 
   const toggleStatus = (status: MonthStatus) => {
     hapticLight();
+    toTop();
     setOpen(null);
     setAreaFilter(null);
     setStatusFilter((current) => (current === status ? null : status));
   };
   const toggleArea = (area: BodyArea) => {
     hapticLight();
+    toTop();
     setOpen(null);
     setStatusFilter(null);
     setAreaFilter((current) => (current === area ? null : area));
   };
   const clearFilters = () => {
     hapticLight();
+    toTop();
     setOpen(null);
     setStatusFilter(null);
     setAreaFilter(null);
@@ -421,101 +442,20 @@ export function MonthlyReviewCard({
             )}
           </View>
 
-          {statusFilter ? (
-            // A shortcut: only its exercises, grouped by body area.
-            <View style={styles.filtered}>
-              <View style={styles.filterRow}>
-                <Text style={[styles.filterTitle, { color: statusColor(statusFilter, colors) }]}>
-                  {t(`monthly.shortcut_${statusFilter}`)} ·{' '}
-                  {t('monthly.exerciseCount', { count: visible.length })}
-                </Text>
-                <Pressable
-                  onPress={clearFilters}
-                  accessibilityRole="button"
-                  hitSlop={8}
-                  style={styles.link}
-                >
-                  <Text style={styles.linkText}>{t('monthly.clearFilter')}</Text>
-                </Pressable>
-              </View>
-              <Text style={styles.detail}>{t(`monthly.statusHint_${statusFilter}`)}</Text>
-
-              {visible.length === 0 ? (
-                <Text style={styles.empty}>{t('monthly.filteredEmpty')}</Text>
-              ) : null}
-
-              {BODY_AREAS.filter((area) =>
-                visible.some((exercise) => areaOfExercise(exercise.exerciseKey) === area),
-              ).map((area) => {
-                const inArea = visible.filter(
-                  (exercise) => areaOfExercise(exercise.exerciseKey) === area,
-                );
-                return (
-                  <View key={area} style={styles.group}>
-                    <Text style={[styles.groupTitle, { color: colors.textSecondary }]}>
-                      {t(`bodyArea.${area}`)} · {inArea.length}
-                    </Text>
-                    {inArea.map((exercise) =>
-                      renderExercise(exercise, statusFilter !== 'improved'),
-                    )}
-                  </View>
-                );
-              })}
-            </View>
-          ) : (
-            <>
-              {/* By body area: the month at a glance, one line per area. A tap narrows the list. */}
-              <Text style={styles.groupHeading}>{t('monthly.areasTitle')}</Text>
-              {current.areas.map((area) => {
-                const selected = areaFilter === area.area;
-                const tone = statusColor(area.status, colors);
-                const skipped = area.status === 'skipped';
-                const counts = skipped ? '' : countsText(area.counts);
-                const sets = [
-                  area.sets > 0 ? t('monthly.areaSets', { count: area.sets }) : null,
-                  area.previousSets > 0
-                    ? t('monthly.areaSetsBefore', { count: area.previousSets })
-                    : null,
-                ]
-                  .filter(Boolean)
-                  .join(' · ');
-                return (
-                  <Pressable
-                    key={area.area}
-                    onPress={() => toggleArea(area.area)}
-                    disabled={skipped}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected, disabled: skipped }}
-                    style={[
-                      styles.areaRow,
-                      selected && {
-                        borderColor: colors.accentBorder,
-                        backgroundColor: colors.surfaceRaised,
-                      },
-                    ]}
-                  >
-                    <View style={[styles.areaDot, { backgroundColor: tone }]} />
-                    <View style={styles.rowText}>
-                      <View style={styles.areaHead}>
-                        <Text style={styles.name} numberOfLines={1}>
-                          {t(`bodyArea.${area.area}`)}
-                        </Text>
-                        <Text style={[styles.areaStatus, { color: tone }]}>
-                          {t(`monthly.areaStatus_${area.status}`)}
-                        </Text>
-                      </View>
-                      {counts ? <Text style={styles.detail}>{counts}</Text> : null}
-                      {sets ? <Text style={styles.detail}>{sets}</Text> : null}
-                    </View>
-                    {selected ? <Check size={16} color={colors.accent} weight="bold" /> : null}
-                  </Pressable>
-                );
-              })}
-
-              {areaFilter ? (
+          <ScrollView
+            ref={inner}
+            style={[styles.inner, { maxHeight: Math.round(screenHeight * 0.55) }]}
+            nestedScrollEnabled
+            persistentScrollbar
+            keyboardShouldPersistTaps="handled"
+          >
+            {statusFilter ? (
+              // A shortcut: only its exercises, grouped by body area.
+              <View style={styles.filtered}>
                 <View style={styles.filterRow}>
-                  <Text style={styles.filterText}>
-                    {t('monthly.showing', { what: t(`bodyArea.${areaFilter}`) })}
+                  <Text style={[styles.filterTitle, { color: statusColor(statusFilter, colors) }]}>
+                    {t(`monthly.shortcut_${statusFilter}`)} ·{' '}
+                    {t('monthly.exerciseCount', { count: visible.length })}
                   </Text>
                   <Pressable
                     onPress={clearFilters}
@@ -526,26 +466,115 @@ export function MonthlyReviewCard({
                     <Text style={styles.linkText}>{t('monthly.clearFilter')}</Text>
                   </Pressable>
                 </View>
-              ) : null}
+                <Text style={styles.detail}>{t(`monthly.statusHint_${statusFilter}`)}</Text>
 
-              {visible.length === 0 ? (
-                <Text style={styles.empty}>{t('monthly.filteredEmpty')}</Text>
-              ) : null}
+                {visible.length === 0 ? (
+                  <Text style={styles.empty}>{t('monthly.filteredEmpty')}</Text>
+                ) : null}
 
-              {STATUS_ORDER.filter((status) => visible.some((e) => e.status === status)).map(
-                (status) => (
-                  <View key={status} style={styles.group}>
-                    <Text style={[styles.groupTitle, { color: statusColor(status, colors) }]}>
-                      {t(`monthly.group_${status}`)}
+                {BODY_AREAS.filter((area) =>
+                  visible.some((exercise) => areaOfExercise(exercise.exerciseKey) === area),
+                ).map((area) => {
+                  const inArea = visible.filter(
+                    (exercise) => areaOfExercise(exercise.exerciseKey) === area,
+                  );
+                  return (
+                    <View key={area} style={styles.group}>
+                      <Text style={[styles.groupTitle, { color: colors.textSecondary }]}>
+                        {t(`bodyArea.${area}`)} · {inArea.length}
+                      </Text>
+                      {inArea.map((exercise) =>
+                        renderExercise(exercise, statusFilter !== 'improved'),
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+            ) : (
+              <>
+                {/* By body area: the month at a glance, one line per area. A tap narrows the list. */}
+                <Text style={styles.groupHeading}>{t('monthly.areasTitle')}</Text>
+                {current.areas.map((area) => {
+                  const selected = areaFilter === area.area;
+                  const tone = statusColor(area.status, colors);
+                  const skipped = area.status === 'skipped';
+                  const counts = skipped ? '' : countsText(area.counts);
+                  const sets = [
+                    area.sets > 0 ? t('monthly.areaSets', { count: area.sets }) : null,
+                    area.previousSets > 0
+                      ? t('monthly.areaSetsBefore', { count: area.previousSets })
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ');
+                  return (
+                    <Pressable
+                      key={area.area}
+                      onPress={() => toggleArea(area.area)}
+                      disabled={skipped}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected, disabled: skipped }}
+                      style={[
+                        styles.areaRow,
+                        selected && {
+                          borderColor: colors.accentBorder,
+                          backgroundColor: colors.surfaceRaised,
+                        },
+                      ]}
+                    >
+                      <View style={[styles.areaDot, { backgroundColor: tone }]} />
+                      <View style={styles.rowText}>
+                        <View style={styles.areaHead}>
+                          <Text style={styles.name} numberOfLines={1}>
+                            {t(`bodyArea.${area.area}`)}
+                          </Text>
+                          <Text style={[styles.areaStatus, { color: tone }]}>
+                            {t(`monthly.areaStatus_${area.status}`)}
+                          </Text>
+                        </View>
+                        {counts ? <Text style={styles.detail}>{counts}</Text> : null}
+                        {sets ? <Text style={styles.detail}>{sets}</Text> : null}
+                      </View>
+                      {selected ? <Check size={16} color={colors.accent} weight="bold" /> : null}
+                    </Pressable>
+                  );
+                })}
+
+                {areaFilter ? (
+                  <View style={styles.filterRow}>
+                    <Text style={styles.filterText}>
+                      {t('monthly.showing', { what: t(`bodyArea.${areaFilter}`) })}
                     </Text>
-                    {visible
-                      .filter((exercise) => exercise.status === status)
-                      .map((exercise) => renderExercise(exercise, false))}
+                    <Pressable
+                      onPress={clearFilters}
+                      accessibilityRole="button"
+                      hitSlop={8}
+                      style={styles.link}
+                    >
+                      <Text style={styles.linkText}>{t('monthly.clearFilter')}</Text>
+                    </Pressable>
                   </View>
-                ),
-              )}
-            </>
-          )}
+                ) : null}
+
+                {visible.length === 0 ? (
+                  <Text style={styles.empty}>{t('monthly.filteredEmpty')}</Text>
+                ) : null}
+
+                {STATUS_ORDER.filter((status) => visible.some((e) => e.status === status)).map(
+                  (status) => (
+                    <View key={status} style={styles.group}>
+                      <Text style={[styles.groupTitle, { color: statusColor(status, colors) }]}>
+                        {t(`monthly.group_${status}`)}
+                      </Text>
+                      {visible
+                        .filter((exercise) => exercise.status === status)
+                        .map((exercise) => renderExercise(exercise, false))}
+                    </View>
+                  ),
+                )}
+              </>
+            )}
+          </ScrollView>
         </>
       )}
     </Card>
@@ -585,6 +614,7 @@ const createStyles = (colors: ColorPalette) =>
     filterRow: ViewStyle;
     filterText: TextStyle;
     filtered: ViewStyle;
+    inner: ViewStyle;
     filterTitle: TextStyle;
     tipInline: ViewStyle;
     group: ViewStyle;
@@ -712,6 +742,13 @@ const createStyles = (colors: ColorPalette) =>
     },
     filterText: { flex: 1, color: colors.textSecondary, fontSize: fontSize.sm, textAlign: 'auto' },
     filtered: { marginTop: spacing.md },
+    // A hairline above and below, so the box reads as a window onto a longer list.
+    inner: {
+      marginTop: spacing.md,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+    },
     filterTitle: { flex: 1, fontSize: fontSize.md, fontWeight: fontWeight.bold, textAlign: 'auto' },
     tipInline: { paddingBottom: spacing.md },
     group: { marginTop: spacing.lg },
