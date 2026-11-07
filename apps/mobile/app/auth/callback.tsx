@@ -1,14 +1,14 @@
 /**
  * Where the password-recovery email redirects back into the app (see `AUTH_CALLBACK_URL` in
- * `AuthProvider.tsx`). expo-router hands this screen the URL's query
- * params via `useLocalSearchParams()` automatically — cold start (app not yet running) and
- * warm start (already open) both land here the same way, no manual `Linking` listener needed.
+ * `AuthProvider.tsx`), when the router can route it: a link that opened the app, or one that
+ * arrived while someone was signed in. A link arriving while the sign-in screen is up never
+ * reaches here — there is no navigator mounted to route it — and the sign-in screen reads it
+ * itself instead (see `AppGate`, `AuthGate`).
  *
- * This screen sits as a plain sibling route to `(tabs)` in `_layout.tsx`'s `<Stack>`, which is
- * itself nested inside `AppGate`. That nesting is exactly why this screen must navigate
- * explicitly on success rather than relying on `AppGate` to react to the new session: `AppGate`
- * only gates *above* the `<Stack>`, so a session becoming non-null does not by itself move the
- * `<Stack>` off whichever screen it was already showing.
+ * On success it goes to `/`, and `AppGate` decides what that shows: the new-password form on
+ * the sign-in screen while the reset's session is `recovering`, the app otherwise. This screen
+ * sits inside the `<Stack>` that `AppGate` gates, which is why it has to navigate at all: a
+ * change of session does not by itself move the `<Stack>` off whichever screen it is showing.
  */
 
 import { router, useLocalSearchParams } from 'expo-router';
@@ -59,10 +59,9 @@ export default function AuthCallbackScreen() {
         return;
       }
 
-      // Never falls through to the tabs first — this is a navigation-level guarantee,
-      // independent of however AppGate itself is currently gating. A code that was not a
-      // reset (none is sent today) has signed the person in, and there is nothing to set.
-      router.replace(result.recovery ? '/auth/reset-password' : '/');
+      // A reset has set `recovering` by now, so `/` is the new-password form rather than the
+      // tabs. A code that was not a reset (none is sent today) has simply signed them in.
+      router.replace('/');
     })();
   }, [params, exchangeCode]);
 

@@ -38,7 +38,7 @@ export interface AuthState {
   deleteAccount: () => Promise<DeleteAccountOutcome>;
   /** Sends a "reset your password" email with a link back into the app (see auth/callback.tsx). */
   resetPassword: (email: string) => Promise<{ error: string | null }>;
-  /** Sets a new password — only meaningful once a recovery session exists (see auth/reset-password.tsx). */
+  /** Sets a new password — only meaningful once a recovery session exists (see AuthGate). */
   updatePassword: (newPassword: string) => Promise<{ error: string | null }>;
   /**
    * Completes the PKCE round trip for a deep link (see auth/callback.tsx). `recovery` says the
@@ -46,6 +46,15 @@ export interface AuthState {
    * verifier, since the link itself does not carry it.
    */
   exchangeCode: (code: string) => Promise<{ error: string | null; recovery: boolean }>;
+  /**
+   * A reset link has been followed and its session is live, but no new password is set yet.
+   *
+   * While this is true the app stays on the sign-in screen, showing the new-password form
+   * (`AppGate`, `AuthGate`): the session a reset link makes is for setting the password and for
+   * nothing else. Cleared by signing out, which is how the form finishes. Kept in memory only:
+   * an app closed half-way through comes back signed in, the same as following any sign-in link.
+   */
+  recovering: boolean;
 }
 
 /** Where the password-recovery email redirects back into the app (see app/auth/callback.tsx).
@@ -57,6 +66,7 @@ const AuthContext = createContext<AuthState | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const client = useMemo(() => getSupabaseClient(), []);
   const [session, setSession] = useState<Session | null | undefined>(undefined);
+  const [recovering, setRecovering] = useState(false);
 
   useEffect(() => {
     if (!client) {
@@ -98,6 +108,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthState>(
     () => ({
       session,
+      recovering,
       isConfigured: client !== null,
       signIn: async (email, password) => {
         if (!client) return { error: 'not_configured' };
@@ -122,6 +133,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       signOut: async () => {
         await client?.auth.signOut();
+        setRecovering(false);
       },
       deleteAccount: async () => {
         if (!client || !session) return { status: 'not_signed_in' };
@@ -174,13 +186,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // a later version stops sending it, a reset is assumed: it is the only email the app
         // sends, and assuming otherwise would sign someone in without the new password.
         const redirectType = (data as { redirectType?: string | null } | null)?.redirectType;
-        return {
-          error: error ? friendlyAuthError(error.message) : null,
-          recovery: redirectType === undefined || redirectType === 'recovery',
-        };
+        const recovery = !error && (redirectType === undefined || redirectType === 'recovery');
+        if (recovery) setRecovering(true);
+        return { error: error ? friendlyAuthError(error.message) : null, recovery };
       },
     }),
-    [client, session],
+    [client, session, recovering],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

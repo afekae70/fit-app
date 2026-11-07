@@ -43,3 +43,43 @@ export function classifyCallbackParams({
   if (type !== undefined && type !== 'recovery') return { kind: 'invalid' };
   return { kind: 'code', code };
 }
+
+const decode = (part: string) => {
+  try {
+    return decodeURIComponent(part.replace(/\+/g, ' '));
+  } catch {
+    return part;
+  }
+};
+
+/**
+ * The params of an `…://auth/callback` link, or null for any other URL.
+ *
+ * For the sign-in screen, which has to read the link itself: while nobody is signed in, the app
+ * shows that screen in place of its navigator, so a link that arrives while the app is already
+ * open has no route to land on (see `AuthGate`). Parsed by hand rather than with `URL`, whose
+ * React Native implementation does not support `searchParams`. GoTrue may put an error in the
+ * fragment rather than the query, so both are read.
+ */
+export function authLinkParams(url: string): CallbackParams | null {
+  const match = /^[a-z][a-z0-9+.-]*:\/\/([^?#]*)(\?[^#]*)?(#.*)?$/i.exec(url.trim());
+  if (!match) return null;
+  if (match[1]!.replace(/\/+$/, '') !== 'auth/callback') return null;
+
+  const params: Record<string, string> = {};
+  for (const part of [match[2], match[3]]) {
+    if (!part) continue;
+    for (const pair of part.slice(1).split('&')) {
+      if (!pair) continue;
+      const at = pair.indexOf('=');
+      const key = decode(at === -1 ? pair : pair.slice(0, at));
+      params[key] = at === -1 ? '' : decode(pair.slice(at + 1));
+    }
+  }
+  return {
+    code: params.code,
+    type: params.type,
+    error_code: params.error_code,
+    error: params.error,
+  };
+}

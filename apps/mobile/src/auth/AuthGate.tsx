@@ -15,6 +15,17 @@
  *
  * Password reset still goes by email, because there is no other way to prove who is asking.
  *
+ * ## The reset link comes back here
+ *
+ * The email's link returns to `fitapp://auth/callback?code=…`. If it opens the app, the router
+ * routes it to `app/auth/callback.tsx`. But someone resetting a password is usually still on this
+ * screen when they tap it, and while this screen is up there is no navigator for the router to
+ * route into (`AppGate` shows this *instead of* the app) — the link would bring the app to the
+ * front and nothing more, which is what happened on 2026-11-07. So this screen listens for the
+ * link and exchanges the code itself. Either way the reset's session comes back `recovering`,
+ * `AppGate` keeps this screen up, and it shows the new-password form; setting the password signs
+ * out again, and they sign in with it.
+ *
  * ## Motion
  *
  * Opacity and transforms only, all native-driven, each on a view of its own. The focus ring on
@@ -29,10 +40,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
+  ActivityIndicator,
   Animated,
   Easing,
   Image,
   Keyboard,
+  Linking,
   ScrollView,
   StyleSheet,
   View,
@@ -66,15 +79,25 @@ import {
   type ColorPalette,
 } from '../theme.js';
 import { useAuth } from './AuthProvider.js';
+import { authLinkParams, classifyCallbackParams } from './callbackParams.js';
 import { AUTH_ERROR_I18N_KEY } from './friendlyAuthError.js';
 
 type Mode = 'signIn' | 'signUp';
 /** Which of the card's contents is showing. Small, closely related steps of one flow. */
-type GateView = 'form' | 'forgotPassword' | 'resetEmailSent';
+type GateView = 'form' | 'forgotPassword' | 'resetEmailSent' | 'checkingLink' | 'newPassword';
 
 export function AuthGate() {
   const { t } = useTranslation();
-  const { signIn, signUp, resetPassword } = useAuth();
+  const {
+    signIn,
+    signUp,
+    resetPassword,
+    exchangeCode,
+    updatePassword,
+    signOut,
+    recovering,
+    session,
+  } = useAuth();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
@@ -89,6 +112,43 @@ export function AuthGate() {
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [errorKey, setErrorKey] = useState<string | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  /** A good-news line over the sign-in form: the password has just been changed. */
+  const [notice, setNotice] = useState<string | null>(null);
+  // A code works once. The same link tapped twice, or delivered twice, is exchanged once.
+  const exchanged = useRef(new Set<string>());
+
+  // The reset link, arriving while this screen is up. See the top of the file.
+  useEffect(() => {
+    const sub = Linking.addEventListener('url', ({ url }) => {
+      const params = authLinkParams(url);
+      if (!params) return;
+      const link = classifyCallbackParams(params);
+      if (link.kind !== 'code') {
+        setView('form');
+        setMode('signIn');
+        setErrorKey('link_expired');
+        return;
+      }
+      if (exchanged.current.has(link.code)) return;
+      exchanged.current.add(link.code);
+      setErrorKey(null);
+      setNotice(null);
+      setView('checkingLink');
+      void (async () => {
+        const result = await exchangeCode(link.code);
+        // A reset sets `recovering`, and the new-password form takes over below. Any other code
+        // has signed them in, and the gate above renders past this screen.
+        setView('form');
+        if (result.error) {
+          setMode('signIn');
+          setErrorKey(result.error);
+        }
+      })();
+    });
+    return () => sub.remove();
+  }, [exchangeCode]);
 
   /*
    * Bring the form above the keyboard.
@@ -110,6 +170,7 @@ export function AuthGate() {
   const submit = () => {
     const trimmedEmail = email.trim();
     if (!canSubmit || busy) return;
+    setNotice(null);
     // Checked client-side, before any network call — a typo here is never a server-side concern.
     if (mode === 'signUp' && password !== confirmPassword) {
       setErrorKey('password_mismatch');
@@ -149,11 +210,51 @@ export function AuthGate() {
     })();
   };
 
+  const submitNewPassword = () => {
+    if (newPassword.length === 0 || busy) return;
+    if (newPassword !== confirmNewPassword) {
+      setErrorKey('password_mismatch');
+      return;
+    }
+
+    setBusy(true);
+    setErrorKey(null);
+
+    void (async () => {
+      const result = await updatePassword(newPassword);
+      if (result.error) {
+        setBusy(false);
+        setErrorKey(result.error);
+        return;
+      }
+      // Out again on purpose: the reset's session was for this and nothing else. Signing in
+      // with the new password is the proof it was typed as meant — and the email is filled in.
+      const accountEmail = session?.user.email ?? '';
+      await signOut();
+      setBusy(false);
+      setNewPassword('');
+      setConfirmNewPassword('');
+      setPassword('');
+      if (accountEmail) setEmail(accountEmail);
+      setMode('signIn');
+      setView('form');
+      setNotice('auth.passwordUpdated');
+    })();
+  };
+
+  const cancelReset = () => {
+    if (busy) return;
+    setErrorKey(null);
+    setView('form');
+    void signOut();
+  };
+
   const choose = (next: Mode) => {
     if (next === mode || busy) return;
     hapticLight();
     setMode(next);
     setErrorKey(null);
+    setNotice(null);
   };
 
   const backToSignIn = () => {
@@ -167,6 +268,24 @@ export function AuthGate() {
       {t(AUTH_ERROR_I18N_KEY[errorKey] ?? AUTH_ERROR_I18N_KEY.unknown!)}
     </Banner>
   ) : null;
+
+  // A reset in progress outranks whatever the card was showing.
+  const shown: GateView = recovering ? 'newPassword' : view;
+
+  const eye = (
+    <Pressable
+      onPress={() => setShowPassword((current) => !current)}
+      hitSlop={10}
+      accessibilityRole="button"
+      accessibilityLabel={t(showPassword ? 'auth.hidePassword' : 'auth.showPassword')}
+    >
+      {showPassword ? (
+        <EyeSlash size={20} color={colors.textMuted} />
+      ) : (
+        <Eye size={20} color={colors.textMuted} />
+      )}
+    </Pressable>
+  );
 
   return (
     <KeyboardSafe style={styles.screen}>
@@ -183,7 +302,7 @@ export function AuthGate() {
         <Brand />
 
         <Rise order={3} style={styles.card}>
-          {view === 'form' ? (
+          {shown === 'form' ? (
             <>
               <Tabs mode={mode} onChoose={choose} />
 
@@ -226,22 +345,7 @@ export function AuthGate() {
                   autoCorrect={false}
                   autoComplete={mode === 'signIn' ? 'current-password' : 'new-password'}
                   editable={!busy}
-                  trailing={
-                    <Pressable
-                      onPress={() => setShowPassword((current) => !current)}
-                      hitSlop={10}
-                      accessibilityRole="button"
-                      accessibilityLabel={t(
-                        showPassword ? 'auth.hidePassword' : 'auth.showPassword',
-                      )}
-                    >
-                      {showPassword ? (
-                        <EyeSlash size={20} color={colors.textMuted} />
-                      ) : (
-                        <Eye size={20} color={colors.textMuted} />
-                      )}
-                    </Pressable>
-                  }
+                  trailing={eye}
                 />
                 {mode === 'signUp' ? (
                   <Field
@@ -270,6 +374,7 @@ export function AuthGate() {
                   </Pressable>
                 )}
 
+                {notice ? <Banner tone="success">{t(notice)}</Banner> : null}
                 {error}
 
                 <BrandButton
@@ -285,7 +390,7 @@ export function AuthGate() {
             </>
           ) : null}
 
-          {view === 'forgotPassword' ? (
+          {shown === 'forgotPassword' ? (
             <FadeSlideIn key="forgot" style={styles.body}>
               <Text style={styles.title}>{t('auth.resetPasswordTitle')}</Text>
               <Text style={styles.subtitle}>{t('auth.resetPasswordSubtitle')}</Text>
@@ -319,11 +424,64 @@ export function AuthGate() {
             </FadeSlideIn>
           ) : null}
 
-          {view === 'resetEmailSent' ? (
+          {shown === 'resetEmailSent' ? (
             <FadeSlideIn key="sent" style={styles.body}>
               <Banner tone="info">{t('auth.resetEmailSent')}</Banner>
               <Pressable onPress={backToSignIn} hitSlop={8} style={styles.centredLink}>
                 <Text style={styles.link}>{t('auth.backToSignIn')}</Text>
+              </Pressable>
+            </FadeSlideIn>
+          ) : null}
+
+          {shown === 'checkingLink' ? (
+            <FadeSlideIn key="checking" style={[styles.body, styles.checking]}>
+              <ActivityIndicator color={colors.accent} />
+              <Text style={styles.subtitle}>{t('auth.checkingLink')}</Text>
+            </FadeSlideIn>
+          ) : null}
+
+          {shown === 'newPassword' ? (
+            <FadeSlideIn key="newPassword" style={styles.body}>
+              <Text style={styles.title}>{t('auth.setNewPasswordTitle')}</Text>
+              <Text style={styles.subtitle}>{t('auth.setNewPasswordSubtitle')}</Text>
+
+              <Field
+                icon={LockSimple}
+                value={newPassword}
+                onChangeText={setNewPassword}
+                placeholder={t('auth.newPasswordPlaceholder')}
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="new-password"
+                editable={!busy}
+                trailing={eye}
+              />
+              <Field
+                icon={LockSimple}
+                value={confirmNewPassword}
+                onChangeText={setConfirmNewPassword}
+                placeholder={t('auth.confirmNewPasswordPlaceholder')}
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="new-password"
+                editable={!busy}
+                onSubmitEditing={submitNewPassword}
+              />
+
+              {error}
+
+              <BrandButton
+                label={t('auth.updatePassword')}
+                onPress={submitNewPassword}
+                disabled={newPassword.length === 0}
+                busy={busy}
+                style={styles.submit}
+              />
+
+              <Pressable onPress={cancelReset} hitSlop={8} style={styles.centredLink}>
+                <Text style={styles.link}>{t('auth.cancelReset')}</Text>
               </Pressable>
             </FadeSlideIn>
           ) : null}
@@ -471,6 +629,7 @@ const createStyles = (colors: ColorPalette) =>
     slogan: TextStyle;
     card: ViewStyle;
     body: ViewStyle;
+    checking: ViewStyle;
     tabs: ViewStyle;
     tab: ViewStyle;
     tabOn: ViewStyle;
@@ -542,6 +701,7 @@ const createStyles = (colors: ColorPalette) =>
       ...shadow(colors.shadow).hero,
     },
     body: { gap: spacing.md },
+    checking: { alignItems: 'center', paddingVertical: spacing.xl },
 
     tabs: {
       flexDirection: 'row',

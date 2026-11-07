@@ -15,11 +15,20 @@
  * here — before it reaches the app. That is every new account, straight after the sign-up
  * form, and nobody else.
  *
- * `/auth/*` routes (`app/auth/callback.tsx`, `app/auth/reset-password.tsx`) are exempt from the
- * wall entirely. That's not a style choice: the callback screen's whole job is to *create* a
- * session from a recovery deep link, which happens precisely when there is no session yet —
- * gating it behind "you need a session to get past this screen" would make a recovery link
- * unable to ever complete.
+ * The `/auth/callback` route is exempt from the wall entirely. That's not a style choice: its
+ * whole job is to *create* a session from a recovery deep link, which happens precisely when
+ * there is no session yet — gating it behind "you need a session to get past this screen" would
+ * make a recovery link unable to ever complete.
+ *
+ * That exemption only works for a link the router can route, which is a link that opened the
+ * app or arrived while someone was signed in. While nobody is signed in this gate shows the
+ * sign-in screen *in place of* the navigator, so a link arriving then has no navigator to land
+ * on and expo-router drops it — the app simply came to the front, which is exactly how the reset
+ * failed on 2026-11-07 once the email link reached the app. The sign-in screen therefore reads
+ * such a link itself (see `AuthGate`).
+ *
+ * After a reset link, the session exists but is only for choosing a new password: while
+ * `recovering`, the sign-in screen stays up with that form on it, whichever way the link came.
  */
 
 import { usePathname } from 'expo-router';
@@ -39,7 +48,7 @@ import { UnitsProvider } from '../UnitsProvider.js';
 const LOCAL_USER_ID = 'local';
 
 export function AppGate({ children }: { children: ReactNode }) {
-  const { session, isConfigured } = useAuth();
+  const { session, isConfigured, recovering } = useAuth();
   const pathname = usePathname();
   const { colors } = useTheme();
   // Whether the sign-in screen has been up during this run of the app. A session that follows
@@ -63,7 +72,7 @@ export function AppGate({ children }: { children: ReactNode }) {
   // The sign-in screen lays itself out — its own safe areas, its own room for the keyboard.
   // Wrapped, because the app's error boundary is among the children this gate has not let
   // through yet: without one here a fault on this screen would have nothing to catch it.
-  if (isConfigured && session === null) {
+  if (isConfigured && (session === null || recovering)) {
     return (
       <ErrorBoundary>
         <AuthGate />
