@@ -40,8 +40,12 @@ export interface AuthState {
   resetPassword: (email: string) => Promise<{ error: string | null }>;
   /** Sets a new password — only meaningful once a recovery session exists (see auth/reset-password.tsx). */
   updatePassword: (newPassword: string) => Promise<{ error: string | null }>;
-  /** Completes the PKCE round trip for a password-recovery deep link (see auth/callback.tsx). */
-  exchangeCode: (code: string) => Promise<{ error: string | null }>;
+  /**
+   * Completes the PKCE round trip for a deep link (see auth/callback.tsx). `recovery` says the
+   * code came from a reset asked for on this phone — auth-js keeps that mark beside the code
+   * verifier, since the link itself does not carry it.
+   */
+  exchangeCode: (code: string) => Promise<{ error: string | null; recovery: boolean }>;
 }
 
 /** Where the password-recovery email redirects back into the app (see app/auth/callback.tsx).
@@ -163,9 +167,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { error: error ? friendlyAuthError(error.message) : null };
       },
       exchangeCode: async (code) => {
-        if (!client) return { error: 'not_configured' };
-        const { error } = await client.auth.exchangeCodeForSession(code);
-        return { error: error ? friendlyAuthError(error.message) : null };
+        if (!client) return { error: 'not_configured', recovery: false };
+        const { data, error } = await client.auth.exchangeCodeForSession(code);
+        // auth-js returns `redirectType` beside the session (`_exchangeCodeForSession`), read
+        // from the mark it stored with the code verifier, but its types do not declare it. If
+        // a later version stops sending it, a reset is assumed: it is the only email the app
+        // sends, and assuming otherwise would sign someone in without the new password.
+        const redirectType = (data as { redirectType?: string | null } | null)?.redirectType;
+        return {
+          error: error ? friendlyAuthError(error.message) : null,
+          recovery: redirectType === undefined || redirectType === 'recovery',
+        };
       },
     }),
     [client, session],

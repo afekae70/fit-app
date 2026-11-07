@@ -28,7 +28,12 @@ import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../../
 export default function AuthCallbackScreen() {
   const { t } = useTranslation();
   const { exchangeCode } = useAuth();
-  const params = useLocalSearchParams<{ code?: string; type?: string }>();
+  const params = useLocalSearchParams<{
+    code?: string;
+    type?: string;
+    error_code?: string;
+    error?: string;
+  }>();
   const [errorKey, setErrorKey] = useState<string | null>(null);
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -42,7 +47,7 @@ export default function AuthCallbackScreen() {
     handled.current = true;
 
     const classification = classifyCallbackParams(params);
-    if (classification.kind === 'invalid') {
+    if (classification.kind !== 'code') {
       setErrorKey('link_expired');
       return;
     }
@@ -55,8 +60,9 @@ export default function AuthCallbackScreen() {
       }
 
       // Never falls through to the tabs first — this is a navigation-level guarantee,
-      // independent of however AppGate itself is currently gating.
-      router.replace('/auth/reset-password');
+      // independent of however AppGate itself is currently gating. A code that was not a
+      // reset (none is sent today) has signed the person in, and there is nothing to set.
+      router.replace(result.recovery ? '/auth/reset-password' : '/');
     })();
   }, [params, exchangeCode]);
 
