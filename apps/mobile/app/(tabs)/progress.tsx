@@ -2,53 +2,36 @@
  * Progression analysis across every exercise with enough history.
  *
  * A pushed screen reached from the Coach tab (see `(tabs)/coach.tsx`'s header), not a tab of
- * its own — the coach tab is the chat directly now, and this is the same digest the coach is
- * handed, one tap away rather than the tab itself.
+ * its own — the coach tab is the chat directly now.
+ *
+ * Every exercise is read by the monthly review at the top (`MonthlyReviewCard`): by sets,
+ * weight and reps, where it is progressing and where it is stuck. It replaced a list of cards
+ * that labelled each exercise by its estimated one-rep max, which could call a lift stalling
+ * on the same screen the review called it progressing. The estimate is still what the AI
+ * coach is handed (`coach/payload.ts`).
  */
 
-import { EXERCISE_SEED, type ExerciseSeed } from '@fit/shared/catalog';
 import { setsPerMuscle, untrainedMuscles, type MuscleWork } from '@fit/shared/calculations';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  View,
-  type TextStyle,
-  type ViewStyle,
-} from 'react-native';
-import { Text } from '../../src/components/Text.js';
+import { RefreshControl, ScrollView, StyleSheet, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
-import {
-  Banner,
-  Card,
-  EmptyState,
-  Hint,
-  ScreenHeader,
-  SectionTitle,
-  SkeletonScreen,
-} from '../../src/components/ui.js';
+import { Card, Hint, ScreenHeader, SectionTitle, SkeletonScreen } from '../../src/components/ui.js';
+import { MonthlyReviewCard } from '../../src/components/MonthlyReviewCard.js';
 import { WeeklyReviewCard } from '../../src/components/WeeklyReviewCard.js';
 import {
   ConsistencyGrid,
   PersonalRecordList,
   WeeklySetsChart,
 } from '../../src/components/ProgressCharts.js';
-import {
-  TallyChip,
-  useSetText,
-  WorkoutProgressList,
-} from '../../src/components/WorkoutProgressList.js';
+import { WorkoutProgressList } from '../../src/components/WorkoutProgressList.js';
 import {
   consistencyHeat,
   personalRecords,
-  summariseAllProgress,
   setCountsSince,
   weeklySets,
-  type ExerciseProgressSummary,
   type PersonalRecord,
   type TrainingDay,
   type WeeklySets,
@@ -56,14 +39,7 @@ import {
 import { MuscleVolumeCard } from '../../src/components/MuscleVolumeCard.js';
 import { getExecutor } from '../../src/db/provider.js';
 import { listSessionSets, listWorkoutPoints } from '../../src/db/workoutProgress.js';
-import {
-  exerciseSetChanges,
-  pairSets,
-  tallyOf,
-  topSet,
-  workoutTally,
-  type Tally,
-} from '../../src/progress/setBySet.js';
+import { exerciseSetChanges, workoutTally, type Tally } from '../../src/progress/setBySet.js';
 import {
   groupByWorkout,
   metricOf,
@@ -71,28 +47,7 @@ import {
   type WorkoutLine,
 } from '../../src/progress/workoutProgress.js';
 import { useTheme } from '../../src/ThemeProvider.js';
-import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../../src/theme.js';
-import { ChartLineUp } from 'phosphor-react-native';
-
-const EXERCISE_BY_KEY = new Map<string, ExerciseSeed>(
-  EXERCISE_SEED.map((exercise) => [exercise.nameEn, exercise]),
-);
-
-type Trend = 'progressing' | 'stalling' | 'holding';
-
-function classify(summary: ExerciseProgressSummary): Trend {
-  if (summary.assessment.isStalling) return 'stalling';
-  const delta = summary.assessment.e1rmDeltaKg ?? 0;
-  // A 0.5 kg dead band: below that the difference is rounding on a single rep, not a real
-  // strength change, and calling it progress would be flattering noise.
-  return delta > 0.5 ? 'progressing' : 'holding';
-}
-
-function trendColor(trend: Trend, colors: ColorPalette): string {
-  if (trend === 'progressing') return colors.accent;
-  if (trend === 'stalling') return colors.warning;
-  return colors.textSecondary;
-}
+import { spacing, type ColorPalette } from '../../src/theme.js';
 
 export default function ProgressScreen() {
   const { t, i18n } = useTranslation();
@@ -101,9 +56,7 @@ export default function ProgressScreen() {
   const userId = useCurrentUserId();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const setText = useSetText();
 
-  const [summaries, setSummaries] = useState<ExerciseProgressSummary[]>([]);
   const [weekly, setWeekly] = useState<WeeklySets[]>([]);
   const [heat, setHeat] = useState<TrainingDay[]>([]);
   const [records, setRecords] = useState<PersonalRecord[]>([]);
@@ -113,10 +66,11 @@ export default function ProgressScreen() {
   const [tallies, setTallies] = useState<ReadonlyMap<string, Tally | null>>(new Map());
   const [muscles, setMuscles] = useState<MuscleWork[]>([]);
   const [loading, setLoading] = useState(true);
+  // Bumped by pull-to-refresh, for the monthly review, which reads its own month.
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const reload = useCallback(async () => {
     const db = await getExecutor();
-    setSummaries(await summariseAllProgress(db, userId));
 
     const lines = groupByWorkout(await listWorkoutPoints(db, userId));
     const lifting = lines.filter((line) => metricOf(line) === 'strength');
@@ -161,6 +115,7 @@ export default function ProgressScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
+    setRefreshKey((key) => key + 1);
     void reload().finally(() => setRefreshing(false));
   }, [reload]);
 
@@ -185,7 +140,11 @@ export default function ProgressScreen() {
     >
       <ScreenHeader title={t('progress.title')} />
 
-      {/* First, because it answers the question asked on the way out of the gym: was today's
+      {/* First: every exercise of the month, where it is progressing and where it is stuck,
+          and what to try for the stuck ones. Asked for as the heart of this screen. */}
+      <MonthlyReviewCard index={0} refreshKey={refreshKey} />
+
+      {/* Then the question asked on the way out of the gym: was today's
           leg day better than the last one? Everything below it is about training as a whole. */}
       {workouts.length > 0 ? (
         <Card index={0}>
@@ -228,136 +187,12 @@ export default function ProgressScreen() {
           ) : null}
         </>
       ) : null}
-
-      {summaries.length === 0 ? (
-        <EmptyState icon={ChartLineUp} title={t('progress.empty')} hint={t('progress.emptyHint')} />
-      ) : (
-        <>
-          <Hint>{t('progress.subtitle')}</Hint>
-
-          {summaries.map((summary, cardIndex) => {
-            const trend = classify(summary);
-            const seed = EXERCISE_BY_KEY.get(summary.exerciseKey);
-            const label = seed ? (isHebrew ? seed.nameHe : seed.nameEn) : summary.exerciseKey;
-            const trendTint = trendColor(trend, colors);
-            // Set by set against the time before: the same reading as a whole workout's.
-            const sinceLast = summary.previousSets
-              ? tallyOf(pairSets(summary.latestSets, summary.previousSets))
-              : null;
-
-            return (
-              // Offset past the chart cards above so the screen reads as one sequence rather
-              // than two lists starting at the same moment.
-              <Card key={summary.exerciseKey} index={cardIndex + 3}>
-                <View style={styles.cardHeader}>
-                  <Text style={styles.exerciseName}>{label}</Text>
-                  <View style={[styles.badge, { borderColor: trendTint }]}>
-                    <Text style={[styles.badgeText, { color: trendTint }]}>
-                      {t(`progress.${trend}`)}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.figures}>
-                  <View style={styles.figure}>
-                    <Text style={styles.figureValue}>
-                      {setText(topSet(summary.latestSets))}
-                    </Text>
-                    <Text style={styles.figureLabel}>{t('progress.workingWeight')}</Text>
-                  </View>
-                  <View style={styles.figure}>
-                    <Text style={styles.figureValue}>{setText(summary.heaviest)}</Text>
-                    <Text style={styles.figureLabel}>{t('progress.heaviest')}</Text>
-                  </View>
-                  <View style={styles.figure}>
-                    <TallyChip tally={sinceLast} />
-                    <Text style={styles.figureLabel}>{t('progress.vsLastTime')}</Text>
-                  </View>
-                </View>
-
-                <Text style={styles.meta}>
-                  {t('progress.setCount', { count: summary.latestSets.length })} ·{' '}
-                  {summary.sessionCount} {t('progress.sessions')}
-                </Text>
-
-                {trend === 'stalling' ? (
-                  <Banner tone="warning">
-                    {summary.assessment.sessionsSinceBest} {t('progress.sinceBest')} ·{' '}
-                    {t('progress.stallingHint')}
-                  </Banner>
-                ) : null}
-              </Card>
-            );
-          })}
-
-          <Banner tone="info">{t('progress.aiNote')}</Banner>
-        </>
-      )}
     </ScrollView>
   );
 }
 
 const createStyles = (colors: ColorPalette) =>
-  StyleSheet.create<{
-    screen: ViewStyle;
-    content: ViewStyle;
-    centered: ViewStyle;
-    muted: TextStyle;
-    cardHeader: ViewStyle;
-    exerciseName: TextStyle;
-    badge: ViewStyle;
-    badgeText: TextStyle;
-    figures: ViewStyle;
-    figure: ViewStyle;
-    figureValue: TextStyle;
-    figureLabel: TextStyle;
-    meta: TextStyle;
-  }>({
+  StyleSheet.create<{ screen: ViewStyle; content: ViewStyle }>({
     screen: { flex: 1, backgroundColor: colors.bg },
     content: { paddingHorizontal: spacing.lg },
-    centered: { flex: 1, backgroundColor: colors.bg, alignItems: 'center' },
-    muted: { color: colors.textMuted, fontSize: fontSize.sm },
-    cardHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      marginBottom: spacing.md,
-      gap: spacing.sm,
-    },
-    exerciseName: {
-      flex: 1,
-      color: colors.text,
-      fontSize: fontSize.md,
-      fontWeight: fontWeight.bold,
-      textAlign: 'auto',
-    },
-    badge: {
-      paddingVertical: spacing.xxs,
-      paddingHorizontal: spacing.sm,
-      borderRadius: radius.pill,
-      borderWidth: 1,
-    },
-    badgeText: { fontSize: fontSize.xxs, fontWeight: fontWeight.bold },
-    figures: { flexDirection: 'row', gap: spacing.md },
-    figure: { flex: 1 },
-    // A set, "102.5 kg × 10", in a third of the card: sized to fit, not to shout.
-    figureValue: {
-      color: colors.text,
-      fontSize: fontSize.md,
-      fontWeight: fontWeight.bold,
-      fontVariant: ['tabular-nums'],
-      textAlign: 'auto',
-    },
-    figureLabel: {
-      color: colors.textMuted,
-      fontSize: fontSize.xxs,
-      marginTop: spacing.xxs,
-      textAlign: 'auto',
-    },
-    meta: {
-      color: colors.textMuted,
-      fontSize: fontSize.xs,
-      marginTop: spacing.md,
-      textAlign: 'auto',
-    },
   });

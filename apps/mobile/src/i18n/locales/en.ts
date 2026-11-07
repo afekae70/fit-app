@@ -88,9 +88,6 @@ export const en = {
     monthImproved_one: '{{month}}: {{improved}} sets improved and {{worse}} down, in 1 workout',
     monthImproved_other:
       '{{month}}: {{improved}} sets improved and {{worse}} down, in {{count}} workouts',
-    workingWeight: 'Working weight',
-    heaviest: 'Heaviest set',
-    vsLastTime: 'Against last time',
     monthByMonth: 'Month against month',
     monthByMonthHint:
       'The average per workout each month, and the change from the last month you did this workout in.',
@@ -99,18 +96,7 @@ export const en = {
     allSessions: 'Every workout',
     workoutGone: 'No workouts by this name',
     workoutGoneHint: 'The workout may have been renamed, or its sessions deleted.',
-    subtitle: 'By working weight, reps and number of sets for each exercise',
-    empty: 'Not enough data yet',
-    emptyHint: 'Log an exercise in at least two workouts to see a trend',
-    progressing: 'Progressing',
-    stalling: 'Stalled',
-    holding: 'Holding',
-    sessions: 'sessions',
-    sinceBest: 'sessions since best',
     estimated1rm: 'Est. 1RM',
-    stallingHint:
-      'No new best for several sessions — consider a deload, a different rep range, or swapping the exercise',
-    aiNote: 'This analysis is exactly what the AI coach will receive in the next phase',
     byMuscle: 'Sets by muscle',
     byMuscleHint:
       'Sets in the last seven days. A helper muscle counts as half a set; the number in brackets is the direct sets.',
@@ -124,6 +110,60 @@ export const en = {
     less: 'Less',
     more: 'More',
     records: 'Personal records',
+  },
+  monthly: {
+    title: 'Monthly review',
+    hint: 'Every exercise you did in the month: where you finished against where you started, set by set — weight, reps and number of sets. Tap an exercise for the detail and a tip.',
+    monthSoFar: '{{month}} — so far',
+    previousMonth: 'Previous month',
+    nextMonth: 'Next month',
+    totals_one: '1 workout, {{sets}} working sets',
+    totals_other: '{{count}} workouts, {{sets}} working sets',
+    previous_one: 'Month before: 1 workout, {{sets}} sets',
+    previous_other: 'Month before: {{count}} workouts, {{sets}} sets',
+    previousNone: 'No workouts logged the month before',
+    chip_progressing_one: '1 progressing',
+    chip_progressing_other: '{{count}} progressing',
+    chip_stuck_one: '1 stuck',
+    chip_stuck_other: '{{count}} stuck',
+    chip_declining_one: '1 declining',
+    chip_declining_other: '{{count}} declining',
+    group_stuck: 'Where you are stuck',
+    group_declining: 'Where you slipped',
+    group_progressing: 'Where you progressed',
+    group_holding: 'No change',
+    group_new: 'New this month',
+    flat_one: 'No improvement last session',
+    flat_other: '{{count}} sessions in a row without improvement',
+    sessions_one: 'Once this month',
+    sessions_other: '{{count}} times this month',
+    gainWeight: '{{value}} more on the top set',
+    gainReps_one: '1 more rep on the top set',
+    gainReps_other: '{{count}} more reps on the top set',
+    gainSets_one: '1 more set',
+    gainSets_other: '{{count}} more sets',
+    compareDates: 'The session on {{to}} against {{from}}',
+    tip_fadingSets:
+      'Your reps fall from set to set — {{first}} on the first, {{last}} on the last. Rest a little longer between sets (2–3 minutes) so the last ones hold up.',
+    tip_lighter:
+      'The weight came down from {{from}} to {{to}}. If that was not planned, get back to {{from}} for the same reps before adding more.',
+    tip_fewerSets:
+      'You did {{to}} sets against {{from}} at the start of the month. Get the sets back first, then add weight or reps.',
+    tip_lowFrequency_one:
+      'You did this exercise only once this month. To progress on it, aim for at least once a week.',
+    tip_lowFrequency_other:
+      'You did this exercise only {{count}} times this month. To progress on it, aim for at least once a week.',
+    tip_longPlateau_one:
+      'A session without improvement. Try a light week — about 10% less weight — then build back up, or swap in a variation for a few weeks.',
+    tip_longPlateau_other:
+      '{{count}} sessions in a row without improvement. Try a light week — about 10% less weight — then build back up, or swap in a variation for a few weeks.',
+    tip_addRep:
+      'Next time, try one more rep on every set. When every set reaches {{target}} reps, move up to {{next}}.',
+    tip_addRepBodyweight:
+      'Next time, try one more rep on every set — aim for {{target}} reps a set. When that is easy, add weight or slow the tempo.',
+    openExercise: 'Open the exercise',
+    empty: 'No workouts logged this month',
+    noData: 'Your monthly review will appear here once you log workouts',
   },
   streak: {
     days_one: '{{count}} day streak',
