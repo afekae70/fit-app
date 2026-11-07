@@ -35,10 +35,12 @@ import { TraineeNutrition } from './trainee/TraineeNutrition.js';
 import { TraineeOverview } from './trainee/TraineeOverview.js';
 import { TraineePhotos } from './trainee/TraineePhotos.js';
 import { TraineePlans } from './trainee/TraineePlans.js';
+import { TraineeProgress } from './trainee/TraineeProgress.js';
 import { TraineeWorkouts } from './trainee/TraineeWorkouts.js';
 
 const TABS: { tab: TraineeTab; label: string }[] = [
   { tab: 'overview', label: he.trainee.tabOverview },
+  { tab: 'progress', label: he.trainee.tabProgress },
   { tab: 'workouts', label: he.trainee.tabWorkouts },
   { tab: 'plans', label: he.trainee.tabPlans },
   { tab: 'calendar', label: he.trainee.tabCalendar },
@@ -180,6 +182,8 @@ export function TraineePage({ traineeId, tab }: { traineeId: string; tab: Traine
         <Skeleton />
       ) : tab === 'overview' ? (
         <TraineeOverview sessions={sessions.value} calendar={calendar.value} plans={plans.value} />
+      ) : tab === 'progress' ? (
+        <TraineeProgress sessions={sessions.value} today={today} historyFrom={historyFrom} />
       ) : tab === 'workouts' ? (
         <TraineeWorkouts sessions={sessions.value} plans={plans.value} />
       ) : tab === 'plans' ? (

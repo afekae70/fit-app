@@ -18,9 +18,13 @@ import type { CoachingError, CoachingPerson } from '@fit/shared/coaching';
 import { personLabel } from '@fit/shared/coaching';
 import { useEffect, useMemo, useState } from 'react';
 
+import { monthOf, shiftMonth, type AreaStatus } from '@fit/shared/progress';
+
 import { addDays, localDate, parseDay } from '../analytics/dates.js';
 import { exerciseName } from '../analytics/lifts.js';
+import { historyStart, monthlyProgress, type MonthlyProgress } from '../analytics/monthly.js';
 import { traineeOverview, type TraineeOverview } from '../analytics/overview.js';
+import { sessionsWithin } from '../analytics/training.js';
 import { useCoach } from '../coachContext.js';
 import { DemoBar } from '../components/DemoBar.js';
 import {
@@ -29,10 +33,11 @@ import {
   EmptyState,
   FlagChip,
   Loading,
+  Segmented,
   ShareIcons,
   StatTile,
 } from '../components/ui.js';
-import { he } from '../i18n/he.js';
+import { fill, he } from '../i18n/he.js';
 import {
   formatDayShort,
   formatNumber,
@@ -42,10 +47,14 @@ import {
   relativeDay,
 } from '../lib/format.js';
 import { hrefFor, navigate } from '../lib/router.js';
+import { monthLabel } from './trainee/TraineeProgress.js';
+
+/** The two months the progress board offers: the last whole one, and this one so far. */
+type BoardMonth = 'last' | 'current';
 
 type Line =
   | { state: 'loading' }
-  | { state: 'ready'; line: TraineeOverview }
+  | { state: 'ready'; line: TraineeOverview; months: Record<BoardMonth, MonthlyProgress> }
   | { state: 'failed'; error: CoachingError };
 
 /** At most this many trainees are asked about at once. */
@@ -60,7 +69,15 @@ export function OverviewPage() {
     const queue = [...status.trainees];
     setLines(Object.fromEntries(queue.map((person) => [person.id, { state: 'loading' }])));
 
-    const from = parseDay(addDays(today, -55));
+    // Eight weeks for the line itself; further back for the progress board, which judges last
+    // month against the months before it (`historyStart`). The line is still given only its
+    // eight weeks: its "stalling" reads every workout it is handed.
+    const recentFrom = addDays(today, -55);
+    const currentMonth = monthOf(parseDay(today));
+    const lastMonth = shiftMonth(currentMonth, -1);
+    const from = new Date(
+      Math.min(parseDay(recentFrom).getTime(), historyStart(lastMonth).getTime()),
+    );
     const to = parseDay(addDays(today, 1));
     const work = async () => {
       for (let person = queue.shift(); person; person = queue.shift()) {
@@ -72,6 +89,7 @@ export function OverviewPage() {
         ]);
         if (cancelled) return;
         const failed = [sessions, calendar, plans].find((answer) => !answer.ok);
+        const all = sessions.ok ? sessions.value : [];
         setLines((current) => ({
           ...current,
           [id]:
@@ -80,11 +98,15 @@ export function OverviewPage() {
               : {
                   state: 'ready',
                   line: traineeOverview({
-                    sessions: sessions.ok ? sessions.value : [],
+                    sessions: sessionsWithin(all, recentFrom, today),
                     calendar: calendar.ok ? calendar.value : new Map<string, string[] | null>(),
                     plans: plans.ok ? plans.value : [],
                     today,
                   }),
+                  months: {
+                    last: monthlyProgress(all, lastMonth),
+                    current: monthlyProgress(all, currentMonth),
+                  },
                 },
         }));
       }
@@ -183,6 +205,8 @@ export function OverviewPage() {
               </div>
             )}
           </Card>
+
+          <ProgressBoard trainees={status.trainees} lines={lines} today={today} />
 
           <Card title={he.overview.table}>
             <div className="table-wrap">
@@ -351,5 +375,139 @@ function AttentionCard({
         </p>
       ) : null}
     </a>
+  );
+}
+
+/**
+ * Where each trainee progresses and where they are stuck, by part of the body: the monthly
+ * review every trainee sees on their phone, one line each. Those with the most areas stuck or
+ * declining come first; a click opens that trainee's full monthly progress.
+ */
+function ProgressBoard({
+  trainees,
+  lines,
+  today,
+}: {
+  trainees: readonly CoachingPerson[];
+  lines: Record<string, Line>;
+  today: string;
+}) {
+  const [which, setWhich] = useState<BoardMonth>('last');
+  const currentMonth = monthOf(parseDay(today));
+  const lastMonth = shiftMonth(currentMonth, -1);
+
+  const rows = trainees
+    .map((person, order) => {
+      const line = lines[person.id];
+      const progress = line?.state === 'ready' ? line.months[which] : null;
+      const stuck = progress ? progress.areas.filter((a) => a.status === 'declined').length : 0;
+      return { person, order, line, progress, stuck };
+    })
+    .sort((a, b) => b.stuck - a.stuck || a.order - b.order);
+
+  const areaFlags = (progress: MonthlyProgress, status: AreaStatus, tone: string) => {
+    const names = progress.areas.filter((a) => a.status === status).map((a) => he.bodyArea[a.area]);
+    return names.length === 0 ? (
+      <span className="muted">—</span>
+    ) : (
+      <div className="chips">
+        {names.map((name) => (
+          <span key={name} className={`flag ${tone}`}>
+            {name}
+          </span>
+        ))}
+      </div>
+    );
+  };
+
+  return (
+    <Card
+      title={he.monthly.overviewTitle}
+      sub={he.monthly.overviewSub}
+      action={
+        <Segmented
+          label={he.monthly.overviewTitle}
+          value={which}
+          onChange={setWhich}
+          options={[
+            { value: 'last', label: `${he.monthly.lastMonth} · ${monthLabel(lastMonth)}` },
+            { value: 'current', label: he.monthly.thisMonth },
+          ]}
+        />
+      }
+    >
+      <div className="table-wrap">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>{he.overview.colTrainee}</th>
+              <th>{he.monthly.colExercises}</th>
+              <th>{he.monthly.improvedIn}</th>
+              <th>{he.monthly.stuckIn}</th>
+              <th>{he.monthly.skippedIn}</th>
+              <th aria-hidden />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(({ person, line, progress }) => {
+              const name = personLabel(person);
+              const open = () => navigate({ name: 'trainee', id: person.id, tab: 'progress' });
+              return (
+                <tr
+                  key={person.id}
+                  className="clickable"
+                  onClick={open}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') open();
+                  }}
+                  tabIndex={0}
+                >
+                  <td>
+                    <div className="person">
+                      <Avatar name={name} />
+                      <div className="person-name">{name}</div>
+                    </div>
+                  </td>
+                  {!progress ? (
+                    <td colSpan={4} className="muted">
+                      {line?.state === 'failed'
+                        ? he.overview.failedTrainee
+                        : he.overview.loadingTrainee}
+                    </td>
+                  ) : progress.review.exercises.length === 0 ? (
+                    <td colSpan={4} className="muted">
+                      {he.monthly.nothingInMonth}
+                    </td>
+                  ) : (
+                    <>
+                      <td className="muted" style={{ fontSize: 'var(--text-xs)' }}>
+                        {fill(he.monthly.exercisesLine, {
+                          improved: formatNumber(progress.review.counts.improved),
+                          same: formatNumber(progress.review.counts.same),
+                          declined: formatNumber(progress.review.counts.declined),
+                        })}
+                      </td>
+                      <td>{areaFlags(progress, 'improved', 'ok')}</td>
+                      <td>{areaFlags(progress, 'declined', 'warning')}</td>
+                      <td>{areaFlags(progress, 'skipped', 'neutral')}</td>
+                    </>
+                  )}
+                  <td>
+                    <a
+                      href={hrefFor({ name: 'trainee', id: person.id, tab: 'progress' })}
+                      aria-label={`${name} · ${he.monthly.openProgress}`}
+                      className="icon-button"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <ArrowLeft size={18} aria-hidden />
+                    </a>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </Card>
   );
 }

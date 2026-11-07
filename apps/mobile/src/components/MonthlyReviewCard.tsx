@@ -1,18 +1,42 @@
 /**
- * The monthly review on the Progress screen: every exercise of a month, where it ended against
- * where it started, set by set — and for each one that is stuck, one thing to try.
+ * The monthly review on the Progress screen: every exercise of a month judged once for the whole
+ * month — improved even slightly, no change, or stuck / declined — told by part of the body and
+ * exercise by exercise, with one thing to try where it did not improve.
  *
  * Opens on the last whole month (a new review is ready on the first of every month) and moves
  * back through every month with training, and forward to this month so far. The reading itself
- * is `progress/monthlyReview.ts`; this only lays it out.
+ * is `@fit/shared/progress` (`monthlyReview.ts`, `bodyAreas.ts`) — the coach website reads the
+ * same — and this only lays it out.
  *
- * Each exercise is a row that opens in place: the sets against the sets, and the tip. Nothing
- * here animates beyond the card's own entrance, so there is no driver to mix (see CLAUDE.md).
+ * Two ways to narrow the list, which combine: the shortcuts (the owner asked for "shortcuts to
+ * the ones I improved, the ones with no change, and the ones where I am stuck or declined") and
+ * a tap on a body area. Each exercise is a row that opens in place: its best sets of the month
+ * against the sets before, and the tip. Nothing here animates beyond the card's own entrance, so
+ * there is no driver to mix (see CLAUDE.md).
  */
 
-import { EXERCISE_SEED, type ExerciseSeed } from '@fit/shared/catalog';
+import { EXERCISE_BY_KEY } from '@fit/shared/catalog';
+import {
+  areaOfExercise,
+  defaultMonth,
+  monthOf,
+  nextWeightKg,
+  reviewableMonths,
+  reviewByArea,
+  reviewMonth,
+  STATUS_ORDER,
+  topSet,
+  type AreaMonth,
+  type AreaStatus,
+  type BodyArea,
+  type ExerciseMonth,
+  type MonthReview,
+  type MonthStatus,
+  type Tip,
+  type WorkingSet,
+} from '@fit/shared/progress';
 import { router, useFocusEffect } from 'expo-router';
-import { CaretDown, CaretLeft, CaretRight, CaretUp } from 'phosphor-react-native';
+import { CaretDown, CaretLeft, CaretRight, CaretUp, Check } from 'phosphor-react-native';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, View, type TextStyle, type ViewStyle } from 'react-native';
@@ -22,19 +46,6 @@ import { listTrainingMonths, loadMonthHistory } from '../db/monthlyReview.js';
 import { getExecutor } from '../db/provider.js';
 import { hapticLight } from '../haptics.js';
 import { isRtlLanguage, type Language } from '../i18n/index.js';
-import {
-  defaultMonth,
-  nextWeightKg,
-  reviewableMonths,
-  reviewMonth,
-  STATUS_ORDER,
-  type ExerciseMonth,
-  type MonthReview,
-  type MonthStatus,
-  monthOf,
-  type Tip,
-} from '../progress/monthlyReview.js';
-import { topSet, type WorkingSet } from '../progress/setBySet.js';
 import { useTheme } from '../ThemeProvider.js';
 import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../theme.js';
 import { kgToDisplay, weightUnitKey } from '../units.js';
@@ -44,17 +55,21 @@ import { Text } from './Text.js';
 import { Banner, Card, Hint, SectionTitle } from './ui.js';
 import { SetChangeMark, useSetText } from './WorkoutProgressList.js';
 
-const EXERCISE_BY_KEY = new Map<string, ExerciseSeed>(
-  EXERCISE_SEED.map((exercise) => [exercise.nameEn, exercise]),
-);
+/** The shortcuts, in the owner's order. "New" joins them only in a month that has one. */
+const SHORTCUTS: readonly MonthStatus[] = ['improved', 'same', 'declined', 'new'];
 
-/** Which colour each kind of month is told in. */
-function statusColor(status: MonthStatus, colors: ColorPalette): string {
-  if (status === 'progressing') return colors.accent;
-  if (status === 'stuck') return colors.warning;
-  if (status === 'declining') return colors.danger;
+/** Which colour each verdict is told in — always beside its words, never instead of them. */
+function statusColor(status: AreaStatus, colors: ColorPalette): string {
+  if (status === 'improved') return colors.accent;
+  if (status === 'declined') return colors.warning;
   if (status === 'new') return colors.info;
+  if (status === 'skipped') return colors.textMuted;
   return colors.textSecondary;
+}
+
+interface Shown {
+  review: MonthReview;
+  areas: AreaMonth[];
 }
 
 export function MonthlyReviewCard({
@@ -76,8 +91,10 @@ export function MonthlyReviewCard({
 
   const [months, setMonths] = useState<string[] | null>(null);
   const [month, setMonth] = useState<string | null>(null);
-  const [review, setReview] = useState<MonthReview | null>(null);
+  const [shown, setShown] = useState<Shown | null>(null);
   const [open, setOpen] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<MonthStatus | null>(null);
+  const [areaFilter, setAreaFilter] = useState<BodyArea | null>(null);
   // Bumped on every read of the months, so the month shown is read again with them.
   const [version, setVersion] = useState(0);
 
@@ -108,7 +125,8 @@ export function MonthlyReviewCard({
     void (async () => {
       const db = await getExecutor();
       const history = await loadMonthHistory(db, userId, month);
-      if (live) setReview(reviewMonth(history, month));
+      const review = reviewMonth(history, month);
+      if (live) setShown({ review, areas: reviewByArea(review, history) });
     })();
     return () => {
       live = false;
@@ -131,8 +149,8 @@ export function MonthlyReviewCard({
           return t('monthly.tip_fewerSets', { from: tip.from, to: tip.to });
         case 'lowFrequency':
           return t('monthly.tip_lowFrequency', { count: tip.sessions });
-        case 'longPlateau':
-          return t('monthly.tip_longPlateau', { count: tip.sessions });
+        case 'twoMonths':
+          return t('monthly.tip_twoMonths');
         case 'addRep':
           return t('monthly.tip_addRep', {
             target: tip.targetReps,
@@ -169,6 +187,11 @@ export function MonthlyReviewCard({
   const day = (iso: string) =>
     new Date(iso).toLocaleDateString(i18n.language, { day: 'numeric', month: 'short' });
 
+  const exerciseName = (key: string) => {
+    const seed = EXERCISE_BY_KEY.get(key);
+    return seed ? (isHebrew ? seed.nameHe : seed.nameEn) : key;
+  };
+
   const gainText = (exercise: ExerciseMonth): string | null => {
     const gain = exercise.gain;
     if (!gain) return null;
@@ -179,7 +202,33 @@ export function MonthlyReviewCard({
     return parts.length > 0 ? parts.join(' · ') : null;
   };
 
-  const shown = review?.month === month ? review : null;
+  const countsText = (counts: Readonly<Record<MonthStatus, number>>) =>
+    STATUS_ORDER.filter((status) => counts[status] > 0)
+      .map((status) => t(`monthly.count_${status}`, { count: counts[status] }))
+      .join(' · ');
+
+  const toggleStatus = (status: MonthStatus) => {
+    hapticLight();
+    setOpen(null);
+    setStatusFilter((current) => (current === status ? null : status));
+  };
+  const toggleArea = (area: BodyArea) => {
+    hapticLight();
+    setOpen(null);
+    setAreaFilter((current) => (current === area ? null : area));
+  };
+
+  const current = shown?.review.month === month ? shown : null;
+  const review = current?.review ?? null;
+  const visible = (review?.exercises ?? []).filter(
+    (exercise) =>
+      (statusFilter === null || exercise.status === statusFilter) &&
+      (areaFilter === null || areaOfExercise(exercise.exerciseKey) === areaFilter),
+  );
+  const filterWords = [
+    areaFilter ? t(`bodyArea.${areaFilter}`) : null,
+    statusFilter ? t(`monthly.shortcut_${statusFilter}`) : null,
+  ].filter((word): word is string => word !== null);
 
   return (
     <Card index={index}>
@@ -212,153 +261,232 @@ export function MonthlyReviewCard({
         </Pressable>
       </View>
 
-      {!shown ? null : shown.exercises.length === 0 ? (
+      {!current || !review ? null : review.exercises.length === 0 ? (
         <Text style={styles.empty}>
           {months.length <= 1 && isCurrent ? t('monthly.noData') : t('monthly.empty')}
         </Text>
       ) : (
         <>
           <Text style={styles.totals}>
-            {t('monthly.totals', { count: shown.totals.sessions, sets: shown.totals.sets })}
+            {t('monthly.totals', { count: review.totals.sessions, sets: review.totals.sets })}
             {'\n'}
-            {shown.previous.sessions > 0
+            {review.previous.sessions > 0
               ? t('monthly.previous', {
-                  count: shown.previous.sessions,
-                  sets: shown.previous.sets,
+                  count: review.previous.sessions,
+                  sets: review.previous.sets,
                 })
               : t('monthly.previousNone')}
           </Text>
 
-          <View style={styles.chips}>
-            {(['progressing', 'stuck', 'declining'] as const)
-              .filter((status) => shown.counts[status] > 0)
-              .map((status) => (
-                <View
-                  key={status}
-                  style={[styles.chip, { borderColor: statusColor(status, colors) }]}
-                >
-                  <Text style={[styles.chipText, { color: statusColor(status, colors) }]}>
-                    {t(`monthly.chip_${status}`, { count: shown.counts[status] })}
-                  </Text>
-                </View>
-              ))}
+          {/* The shortcuts: each says how many it holds, and a second tap shows all again. */}
+          <Text style={styles.label}>{t('monthly.shortcutsLabel')}</Text>
+          <View style={styles.shortcuts}>
+            {SHORTCUTS.filter((status) => status !== 'new' || review.counts.new > 0).map(
+              (status) => {
+                const selected = statusFilter === status;
+                const count = review.counts[status];
+                const tone = statusColor(status, colors);
+                return (
+                  <Pressable
+                    key={status}
+                    onPress={() => toggleStatus(status)}
+                    disabled={count === 0 && !selected}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected, disabled: count === 0 && !selected }}
+                    style={[
+                      styles.shortcut,
+                      { borderColor: selected ? tone : colors.border },
+                      selected && { backgroundColor: colors.surfaceRaised },
+                      count === 0 && !selected && styles.shortcutOff,
+                    ]}
+                  >
+                    <Text style={[styles.shortcutCount, { color: tone }]}>{count}</Text>
+                    <Text style={styles.shortcutText} numberOfLines={2}>
+                      {t(`monthly.shortcut_${status}`)}
+                    </Text>
+                  </Pressable>
+                );
+              },
+            )}
           </View>
 
-          {STATUS_ORDER.filter((status) => shown.counts[status] > 0).map((status) => (
-            <View key={status} style={styles.group}>
-              <Text style={[styles.groupTitle, { color: statusColor(status, colors) }]}>
-                {t(`monthly.group_${status}`)}
+          {/* By body area: the month at a glance, one line per area. A tap narrows the list. */}
+          <Text style={styles.groupHeading}>{t('monthly.areasTitle')}</Text>
+          {current.areas.map((area) => {
+            const selected = areaFilter === area.area;
+            const tone = statusColor(area.status, colors);
+            const skipped = area.status === 'skipped';
+            const counts = skipped ? '' : countsText(area.counts);
+            const sets = [
+              area.sets > 0 ? t('monthly.areaSets', { count: area.sets }) : null,
+              area.previousSets > 0 ? t('monthly.areaSetsBefore', { count: area.previousSets }) : null,
+            ]
+              .filter(Boolean)
+              .join(' · ');
+            return (
+              <Pressable
+                key={area.area}
+                onPress={() => toggleArea(area.area)}
+                disabled={skipped}
+                accessibilityRole="button"
+                accessibilityState={{ selected, disabled: skipped }}
+                style={[styles.areaRow, selected && { borderColor: colors.accentBorder, backgroundColor: colors.surfaceRaised }]}
+              >
+                <View style={[styles.areaDot, { backgroundColor: tone }]} />
+                <View style={styles.rowText}>
+                  <View style={styles.areaHead}>
+                    <Text style={styles.name} numberOfLines={1}>
+                      {t(`bodyArea.${area.area}`)}
+                    </Text>
+                    <Text style={[styles.areaStatus, { color: tone }]}>
+                      {t(`monthly.areaStatus_${area.status}`)}
+                    </Text>
+                  </View>
+                  {counts ? <Text style={styles.detail}>{counts}</Text> : null}
+                  {sets ? <Text style={styles.detail}>{sets}</Text> : null}
+                </View>
+                {selected ? <Check size={16} color={colors.accent} weight="bold" /> : null}
+              </Pressable>
+            );
+          })}
+
+          {filterWords.length > 0 ? (
+            <View style={styles.filterRow}>
+              <Text style={styles.filterText}>
+                {t('monthly.showing', { what: filterWords.join(' · ') })}
               </Text>
-              {shown.exercises
-                .filter((exercise) => exercise.status === status)
-                .map((exercise) => {
-                  const seed = EXERCISE_BY_KEY.get(exercise.exerciseKey);
-                  const name = seed
-                    ? isHebrew
-                      ? seed.nameHe
-                      : seed.nameEn
-                    : exercise.exerciseKey;
-                  const expanded = open === exercise.exerciseKey;
-                  const Caret = expanded ? CaretUp : CaretDown;
-                  const now = exercise.to.sets;
-                  const then = exercise.from?.sets ?? null;
-                  const detail =
-                    status === 'progressing'
-                      ? gainText(exercise)
-                      : status === 'stuck'
-                        ? t('monthly.flat', { count: exercise.flat })
+              <Pressable
+                onPress={() => {
+                  hapticLight();
+                  setStatusFilter(null);
+                  setAreaFilter(null);
+                }}
+                accessibilityRole="button"
+                hitSlop={8}
+                style={styles.link}
+              >
+                <Text style={styles.linkText}>{t('monthly.clearFilter')}</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
+          {visible.length === 0 ? (
+            <Text style={styles.empty}>{t('monthly.filteredEmpty')}</Text>
+          ) : null}
+
+          {STATUS_ORDER.filter((status) => visible.some((e) => e.status === status)).map(
+            (status) => (
+              <View key={status} style={styles.group}>
+                <Text style={[styles.groupTitle, { color: statusColor(status, colors) }]}>
+                  {t(`monthly.group_${status}`)}
+                </Text>
+                {visible
+                  .filter((exercise) => exercise.status === status)
+                  .map((exercise) => {
+                    const expanded = open === exercise.exerciseKey;
+                    const Caret = expanded ? CaretUp : CaretDown;
+                    const best = exercise.best.map((b) => b.set);
+                    const then = exercise.from?.sets ?? null;
+                    const detail =
+                      status === 'improved'
+                        ? (gainText(exercise) ?? t('monthly.sessions', { count: exercise.sessions }))
                         : t('monthly.sessions', { count: exercise.sessions });
-                  return (
-                    <View key={exercise.exerciseKey} style={styles.row}>
-                      <Pressable
-                        onPress={() => {
-                          hapticLight();
-                          setOpen(expanded ? null : exercise.exerciseKey);
-                        }}
-                        accessibilityRole="button"
-                        accessibilityState={{ expanded }}
-                        style={styles.rowHead}
-                      >
-                        <View style={styles.rowText}>
-                          <Text style={styles.name} numberOfLines={1}>
-                            {name}
-                          </Text>
-                          <Text style={styles.sets} numberOfLines={1}>
-                            {setText(topOf(now))}
-                            {then ? (
-                              <Text style={styles.was}>
-                                {'  '}
-                                {t('progress.was', { value: setText(topOf(then)) })}
+                    return (
+                      <View key={exercise.exerciseKey} style={styles.row}>
+                        <Pressable
+                          onPress={() => {
+                            hapticLight();
+                            setOpen(expanded ? null : exercise.exerciseKey);
+                          }}
+                          accessibilityRole="button"
+                          accessibilityState={{ expanded }}
+                          style={styles.rowHead}
+                        >
+                          <View style={styles.rowText}>
+                            <Text style={styles.name} numberOfLines={1}>
+                              {exerciseName(exercise.exerciseKey)}
+                            </Text>
+                            <Text style={styles.sets} numberOfLines={1}>
+                              {setText(topOf(best))}
+                              {then ? (
+                                <Text style={styles.was}>
+                                  {'  '}
+                                  {t('progress.was', { value: setText(topOf(then)) })}
+                                </Text>
+                              ) : null}
+                            </Text>
+                            <Text style={styles.detail}>
+                              {t(`bodyArea.${areaOfExercise(exercise.exerciseKey)}`)} · {detail}
+                            </Text>
+                          </View>
+                          <Caret size={16} color={colors.textMuted} />
+                        </Pressable>
+
+                        {expanded ? (
+                          <View style={styles.body}>
+                            {exercise.from ? (
+                              <Text style={styles.compare}>
+                                {t(
+                                  exercise.fromBeforeMonth
+                                    ? 'monthly.compareBest'
+                                    : 'monthly.compareBestFirst',
+                                  { from: day(exercise.from.startedAt) },
+                                )}
                               </Text>
                             ) : null}
-                          </Text>
-                          {detail ? <Text style={styles.detail}>{detail}</Text> : null}
-                        </View>
-                        <Caret size={16} color={colors.textMuted} />
-                      </Pressable>
-
-                      {expanded ? (
-                        <View style={styles.body}>
-                          {exercise.from ? (
-                            <Text style={styles.compare}>
-                              {t('monthly.compareDates', {
-                                to: day(exercise.to.startedAt),
-                                from: day(exercise.from.startedAt),
-                              })}
-                            </Text>
-                          ) : null}
-                          {(exercise.pairs.length > 0
-                            ? exercise.pairs
-                            : now.map((set, i) => ({
-                                position: i + 1,
-                                now: set,
-                                then: null,
-                                change: 'added' as const,
-                              }))
-                          ).map((pair) => (
-                            <View key={pair.position} style={styles.setRow}>
-                              {exercise.from ? (
-                                <SetChangeMark change={pair.change} />
-                              ) : (
-                                <View style={styles.markSpace} />
-                              )}
-                              <Text style={styles.setLabel}>
-                                {t('progress.setN', { n: pair.position })}
-                              </Text>
-                              <View style={styles.setText}>
-                                <Text style={[styles.setNow, !pair.now && styles.setMissing]}>
-                                  {pair.now ? setText(pair.now) : t('progress.setChange_dropped')}
+                            {(exercise.pairs.length > 0
+                              ? exercise.pairs
+                              : best.map((set, i) => ({
+                                  position: i + 1,
+                                  now: set,
+                                  then: null,
+                                  change: 'added' as const,
+                                }))
+                            ).map((pair) => (
+                              <View key={pair.position} style={styles.setRow}>
+                                {exercise.from ? (
+                                  <SetChangeMark change={pair.change} />
+                                ) : (
+                                  <View style={styles.markSpace} />
+                                )}
+                                <Text style={styles.setLabel}>
+                                  {t('progress.setN', { n: pair.position })}
                                 </Text>
-                                {pair.then ? (
-                                  <Text style={styles.setWas}>
-                                    {t('progress.was', { value: setText(pair.then) })}
+                                <View style={styles.setText}>
+                                  <Text style={[styles.setNow, !pair.now && styles.setMissing]}>
+                                    {pair.now ? setText(pair.now) : t('progress.setChange_dropped')}
                                   </Text>
-                                ) : null}
+                                  {pair.then ? (
+                                    <Text style={styles.setWas}>
+                                      {t('progress.was', { value: setText(pair.then) })}
+                                    </Text>
+                                  ) : null}
+                                </View>
                               </View>
-                            </View>
-                          ))}
-                          {exercise.tip ? (
-                            <Banner tone="warning">{tipText(exercise.tip)}</Banner>
-                          ) : null}
-                          <Pressable
-                            onPress={() =>
-                              router.push({
-                                pathname: '/exercise/[key]',
-                                params: { key: exercise.exerciseKey },
-                              })
-                            }
-                            accessibilityRole="link"
-                            style={styles.link}
-                          >
-                            <Text style={styles.linkText}>{t('monthly.openExercise')}</Text>
-                          </Pressable>
-                        </View>
-                      ) : null}
-                    </View>
-                  );
-                })}
-            </View>
-          ))}
+                            ))}
+                            {exercise.tip ? (
+                              <Banner tone="warning">{tipText(exercise.tip)}</Banner>
+                            ) : null}
+                            <Pressable
+                              onPress={() =>
+                                router.push({
+                                  pathname: '/exercise/[key]',
+                                  params: { key: exercise.exerciseKey },
+                                })
+                              }
+                              accessibilityRole="link"
+                              style={styles.link}
+                            >
+                              <Text style={styles.linkText}>{t('monthly.openExercise')}</Text>
+                            </Pressable>
+                          </View>
+                        ) : null}
+                      </View>
+                    );
+                  })}
+              </View>
+            ),
+          )}
         </>
       )}
     </Card>
@@ -384,9 +512,19 @@ const createStyles = (colors: ColorPalette) =>
     monthName: TextStyle;
     empty: TextStyle;
     totals: TextStyle;
-    chips: ViewStyle;
-    chip: ViewStyle;
-    chipText: TextStyle;
+    label: TextStyle;
+    shortcuts: ViewStyle;
+    shortcut: ViewStyle;
+    shortcutOff: ViewStyle;
+    shortcutCount: TextStyle;
+    shortcutText: TextStyle;
+    groupHeading: TextStyle;
+    areaRow: ViewStyle;
+    areaDot: ViewStyle;
+    areaHead: ViewStyle;
+    areaStatus: TextStyle;
+    filterRow: ViewStyle;
+    filterText: TextStyle;
     group: ViewStyle;
     groupTitle: TextStyle;
     row: ViewStyle;
@@ -444,20 +582,64 @@ const createStyles = (colors: ColorPalette) =>
       marginTop: spacing.md,
       textAlign: 'center',
     },
-    chips: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
+    label: {
+      color: colors.textMuted,
+      fontSize: fontSize.xs,
+      fontWeight: fontWeight.bold,
+      marginTop: spacing.lg,
+      textAlign: 'auto',
+    },
+    shortcuts: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xs },
+    shortcut: {
+      flex: 1,
+      minHeight: 64,
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.xs,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      alignItems: 'center',
       justifyContent: 'center',
+      gap: 2,
+    },
+    shortcutOff: { opacity: 0.45 },
+    shortcutCount: { fontSize: fontSize.lg, fontWeight: fontWeight.bold, fontVariant: ['tabular-nums'] },
+    shortcutText: {
+      color: colors.textSecondary,
+      fontSize: fontSize.xs,
+      fontWeight: fontWeight.bold,
+      textAlign: 'center',
+    },
+    groupHeading: {
+      color: colors.text,
+      fontSize: fontSize.md,
+      fontWeight: fontWeight.bold,
+      marginTop: spacing.lg,
+      marginBottom: spacing.xs,
+      textAlign: 'auto',
+    },
+    areaRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      minHeight: 52,
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.sm,
+      marginBottom: spacing.xs,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.borderSubtle,
+    },
+    areaDot: { width: 10, height: 10, borderRadius: 5 },
+    areaHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: spacing.sm },
+    areaStatus: { fontSize: fontSize.sm, fontWeight: fontWeight.bold },
+    filterRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
       gap: spacing.sm,
       marginTop: spacing.md,
     },
-    chip: {
-      paddingVertical: spacing.xs,
-      paddingHorizontal: spacing.md,
-      borderRadius: radius.pill,
-      borderWidth: 1,
-    },
-    chipText: { fontSize: fontSize.xs, fontWeight: fontWeight.bold },
+    filterText: { flex: 1, color: colors.textSecondary, fontSize: fontSize.sm, textAlign: 'auto' },
     group: { marginTop: spacing.lg },
     groupTitle: {
       fontSize: fontSize.sm,

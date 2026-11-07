@@ -61,8 +61,9 @@ export async function listSessionsBetween(
 }
 
 /**
- * What one month's review needs: the month itself, and far enough back for the session each
- * exercise is read against and for the month before's totals.
+ * What one month's review needs: the month itself, and far enough back to judge the month
+ * before it too — whose verdict decides one of the tips — with the session that month is set
+ * against.
  */
 export async function loadMonthHistory(
   db: SqlExecutor,
@@ -71,8 +72,7 @@ export async function loadMonthHistory(
 ): Promise<Map<string, SessionSets[]>> {
   const { end } = monthBounds(month);
   const { start: previous } = monthBounds(shiftMonth(month, -1));
-  const lookback = new Date(monthBounds(month).start.getTime() - LOOKBACK_DAYS * 86_400_000);
-  const from = lookback < previous ? lookback : previous;
+  const from = new Date(previous.getTime() - LOOKBACK_DAYS * 86_400_000);
   return listSessionsBetween(db, userId, from.toISOString(), end.toISOString());
 }
 

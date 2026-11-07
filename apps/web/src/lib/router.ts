@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react';
 
 export type TraineeTab =
   | 'overview'
+  | 'progress'
   | 'workouts'
   | 'plans'
   | 'calendar'
@@ -22,6 +23,7 @@ export type Route =
 
 const TABS: readonly TraineeTab[] = [
   'overview',
+  'progress',
   'workouts',
   'plans',
   'calendar',

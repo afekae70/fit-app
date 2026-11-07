@@ -11,6 +11,7 @@
     "./catalog": "./src/catalog/index.ts",
     "./schemas": "./src/schemas/index.ts",
     "./coaching": "./src/coaching/index.ts",
+    "./progress": "./src/progress/index.ts",
     "./design": "./src/design/index.ts"
   },
   "scripts": {

@@ -1,41 +1,45 @@
 /**
- * The monthly review: every exercise of a month, where it ended against where it started, and
- * which ones are stuck — with one concrete thing to try for each of those.
+ * The monthly review: every exercise of a month, judged once for the month as a whole — did it
+ * get better, even slightly, stay the same, or go down — with something to try for the ones
+ * that did not get better.
  *
- * Asked for by the owner (2026-11-07): once a month, every exercise, by sets, weight and reps —
- * "to see where I am progressing and where I am stuck, so I can improve where I am stuck".
+ * Asked for by the owner (2026-11-07), and then made precise: the verdict is "once a month,
+ * across the whole month, whether I progressed even a little or not — and not session after
+ * session".
  *
- * ## What a month is read against
+ * ## What the month is set against
  *
  * The last time the exercise was done before the month began, if that was within the last
- * LOOKBACK_DAYS; otherwise the month's own first session. The month's last session is set
- * against it set by set, with the same rule as everywhere else in the app (`setBySet.ts`):
- * heavier is better, then more reps at the same weight, and a set more or fewer counts.
+ * LOOKBACK_DAYS. Otherwise the month's own first session, and the rest of the month is set
+ * against that.
  *
- * ## Stuck
+ * ## What the month did
  *
- * Stuck is about now, not about the month as a whole. Three sessions in a row in which nothing
- * got better than the session before is stuck, even if the month started with a jump — the jump
- * is over. So is ending the month exactly where it began, with at least two sessions to show
- * for it. One repeat on its own is only "holding": a single unchanged session is a normal week.
+ * Set by set, the best the month produced: for the first working set, the best first set of any
+ * session in the month; for the second, the best second set; and so on. "Best" is the app's one
+ * rule (`setBySet.ts`): heavier, then more reps at the same weight. One good day in the month is
+ * enough to count — that is what "even a little" means — and a bad last session does not undo it.
  *
- * Declining wins over stuck: an exercise below where the month started is told so first.
+ * Those are set against the same sets before the month. More sets improved than got worse is
+ * improved; more worse than improved is declined; otherwise the same. A set done in the month
+ * that was not there before counts as improved, and one never reached in the month as worse.
  *
  * ## Tips
  *
- * Rules read off the sets themselves, the first that applies:
- *  1. The reps fall away across the sets (12, 10, 7): the later sets need more rest.
- *  2. Declining because the weight came down, or because there were fewer sets: say which.
+ * For the exercises that did not improve, the first rule that applies:
+ *  1. Declined because the weight came down, or because there were fewer sets: say which.
+ *  2. The reps fall away across the sets of the last session (12, 10, 7): more rest.
  *  3. Done once or twice in the month: frequency comes before anything cleverer.
- *  4. Five sessions or more without anything better: a lighter week, or a variation.
- *  5. Otherwise, stuck at a weight: one more rep per set, then the next weight up.
+ *  4. The month before did not improve either: a lighter week, or a variation.
+ *  5. Otherwise: one more rep per set, then the next weight up.
  *
  * Pure. The sets come from `db/monthlyReview.ts`.
  */
 
-import type { UnitPreference } from '@fit/shared';
+import type { UnitPreference } from '../schemas/units.js';
 
 import {
+  compareSet,
   improved,
   NO_TALLY,
   pairSets,
@@ -54,33 +58,33 @@ export interface SessionSets {
   sets: WorkingSet[];
 }
 
-export type MonthStatus = 'stuck' | 'declining' | 'progressing' | 'holding' | 'new';
+export type MonthStatus = 'improved' | 'same' | 'declined' | 'new';
 
-/** The order the review lists them in: what needs attention first. */
-export const STATUS_ORDER: readonly MonthStatus[] = [
-  'stuck',
-  'declining',
-  'progressing',
-  'holding',
-  'new',
-];
+/** The order the review lists them in, which is also the order of its shortcuts. */
+export const STATUS_ORDER: readonly MonthStatus[] = ['improved', 'same', 'declined', 'new'];
 
 export type Tip =
-  | { kind: 'fadingSets'; firstReps: number; lastReps: number }
   | { kind: 'lighter'; fromKg: number; toKg: number }
   | { kind: 'fewerSets'; from: number; to: number }
+  | { kind: 'fadingSets'; firstReps: number; lastReps: number }
   | { kind: 'lowFrequency'; sessions: number }
-  | { kind: 'longPlateau'; sessions: number }
-  | { kind: 'addRep'; sessions: number; weightKg: number; targetReps: number }
-  | { kind: 'addRepBodyweight'; sessions: number; targetReps: number };
+  | { kind: 'twoMonths' }
+  | { kind: 'addRep'; weightKg: number; targetReps: number }
+  | { kind: 'addRepBodyweight'; targetReps: number };
 
-/** What changed between where the month started and where it ended. */
+/** One set of the month's best, and the day it was done. */
+export interface BestSet {
+  set: WorkingSet;
+  startedAt: string;
+}
+
+/** What changed between the start and the month's best. */
 export interface Gain {
-  /** The top set's weight, end minus start. Zero when either had none. */
+  /** The top set's weight, best minus start. Zero when either had none. */
   weightKg: number;
   /** The top set's reps, when the weight did not change. Zero otherwise. */
   reps: number;
-  /** Working sets in the session, end minus start. */
+  /** Working sets, best minus start. */
   sets: number;
 }
 
@@ -89,18 +93,16 @@ export interface ExerciseMonth {
   status: MonthStatus;
   /** Sessions of this exercise in the month. */
   sessions: number;
-  /** What the month is read against. Null for an exercise done once, and never before. */
+  /** What the month is set against. Null for an exercise done once, and never before. */
   from: SessionSets | null;
   /** Whether `from` is from before the month, rather than the month's own first session. */
   fromBeforeMonth: boolean;
-  /** The month's last session. */
-  to: SessionSets;
-  /** `to` set against `from`, place by place. Empty without a `from`. */
+  /** The month's best, set by set. For a new exercise, its one session. */
+  best: BestSet[];
+  /** `best` against `from`, place by place. Empty without a `from`. */
   pairs: SetPair[];
   tally: Tally;
   gain: Gain | null;
-  /** Sessions in a row, ending with the last, with nothing better than the one before. */
-  flat: number;
   tip: Tip | null;
 }
 
@@ -120,7 +122,7 @@ export interface MonthReview {
   previous: MonthTotals;
 }
 
-/** How far back the session a month is read against may be. Older than that, start afresh. */
+/** How far back the session a month is set against may be. Older than that, start afresh. */
 export const LOOKBACK_DAYS = 90;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -172,27 +174,88 @@ export function reviewableMonths(months: readonly string[], today: Date): string
 
 const at = (session: SessionSets) => new Date(session.startedAt).getTime();
 
-/** Whether a session is better than the one before it: more sets improved than got worse. */
-function better(now: SessionSets, then: SessionSets): boolean {
-  const tally = tallyOf(pairSets(now.sets, then.sets));
-  return improved(tally) > worse(tally);
+interface Judged {
+  inMonth: SessionSets[];
+  from: SessionSets | null;
+  fromBeforeMonth: boolean;
+  best: BestSet[];
+  pairs: SetPair[];
+  tally: Tally;
+  status: MonthStatus;
 }
 
-function gainOf(from: SessionSets, to: SessionSets): Gain {
-  const top = { from: topSet(from.sets), to: topSet(to.sets) };
-  const sets = to.sets.length - from.sets.length;
-  if (top.from && top.to) {
-    const weightKg = (top.to.weightKg ?? 0) - (top.from.weightKg ?? 0);
+/** The best set in each place across these sessions. */
+function bestByPlace(sessions: readonly SessionSets[]): BestSet[] {
+  const best: BestSet[] = [];
+  for (const session of sessions) {
+    session.sets.forEach((set, place) => {
+      const held = best[place];
+      if (!held || compareSet(set, held.set) === 'up') {
+        best[place] = { set, startedAt: session.startedAt };
+      }
+    });
+  }
+  return best;
+}
+
+function judge(history: readonly SessionSets[], month: string): Judged | null {
+  const { start, end } = monthBounds(month);
+  const sorted = [...history].sort((a, b) => at(a) - at(b));
+  const inMonth = sorted.filter((s) => at(s) >= start.getTime() && at(s) < end.getTime());
+  if (inMonth.length === 0) return null;
+
+  const baseline =
+    sorted
+      .filter((s) => at(s) < start.getTime() && at(s) >= start.getTime() - LOOKBACK_DAYS * DAY_MS)
+      .at(-1) ?? null;
+  const from = baseline ?? (inMonth.length >= 2 ? inMonth[0]! : null);
+
+  if (!from) {
+    return {
+      inMonth,
+      from: null,
+      fromBeforeMonth: false,
+      best: bestByPlace(inMonth),
+      pairs: [],
+      tally: { ...NO_TALLY },
+      status: 'new',
+    };
+  }
+
+  // Without a session before the month, the first one is the start, and only the rest count.
+  const best = bestByPlace(baseline ? inMonth : inMonth.slice(1));
+  const pairs = pairSets(
+    best.map((b) => b.set),
+    from.sets,
+  );
+  const tally = tallyOf(pairs);
+  const net = improved(tally) - worse(tally);
+  return {
+    inMonth,
+    from,
+    fromBeforeMonth: baseline !== null,
+    best,
+    pairs,
+    tally,
+    status: net > 0 ? 'improved' : net < 0 ? 'declined' : 'same',
+  };
+}
+
+function gainOf(from: readonly WorkingSet[], best: readonly WorkingSet[]): Gain {
+  const top = { from: topSet(from), best: topSet(best) };
+  const sets = best.length - from.length;
+  if (top.from && top.best) {
+    const weightKg = (top.best.weightKg ?? 0) - (top.from.weightKg ?? 0);
     const sameWeight = Math.abs(weightKg) <= WEIGHT_EPSILON;
     return {
       weightKg: sameWeight ? 0 : weightKg,
-      reps: sameWeight ? (top.to.reps ?? 0) - (top.from.reps ?? 0) : 0,
+      reps: sameWeight ? (top.best.reps ?? 0) - (top.from.reps ?? 0) : 0,
       sets,
     };
   }
   // Without a weight on either side, the most reps in a set is what moved.
-  const mostReps = (session: SessionSets) => Math.max(0, ...session.sets.map((s) => s.reps ?? 0));
-  return { weightKg: 0, reps: mostReps(to) - mostReps(from), sets };
+  const mostReps = (sets: readonly WorkingSet[]) => Math.max(0, ...sets.map((s) => s.reps ?? 0));
+  return { weightKg: 0, reps: mostReps(best) - mostReps(from), sets };
 }
 
 /** The reps of the first set and of the last set done at the first set's weight. */
@@ -213,44 +276,33 @@ function fading(session: SessionSets): { firstReps: number; lastReps: number } |
     : null;
 }
 
-function tipFor(
-  status: MonthStatus,
-  sessions: number,
-  flat: number,
-  from: SessionSets,
-  to: SessionSets,
-): Tip | null {
-  if (status === 'progressing' || status === 'new') return null;
+function tipFor(judged: Judged, previous: MonthStatus | null): Tip | null {
+  const { status, from, best, inMonth } = judged;
+  if (status === 'improved' || status === 'new' || !from) return null;
 
-  const fade = fading(to);
+  const bestSets = best.map((b) => b.set);
+  const top = { from: topSet(from.sets), best: topSet(bestSets) };
+  if (status === 'declined') {
+    if (top.from && top.best && (top.best.weightKg ?? 0) < (top.from.weightKg ?? 0) - WEIGHT_EPSILON) {
+      return { kind: 'lighter', fromKg: top.from.weightKg ?? 0, toKg: top.best.weightKg ?? 0 };
+    }
+    if (bestSets.length < from.sets.length) {
+      return { kind: 'fewerSets', from: from.sets.length, to: bestSets.length };
+    }
+  }
+
+  const fade = fading(inMonth.at(-1)!);
   if (fade) return { kind: 'fadingSets', ...fade };
 
-  const top = { from: topSet(from.sets), to: topSet(to.sets) };
-  if (status === 'declining') {
-    if (top.from && top.to && (top.to.weightKg ?? 0) < (top.from.weightKg ?? 0) - WEIGHT_EPSILON) {
-      return { kind: 'lighter', fromKg: top.from.weightKg ?? 0, toKg: top.to.weightKg ?? 0 };
-    }
-    if (to.sets.length < from.sets.length) {
-      return { kind: 'fewerSets', from: from.sets.length, to: to.sets.length };
-    }
-  }
+  if (inMonth.length <= 2) return { kind: 'lowFrequency', sessions: inMonth.length };
+  if (previous === 'same' || previous === 'declined') return { kind: 'twoMonths' };
 
-  if (sessions <= 2) return { kind: 'lowFrequency', sessions };
-  if (flat >= 5) return { kind: 'longPlateau', sessions: flat };
-
-  if (top.to && top.to.weightKg !== null && top.to.reps !== null) {
-    return {
-      kind: 'addRep',
-      sessions: Math.max(flat, 2),
-      weightKg: top.to.weightKg,
-      targetReps: top.to.reps + 2,
-    };
+  const reference = top.best ?? top.from;
+  if (reference && reference.weightKg !== null && reference.reps !== null) {
+    return { kind: 'addRep', weightKg: reference.weightKg, targetReps: reference.reps + 2 };
   }
-  const mostReps = Math.max(0, ...to.sets.map((s) => s.reps ?? 0));
-  if (mostReps > 0) {
-    return { kind: 'addRepBodyweight', sessions: Math.max(flat, 2), targetReps: mostReps + 1 };
-  }
-  return null;
+  const mostReps = Math.max(0, ...bestSets.map((s) => s.reps ?? 0));
+  return mostReps > 0 ? { kind: 'addRepBodyweight', targetReps: mostReps + 1 } : null;
 }
 
 /** One exercise's month, or null when it was not done in the month. */
@@ -259,62 +311,25 @@ export function reviewExercise(
   history: readonly SessionSets[],
   month: string,
 ): ExerciseMonth | null {
-  const { start, end } = monthBounds(month);
-  const sorted = [...history].sort((a, b) => at(a) - at(b));
-  const inMonth = sorted.filter((s) => at(s) >= start.getTime() && at(s) < end.getTime());
-  const to = inMonth.at(-1);
-  if (!to) return null;
-
-  const baseline =
-    sorted
-      .filter((s) => at(s) < start.getTime() && at(s) >= start.getTime() - LOOKBACK_DAYS * DAY_MS)
-      .at(-1) ?? null;
-  const line = baseline ? [baseline, ...inMonth] : inMonth;
-  const from = baseline ?? (inMonth.length >= 2 ? inMonth[0]! : null);
-
-  // How many sessions, counting back from the last, did nothing better than the one before.
-  let flat = 1;
-  for (let i = line.length - 1; i > 0 && !better(line[i]!, line[i - 1]!); i--) flat++;
-
-  if (!from) {
-    return {
-      exerciseKey,
-      status: 'new',
-      sessions: inMonth.length,
-      from: null,
-      fromBeforeMonth: false,
-      to,
-      pairs: [],
-      tally: { ...NO_TALLY },
-      gain: null,
-      flat,
-      tip: null,
-    };
-  }
-
-  const pairs = pairSets(to.sets, from.sets);
-  const tally = tallyOf(pairs);
-  const net = improved(tally) - worse(tally);
-  const comparisons = line.length - 1;
-
-  let status: MonthStatus;
-  if (net < 0) status = 'declining';
-  else if (flat >= 3) status = 'stuck';
-  else if (net > 0) status = 'progressing';
-  else status = comparisons >= 2 ? 'stuck' : 'holding';
-
+  const judged = judge(history, month);
+  if (!judged) return null;
+  const previous = judge(history, shiftMonth(month, -1))?.status ?? null;
   return {
     exerciseKey,
-    status,
-    sessions: inMonth.length,
-    from,
-    fromBeforeMonth: baseline !== null,
-    to,
-    pairs,
-    tally,
-    gain: gainOf(from, to),
-    flat,
-    tip: tipFor(status, inMonth.length, flat, from, to),
+    status: judged.status,
+    sessions: judged.inMonth.length,
+    from: judged.from,
+    fromBeforeMonth: judged.fromBeforeMonth,
+    best: judged.best,
+    pairs: judged.pairs,
+    tally: judged.tally,
+    gain: judged.from
+      ? gainOf(
+          judged.from.sets,
+          judged.best.map((b) => b.set),
+        )
+      : null,
+    tip: tipFor(judged, previous),
   };
 }
 
@@ -336,7 +351,7 @@ function totalsBetween(
   return { sessions: sessions.size, sets };
 }
 
-/** The whole month: every exercise done in it, the stuck ones first. */
+/** The whole month: every exercise done in it, in the order of STATUS_ORDER. */
 export function reviewMonth(
   history: ReadonlyMap<string, readonly SessionSets[]>,
   month: string,

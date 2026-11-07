@@ -84,11 +84,11 @@ describe('the monthly review’s reads', () => {
     const review = reviewMonth(await loadMonthHistory(db, USER, '2026-10'), '2026-10');
     expect(review.exercises).toHaveLength(1);
     const [bench] = review.exercises;
-    expect(bench!.status).toBe('progressing');
+    expect(bench!.status).toBe('improved');
     expect(bench!.fromBeforeMonth).toBe(true);
     expect(bench!.gain).toEqual({ weightKg: 2.5, reps: 0, sets: 0 });
     // November is past the month's end, and is not part of October's review.
-    expect(bench!.to.startedAt).toBe(new Date(2026, 9, 6, 18).toISOString());
+    expect(bench!.best[0]!.startedAt).toBe(new Date(2026, 9, 6, 18).toISOString());
     expect(review.previous).toEqual({ sessions: 1, sets: 1 });
   });
 });
