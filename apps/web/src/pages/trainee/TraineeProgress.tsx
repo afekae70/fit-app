@@ -4,7 +4,8 @@
  * phone's Progress screen, judged by the same shared code (`analytics/monthly.ts`).
  *
  * Opens on the last whole month and moves through every month the loaded workouts can judge.
- * The shortcuts and a click on an area narrow the exercise list, and combine; each exercise
+ * A shortcut shows only its exercises, grouped by area, the tip open where it did not improve;
+ * without one, a click on an area narrows the exercise list. Each exercise
  * opens in place to its best sets of the month against the sets before, and the tip.
  */
 
@@ -13,6 +14,7 @@ import { EXERCISE_BY_KEY } from '@fit/shared/catalog';
 import type { CoachSession } from '@fit/shared/coaching';
 import {
   areaOfExercise,
+  BODY_AREAS,
   defaultMonth,
   monthOf,
   nextWeightKg,
@@ -232,6 +234,7 @@ export function TraineeProgress({
                     disabled={count === 0 && status !== s}
                     onClick={() => {
                       setOpen(null);
+                      setArea(null);
                       setStatus((current) => (current === s ? null : s));
                     }}
                   >
@@ -245,7 +248,43 @@ export function TraineeProgress({
         )}
       </Card>
 
-      {review.exercises.length > 0 ? (
+      {review.exercises.length > 0 && status ? (
+        // A shortcut: only its exercises, grouped by body area, the tip open where it did not improve.
+        <Card
+          title={`${he.monthly[`shortcut_${status}`]} · ${
+            visible.length === 1
+              ? he.monthly.exerciseCountOne
+              : fill(he.monthly.exerciseCount, { n: formatNumber(visible.length) })
+          }`}
+          sub={he.monthly[`statusHint_${status}`]}
+          action={
+            <button type="button" className="button ghost small" onClick={() => setStatus(null)}>
+              {he.monthly.clearFilter}
+            </button>
+          }
+        >
+          {visible.length === 0 ? <p className="muted">{he.monthly.filteredEmpty}</p> : null}
+          {BODY_AREAS.filter((a) => visible.some((e) => areaOfExercise(e.exerciseKey) === a)).map((a) => {
+            const inArea = visible.filter((e) => areaOfExercise(e.exerciseKey) === a);
+            return (
+              <section key={a} className="review-group">
+                <h3 className="review-group-title">
+                  {he.bodyArea[a]} · {formatNumber(inArea.length)}
+                </h3>
+                {inArea.map((exercise) => (
+                  <ExerciseRow
+                    key={exercise.exerciseKey}
+                    exercise={exercise}
+                    open={open === exercise.exerciseKey}
+                    tipOpen={status !== 'improved'}
+                    onToggle={() => setOpen(open === exercise.exerciseKey ? null : exercise.exerciseKey)}
+                  />
+                ))}
+              </section>
+            );
+          })}
+        </Card>
+      ) : review.exercises.length > 0 ? (
         <>
           <Card title={he.monthly.areasTitle} sub={he.monthly.areasSub}>
             <div className="area-grid">
@@ -263,6 +302,7 @@ export function TraineeProgress({
                     disabled={skipped}
                     onClick={() => {
                       setOpen(null);
+                      setStatus(null);
                       setArea((current) => (current === entry.area ? null : entry.area));
                     }}
                   >
@@ -338,10 +378,13 @@ export function TraineeProgress({
 function ExerciseRow({
   exercise,
   open,
+  tipOpen = false,
   onToggle,
 }: {
   exercise: ExerciseMonth;
   open: boolean;
+  /** Show the tip without opening the row, as a shortcut's list does. */
+  tipOpen?: boolean;
   onToggle: () => void;
 }) {
   const best = exercise.best.map((b) => b.set);
@@ -367,6 +410,18 @@ function ExerciseRow({
         </span>
         {open ? <CaretUp size={18} aria-hidden /> : <CaretDown size={18} aria-hidden />}
       </button>
+
+      {tipOpen && !open && exercise.tip ? (
+        <div className="session-body">
+          <div className="note">
+            <Lightbulb size={18} weight="duotone" aria-hidden style={{ flex: '0 0 auto' }} />
+            <span>
+              <strong>{he.monthly.tipTitle}: </strong>
+              {tipText(exercise.tip)}
+            </span>
+          </div>
+        </div>
+      ) : null}
 
       {open ? (
         <div className="session-body">
