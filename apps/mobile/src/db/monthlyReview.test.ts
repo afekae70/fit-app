@@ -4,9 +4,16 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import { reviewSession } from '@fit/shared/progress';
+
 import { reviewMonth } from '../progress/monthlyReview.js';
 import type { SqlExecutor } from './executor.js';
-import { listSessionsBetween, listTrainingMonths, loadMonthHistory } from './monthlyReview.js';
+import {
+  listSessionsBetween,
+  listTrainingMonths,
+  loadMonthHistory,
+  loadSessionHistory,
+} from './monthlyReview.js';
 import { createTestExecutor } from './testUtils.js';
 import {
   addExerciseToSession,
@@ -90,5 +97,31 @@ describe('the monthly review’s reads', () => {
     // November is past the month's end, and is not part of October's review.
     expect(bench!.best[0]!.startedAt).toBe(new Date(2026, 9, 6, 18).toISOString());
     expect(review.previous).toEqual({ sessions: 1, sets: 1 });
+  });
+});
+
+describe('a finished workout’s summary', () => {
+  it('reads each exercise up to that workout, and compares with the time before it', async () => {
+    await workout(10, 2, { 'Bench Press': [{ weightKg: 80, reps: 8 }] });
+    const middle = await workout(10, 9, {
+      'Bench Press': [{ weightKg: 82.5, reps: 8 }],
+      'Leg Press': [{ weightKg: 200, reps: 10 }],
+    });
+    await workout(10, 16, { 'Bench Press': [{ weightKg: 85, reps: 8 }] });
+
+    const review = reviewSession(await loadSessionHistory(db, USER, middle), middle, [
+      'Bench Press',
+      'Leg Press',
+    ]);
+    expect(review.exercises.map((e) => [e.exerciseKey, e.status])).toEqual([
+      ['Bench Press', 'improved'],
+      ['Leg Press', 'new'],
+    ]);
+    // Against the 2nd, not the later workout on the 16th.
+    expect(review.exercises[0]!.previous?.startedAt).toBe(new Date(2026, 9, 2, 18).toISOString());
+  });
+
+  it('is empty for a workout that is not there', async () => {
+    expect((await loadSessionHistory(db, USER, 'missing')).size).toBe(0);
   });
 });

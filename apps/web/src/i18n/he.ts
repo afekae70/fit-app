@@ -385,6 +385,13 @@ export const he = {
     drop: 'דרופ',
     failure: 'עד כשל',
     fromPlan: 'מתוך התוכנית',
+    summaryTitle: 'סיכום האימון',
+    summaryHint: 'כל תרגיל מול הפעם הקודמת שהמתאמן עשה אותו, סט מול סט — אותו חישוב שהמתאמן רואה באפליקציה.',
+    summary_improved: 'השתפר',
+    summary_same: 'ללא שינוי',
+    summary_declined: 'ירד',
+    summary_new: 'חדש',
+    vsDate: 'מול האימון ב־{date}',
   },
 
   plans: {

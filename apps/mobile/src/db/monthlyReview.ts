@@ -90,3 +90,30 @@ export async function listTrainingMonths(db: SqlExecutor, userId: string): Promi
   );
   return rows.map((row) => row.month);
 }
+
+/** How far back a finished workout's summary looks for the last time of each exercise. */
+const SESSION_LOOKBACK_DAYS = 365;
+
+/**
+ * What one finished workout's summary needs (`reviewSession` in `@fit/shared/progress`): every
+ * exercise's sessions up to and including that workout, back a year. Empty for a workout that is
+ * not this person's.
+ */
+export async function loadSessionHistory(
+  db: SqlExecutor,
+  userId: string,
+  sessionId: string,
+): Promise<Map<string, SessionSets[]>> {
+  const row = await db.get<{ started_at: string }>(
+    `SELECT started_at FROM workout_sessions WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
+    [sessionId, userId],
+  );
+  if (!row) return new Map();
+  const at = new Date(row.started_at).getTime();
+  return listSessionsBetween(
+    db,
+    userId,
+    new Date(at - SESSION_LOOKBACK_DAYS * 86_400_000).toISOString(),
+    new Date(at + 1).toISOString(),
+  );
+}

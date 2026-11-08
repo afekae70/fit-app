@@ -12,4 +12,5 @@
 
 export * from './bodyAreas.js';
 export * from './monthlyReview.js';
+export * from './sessionReview.js';
 export * from './setBySet.js';

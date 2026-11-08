@@ -1140,6 +1140,16 @@ export const he = {
     obliques: 'אלכסונים',
     cardio: 'אירובי',
   },
+  sessionReview: {
+    title: 'סיכום האימון',
+    hint: 'כל תרגיל מול הפעם הקודמת שעשית אותו — סט מול סט: קודם המשקל, ובאותו משקל החזרות. הקש על תרגיל לפירוט.',
+    group_improved: 'במה השתפרת',
+    group_same: 'נשאר אותו דבר',
+    group_declined: 'במה ירדת',
+    group_new: 'חדש באימון הזה',
+    vsDate: 'מול האימון ב-{{date}}',
+    firstTime: 'פעם ראשונה — בפעם הבאה תהיה השוואה',
+  },
   bodyArea: {
     chest: 'חזה',
     back: 'גב',

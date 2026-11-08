@@ -45,6 +45,9 @@ import { sessionLoad } from '@fit/shared/calculations';
 import { useActionSheet } from '../../src/components/ActionSheetProvider.js';
 import { ExerciseCard, type PreviousSet } from '../../src/components/ExerciseCard.js';
 import { SessionExerciseSummary } from '../../src/components/workout/SessionExerciseSummary.js';
+import { SessionReviewCard } from '../../src/components/workout/SessionReviewCard.js';
+import { loadSessionHistory } from '../../src/db/monthlyReview.js';
+import { reviewSession, type SessionReview } from '@fit/shared/progress';
 import { KeyboardSafe } from '../../src/components/KeyboardSafe.js';
 import {
   Card,
@@ -102,6 +105,8 @@ export default function SessionDetailScreen() {
   const [session, setSession] = useState<WorkoutSessionRow | null>(null);
   const [exercises, setExercises] = useState<SessionExerciseWithSets[]>([]);
   const [previous, setPrevious] = useState<Record<string, PreviousSet[] | null>>({});
+  // What got better than last time, what stayed and what went down. See SessionReviewCard.
+  const [review, setReview] = useState<SessionReview | null>(null);
   const [nameDraft, setNameDraft] = useState('');
   const [noteDraft, setNoteDraft] = useState('');
   const [loading, setLoading] = useState(true);
@@ -135,6 +140,13 @@ export default function SessionDetailScreen() {
       nextPrevious[exercise.exercise_key] = sets.length > 0 ? sets : null;
     }
     setPrevious(nextPrevious);
+    setReview(
+      reviewSession(
+        await loadSessionHistory(db, userId, id),
+        id,
+        detail.exercises.map((exercise) => exercise.exercise_key),
+      ),
+    );
     setLoading(false);
   }, [id, userId]);
 
@@ -533,6 +545,11 @@ export default function SessionDetailScreen() {
             </Pressable>
           </View>
         ) : null}
+
+        {/* The summary first, once the workout is over and while it is being read: what got
+            better than last time, what stayed, what went down. While editing, the sets are
+            changing under it, and it would argue with them. */}
+        {session.ended_at && !editing && review ? <SessionReviewCard review={review} /> : null}
 
         {/* A note on the workout, for whoever reads it later: the person who did it, and their
             coach if they have one — which the line under the field says, because a note is the

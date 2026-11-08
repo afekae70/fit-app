@@ -1168,6 +1168,16 @@ export const en = {
     obliques: 'Obliques',
     cardio: 'Cardio',
   },
+  sessionReview: {
+    title: 'Workout summary',
+    hint: 'Each exercise against the last time you did it — set by set: weight first, then reps at the same weight. Tap an exercise for the detail.',
+    group_improved: 'Where you improved',
+    group_same: 'Stayed the same',
+    group_declined: 'Where you slipped',
+    group_new: 'New in this workout',
+    vsDate: 'Against the session on {{date}}',
+    firstTime: 'First time — next time there will be a comparison',
+  },
   bodyArea: {
     chest: 'Chest',
     back: 'Back',
