@@ -28,7 +28,7 @@ import {
   startSession,
 } from '../db/workouts.js';
 import { runSync, type RowRejection, type SyncTransport } from './engine.js';
-import { isRowRefusal, type Row } from './rows.js';
+import { isRowRefusal, tombstoneSlot, type Row } from './rows.js';
 import { SYNC_TABLES, SYNC_TABLE_BY_NAME } from './tables.js';
 
 const USER = '11111111-1111-4111-8111-111111111111';
@@ -162,6 +162,17 @@ function createFakeServer(startAt = Date.parse('2026-03-01T00:00:00.000Z')): Fak
      * moving into a slot a sibling has not vacated yet is a plain constraint violation —
      * which is exactly what a reorder produces, and what this fake previously let through.
      */
+    return slotTaken(name, row);
+  };
+
+  /**
+   * UNIQUE (parent, index) alone — the one constraint a patch can still break.
+   *
+   * A patch has no insert tuple, so NOT NULL is not in play; but it moves a row like any other
+   * write, and this fake once let a patch land anywhere. That is how a tombstone sent to a slot
+   * an older tombstone held went unnoticed until a real phone refused it.
+   */
+  const slotTaken = (name: string, row: Row): { code: string; message: string } | null => {
     const unique = UNIQUE_ORDER[name];
     if (unique) {
       const clash = [...table(name).values()].find(
@@ -284,7 +295,13 @@ function createFakeServer(startAt = Date.parse('2026-03-01T00:00:00.000Z')): Fak
           });
           continue;
         }
-        table(name).set(row.id as string, { ...previous, ...row, updated_at: now() });
+        const merged: Row = { ...previous, ...row, updated_at: now() };
+        const taken = slotTaken(name, merged);
+        if (taken) {
+          rejections.push({ id: row.id as string, ...taken });
+          continue;
+        }
+        table(name).set(row.id as string, merged);
       }
       return rejections;
     },
@@ -1361,6 +1378,199 @@ describe('a deleted row the server still keeps on a live position', () => {
     await runSync(db, server, USER, localClock('2026-02-01T14:00:00.000Z'));
 
     expect(server.calls.filter((call) => call.op === 'patch')).toEqual([]);
+  });
+});
+
+describe('a deletion whose slot on the server is already taken', () => {
+  /*
+   * The real account, 2026-11-09, on every run:
+   *
+   *   [sync] ok: pushed=0 pulled=0 deferred=0 refused=2
+   *   [sync] refused: plan_day_exercises 01ca22fb-… code=23505 … "plan_day_exercises_day_order_unique"
+   *   [sync] refused: plan_day_exercises ddcc326f-… code=23505 … "plan_day_exercises_day_order_unique"
+   *
+   * One exercise in a plan day was swapped for another at the same position. The deletion was
+   * sent to 1,000,000 + rowid, and an exercise deleted from that day weeks earlier, under rowids
+   * this phone no longer hands out the same way, already sat on that number. Refused, the old
+   * exercise stayed alive on position 5 up there — and so the new one could not have it.
+   */
+  const PLAN = 'dddddddd-0000-4000-8000-0000000000a1';
+  const DAY = 'eeeeeeee-0000-4000-8000-0000000000a1';
+  const SWAPPED_OUT = 'ffffffff-0000-4000-8000-0000000000a1';
+  const KEPT = 'ffffffff-0000-4000-8000-0000000000a2';
+  const SWAPPED_IN = 'ffffffff-0000-4000-8000-0000000000a3';
+  const OLD_TOMBSTONE = 'ffffffff-0000-4000-8000-0000000000a4';
+
+  async function seedDay(at: string) {
+    await db.run(
+      `INSERT INTO plans (id, user_id, name, is_active, created_at, updated_at)
+         VALUES (?, ?, 'Upper', 1, ?, ?)`,
+      [PLAN, USER, at, at],
+    );
+    await db.run(
+      `INSERT INTO plan_days (id, plan_id, day_index, name, updated_at) VALUES (?, ?, 1, 'Arms', ?)`,
+      [DAY, PLAN, at],
+    );
+    for (const [id, index, key] of [
+      [SWAPPED_OUT, 1, 'Cable Tricep Pushdown'],
+      [KEPT, 2, 'Hammer Curl'],
+    ] as const) {
+      await db.run(
+        `INSERT INTO plan_day_exercises (id, plan_day_id, exercise_key, order_index, updated_at)
+           VALUES (?, ?, ?, ?, ?)`,
+        [id, DAY, key, index, at],
+      );
+    }
+  }
+
+  /** Delete one exercise and put another on its position: what swapping an exercise does. */
+  async function swap(at: string) {
+    await db.run(
+      `UPDATE plan_day_exercises SET deleted_at = ?, updated_at = ?, order_index = -rowid WHERE id = ?`,
+      [at, at, SWAPPED_OUT],
+    );
+    await db.run(
+      `INSERT INTO plan_day_exercises (id, plan_day_id, exercise_key, order_index, updated_at)
+         VALUES (?, ?, 'Rear Delt Raise', 1, ?)`,
+      [SWAPPED_IN, DAY, at],
+    );
+  }
+
+  /** A deletion made long ago, from an install whose rowids are not this one's. */
+  function seedOldTombstone(server: FakeServer, orderIndex: number) {
+    server.seed('plan_day_exercises', {
+      id: OLD_TOMBSTONE,
+      plan_day_id: DAY,
+      exercise_key: 'Face Pull',
+      order_index: orderIndex,
+      deleted_at: '2026-01-15T10:00:00.000Z',
+    });
+  }
+
+  const remote = (server: FakeServer, id: string) =>
+    server.rows('plan_day_exercises').find((row) => row.id === id);
+
+  it('is not refused when an old deletion holds 1,000,000 + its rowid', async () => {
+    await seedDay('2026-02-01T10:00:00.000Z');
+    const server = createFakeServer();
+    await runSync(db, server, USER, localClock('2026-02-01T11:00:00.000Z'));
+
+    const rowid = (
+      await db.get<{ n: number }>(`SELECT rowid AS n FROM plan_day_exercises WHERE id = ?`, [
+        SWAPPED_OUT,
+      ])
+    )?.n as number;
+    // Exactly the slot the old code would have sent this deletion to.
+    seedOldTombstone(server, 1_000_000 + rowid);
+    await swap('2026-02-01T12:00:00.000Z');
+
+    const result = await runSync(db, server, USER, localClock('2026-02-01T13:00:00.000Z'));
+
+    expect(result.refused).toEqual([]);
+    expect(remote(server, SWAPPED_OUT)?.deleted_at).toBe('2026-02-01T12:00:00.000Z');
+    expect(remote(server, SWAPPED_OUT)?.order_index).toBe(tombstoneSlot(SWAPPED_OUT));
+    expect(remote(server, SWAPPED_IN)?.order_index).toBe(1);
+    expect(remote(server, KEPT)?.order_index).toBe(2);
+    // The old deletion is nobody's business here and stays where it was.
+    expect(remote(server, OLD_TOMBSTONE)?.order_index).toBe(1_000_000 + rowid);
+  });
+
+  it('moves to another slot when the one it is given is taken anyway', async () => {
+    await seedDay('2026-02-01T10:00:00.000Z');
+    const server = createFakeServer();
+    await runSync(db, server, USER, localClock('2026-02-01T11:00:00.000Z'));
+
+    // The one-in-millions case: two ids that hash to the same slot under one day.
+    seedOldTombstone(server, tombstoneSlot(SWAPPED_OUT));
+    await swap('2026-02-01T12:00:00.000Z');
+
+    const result = await runSync(db, server, USER, localClock('2026-02-01T13:00:00.000Z'));
+
+    expect(result.refused).toEqual([]);
+    expect(remote(server, SWAPPED_OUT)?.order_index).toBe(tombstoneSlot(SWAPPED_OUT, 1));
+    expect(remote(server, SWAPPED_IN)?.order_index).toBe(1);
+  });
+
+  it('settles: the next run has nothing to send', async () => {
+    await seedDay('2026-02-01T10:00:00.000Z');
+    const server = createFakeServer();
+    await runSync(db, server, USER, localClock('2026-02-01T11:00:00.000Z'));
+    seedOldTombstone(server, tombstoneSlot(SWAPPED_OUT));
+    await swap('2026-02-01T12:00:00.000Z');
+    await runSync(db, server, USER, localClock('2026-02-01T13:00:00.000Z'));
+
+    const next = await runSync(db, server, USER, localClock('2026-02-01T14:00:00.000Z'));
+
+    expect(next.pushed).toBe(0);
+    expect(next.refused).toEqual([]);
+  });
+
+  it('does not resend a deletion already in the band, whichever slot it holds', async () => {
+    // Every tombstone sent before today sits on 1,000,000 + rowid, not on the slot this code
+    // would pick. A full resend must not move every one of them again, one request each.
+    await seedDay('2026-02-01T10:00:00.000Z');
+    const server = createFakeServer();
+    await runSync(db, server, USER, localClock('2026-02-01T11:00:00.000Z'));
+    await swap('2026-02-01T12:00:00.000Z');
+    await runSync(db, server, USER, localClock('2026-02-01T13:00:00.000Z'));
+    server.seed('plan_day_exercises', { ...remote(server, SWAPPED_OUT), order_index: 1_000_007 });
+
+    await db.run(`UPDATE sync_state SET last_synced_at = NULL`);
+    server.calls.length = 0;
+    await runSync(db, server, USER, localClock('2026-02-01T14:00:00.000Z'));
+
+    expect(server.calls.filter((call) => call.op === 'patch')).toEqual([]);
+    expect(remote(server, SWAPPED_OUT)?.order_index).toBe(1_000_007);
+  });
+
+  it('gives up after a few slots and reports it, rather than asking for ever', async () => {
+    await seedDay('2026-02-01T10:00:00.000Z');
+    const server = createFakeServer();
+    await runSync(db, server, USER, localClock('2026-02-01T11:00:00.000Z'));
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      server.seed('plan_day_exercises', {
+        id: `ffffffff-0000-4000-8000-0000000001b${attempt}`,
+        plan_day_id: DAY,
+        exercise_key: 'Face Pull',
+        order_index: tombstoneSlot(SWAPPED_OUT, attempt),
+        deleted_at: '2026-01-15T10:00:00.000Z',
+      });
+    }
+    await swap('2026-02-01T12:00:00.000Z');
+    server.calls.length = 0;
+
+    const result = await runSync(db, server, USER, localClock('2026-02-01T13:00:00.000Z'));
+
+    expect(result.refused.map((row) => row.id)).toContain(SWAPPED_OUT);
+    expect(
+      server.calls.filter((call) => call.op === 'patch' && call.ids.includes(SWAPPED_OUT)),
+    ).toHaveLength(4);
+  });
+});
+
+describe('tombstoneSlot', () => {
+  it('is the same for an id on every call, and so on every device', () => {
+    expect(tombstoneSlot('01ca22fb-f66a-43b3-bda9-f00ba50d4de7')).toBe(
+      tombstoneSlot('01ca22fb-f66a-43b3-bda9-f00ba50d4de7'),
+    );
+  });
+
+  it('stays above every other band and inside a Postgres integer', () => {
+    for (let i = 0; i < 2000; i += 1) {
+      const id = `${i.toString(16).padStart(8, '0')}-0000-4000-8000-000000000000`;
+      for (const attempt of [0, 1, 2, 3]) {
+        const slot = tombstoneSlot(id, attempt);
+        expect(Number.isInteger(slot)).toBe(true);
+        expect(slot).toBeGreaterThan(2_000_000_000);
+        expect(slot).toBeLessThanOrEqual(2_147_483_647);
+      }
+    }
+  });
+
+  it('gives each attempt a different slot', () => {
+    const id = 'ddcc326f-40e8-4406-ab74-10b3cd831e63';
+    const slots = new Set([0, 1, 2, 3].map((attempt) => tombstoneSlot(id, attempt)));
+    expect(slots.size).toBe(4);
   });
 });
 

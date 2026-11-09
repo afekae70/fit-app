@@ -53,6 +53,7 @@ import {
   isUniqueViolation,
   isUnknownColumn,
   laterOf,
+  TOMBSTONE_PARK,
   toRemote,
   type Row,
 } from './rows.js';
@@ -246,9 +247,16 @@ const PUSH_PARK = 100_000;
  * A row is due when the server has it and it is not already out of the way there:
  *
  *  - still alive, which is the ordinary case; or
- *  - deleted, but still sitting on a real position. Deletions sent before the tombstone band
+ *  - deleted, but still sitting below the tombstone band. Deletions sent before the band
  *    existed kept the index they had, and the unique constraint counts a deleted row like any
  *    other — so each of those goes on refusing whichever sibling is moved into its place.
+ *
+ * A deleted row anywhere in the band is left where it is, whichever slot it holds. It used to
+ * count as due whenever its slot differed from the one this device would pick, and the slot a
+ * device picks has changed (see `tombstoneSlot`): every deletion ever made would have been sent
+ * again for nothing, and each one is a request of its own.
+ *
+ * Returns the local rows, not payloads: the slot a row is sent to depends on the attempt.
  */
 async function tombstonesDue(
   transport: SyncTransport,
@@ -265,14 +273,60 @@ async function tombstonesDue(
     remote.set(String(row.id), row);
   }
 
-  return tombstones
-    .map((row) => toRemote(table, row))
-    .filter((payload) => {
-      const there = remote.get(String(payload.id));
-      if (!there) return false;
-      if (there.deleted_at === null || there.deleted_at === undefined) return true;
-      return (table.indexColumns ?? []).some((column) => there[column] !== payload[column]);
+  return tombstones.filter((row) => {
+    const there = remote.get(String(row.id));
+    if (!there) return false;
+    if (there.deleted_at === null || there.deleted_at === undefined) return true;
+    return (table.indexColumns ?? []).some((column) => {
+      const value = there[column];
+      return typeof value === 'number' && value < TOMBSTONE_PARK;
     });
+  });
+}
+
+/**
+ * How many slots a tombstone is offered before its refusal is reported.
+ *
+ * The first is almost never taken (see `tombstoneSlot`); a fourth being needed would mean
+ * something other than chance is filling the band, and that is worth a line in the log.
+ */
+const TOMBSTONE_ATTEMPTS = 4;
+
+/**
+ * Send deletions, moving each to a fresh slot if the one it was given is taken.
+ *
+ * Only a unique violation is retried. Anything else the server objected to, it will object to
+ * again, wherever the row is sent.
+ */
+async function sendTombstones(
+  transport: SyncTransport,
+  table: SyncTable,
+  due: readonly Row[],
+  refuse: (rejections: readonly RowRejection[]) => number,
+): Promise<number> {
+  let pushed = 0;
+  let pending = due;
+  for (let attempt = 0; pending.length > 0; attempt += 1) {
+    const last = attempt === TOMBSTONE_ATTEMPTS - 1;
+    const again: Row[] = [];
+    for (let i = 0; i < pending.length; i += BATCH) {
+      const batch = pending.slice(i, i + BATCH);
+      const rejections = await transport.patch(
+        table.table,
+        batch.map((row) => toRemote(table, row, attempt)),
+      );
+      const clashed = new Set(
+        last
+          ? []
+          : rejections.filter((rejection) => isUniqueViolation(rejection.code)).map((r) => r.id),
+      );
+      refuse(rejections.filter((rejection) => !clashed.has(rejection.id)));
+      pushed += batch.length - rejections.length;
+      again.push(...batch.filter((row) => clashed.has(String(row.id))));
+    }
+    pending = again;
+  }
+  return pushed;
 }
 
 interface PushOutcome {
@@ -461,10 +515,7 @@ async function pushTable(
    * violation, just reached from the opposite direction.
    */
   const due = await tombstonesDue(transport, table, tombstones);
-  for (let i = 0; i < due.length; i += BATCH) {
-    const batch = due.slice(i, i + BATCH);
-    pushed += batch.length - refuse(await transport.patch(table.table, batch));
-  }
+  pushed += await sendTombstones(transport, table, due, refuse);
 
   /*
    * Ordered rows go up in two passes, for the same reason the local reorder does.

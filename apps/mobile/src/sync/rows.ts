@@ -97,24 +97,60 @@ export function isUniqueViolation(code: string | null | undefined): boolean {
 }
 
 /**
- * Where a deleted row's ordering column is sent to live.
- *
- * A soft-deleted row parks its index at `-rowid` locally, which frees the slot in SQLite's
- * UNIQUE index. The server needs the same slot freed and will not take a negative — `sets`
- * checks `set_index >= 1` — so the sentinel is reflected into a high positive band instead.
- * `rowid` is unique within its table, so no two tombstones can land on the same parked value.
+ * At or above this, a position on the server is not a real one: the row there has been moved
+ * out of the way, by a deletion from some phone or by the coach functions' own parking.
  *
  * Far enough above `PUSH_PARK` that the two bands cannot meet.
  */
-const TOMBSTONE_PARK = 1_000_000;
+export const TOMBSTONE_PARK = 1_000_000;
+
+/**
+ * Where this device sends a deleted row's ordering column: just above `coach_parking_seq`
+ * (2,000,000 to 2,000,000,000, migration 0007) and up to the top of a Postgres `integer`.
+ */
+const TOMBSTONE_FLOOR = 2_000_000_001;
+const TOMBSTONE_SPAN = 2_147_483_647 - TOMBSTONE_FLOOR + 1;
+
+/**
+ * The server position for a deleted row: from its id, never from anything on this device.
+ *
+ * A soft-deleted row parks its index at `-rowid` locally, which frees the slot in SQLite's
+ * UNIQUE index. This used to be mirrored onto the server as `1,000,000 + rowid`, on the
+ * reasoning that rowid is unique within its table. It is — within one database file. The
+ * server keeps every tombstone for good and counts it in `UNIQUE (parent, index)`, and the
+ * tombstones already sitting under one plan day were numbered from rowids this phone no longer
+ * gives out the same way: a reinstall pulls every row in again under new rowids, and so does a
+ * second device. On the real account, 2026-11-09, one exercise swapped out of a day was sent to
+ * a slot an exercise deleted from that day weeks earlier still held. Refused, it stayed alive
+ * on position 5 up there, so its replacement could not have position 5 either: two rows stuck
+ * on the phone on every run.
+ *
+ * A hash of the id is the same answer on every device and every install. The band holds 147
+ * million slots and a plan day a few dozen tombstones, so two meeting is a one-in-millions
+ * event, and `attempt` is the way out when it happens anyway: the engine asks again with the
+ * next attempt and gets an unrelated slot. The band is above everything else that parks on the
+ * server, so it never meets the old rowid tombstones or a coach's parked rows.
+ */
+export function tombstoneSlot(id: string, attempt = 0): number {
+  const key = attempt === 0 ? id : `${id}#${attempt}`;
+  // FNV-1a, 32 bits. Not for secrecy; only to spread ids evenly and agree across devices.
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < key.length; i += 1) {
+    hash ^= key.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return TOMBSTONE_FLOOR + ((hash >>> 0) % TOMBSTONE_SPAN);
+}
 
 /**
  * SQLite row -> the JSON body PostgREST expects.
  *
  * Only the declared columns travel: a local-only column that happens to share a table would
  * otherwise be sent and rejected as unknown by PostgREST, failing the whole batch.
+ *
+ * `attempt` only matters to a deleted row: see `tombstoneSlot`.
  */
-export function toRemote(table: SyncTable, row: Row): Row {
+export function toRemote(table: SyncTable, row: Row, attempt = 0): Row {
   const out: Row = {};
   /*
    * A deleted row has to vacate its slot on the server, not merely stop claiming one.
@@ -129,13 +165,11 @@ export function toRemote(table: SyncTable, row: Row): Row {
 
   for (const column of table.columns) {
     if (deleted && table.indexColumns?.includes(column)) {
-      const parked = row[column];
-      // Only the local sentinel is reflected. Anything else is a row deleted by some path that
-      // did not park it, and its own value is as good as any.
-      if (typeof parked === 'number' && parked < 0) {
-        out[column] = TOMBSTONE_PARK - parked;
-        continue;
-      }
+      // Whatever the local value is. `-rowid` means nothing off this device, and a positive one
+      // (a tombstone a pull wrote back) is either a real position, which is the very slot it
+      // has to leave, or already out of the way, in which case the engine does not send it.
+      out[column] = tombstoneSlot(String(row.id), attempt);
+      continue;
     }
     const value = row[column];
     if (value === undefined) continue;
