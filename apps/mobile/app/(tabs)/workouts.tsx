@@ -43,6 +43,9 @@ import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
 import { useActionSheet } from '../../src/components/ActionSheetProvider.js';
 import type { ExerciseTarget, PreviousSet } from '../../src/components/ExerciseCard.js';
 import { FinishedBurst } from '../../src/components/workout/FinishedBurst.js';
+import { FinishReviewModal } from '../../src/components/workout/FinishReviewModal.js';
+import { loadSessionHistory } from '../../src/db/monthlyReview.js';
+import { reviewSession, type SessionReview } from '@fit/shared/progress';
 import * as SecureStore from 'expo-secure-store';
 
 import { DragReorderList, type DragHandleProps } from '../../src/components/DragReorderList.js';
@@ -245,6 +248,13 @@ export default function WorkoutsScreen() {
   const [loading, setLoading] = useState(true);
   /** True from the tap on Finish until the trophy has played out. */
   const [finishing, setFinishing] = useState(false);
+  /**
+   * The workout just finished, against last time — opened once the trophy is gone, and shut
+   * by the person. Null when there is nothing to say (no exercise had a set ticked off).
+   */
+  const [finishReview, setFinishReview] = useState<{ id: string; review: SessionReview } | null>(
+    null,
+  );
   /** The number being typed in the bar above the keyboard, or null while nothing is. */
   const [entry, setEntry] = useState<NumberEntryRequest | null>(null);
   // For the keyboard listener below, which subscribes once and must not be told to scroll the
@@ -574,10 +584,24 @@ export default function WorkoutsScreen() {
   const finishNow = () => {
     if (!sessionId || finishing) return;
     setFinishing(true);
+    const order = exercises.map((exercise) => exercise.exercise_key);
     void (async () => {
       const db = await getExecutor();
       await finishSession(db, userId, sessionId, { sessionRpe: null });
       void hapticSuccess();
+      // The summary that follows the trophy. Read now, while the trophy plays, so it is ready
+      // when the trophy goes. A failure here costs the summary and nothing else: the workout
+      // is already saved, and its own page still has the full one.
+      try {
+        const review = reviewSession(
+          await loadSessionHistory(db, userId, sessionId),
+          sessionId,
+          order,
+        );
+        if (review.exercises.length > 0) setFinishReview({ id: sessionId, review });
+      } catch {
+        setFinishReview(null);
+      }
       // To the cloud now, not the next time the app happens to be opened. Sync otherwise waits
       // for the app to come back to the front, and the moment after a workout is exactly when
       // it is put away — so the newest hour of training was the one thing that existed only on
@@ -1380,26 +1404,44 @@ export default function WorkoutsScreen() {
     return t('workout.restAllDone');
   }, [exercises, isHebrew, t]);
 
+  // Opens over whatever this screen shows once the trophy has gone, which is normally the
+  // workouts home: the session is closed out underneath it.
+  const finishReviewModal =
+    finishReview && !finishing ? (
+      <FinishReviewModal
+        review={finishReview.review}
+        onClose={() => setFinishReview(null)}
+        onOpenDetails={() => {
+          const id = finishReview.id;
+          setFinishReview(null);
+          router.push({ pathname: '/session/[id]', params: { id } });
+        }}
+      />
+    ) : null;
+
   if (loading) {
     return <SkeletonScreen paddingTop={spacing.md} />;
   }
 
   if (!sessionId) {
     return (
-      <WorkoutHome
-        history={history}
-        period={historyPeriod}
-        onChangePeriod={setHistoryPeriod}
-        onStartEmpty={() => void begin()}
-        onOpenSession={(id) => router.push({ pathname: '/session/[id]', params: { id } })}
-        onSessionOptions={openSessionOptions}
-        contentPadding={{
-          paddingTop: spacing.lg,
-          paddingBottom: insets.bottom + spacing.xxl,
-        }}
-        refreshing={homeRefreshing}
-        onRefresh={handleHomeRefresh}
-      />
+      <>
+        {finishReviewModal}
+        <WorkoutHome
+          history={history}
+          period={historyPeriod}
+          onChangePeriod={setHistoryPeriod}
+          onStartEmpty={() => void begin()}
+          onOpenSession={(id) => router.push({ pathname: '/session/[id]', params: { id } })}
+          onSessionOptions={openSessionOptions}
+          contentPadding={{
+            paddingTop: spacing.lg,
+            paddingBottom: insets.bottom + spacing.xxl,
+          }}
+          refreshing={homeRefreshing}
+          onRefresh={handleHomeRefresh}
+        />
+      </>
     );
   }
 
@@ -1766,6 +1808,7 @@ export default function WorkoutsScreen() {
 
       {/* Finishing saves straight away; this is the whole of the ceremony. */}
       {finishing ? <FinishedBurst onDone={finishDone} /> : null}
+      {finishReviewModal}
 
       <ScrollView
         ref={scrollRef}

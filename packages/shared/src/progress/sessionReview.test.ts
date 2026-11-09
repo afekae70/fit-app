@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { SessionSets } from './monthlyReview.js';
-import { reviewSession } from './sessionReview.js';
+import { movesOf, reviewSession } from './sessionReview.js';
 import type { WorkingSet } from './setBySet.js';
 
 const lift = (weightKg: number | null, reps: number): WorkingSet => ({
@@ -76,5 +76,66 @@ describe('a workout against the last time of each exercise', () => {
       exercises: [],
       counts: { improved: 0, same: 0, declined: 0, new: 0 },
     });
+  });
+});
+
+describe('what moved in each exercise, for the line under it', () => {
+  /** The moves of `key` in workout `w2`, done after `before` in `w1`. */
+  const moves = (before: WorkingSet[], now: WorkingSet[]) => {
+    const history = new Map([['Bench Press', [on('w1', 2, before), on('w2', 5, now)]]]);
+    return movesOf(reviewSession(history, 'w2').exercises[0]!);
+  };
+
+  it('says the weight when the heaviest set moved, and leaves the reps out', () => {
+    // Fewer reps after going heavier is what going heavier looks like.
+    expect(moves(three(80, 8), three(82.5, 6))).toEqual({ weightKg: 2.5, reps: null, sets: null });
+    expect(moves(three(80, 8), three(77.5, 10))).toEqual({
+      weightKg: -2.5,
+      reps: null,
+      sets: null,
+    });
+  });
+
+  it('says the reps at the same weight, set against set', () => {
+    expect(moves(three(80, 8), [lift(80, 10), lift(80, 9), lift(80, 8)])).toEqual({
+      weightKg: null,
+      reps: 3,
+      sets: null,
+    });
+    expect(moves(three(80, 8), [lift(80, 8), lift(80, 6), lift(80, 6)])?.reps).toBe(-4);
+  });
+
+  it('counts a set added once, as a set, and not again as its reps', () => {
+    expect(moves(three(80, 8), [...three(80, 8), lift(80, 8)])).toEqual({
+      weightKg: null,
+      reps: null,
+      sets: 1,
+    });
+    expect(moves(three(80, 8), [lift(80, 8), lift(80, 8)])).toEqual({
+      weightKg: null,
+      reps: null,
+      sets: -1,
+    });
+  });
+
+  it('reads a bodyweight exercise by its reps', () => {
+    expect(moves(three(null, 12), three(null, 14))).toEqual({
+      weightKg: null,
+      reps: 6,
+      sets: null,
+    });
+  });
+
+  it('says nothing moved when nothing did', () => {
+    expect(moves(three(80, 8), three(80, 8))).toEqual({ weightKg: null, reps: null, sets: null });
+  });
+
+  it('gives a clean number for weights entered to the quarter', () => {
+    expect(moves(three(11.25, 10), three(13.75, 10))?.weightKg).toBe(2.5);
+  });
+
+  it('has nothing to say the first time', () => {
+    const history = new Map([['Bench Press', [on('w1', 2, three(80, 8))]]]);
+    expect(movesOf(reviewSession(history, 'w1').exercises[0]!)).toBeNull();
   });
 });

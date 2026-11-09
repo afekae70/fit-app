@@ -77,7 +77,7 @@ export interface ExerciseSetChange {
 }
 
 /** Weights are stored in kilograms, and a pound converted twice is not always the same float. */
-const WEIGHT_EPSILON = 0.01;
+export const WEIGHT_EPSILON = 0.01;
 
 const lifted = (set: WorkingSet) => set.weightKg !== null || set.reps !== null;
 

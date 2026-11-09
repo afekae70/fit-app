@@ -24,6 +24,8 @@ import {
   NO_TALLY,
   pairSets,
   tallyOf,
+  topSet,
+  WEIGHT_EPSILON,
   worse,
   type SetPair,
   type Tally,
@@ -102,4 +104,56 @@ export function reviewSession(
   >;
   for (const exercise of exercises) counts[exercise.status] += 1;
   return { exercises, counts };
+}
+
+/**
+ * What moved in one exercise since last time, as a lifter would say it: "+2.5 kg", "+3 reps",
+ * "one set more". The short line under each exercise in the summary that opens when a workout
+ * is finished (asked for 2026-11-09: improvement "in sets, reps and weight").
+ *
+ * Read by the same rule as the verdict, so the line never argues with the colour beside it:
+ *
+ *  - **weight** — the heaviest set now against the heaviest then;
+ *  - **reps** — only where the weight did not move, and only at the same weight, set against set.
+ *    Fewer reps after going heavier is what going heavier looks like, not a decline, and a set
+ *    added is counted once, as a set, rather than again as its reps;
+ *  - **sets** — how many working sets, now against then.
+ *
+ * Each is null when it did not change. The whole answer is null the first time an exercise is
+ * done: there is nothing to move against.
+ */
+export interface ExerciseMoves {
+  /** Kilograms, signed. */
+  weightKg: number | null;
+  reps: number | null;
+  sets: number | null;
+}
+
+export function movesOf(exercise: ExerciseSessionChange): ExerciseMoves | null {
+  const before = exercise.previous;
+  if (!before) return null;
+
+  const topNow = topSet(exercise.sets)?.weightKg ?? null;
+  const topThen = topSet(before.sets)?.weightKg ?? null;
+  const weightMoved =
+    topNow !== null && topThen !== null && Math.abs(topNow - topThen) > WEIGHT_EPSILON;
+
+  let reps = 0;
+  if (!weightMoved) {
+    for (const pair of exercise.pairs) {
+      if (!pair.now || !pair.then) continue;
+      const sameWeight =
+        Math.abs((pair.now.weightKg ?? 0) - (pair.then.weightKg ?? 0)) <= WEIGHT_EPSILON;
+      if (sameWeight) reps += (pair.now.reps ?? 0) - (pair.then.reps ?? 0);
+    }
+  }
+
+  const sets = exercise.sets.length - before.sets.length;
+  return {
+    // Rounded to the hundredth, the precision weights are entered to: 62.5 − 60 is exactly 2.5,
+    // but 13.75 − 11.25 in floating point need not be.
+    weightKg: weightMoved ? Math.round((topNow - topThen) * 100) / 100 : null,
+    reps: reps !== 0 ? reps : null,
+    sets: sets !== 0 ? sets : null,
+  };
 }

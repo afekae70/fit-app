@@ -31,7 +31,7 @@ import { Card, Hint, SectionTitle } from '../ui.js';
 import { SetChangeMark, useSetText } from '../WorkoutProgressList.js';
 
 /** Which colour each verdict is told in — always beside its words, never instead of them. */
-function verdictColor(status: SessionVerdict, colors: ColorPalette): string {
+export function verdictColor(status: SessionVerdict, colors: ColorPalette): string {
   if (status === 'improved') return colors.accent;
   if (status === 'declined') return colors.warning;
   if (status === 'new') return colors.info;
@@ -39,7 +39,7 @@ function verdictColor(status: SessionVerdict, colors: ColorPalette): string {
 }
 
 /** The set a row shows: the heaviest, or without a weight the one with the most reps. */
-function topOf(sets: readonly WorkingSet[]): WorkingSet | null {
+export function topOf(sets: readonly WorkingSet[]): WorkingSet | null {
   return (
     topSet(sets) ??
     sets.reduce<WorkingSet | null>(
