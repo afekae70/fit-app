@@ -27,13 +27,13 @@
 import { EXERCISE_BY_KEY } from '@fit/shared/catalog';
 import {
   areaOfExercise,
-  BODY_AREAS,
   defaultMonth,
   monthOf,
   nextWeightKg,
   reviewableMonths,
   reviewByArea,
-  reviewMonth,
+  reviewMonthByWorkout,
+  statusCounts,
   STATUS_ORDER,
   topSet,
   type AreaMonth,
@@ -44,6 +44,7 @@ import {
   type MonthStatus,
   type Tip,
   type WorkingSet,
+  type WorkoutMonth,
 } from '@fit/shared/progress';
 import { router, useFocusEffect } from 'expo-router';
 import { CaretDown, CaretLeft, CaretRight, CaretUp, Check } from 'phosphor-react-native';
@@ -59,7 +60,7 @@ import {
 } from 'react-native';
 
 import { useCurrentUserId } from '../auth/CurrentUserProvider.js';
-import { listTrainingMonths, loadMonthHistory } from '../db/monthlyReview.js';
+import { listTrainingMonths, loadMonthHistoryByWorkout } from '../db/monthlyReview.js';
 import { getExecutor } from '../db/provider.js';
 import { hapticLight } from '../haptics.js';
 import { isRtlLanguage, type Language } from '../i18n/index.js';
@@ -87,6 +88,8 @@ function statusColor(status: AreaStatus, colors: ColorPalette): string {
 interface Shown {
   review: MonthReview;
   areas: AreaMonth[];
+  /** The month workout by workout: how the exercises are listed. */
+  workouts: WorkoutMonth[];
 }
 
 export function MonthlyReviewCard({
@@ -145,9 +148,11 @@ export function MonthlyReviewCard({
     let live = true;
     void (async () => {
       const db = await getExecutor();
-      const history = await loadMonthHistory(db, userId, month);
-      const review = reviewMonth(history, month);
-      if (live) setShown({ review, areas: reviewByArea(review, history) });
+      // Each exercise judged within the workout it was done in: the same lift at another gym is
+      // another machine and another number, and must not be read as one line with this one.
+      const byWorkout = await loadMonthHistoryByWorkout(db, userId, month);
+      const { review, workouts, history } = reviewMonthByWorkout(byWorkout, month);
+      if (live) setShown({ review, areas: reviewByArea(review, history), workouts });
     })();
     return () => {
       live = false;
@@ -261,7 +266,7 @@ export function MonthlyReviewCard({
 
   /** One exercise's row. `tipOpen` shows its tip without a tap, as a shortcut's list does. */
   const renderExercise = (exercise: ExerciseMonth, tipOpen: boolean) => {
-    const expanded = open === exercise.exerciseKey;
+    const expanded = open === exercise.lineId;
     const Caret = expanded ? CaretUp : CaretDown;
     const best = exercise.best.map((b) => b.set);
     const then = exercise.from?.sets ?? null;
@@ -270,11 +275,11 @@ export function MonthlyReviewCard({
         ? (gainText(exercise) ?? t('monthly.sessions', { count: exercise.sessions }))
         : t('monthly.sessions', { count: exercise.sessions });
     return (
-      <View key={exercise.exerciseKey} style={styles.row}>
+      <View key={exercise.lineId} style={styles.row}>
         <Pressable
           onPress={() => {
             hapticLight();
-            setOpen(expanded ? null : exercise.exerciseKey);
+            setOpen(expanded ? null : exercise.lineId);
           }}
           accessibilityRole="button"
           accessibilityState={{ expanded }}
@@ -297,6 +302,10 @@ export function MonthlyReviewCard({
               {t(`bodyArea.${areaOfExercise(exercise.exerciseKey)}`)} · {detail}
             </Text>
           </View>
+          {/* Listed by workout now, so each row says its own verdict — in words, with colour. */}
+          <Text style={[styles.rowStatus, { color: statusColor(exercise.status, colors) }]}>
+            {t(`monthly.areaStatus_${exercise.status}`)}
+          </Text>
           <Caret size={16} color={colors.textMuted} />
         </Pressable>
 
@@ -361,6 +370,26 @@ export function MonthlyReviewCard({
       </View>
     );
   };
+
+  /**
+   * Exercises under the workout they were done in, the most recently trained workout first.
+   * Each workout's verdict counts are its own; an exercise done in two workouts is in both.
+   */
+  const renderByWorkout = (list: readonly ExerciseMonth[], tipOpen: boolean) =>
+    (current?.workouts ?? []).map((workout) => {
+      const inWorkout = list.filter((exercise) => exercise.workoutKey === workout.key);
+      if (inWorkout.length === 0) return null;
+      const counts = countsText(statusCounts(inWorkout));
+      return (
+        <View key={workout.key === '' ? '-' : workout.key} style={styles.group}>
+          <Text style={styles.workoutTitle} numberOfLines={1}>
+            {workout.name ?? t('monthly.unnamedWorkout')}
+          </Text>
+          {counts ? <Text style={styles.detail}>{counts}</Text> : null}
+          {inWorkout.map((exercise) => renderExercise(exercise, tipOpen))}
+        </View>
+      );
+    });
 
   return (
     <Card index={index}>
@@ -472,23 +501,7 @@ export function MonthlyReviewCard({
                   <Text style={styles.empty}>{t('monthly.filteredEmpty')}</Text>
                 ) : null}
 
-                {BODY_AREAS.filter((area) =>
-                  visible.some((exercise) => areaOfExercise(exercise.exerciseKey) === area),
-                ).map((area) => {
-                  const inArea = visible.filter(
-                    (exercise) => areaOfExercise(exercise.exerciseKey) === area,
-                  );
-                  return (
-                    <View key={area} style={styles.group}>
-                      <Text style={[styles.groupTitle, { color: colors.textSecondary }]}>
-                        {t(`bodyArea.${area}`)} · {inArea.length}
-                      </Text>
-                      {inArea.map((exercise) =>
-                        renderExercise(exercise, statusFilter !== 'improved'),
-                      )}
-                    </View>
-                  );
-                })}
+                {renderByWorkout(visible, statusFilter !== 'improved')}
               </View>
             ) : (
               <>
@@ -560,18 +573,10 @@ export function MonthlyReviewCard({
                   <Text style={styles.empty}>{t('monthly.filteredEmpty')}</Text>
                 ) : null}
 
-                {STATUS_ORDER.filter((status) => visible.some((e) => e.status === status)).map(
-                  (status) => (
-                    <View key={status} style={styles.group}>
-                      <Text style={[styles.groupTitle, { color: statusColor(status, colors) }]}>
-                        {t(`monthly.group_${status}`)}
-                      </Text>
-                      {visible
-                        .filter((exercise) => exercise.status === status)
-                        .map((exercise) => renderExercise(exercise, false))}
-                    </View>
-                  ),
-                )}
+                {visible.length > 0 ? (
+                  <Text style={styles.groupHeading}>{t('monthly.workoutsTitle')}</Text>
+                ) : null}
+                {renderByWorkout(visible, false)}
               </>
             )}
           </ScrollView>
@@ -619,6 +624,8 @@ const createStyles = (colors: ColorPalette) =>
     tipInline: ViewStyle;
     group: ViewStyle;
     groupTitle: TextStyle;
+    workoutTitle: TextStyle;
+    rowStatus: TextStyle;
     row: ViewStyle;
     rowHead: ViewStyle;
     rowText: ViewStyle;
@@ -758,6 +765,13 @@ const createStyles = (colors: ColorPalette) =>
       marginBottom: spacing.xs,
       textAlign: 'auto',
     },
+    workoutTitle: {
+      color: colors.text,
+      fontSize: fontSize.md,
+      fontWeight: fontWeight.bold,
+      textAlign: 'auto',
+    },
+    rowStatus: { fontSize: fontSize.xs, fontWeight: fontWeight.bold },
     row: {
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border,

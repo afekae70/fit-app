@@ -273,11 +273,11 @@ export function TraineeProgress({
                 </h3>
                 {inArea.map((exercise) => (
                   <ExerciseRow
-                    key={exercise.exerciseKey}
+                    key={exercise.lineId}
                     exercise={exercise}
-                    open={open === exercise.exerciseKey}
+                    open={open === exercise.lineId}
                     tipOpen={status !== 'improved'}
-                    onToggle={() => setOpen(open === exercise.exerciseKey ? null : exercise.exerciseKey)}
+                    onToggle={() => setOpen(open === exercise.lineId ? null : exercise.lineId)}
                   />
                 ))}
               </section>
@@ -360,10 +360,10 @@ export function TraineeProgress({
                   .filter((exercise) => exercise.status === s)
                   .map((exercise) => (
                     <ExerciseRow
-                      key={exercise.exerciseKey}
+                      key={exercise.lineId}
                       exercise={exercise}
-                      open={open === exercise.exerciseKey}
-                      onToggle={() => setOpen(open === exercise.exerciseKey ? null : exercise.exerciseKey)}
+                      open={open === exercise.lineId}
+                      onToggle={() => setOpen(open === exercise.lineId ? null : exercise.lineId)}
                     />
                   ))}
               </section>
@@ -400,6 +400,8 @@ function ExerciseRow({
         <span style={{ flex: 1, minWidth: 0 }}>
           <span className="session-name">{exerciseLabel(exercise.exerciseKey)}</span>
           <span className="session-meta">
+            {/* Judged within this workout only — the same lift elsewhere is a separate row. */}
+            <span>{exercise.workoutName ?? he.monthly.unnamedWorkout}</span>
             <span>{he.bodyArea[areaOfExercise(exercise.exerciseKey)]}</span>
             <span>{detailOf(exercise)}</span>
           </span>

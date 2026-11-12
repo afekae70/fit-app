@@ -4,10 +4,12 @@
  */
 
 import {
+  addWorkoutSets,
   LOOKBACK_DAYS,
   monthBounds,
   shiftMonth,
   type SessionSets,
+  type WorkoutHistories,
 } from '../progress/monthlyReview.js';
 import type { SqlExecutor } from './executor.js';
 
@@ -74,6 +76,54 @@ export async function loadMonthHistory(
   const { start: previous } = monthBounds(shiftMonth(month, -1));
   const from = new Date(previous.getTime() - LOOKBACK_DAYS * 86_400_000);
   return listSessionsBetween(db, userId, from.toISOString(), end.toISOString());
+}
+
+/**
+ * The same sets as `loadMonthHistory`, kept apart by the workout they were done in (its name), so
+ * each exercise is judged only against itself in the same workout — see `reviewMonthByWorkout`.
+ */
+export async function loadMonthHistoryByWorkout(
+  db: SqlExecutor,
+  userId: string,
+  month: string,
+): Promise<WorkoutHistories> {
+  const { end } = monthBounds(month);
+  const { start: previous } = monthBounds(shiftMonth(month, -1));
+  const from = new Date(previous.getTime() - LOOKBACK_DAYS * 86_400_000);
+
+  const rows = await db.all<{
+    workout_name: string | null;
+    exercise_key: string;
+    session_id: string;
+    started_at: string;
+    weight_kg: number | null;
+    reps: number | null;
+    duration_seconds: number | null;
+    distance_m: number | null;
+  }>(
+    `SELECT ws.name AS workout_name, se.exercise_key, ws.id AS session_id, ws.started_at,
+            s.weight_kg, s.reps, s.duration_seconds, s.distance_m
+       FROM sets s
+       JOIN session_exercises se ON se.id = s.session_exercise_id AND se.deleted_at IS NULL
+       JOIN workout_sessions ws  ON ws.id = se.session_id AND ws.deleted_at IS NULL
+      WHERE ws.user_id = ? AND ws.started_at >= ? AND ws.started_at < ?
+        AND s.deleted_at IS NULL AND s.done_at IS NOT NULL AND s.is_warmup = 0
+      ORDER BY ws.started_at, ws.id, se.order_index, se.id, s.set_index, s.id`,
+    [userId, from.toISOString(), end.toISOString()],
+  );
+
+  const workouts: WorkoutHistories = new Map();
+  for (const row of rows) {
+    addWorkoutSets(workouts, row.workout_name, row.exercise_key, row.session_id, row.started_at, [
+      {
+        weightKg: row.weight_kg,
+        reps: row.reps,
+        durationSeconds: row.duration_seconds,
+        distanceM: row.distance_m,
+      },
+    ]);
+  }
+  return workouts;
 }
 
 /** Every month, `YYYY-MM` in local time, with at least one working set ticked off. */

@@ -113,7 +113,7 @@ export const en = {
   },
   monthly: {
     title: 'Monthly review',
-    hint: 'Each exercise is judged once for the whole month: did you improve on it, even slightly — your best set of the month against the same set before the month. See it by body area or by exercise; tap for the detail and a tip.',
+    hint: 'Each exercise is judged once for the whole month, within the workout you did it in: did you improve on it, even slightly — your best set of the month against the same set in the same workout before the month. That way weights from another place never mix in. Tap for the detail and a tip.',
     monthSoFar: '{{month}} — so far',
     previousMonth: 'Previous month',
     nextMonth: 'Next month',
@@ -128,6 +128,8 @@ export const en = {
     shortcut_declined: 'Stuck / declined',
     shortcut_new: 'New',
     areasTitle: 'By body area',
+    workoutsTitle: 'By workout',
+    unnamedWorkout: 'Unnamed workouts',
     areaStatus_improved: 'Improved',
     areaStatus_same: 'No change',
     areaStatus_declined: 'Declined',

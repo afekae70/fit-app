@@ -126,6 +126,7 @@ export const he = {
     shortcut_declined: 'תקוע / ירד',
     shortcut_new: 'חדש',
     areasTitle: 'לפי אזור בגוף',
+    unnamedWorkout: 'אימון ללא שם',
     areasSub: 'לחיצה על אזור מציגה רק את התרגילים שלו.',
     areaStatus_improved: 'השתפר',
     areaStatus_same: 'ללא שינוי',

@@ -13,11 +13,15 @@ import {
   monthBounds,
   monthOf,
   nextWeightKg,
+  addWorkoutSets,
   reviewableMonths,
   reviewExercise,
   reviewMonth,
+  reviewMonthByWorkout,
   shiftMonth,
+  workoutLineKey,
   type SessionSets,
+  type WorkoutHistories,
 } from './monthlyReview.js';
 import type { WorkingSet } from './setBySet.js';
 
@@ -270,5 +274,86 @@ describe('a whole month', () => {
     // w1 holds both the bench and the row: counted as one workout.
     expect(review.totals).toEqual({ sessions: 2, sets: 15 });
     expect(review.previous).toEqual({ sessions: 2, sets: 12 });
+  });
+});
+
+describe('by workout', () => {
+  /** One exercise's sets in one session of a named workout, added the way the readers add them. */
+  function add(
+    into: WorkoutHistories,
+    workout: string | null,
+    exercise: string,
+    month: number,
+    d: number,
+    sets: WorkingSet[],
+  ) {
+    addWorkoutSets(into, workout, exercise, `s-${++counter}`, day(month, d), sets);
+  }
+
+  it('compares a workout’s name without spaces or capitals, and has no name as its own key', () => {
+    expect(workoutLineKey('  Push   A ')).toBe('push a');
+    expect(workoutLineKey('PUSH A')).toBe('push a');
+    expect(workoutLineKey(null)).toBe('');
+    expect(workoutLineKey('   ')).toBe('');
+  });
+
+  it('judges an exercise only against itself in the same workout, not the same lift elsewhere', () => {
+    // The owner's case: the same leg press at home and at another gym, on other machines.
+    const workouts: WorkoutHistories = new Map();
+    add(workouts, 'Legs home', 'Leg Press', 9, 10, three(100, 10));
+    add(workouts, 'Legs gym', 'Leg Press', 9, 25, three(60, 10));
+    add(workouts, 'Legs home', 'Leg Press', 10, 8, three(100, 10));
+
+    // Read as one line, the month is set against the lighter machine and looks like a gain.
+    const flat = new Map<string, SessionSets[]>();
+    for (const { history } of workouts.values()) {
+      for (const [key, line] of history) flat.set(key, [...(flat.get(key) ?? []), ...line]);
+    }
+    for (const line of flat.values()) line.sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+    expect(reviewMonth(flat, '2026-10').exercises[0]!.status).toBe('improved');
+
+    // Within its own workout it is what it was: the same.
+    const { review, workouts: groups } = reviewMonthByWorkout(workouts, '2026-10');
+    expect(review.exercises).toHaveLength(1);
+    expect(review.exercises[0]).toMatchObject({
+      exerciseKey: 'Leg Press',
+      workoutKey: 'legs home',
+      workoutName: 'Legs home',
+      status: 'same',
+    });
+    expect(groups.map((g) => g.name)).toEqual(['Legs home']);
+  });
+
+  it('keeps the same exercise in two workouts as two lines, each with its own verdict', () => {
+    const workouts: WorkoutHistories = new Map();
+    add(workouts, 'Push A', 'Bench Press', 9, 20, three(80, 8));
+    add(workouts, 'Push B', 'Bench Press', 9, 22, three(50, 10));
+    add(workouts, 'Push A', 'Bench Press', 10, 5, three(82.5, 8));
+    add(workouts, 'Push B', 'Bench Press', 10, 20, three(50, 8));
+
+    const { review, workouts: groups } = reviewMonthByWorkout(workouts, '2026-10');
+    const byWorkout = Object.fromEntries(review.exercises.map((e) => [e.workoutName, e.status]));
+    expect(byWorkout).toEqual({ 'Push A': 'improved', 'Push B': 'declined' });
+    expect(new Set(review.exercises.map((e) => e.lineId)).size).toBe(2);
+    expect(review.counts).toMatchObject({ improved: 1, declined: 1 });
+    // The most recently trained workout first.
+    expect(groups.map((g) => g.name)).toEqual(['Push B', 'Push A']);
+    expect(groups[0]!.counts.declined).toBe(1);
+    // Totals still count every workout of the month once.
+    expect(review.totals).toEqual({ sessions: 2, sets: 6 });
+  });
+
+  it('reads a renamed workout as one, by its newest spelling, and keeps unnamed ones together', () => {
+    const workouts: WorkoutHistories = new Map();
+    add(workouts, 'legs', 'Squat', 9, 20, three(100, 5));
+    add(workouts, ' Legs ', 'Squat', 10, 6, three(105, 5));
+    add(workouts, null, 'Curl', 10, 7, three(12, 10));
+
+    const { workouts: groups } = reviewMonthByWorkout(workouts, '2026-10');
+    expect(groups.map((g) => [g.key, g.name])).toEqual([
+      ['', null],
+      ['legs', 'Legs'],
+    ]);
+    expect(groups[1]!.exercises[0]!.status).toBe('improved');
   });
 });

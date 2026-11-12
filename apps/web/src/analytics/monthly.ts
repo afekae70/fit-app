@@ -15,15 +15,18 @@
 
 import type { CoachSession } from '@fit/shared/coaching';
 import {
+  addWorkoutSets,
   monthBounds,
   monthOf,
   reviewByArea,
-  reviewMonth,
+  reviewMonthByWorkout,
   shiftMonth,
   LOOKBACK_DAYS,
   type AreaMonth,
   type MonthReview,
   type SessionSets,
+  type WorkoutHistories,
+  type WorkoutMonth,
 } from '@fit/shared/progress';
 
 /** A trainee's workouts per exercise, oldest first, warm-ups left out. */
@@ -61,15 +64,41 @@ export function trainingMonths(sessions: readonly CoachSession[]): string[] {
   return [...months].sort();
 }
 
+/**
+ * A trainee's workouts per workout (by its name) and, within each, per exercise — the shape the
+ * phone reads from its own database (`loadMonthHistoryByWorkout`), so an exercise is judged only
+ * against itself in the same workout, never against the same lift at another gym.
+ */
+export function sessionsByWorkout(sessions: readonly CoachSession[]): WorkoutHistories {
+  const workouts: WorkoutHistories = new Map();
+  const oldestFirst = [...sessions].sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+  for (const session of oldestFirst) {
+    for (const exercise of session.exercises) {
+      if (!exercise.exerciseKey) continue;
+      const sets = exercise.sets
+        .filter((set) => set.is_warmup !== 1)
+        .map((set) => ({
+          weightKg: set.weight_kg,
+          reps: set.reps,
+          durationSeconds: set.duration_seconds,
+          distanceM: set.distance_m,
+        }));
+      if (sets.length === 0) continue;
+      addWorkoutSets(workouts, session.name, exercise.exerciseKey, session.id, session.startedAt, sets);
+    }
+  }
+  return workouts;
+}
+
 export interface MonthlyProgress {
   review: MonthReview;
   areas: AreaMonth[];
+  workouts: WorkoutMonth[];
 }
 
 export function monthlyProgress(sessions: readonly CoachSession[], month: string): MonthlyProgress {
-  const history = sessionsByExercise(sessions);
-  const review = reviewMonth(history, month);
-  return { review, areas: reviewByArea(review, history) };
+  const { review, workouts, history } = reviewMonthByWorkout(sessionsByWorkout(sessions), month);
+  return { review, areas: reviewByArea(review, history), workouts };
 }
 
 /**

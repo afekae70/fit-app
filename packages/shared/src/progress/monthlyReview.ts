@@ -90,6 +90,14 @@ export interface Gain {
 
 export interface ExerciseMonth {
   exerciseKey: string;
+  /**
+   * The workout this line belongs to (see `reviewMonthByWorkout`): its compared form and its name.
+   * '' and null for a review that was not split by workout, or for workouts with no name.
+   */
+  workoutKey: string;
+  workoutName: string | null;
+  /** Unique within a review: the same exercise in two workouts is two lines. */
+  lineId: string;
   status: MonthStatus;
   /** Sessions of this exercise in the month. */
   sessions: number;
@@ -316,6 +324,9 @@ export function reviewExercise(
   const previous = judge(history, shiftMonth(month, -1))?.status ?? null;
   return {
     exerciseKey,
+    workoutKey: '',
+    workoutName: null,
+    lineId: exerciseKey,
     status: judged.status,
     sessions: judged.inMonth.length,
     from: judged.from,
@@ -351,6 +362,43 @@ function totalsBetween(
   return { sessions: sessions.size, sets };
 }
 
+/** The review's order: by verdict, then the most-trained first, then by name. */
+function byReviewOrder(a: ExerciseMonth, b: ExerciseMonth): number {
+  return (
+    STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status) ||
+    b.sessions - a.sessions ||
+    a.exerciseKey.localeCompare(b.exerciseKey) ||
+    a.workoutKey.localeCompare(b.workoutKey)
+  );
+}
+
+/** How many exercises landed on each verdict. */
+export function statusCounts(exercises: readonly ExerciseMonth[]): Record<MonthStatus, number> {
+  const counts = Object.fromEntries(STATUS_ORDER.map((status) => [status, 0])) as Record<
+    MonthStatus,
+    number
+  >;
+  for (const exercise of exercises) counts[exercise.status] += 1;
+  return counts;
+}
+
+function assemble(
+  exercises: ExerciseMonth[],
+  history: ReadonlyMap<string, readonly SessionSets[]>,
+  month: string,
+): MonthReview {
+  exercises.sort(byReviewOrder);
+  const { start, end } = monthBounds(month);
+  const before = monthBounds(shiftMonth(month, -1));
+  return {
+    month,
+    exercises,
+    counts: statusCounts(exercises),
+    totals: totalsBetween(history, start, end),
+    previous: totalsBetween(history, before.start, before.end),
+  };
+}
+
 /** The whole month: every exercise done in it, in the order of STATUS_ORDER. */
 export function reviewMonth(
   history: ReadonlyMap<string, readonly SessionSets[]>,
@@ -361,28 +409,124 @@ export function reviewMonth(
     const reviewed = reviewExercise(key, line, month);
     if (reviewed) exercises.push(reviewed);
   }
-  exercises.sort(
-    (a, b) =>
-      STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status) ||
-      b.sessions - a.sessions ||
-      a.exerciseKey.localeCompare(b.exerciseKey),
-  );
+  return assemble(exercises, history, month);
+}
 
-  const counts = Object.fromEntries(STATUS_ORDER.map((status) => [status, 0])) as Record<
-    MonthStatus,
-    number
-  >;
-  for (const exercise of exercises) counts[exercise.status] += 1;
+/* -------------------------------------------------------------------------- */
+/* By workout                                                                 */
+/* -------------------------------------------------------------------------- */
 
+/*
+ * Asked for by the owner (2026-11-12): progress is followed by the kind of workout, not by the
+ * exercise, because the same exercise in another place is done on other equipment with other
+ * weights. A leg press at one gym and at another are two numbers that cannot be set against each
+ * other, and reading them as one line makes a lifter who progresses in both look as though they
+ * go up and down.
+ *
+ * So each workout, by its name, is reviewed on its own: an exercise's month is set only against
+ * that exercise's sessions in the same workout. The same exercise in two workouts is two lines,
+ * each with its own verdict. A workout is "the same" by its name, trimmed and ignoring capitals —
+ * the rule the phone's by-workout progress screen already uses (`workoutProgress.ts`). Workouts
+ * with no name share one line of their own, the '' key, so their training is still reviewed.
+ */
+
+/** The form a workout's name is compared in: no stray spaces, no capitals. '' for no name. */
+export function workoutLineKey(name: string | null | undefined): string {
+  return (name ?? '').trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+}
+
+/** Per workout key: its name as last written, and its exercises' sessions as `reviewMonth` reads. */
+export type WorkoutHistories = Map<
+  string,
+  { name: string | null; history: Map<string, SessionSets[]> }
+>;
+
+/**
+ * Add one exercise's working sets from one session to `into`. Call it oldest session first: a
+ * later spelling of a workout's name replaces an earlier one, and an exercise entered twice in
+ * one workout is read as one session.
+ */
+export function addWorkoutSets(
+  into: WorkoutHistories,
+  workoutName: string | null,
+  exerciseKey: string,
+  sessionId: string,
+  startedAt: string,
+  sets: readonly WorkingSet[],
+): void {
+  const key = workoutLineKey(workoutName);
+  let workout = into.get(key);
+  if (!workout) {
+    workout = { name: null, history: new Map() };
+    into.set(key, workout);
+  }
+  const shown = workoutName?.trim().replace(/\s+/g, ' ');
+  if (shown) workout.name = shown;
+
+  let line = workout.history.get(exerciseKey);
+  if (!line) {
+    line = [];
+    workout.history.set(exerciseKey, line);
+  }
+  const last = line.at(-1);
+  if (last?.sessionId === sessionId) last.sets.push(...sets);
+  else line.push({ sessionId, startedAt, sets: [...sets] });
+}
+
+export interface WorkoutMonth {
+  key: string;
+  /** Null for the workouts that had no name. */
+  name: string | null;
+  /** Its exercises in the review's order, each judged within this workout only. */
+  exercises: ExerciseMonth[];
+  counts: Record<MonthStatus, number>;
+  /** The latest of its sessions in the month, for ordering. */
+  lastAt: string;
+}
+
+export interface MonthByWorkout {
+  /** Every workout's lines together, for the totals, the shortcuts and the body areas. */
+  review: MonthReview;
+  /** The month workout by workout, the most recently trained first. */
+  workouts: WorkoutMonth[];
+  /** Every exercise's sessions across workouts — what `reviewByArea` counts sets from. */
+  history: Map<string, SessionSets[]>;
+}
+
+export function reviewMonthByWorkout(workouts: WorkoutHistories, month: string): MonthByWorkout {
   const { start, end } = monthBounds(month);
-  const before = monthBounds(shiftMonth(month, -1));
-  return {
-    month,
-    exercises,
-    counts,
-    totals: totalsBetween(history, start, end),
-    previous: totalsBetween(history, before.start, before.end),
-  };
+  const all: ExerciseMonth[] = [];
+  const groups: WorkoutMonth[] = [];
+  const merged = new Map<string, SessionSets[]>();
+
+  for (const [key, { name, history }] of workouts) {
+    let lastAt = '';
+    const exercises: ExerciseMonth[] = [];
+    for (const [exerciseKey, line] of history) {
+      merged.set(exerciseKey, [...(merged.get(exerciseKey) ?? []), ...line]);
+      const reviewed = reviewExercise(exerciseKey, line, month);
+      if (!reviewed) continue;
+      exercises.push({
+        ...reviewed,
+        workoutKey: key,
+        workoutName: name,
+        lineId: `${key}|${exerciseKey}`,
+      });
+      for (const session of line) {
+        const time = at(session);
+        if (time >= start.getTime() && time < end.getTime() && session.startedAt > lastAt) {
+          lastAt = session.startedAt;
+        }
+      }
+    }
+    if (exercises.length === 0) continue;
+    exercises.sort(byReviewOrder);
+    all.push(...exercises);
+    groups.push({ key, name, exercises, counts: statusCounts(exercises), lastAt });
+  }
+
+  groups.sort((a, b) => b.lastAt.localeCompare(a.lastAt) || a.key.localeCompare(b.key));
+  return { review: assemble(all, merged, month), workouts: groups, history: merged };
 }
 
 /**

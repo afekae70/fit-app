@@ -6,12 +6,13 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { reviewSession } from '@fit/shared/progress';
 
-import { reviewMonth } from '../progress/monthlyReview.js';
+import { reviewMonth, reviewMonthByWorkout } from '../progress/monthlyReview.js';
 import type { SqlExecutor } from './executor.js';
 import {
   listSessionsBetween,
   listTrainingMonths,
   loadMonthHistory,
+  loadMonthHistoryByWorkout,
   loadSessionHistory,
 } from './monthlyReview.js';
 import { createTestExecutor } from './testUtils.js';
@@ -49,6 +50,47 @@ async function workout(month: number, day: number, exercises: Record<string, Lif
 beforeEach(() => {
   db = createTestExecutor();
   counter = 0;
+});
+
+/** A finished workout, as above, given a name — the workout's type for the review. */
+async function named(name: string | null, month: number, day: number, exercises: Record<string, Lift[]>) {
+  const sessionId = await workout(month, day, exercises);
+  await db.run(`UPDATE workout_sessions SET name = ? WHERE id = ?`, [name, sessionId]);
+  return sessionId;
+}
+
+describe('the monthly review by workout', () => {
+  it('keeps the same exercise at two places apart, each judged in its own workout', async () => {
+    await named('Legs home', 9, 10, { 'Leg Press': [{ weightKg: 100, reps: 10 }] });
+    await named('Legs gym', 9, 25, { 'Leg Press': [{ weightKg: 60, reps: 10 }] });
+    await named('Legs home', 10, 8, { 'Leg Press': [{ weightKg: 100, reps: 10 }] });
+    await named('Legs gym', 10, 20, { 'Leg Press': [{ weightKg: 65, reps: 10 }] });
+
+    const workouts = await loadMonthHistoryByWorkout(db, USER, '2026-10');
+    expect([...workouts.keys()].sort()).toEqual(['legs gym', 'legs home']);
+
+    const { review, workouts: groups } = reviewMonthByWorkout(workouts, '2026-10');
+    const verdicts = Object.fromEntries(review.exercises.map((e) => [e.workoutName, e.status]));
+    expect(verdicts).toEqual({ 'Legs home': 'same', 'Legs gym': 'improved' });
+    expect(groups.map((g) => g.name)).toEqual(['Legs gym', 'Legs home']);
+  });
+
+  it('leaves out deleted workouts and sets that were not done, as the flat read does', async () => {
+    await named('Push', 10, 3, {
+      Row: [
+        { weightKg: 40, reps: 10, isWarmup: true },
+        { weightKg: 60, reps: 10 },
+        { weightKg: 60, reps: 9, done: false },
+      ],
+    });
+    const gone = await named('Push', 10, 9, { Row: [{ weightKg: 90, reps: 10 }] });
+    await deleteSession(db, USER, gone);
+
+    const workouts = await loadMonthHistoryByWorkout(db, USER, '2026-10');
+    const row = workouts.get('push')!.history.get('Row')!;
+    expect(row).toHaveLength(1);
+    expect(row[0]!.sets.map((s) => [s.weightKg, s.reps])).toEqual([[60, 10]]);
+  });
 });
 
 describe('the monthly review’s reads', () => {
