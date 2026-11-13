@@ -54,7 +54,14 @@ import { ConfettiBurst } from './workout/ConfettiBurst.js';
 import { Pressable } from './Pressable.js';
 import { Text } from './Text.js';
 
-export function WaterCard({ date }: { date: string }) {
+export function WaterCard({
+  date,
+  onChange,
+}: {
+  date: string;
+  /** Told after a drink is added or taken back and saved, so a screen can refresh what sums it. */
+  onChange?: () => void;
+}) {
   const { t } = useTranslation();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -141,7 +148,10 @@ export function WaterCard({ date }: { date: string }) {
       const id = await addWater(await getExecutor(), userId, newId, { drunkOn: date, ml });
       // Whatever was shown, the database is what is true.
       if (!id) setTotal(before);
-      else await load();
+      else {
+        await load();
+        onChange?.();
+      }
     })();
   };
 
@@ -202,6 +212,7 @@ export function WaterCard({ date }: { date: string }) {
     void (async () => {
       await undoLastWater(await getExecutor(), userId, date);
       await load();
+      onChange?.();
     })();
   };
 
