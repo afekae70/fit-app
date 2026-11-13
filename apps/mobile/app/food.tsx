@@ -65,6 +65,7 @@ import {
   SectionTitle,
 } from '../src/components/ui.js';
 import { WaterCard } from '../src/components/WaterCard.js';
+import { WaterWeekCard } from '../src/components/WaterWeekCard.js';
 import { deleteFoodEntry, listFoodEntries, type FoodEntryRow } from '../src/db/food.js';
 import {
   computeTargets,
@@ -107,6 +108,8 @@ export default function FoodLogScreen() {
   const [picking, setPicking] = useState<ReadonlySet<string> | null>(null);
   const [mealName, setMealName] = useState('');
   const [busy, setBusy] = useState(false);
+  // Bumped by the water card after every drink, so the week under it counts the new one.
+  const [waterVersion, setWaterVersion] = useState(0);
   // Two fields live low on this page: the name of a meal being kept, and an amount of water.
   const { scrollRef, onScroll } = useFieldAboveKeyboard();
 
@@ -487,7 +490,9 @@ export default function FoodLogScreen() {
           </View>
         )}
 
-        <WaterCard date={date} />
+        <WaterCard date={date} onChange={() => setWaterVersion((v) => v + 1)} />
+        {/* The habit beside the day: on how many days of each week the aim was reached. */}
+        <WaterWeekCard refreshKey={waterVersion} />
 
         <Hint>{t('food.approximate')}</Hint>
       </ScrollView>
