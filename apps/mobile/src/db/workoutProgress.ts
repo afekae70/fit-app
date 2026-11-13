@@ -6,8 +6,8 @@
  * working sets of each exercise in any of them.
  */
 
-import type { ExerciseSets } from '../progress/setBySet.js';
-import type { SessionPoint } from '../progress/workoutProgress.js';
+import { exerciseSetChanges, type ExerciseSetChange, type ExerciseSets } from '../progress/setBySet.js';
+import { groupByWorkout, type SessionPoint } from '../progress/workoutProgress.js';
 import type { SqlExecutor } from './executor.js';
 
 /**
@@ -121,4 +121,47 @@ export async function listSessionSets(
     }
   }
   return new Map([...bySession].map(([id, exercises]) => [id, [...exercises.values()]]));
+}
+
+/** One workout against the previous workout of the same kind. */
+export interface SameWorkoutComparison {
+  /** The previous workout of the same name: when it was, and how satisfied with it, if said. */
+  previous: { id: string; startedAt: string; satisfaction: number | null };
+  /** Every exercise of this workout, set by set against the same exercise in that one. */
+  changes: ExerciseSetChange[];
+}
+
+/**
+ * This finished workout against the previous finished workout of the same kind — the same name,
+ * the rule the progress tab's lines use (`progress/workoutProgress.ts`) — or null when there is
+ * none: the first of its kind, a workout with no name, or one not finished.
+ *
+ * Of the same kind, not simply the last time each exercise was done: the owner trains in more
+ * than one place, and the same lift on another gym's machine is another number. This is what the
+ * card a workout is shared as reads for "where I progressed and where not".
+ */
+export async function compareWithPreviousSameWorkout(
+  db: SqlExecutor,
+  userId: string,
+  sessionId: string,
+): Promise<SameWorkoutComparison | null> {
+  const line = groupByWorkout(await listWorkoutPoints(db, userId)).find((entry) =>
+    entry.sessions.some((session) => session.id === sessionId),
+  );
+  if (!line) return null;
+  const at = line.sessions.findIndex((session) => session.id === sessionId);
+  const before = at > 0 ? line.sessions[at - 1] : undefined;
+  if (!before) return null;
+
+  const [sets, row] = await Promise.all([
+    listSessionSets(db, userId, [sessionId, before.id]),
+    db.get<{ satisfaction: number | null }>(
+      `SELECT satisfaction FROM workout_sessions WHERE id = ? AND user_id = ?`,
+      [before.id, userId],
+    ),
+  ]);
+  return {
+    previous: { id: before.id, startedAt: before.startedAt, satisfaction: row?.satisfaction ?? null },
+    changes: exerciseSetChanges(sets.get(sessionId) ?? [], sets.get(before.id) ?? []),
+  };
 }

@@ -19,6 +19,8 @@ export interface WorkoutSessionRow {
   ended_at: string | null;
   bodyweight_kg: number | null;
   session_rpe: number | null;
+  /** How satisfied the person was with it, 1 to 10; null when not said. */
+  satisfaction?: number | null;
   notes: string | null;
   created_at: string;
 }
@@ -217,6 +219,36 @@ export async function setSessionNotes(
     [value, clock(), sessionId, userId],
   );
   await enqueue(db, 'workout_session', sessionId, 'update', { notes: value }, clock);
+}
+
+/** The satisfaction scale: a whole number from 1 to 10. */
+export const SATISFACTION_MIN = 1;
+export const SATISFACTION_MAX = 10;
+
+/**
+ * Say how satisfied you were with a workout, 1 to 10, or take it back with null. Resolves to the
+ * value stored: a number off the scale or not whole is refused (null) and nothing is written.
+ *
+ * Kept on this phone (see migration 26), so no outbox entry; `updated_at` moves like any edit.
+ */
+export async function setSessionSatisfaction(
+  db: SqlExecutor,
+  userId: string,
+  sessionId: string,
+  value: number | null,
+  clock: Clock = defaultClock,
+): Promise<number | null> {
+  if (
+    value !== null &&
+    (!Number.isInteger(value) || value < SATISFACTION_MIN || value > SATISFACTION_MAX)
+  ) {
+    return null;
+  }
+  await db.run(
+    `UPDATE workout_sessions SET satisfaction = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
+    [value, clock(), sessionId, userId],
+  );
+  return value;
 }
 
 /**

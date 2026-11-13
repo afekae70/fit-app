@@ -49,7 +49,13 @@ export interface ShareCardModalProps {
   onClose: () => void;
   /** Send the workout as text instead — the fallback, and a choice in its own right. */
   onShareText: () => void;
+  /** How satisfied with this workout, 1 to 10, or null while not said. */
+  satisfaction: number | null;
+  /** Say it, or take it back with null. Saved with the workout; the card redraws with it. */
+  onSatisfaction: (value: number | null) => void;
 }
+
+const SCALE = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 
 /** Photograph a view and hand the picture to the share sheet. Throws when it cannot. */
 async function shareView(target: View, dialogTitle: string): Promise<void> {
@@ -68,6 +74,8 @@ export function ShareCardModal({
   footer,
   onClose,
   onShareText,
+  satisfaction,
+  onSatisfaction,
 }: ShareCardModalProps) {
   const { t, i18n } = useTranslation();
   const { colors } = useTheme();
@@ -115,6 +123,40 @@ export function ShareCardModal({
           ]}
           showsVerticalScrollIndicator={false}
         >
+          {/* Asked here, above the picture and outside it: the answer goes onto the card, the
+              question does not. A second tap on the chosen number takes it back. */}
+          <View style={styles.rating}>
+            <Text style={styles.ratingTitle}>{t('history.satisfactionAsk')}</Text>
+            <View style={styles.scale}>
+              {SCALE.map((value) => {
+                const selected = satisfaction === value;
+                return (
+                  <Pressable
+                    key={value}
+                    onPress={() => {
+                      void hapticLight();
+                      onSatisfaction(selected ? null : value);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    accessibilityLabel={t('history.satisfactionLabel', { value })}
+                    style={({ pressed }) => [
+                      styles.scaleButton,
+                      selected && styles.scaleButtonOn,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Text style={[styles.scaleText, selected && styles.scaleTextOn]}>{value}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <View style={styles.scaleEnds}>
+              <Text style={styles.scaleEnd}>{t('history.satisfactionLow')}</Text>
+              <Text style={styles.scaleEnd}>{t('history.satisfactionHigh')}</Text>
+            </View>
+          </View>
+
           <WorkoutShareCard ref={card} model={model} footer={footer} />
 
           <View style={styles.actions}>
@@ -157,7 +199,35 @@ const createStyles = (colors: ColorPalette) =>
     closeButton: ViewStyle;
     closeText: TextStyle;
     pressed: ViewStyle;
+    rating: ViewStyle;
+    ratingTitle: TextStyle;
+    scale: ViewStyle;
+    scaleButton: ViewStyle;
+    scaleButtonOn: ViewStyle;
+    scaleText: TextStyle;
+    scaleTextOn: TextStyle;
+    scaleEnds: ViewStyle;
+    scaleEnd: TextStyle;
   }>({
+    // On the dark backdrop in both schemes, like the close button: fixed light tones.
+    rating: { alignSelf: 'stretch', maxWidth: 360, width: '100%', gap: spacing.sm },
+    ratingTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '700', textAlign: 'center' },
+    scale: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 6 },
+    scaleButton: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.35)',
+      backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    },
+    scaleButtonOn: { backgroundColor: colors.accent, borderColor: colors.accent },
+    scaleText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600', fontVariant: ['tabular-nums'] },
+    scaleTextOn: { color: colors.bg, fontWeight: '800' },
+    scaleEnds: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4 },
+    scaleEnd: { color: 'rgba(255, 255, 255, 0.7)', fontSize: 12 },
     // Dark behind the card in both schemes: it is a picture being held up, and the dimmer
     // the room, the truer its colours read.
     backdrop: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.72)' },

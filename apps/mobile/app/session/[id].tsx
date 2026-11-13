@@ -69,10 +69,15 @@ import {
   renameSession,
   SESSION_NOTE_LIMIT,
   setSessionNotes,
+  setSessionSatisfaction,
   updateSet,
   type SessionExerciseWithSets,
   type WorkoutSessionRow,
 } from '../../src/db/workouts.js';
+import {
+  compareWithPreviousSameWorkout,
+  type SameWorkoutComparison,
+} from '../../src/db/workoutProgress.js';
 import { useTheme } from '../../src/ThemeProvider.js';
 import { fontSize, radius, shadow, spacing, type ColorPalette } from '../../src/theme.js';
 import { Check, PencilSimple, ShareNetwork } from 'phosphor-react-native';
@@ -114,6 +119,8 @@ export default function SessionDetailScreen() {
   const [editing, setEditing] = useState(false);
   /** The picture of this workout is up, to be looked at and sent. */
   const [sharing, setSharing] = useState(false);
+  // This workout against the previous one of the same name, for the card it is shared as.
+  const [sameType, setSameType] = useState<SameWorkoutComparison | null>(null);
 
   /**
    * Minutes from the recorded start and end rather than a stored duration — there isn't one,
@@ -146,6 +153,9 @@ export default function SessionDetailScreen() {
         id,
         detail.exercises.map((exercise) => exercise.exercise_key),
       ),
+    );
+    setSameType(
+      detail.session?.ended_at ? await compareWithPreviousSameWorkout(db, userId, id) : null,
     );
     setLoading(false);
   }, [id, userId]);
@@ -420,6 +430,21 @@ export default function SessionDetailScreen() {
    * The workout as a picture — what the share button opens. Built only while the card is up:
    * it is a list walked and formatted, and nobody is looking at it the rest of the time.
    */
+  /** Say how satisfied you were, 1 to 10, or take it back. Shown at once, then saved. */
+  const saveSatisfaction = (value: number | null) => {
+    setSession((current) => (current ? { ...current, satisfaction: value } : current));
+    void (async () => {
+      await setSessionSatisfaction(await getExecutor(), userId, session.id, value);
+    })();
+  };
+
+  const satisfaction = session.satisfaction ?? null;
+
+  /**
+   * The workout as a picture — what the share button opens: where it progressed against the
+   * previous workout of the same kind, how satisfied you were, and no kilograms (see
+   * `workout/shareCard.ts`). Built only while the card is up.
+   */
   const shareCard = sharing
     ? shareCardModel(
         {
@@ -427,15 +452,46 @@ export default function SessionDetailScreen() {
           when: shareWhen,
           minutes,
           sets: totalSets,
-          volume: volume > 0 ? formatVolume(volume, unit) : null,
-          exercises: sharedExercises(),
+          satisfaction,
+          exercises: exercises.map((exercise) => {
+            const seed = EXERCISE_BY_KEY.get(exercise.exercise_key);
+            return {
+              key: exercise.exercise_key,
+              name: seed ? (isHebrew ? seed.nameHe : seed.nameEn) : exercise.exercise_key,
+              sets: exercise.sets.filter((set) => set.is_warmup === 0).length,
+            };
+          }),
+          comparison: sameType
+            ? {
+                when: new Date(sameType.previous.startedAt).toLocaleDateString(i18n.language, {
+                  day: 'numeric',
+                  month: 'numeric',
+                }),
+                satisfaction: sameType.previous.satisfaction,
+                changes: sameType.changes,
+              }
+            : null,
         },
         {
           minutes: t('history.minutes'),
           sets: t('history.sets'),
-          volumeUnit: t(`common.${weightUnitKey(unit)}`),
+          satisfaction: t('history.satisfaction'),
+          satisfactionValue: (value) => `${value}/10`,
           setCount: (count) => `${count} ${t('history.sets')}`,
           more: (count) => t('history.shareMore', { count }),
+          verdict: {
+            up: t('history.verdict_up'),
+            same: t('history.verdict_same'),
+            down: t('history.verdict_down'),
+            mixed: t('history.verdict_mixed'),
+            new: t('history.verdict_new'),
+          },
+          progressedTitle: t('history.shareProgressed'),
+          notProgressedTitle: t('history.shareNotProgressed'),
+          newTitle: t('history.shareNew'),
+          exercisesTitle: t('history.exercises'),
+          comparedWith: (args) => t('history.shareComparedWith', args),
+          satisfactionVs: (now, then) => t('history.shareSatisfactionVs', { now, then }),
         },
       )
     : null;
@@ -491,6 +547,14 @@ export default function SessionDetailScreen() {
               <Text style={styles.effortText}>
                 {t(`workout.effort${session.session_rpe}`)}
                 {sessionEffortLoad !== null ? ` · ${t('workout.load')} ${sessionEffortLoad}` : ''}
+              </Text>
+            </View>
+          ) : null}
+          {/* Said in the share window, and kept here for the next look at this workout. */}
+          {satisfaction !== null ? (
+            <View style={styles.effortChip}>
+              <Text style={styles.effortText}>
+                {t('history.satisfaction')} {satisfaction}/10
               </Text>
             </View>
           ) : null}
@@ -634,6 +698,8 @@ export default function SessionDetailScreen() {
         footer={t('history.shareFooter')}
         onClose={() => setSharing(false)}
         onShareText={shareAsText}
+        satisfaction={satisfaction}
+        onSatisfaction={saveSatisfaction}
       />
     </KeyboardSafe>
   );

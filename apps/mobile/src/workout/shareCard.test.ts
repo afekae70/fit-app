@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
+import { NO_TALLY, type Tally, type Verdict } from '../progress/setBySet.js';
 import {
   CARD_EXERCISE_LIMIT,
   shareCardModel,
+  type ShareCardComparison,
   type ShareCardInput,
   type ShareCardLabels,
 } from './shareCard.js';
@@ -10,123 +12,148 @@ import {
 const labels: ShareCardLabels = {
   minutes: 'min',
   sets: 'sets',
-  volumeUnit: 'kg',
+  satisfaction: 'satisfaction',
+  satisfactionValue: (value) => `${value}/10`,
   setCount: (count) => `${count} sets`,
   more: (count) => `and ${count} more`,
+  verdict: { up: 'up', same: 'same', down: 'down', mixed: 'mixed', new: 'new' },
+  progressedTitle: 'Progressed',
+  notProgressedTitle: 'Not yet',
+  newTitle: 'New',
+  exercisesTitle: 'Exercises',
+  comparedWith: ({ when, improved, same, worse }) => `vs ${when}: +${improved} =${same} -${worse}`,
+  satisfactionVs: (now, then) => `${now} vs ${then}`,
 };
+
+const tally = (over: Partial<Tally>): Tally => ({ ...NO_TALLY, ...over });
+const change = (exerciseKey: string, verdict: Verdict, t: Partial<Tally> = {}) => ({
+  exerciseKey,
+  verdict,
+  tally: tally(t),
+});
 
 const workout = (over: Partial<ShareCardInput> = {}): ShareCardInput => ({
   title: 'Legs',
   when: 'Thursday, 8 October',
   minutes: 52,
   sets: 18,
-  volume: '12,400',
+  satisfaction: null,
   exercises: [
-    { name: 'Squat', best: '100 kg × 8', sets: 4 },
-    { name: 'Leg Press', best: '180 kg × 10', sets: 3 },
+    { key: 'Squat', name: 'Squat', sets: 4 },
+    { key: 'Leg Press', name: 'Leg Press', sets: 3 },
   ],
+  comparison: null,
+  ...over,
+});
+
+const against = (over: Partial<ShareCardComparison> = {}): ShareCardComparison => ({
+  when: '1.10',
+  satisfaction: null,
+  changes: [change('Squat', 'up', { up: 3, same: 1 }), change('Leg Press', 'down', { down: 2, same: 1 })],
   ...over,
 });
 
 describe('the numbers across the top of the card', () => {
-  it('are how long, how many sets and how heavy, in that order', () => {
-    expect(shareCardModel(workout(), labels).stats).toEqual([
+  it('are how long, how many sets and how satisfied — and never a weight', () => {
+    const model = shareCardModel(workout({ satisfaction: 8 }), labels);
+    expect(model.stats).toEqual([
       { key: 'minutes', value: '52', label: 'min' },
       { key: 'sets', value: '18', label: 'sets' },
-      { key: 'volume', value: '12,400', label: 'kg' },
+      { key: 'satisfaction', value: '8/10', label: 'satisfaction' },
     ]);
+    expect(JSON.stringify(model)).not.toMatch(/kg/);
   });
 
-  it('leave out a number there is none of, rather than showing a zero', () => {
-    // A walk: a time, and nothing lifted.
-    const walk = shareCardModel(workout({ sets: 0, volume: null }), labels);
-    expect(walk.stats.map((stat) => stat.key)).toEqual(['minutes']);
-
-    // A workout still open has no length yet.
-    const open = shareCardModel(workout({ minutes: null }), labels);
-    expect(open.stats.map((stat) => stat.key)).toEqual(['sets', 'volume']);
-
-    expect(shareCardModel(workout({ minutes: 0 }), labels).stats.map((stat) => stat.key)).toEqual([
-      'sets',
-      'volume',
-    ]);
-  });
-
-  it('can be none at all', () => {
-    expect(shareCardModel(workout({ minutes: null, sets: 0, volume: null }), labels).stats).toEqual(
-      [],
-    );
+  it('leave out what there is none of, satisfaction not said included', () => {
+    expect(shareCardModel(workout(), labels).stats.map((s) => s.key)).toEqual(['minutes', 'sets']);
+    expect(shareCardModel(workout({ minutes: null, sets: 0 }), labels).stats).toEqual([]);
   });
 });
 
-describe('the lifts on the card', () => {
-  it('are each told by their best set', () => {
-    expect(shareCardModel(workout(), labels).rows).toEqual([
-      { name: 'Squat', detail: '100 kg × 8' },
-      { name: 'Leg Press', detail: '180 kg × 10' },
-    ]);
-  });
-
-  it('are told by how many sets, when there is no best set to tell', () => {
-    const model = shareCardModel(
-      workout({ exercises: [{ name: 'Plank', best: null, sets: 3 }] }),
-      labels,
-    );
-    expect(model.rows).toEqual([{ name: 'Plank', detail: '3 sets' }]);
-  });
-
-  it('leave out an exercise nothing was done in', () => {
+describe('where it progressed and where it did not', () => {
+  it('splits the exercises by their verdict against the previous workout of the kind', () => {
     const model = shareCardModel(
       workout({
         exercises: [
-          { name: 'Squat', best: '100 kg × 8', sets: 4 },
-          { name: 'Skipped', best: null, sets: 0 },
+          { key: 'Squat', name: 'Squat', sets: 4 },
+          { key: 'Leg Press', name: 'Leg Press', sets: 3 },
+          { key: 'Lunge', name: 'Lunge', sets: 3 },
+          { key: 'Curl', name: 'Leg Curl', sets: 3 },
         ],
+        comparison: against({
+          changes: [
+            change('Squat', 'up', { up: 3 }),
+            change('Leg Press', 'same', { same: 3 }),
+            change('Lunge', 'mixed', { up: 1, down: 1 }),
+            change('Curl', 'new'),
+          ],
+        }),
       }),
       labels,
     );
-    expect(model.rows.map((row) => row.name)).toEqual(['Squat']);
-    expect(model.more).toBeNull();
+    expect(model.groups.map((g) => [g.key, g.rows.map((r) => `${r.name}:${r.detail}`)])).toEqual([
+      ['progressed', ['Squat:up']],
+      ['notProgressed', ['Leg Press:same', 'Lunge:mixed']],
+      ['new', ['Leg Curl:new']],
+    ]);
   });
 
-  it('stop at six and count the rest', () => {
-    const exercises = Array.from({ length: 9 }, (_, index) => ({
-      name: `Lift ${index + 1}`,
-      best: '50 kg × 10',
-      sets: 3,
-    }));
-    const model = shareCardModel(workout({ exercises }), labels);
-    expect(model.rows).toHaveLength(CARD_EXERCISE_LIMIT);
-    expect(model.rows.at(-1)?.name).toBe('Lift 6');
-    expect(model.more).toBe('and 3 more');
+  it('says how the whole workout and the satisfaction stood against the previous one', () => {
+    const model = shareCardModel(
+      workout({ satisfaction: 8, comparison: against({ satisfaction: 6 }) }),
+      labels,
+    );
+    expect(model.compareLine).toBe('vs 1.10: +3 =2 -2');
+    expect(model.satisfactionLine).toBe('8 vs 6');
   });
 
-  it('say nothing about more when everything fitted', () => {
-    const exercises = Array.from({ length: CARD_EXERCISE_LIMIT }, (_, index) => ({
-      name: `Lift ${index + 1}`,
-      best: '50 kg × 10',
-      sets: 3,
-    }));
-    expect(shareCardModel(workout({ exercises }), labels).more).toBeNull();
+  it('has no satisfaction line unless both workouts have one', () => {
+    expect(shareCardModel(workout({ satisfaction: 8, comparison: against() }), labels).satisfactionLine).toBeNull();
+    expect(
+      shareCardModel(workout({ comparison: against({ satisfaction: 6 }) }), labels).satisfactionLine,
+    ).toBeNull();
   });
 
-  it('do not count skipped exercises among the ones left over', () => {
-    const exercises = [
-      ...Array.from({ length: 7 }, (_, index) => ({
-        name: `Lift ${index + 1}`,
-        best: '50 kg × 10',
-        sets: 3,
-      })),
-      { name: 'Skipped', best: null, sets: 0 },
-    ];
-    expect(shareCardModel(workout({ exercises }), labels).more).toBe('and 1 more');
+  it('without a previous workout of the kind, lists what was done by its sets', () => {
+    const model = shareCardModel(workout(), labels);
+    expect(model.compareLine).toBeNull();
+    expect(model.groups).toEqual([
+      {
+        key: 'all',
+        title: 'Exercises',
+        rows: [
+          { name: 'Squat', detail: '4 sets', verdict: null },
+          { name: 'Leg Press', detail: '3 sets', verdict: null },
+        ],
+      },
+    ]);
   });
 });
 
-describe('the heading', () => {
-  it('is the workout and when it was, as given', () => {
-    const model = shareCardModel(workout(), labels);
-    expect(model.title).toBe('Legs');
-    expect(model.when).toBe('Thursday, 8 October');
+describe('where the list stops', () => {
+  it('shares one budget across the groups, progressed first, and counts the rest', () => {
+    const exercises = Array.from({ length: CARD_EXERCISE_LIMIT + 3 }, (_, i) => ({
+      key: `E${i}`,
+      name: `Exercise ${i}`,
+      sets: 3,
+    }));
+    // The last two progressed; the rest did not.
+    const changes = exercises.map((e, i) =>
+      change(e.key, i >= exercises.length - 2 ? 'up' : 'same', { same: 3 }),
+    );
+    const model = shareCardModel(workout({ exercises, comparison: against({ changes }) }), labels);
+    expect(model.groups[0]!.key).toBe('progressed');
+    expect(model.groups[0]!.rows).toHaveLength(2);
+    expect(model.groups.reduce((n, g) => n + g.rows.length, 0)).toBe(CARD_EXERCISE_LIMIT);
+    expect(model.more).toBe('and 3 more');
+  });
+
+  it('leaves off an exercise with nothing done, and says nothing more when all fit', () => {
+    const model = shareCardModel(
+      workout({ exercises: [{ key: 'Squat', name: 'Squat', sets: 4 }, { key: 'Row', name: 'Row', sets: 0 }] }),
+      labels,
+    );
+    expect(model.groups[0]!.rows.map((r) => r.name)).toEqual(['Squat']);
+    expect(model.more).toBeNull();
   });
 });

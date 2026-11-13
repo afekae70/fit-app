@@ -26,7 +26,7 @@
  * TEXT (lexicographically sortable, which is what the history queries rely on).
  */
 
-export const SCHEMA_VERSION = 25;
+export const SCHEMA_VERSION = 26;
 
 /**
  * Incremental migrations, keyed by the version they upgrade TO.
@@ -540,6 +540,22 @@ CREATE INDEX IF NOT EXISTS locations_user_idx ON locations (user_id);
     ALTER TABLE profile ADD COLUMN water_button_1_ml INTEGER;
     ALTER TABLE profile ADD COLUMN water_button_2_ml INTEGER;
   `,
+
+  /*
+   * 26 — how satisfied the person was with a workout, 1 to 10.
+   *
+   * Asked for by the owner (2026-11-13) for the card a workout is shared as: "my overall feeling,
+   * a number from 1 to 10, for how satisfied I am with this workout" — and set beside the same
+   * number for the previous workout of the same kind. Not effort: `session_rpe` is how hard it
+   * was, and a hard workout can be a bad one or a good one.
+   *
+   * NULL is "not said", which every workout before today is. This phone only for now: it is not
+   * in the sync column list (sync/tables.ts), so no server migration is needed until a coach or
+   * a second phone should see it.
+   */
+  26: `
+    ALTER TABLE workout_sessions ADD COLUMN satisfaction INTEGER;
+  `,
 };
 
 export const CREATE_SCHEMA_SQL = `
@@ -651,6 +667,8 @@ CREATE TABLE IF NOT EXISTS workout_sessions (
   ended_at       TEXT,
   bodyweight_kg  REAL,
   session_rpe    REAL,
+  -- How satisfied with it, 1 to 10; NULL is not said. This phone only. See migration 26.
+  satisfaction   INTEGER,
   notes          TEXT,
   server_id      TEXT,
   created_at     TEXT NOT NULL,

@@ -16,10 +16,20 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useMemo, type Ref } from 'react';
 import { StyleSheet, View, type TextStyle, type ViewStyle } from 'react-native';
 
+import type { Verdict } from '../../progress/setBySet.js';
 import { useTheme } from '../../ThemeProvider.js';
 import { radius, shadow, type ColorPalette } from '../../theme.js';
 import type { ShareCardModel } from '../../workout/shareCard.js';
 import { Text } from '../Text.js';
+
+/** A row's colour by how it went — always beside its word, never instead of it. */
+function verdictColor(verdict: Verdict | null, colors: ColorPalette): string {
+  if (verdict === 'up') return colors.accent;
+  if (verdict === 'down') return colors.warning;
+  if (verdict === 'new') return colors.info;
+  if (verdict === null) return colors.accent;
+  return colors.textSecondary;
+}
 
 /** The card's width in layout points. About a phone's, less its margins. */
 export const SHARE_CARD_WIDTH = 320;
@@ -75,17 +85,29 @@ export function WorkoutShareCard({
             ))}
           </View>
         ) : null}
+
+        {/* Against the previous workout of the same kind: the whole of it, then how it felt. */}
+        {model.compareLine ? <Text style={s.compare}>{model.compareLine}</Text> : null}
+        {model.satisfactionLine ? <Text style={s.compare}>{model.satisfactionLine}</Text> : null}
       </View>
 
       <View style={s.panel}>
-        {model.rows.map((row, index) => (
-          <View key={`${index}-${row.name}`} style={[s.row, index > 0 && s.rowDivided]}>
-            <Text style={s.rowName} numberOfLines={1}>
-              {row.name}
-            </Text>
-            <Text style={s.rowDetail} numberOfLines={1}>
-              {row.detail}
-            </Text>
+        {model.groups.map((group, groupIndex) => (
+          <View key={group.key} style={groupIndex > 0 && s.groupSpaced}>
+            <Text style={s.groupTitle}>{group.title}</Text>
+            {group.rows.map((row, index) => (
+              <View key={`${index}-${row.name}`} style={[s.row, index > 0 && s.rowDivided]}>
+                <Text style={s.rowName} numberOfLines={1}>
+                  {row.name}
+                </Text>
+                <Text
+                  style={[s.rowDetail, { color: verdictColor(row.verdict, colors) }]}
+                  numberOfLines={1}
+                >
+                  {row.detail}
+                </Text>
+              </View>
+            ))}
           </View>
         ))}
         {model.more ? <Text style={s.more}>{model.more}</Text> : null}
@@ -107,6 +129,9 @@ const createStyles = (colors: ColorPalette) =>
     stat: ViewStyle;
     statValue: TextStyle;
     statLabel: TextStyle;
+    compare: TextStyle;
+    groupSpaced: ViewStyle;
+    groupTitle: TextStyle;
     panel: ViewStyle;
     row: ViewStyle;
     rowDivided: ViewStyle;
@@ -152,6 +177,23 @@ const createStyles = (colors: ColorPalette) =>
       fontVariant: ['tabular-nums'],
     },
     statLabel: { color: colors.bg, fontSize: 11, fontWeight: '500', opacity: 0.85 },
+    compare: {
+      color: colors.bg,
+      fontSize: 14,
+      lineHeight: 19,
+      fontWeight: '600',
+      textAlign: 'auto',
+      opacity: 0.95,
+    },
+    groupSpaced: { marginTop: 10 },
+    groupTitle: {
+      color: colors.textMuted,
+      fontSize: 11,
+      fontWeight: '700',
+      letterSpacing: 0.4,
+      textAlign: 'auto',
+      paddingTop: 4,
+    },
 
     panel: {
       backgroundColor: colors.surface,
