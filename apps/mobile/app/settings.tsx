@@ -160,8 +160,8 @@ export default function SettingsScreen() {
       return;
     }
     const scheduled = await scheduleWeeklyReminder({
-      title: t('settings.reminderWeekly'),
-      body: t('week.unplanned'),
+      title: t('weekSummary.reminderTitle'),
+      body: t('weekSummary.reminderBody'),
     });
     setReminderOn(scheduled);
     // Only a refusal is worth reporting. A build without the native module also returns false,

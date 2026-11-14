@@ -9,30 +9,35 @@
  * screen it was made on would be a different picture from every phone. It is captured at the
  * screen's own pixel density, so the narrow layout is still a sharp image.
  *
+ * In the app's own colours (the owner, 2026-11-13): the accent-to-pink wash across the top, as the
+ * masthead carries it, and the logo beside the name. Progress is told in the accent — the palette
+ * has no green, and the app never says "better" in any other colour — a step down in the warning
+ * tone, standing still in a muted one. Always beside a symbol or a number, never colour alone.
+ *
  * What it says, and where it stops, is `workout/shareCard.ts`.
  */
 
 import { LinearGradient } from 'expo-linear-gradient';
 import { useMemo, type Ref } from 'react';
-import { StyleSheet, View, type TextStyle, type ViewStyle } from 'react-native';
+import { Image, StyleSheet, View, type ImageStyle, type TextStyle, type ViewStyle } from 'react-native';
 
-import type { Verdict } from '../../progress/setBySet.js';
+import logo from '../../../assets/icon.png';
 import { useTheme } from '../../ThemeProvider.js';
 import { radius, shadow, type ColorPalette } from '../../theme.js';
-import type { ShareCardModel } from '../../workout/shareCard.js';
+import type { Direction, ShareCardModel, ShareCardRow } from '../../workout/shareCard.js';
 import { Text } from '../Text.js';
-
-/** A row's colour by how it went — always beside its word, never instead of it. */
-function verdictColor(verdict: Verdict | null, colors: ColorPalette): string {
-  if (verdict === 'up') return colors.accent;
-  if (verdict === 'down') return colors.warning;
-  if (verdict === 'new') return colors.info;
-  if (verdict === null) return colors.accent;
-  return colors.textSecondary;
-}
 
 /** The card's width in layout points. About a phone's, less its margins. */
 export const SHARE_CARD_WIDTH = 320;
+
+const ARROW: Record<Direction, string> = { up: '↑', down: '↓', same: '=' };
+
+function toneOf(direction: ShareCardRow['direction'] | Direction, colors: ColorPalette): string {
+  if (direction === 'up') return colors.accent;
+  if (direction === 'down') return colors.warning;
+  if (direction === 'new') return colors.info;
+  return colors.textMuted;
+}
 
 export function WorkoutShareCard({
   model,
@@ -52,16 +57,22 @@ export function WorkoutShareCard({
     // `collapsable={false}`: a view with nothing but children can be optimised out of the native
     // tree, and a view that is not there cannot be photographed.
     <View ref={ref} collapsable={false} style={s.card}>
-      <LinearGradient
-        colors={[colors.accent, colors.info]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
-
       <View style={s.top}>
+        <LinearGradient
+          colors={[colors.accent, colors.info]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+
         <View style={s.brandRow}>
-          <Text style={s.brand}>JUSTFIT</Text>
+          <View style={s.brand}>
+            {/* The icon is drawn on white, so it sits on a white tile rather than the colour. */}
+            <View style={s.logoTile}>
+              <Image source={logo} style={s.logo} accessibilityIgnoresInvertColors />
+            </View>
+            <Text style={s.brandName}>JUSTFIT</Text>
+          </View>
           <Text style={s.when} numberOfLines={1}>
             {model.when}
           </Text>
@@ -77,8 +88,10 @@ export function WorkoutShareCard({
               <View key={stat.key} style={s.stat}>
                 <Text style={s.statValue} numberOfLines={1} adjustsFontSizeToFit>
                   {stat.value}
+                  {stat.unit ? <Text style={s.statUnit}>{stat.unit}</Text> : null}
                 </Text>
                 <Text style={s.statLabel} numberOfLines={1}>
+                  {stat.direction ? `${ARROW[stat.direction]} ` : ''}
                   {stat.label}
                 </Text>
               </View>
@@ -86,35 +99,64 @@ export function WorkoutShareCard({
           </View>
         ) : null}
 
-        {/* Against the previous workout of the same kind: the whole of it, then how it felt. */}
-        {model.compareLine ? <Text style={s.compare}>{model.compareLine}</Text> : null}
-        {model.satisfactionLine ? <Text style={s.compare}>{model.satisfactionLine}</Text> : null}
+        {/* How many exercises went up, stayed and went down: the whole workout in three marks. */}
+        {model.counts ? (
+          <>
+            <View style={s.counts}>
+              <Text style={[s.count, { color: colors.accent }]}>▲ {model.counts.up}</Text>
+              <Text style={[s.count, { color: colors.textMuted }]}>＝ {model.counts.same}</Text>
+              <Text style={[s.count, { color: colors.warning }]}>▼ {model.counts.down}</Text>
+            </View>
+            {model.comparedWith ? <Text style={s.compared}>{model.comparedWith}</Text> : null}
+          </>
+        ) : null}
       </View>
 
       <View style={s.panel}>
         {model.groups.map((group, groupIndex) => (
           <View key={group.key} style={groupIndex > 0 && s.groupSpaced}>
-            <Text style={s.groupTitle}>{group.title}</Text>
+            <Text style={[s.groupTitle, { color: groupTone(group.key, colors) }]}>
+              {group.title}
+            </Text>
             {group.rows.map((row, index) => (
               <View key={`${index}-${row.name}`} style={[s.row, index > 0 && s.rowDivided]}>
-                <Text style={s.rowName} numberOfLines={1}>
-                  {row.name}
-                </Text>
-                <Text
-                  style={[s.rowDetail, { color: verdictColor(row.verdict, colors) }]}
-                  numberOfLines={1}
-                >
-                  {row.detail}
-                </Text>
+                <View style={s.rowText}>
+                  <Text style={s.rowName} numberOfLines={1}>
+                    {row.name}
+                  </Text>
+                  {row.detail ? (
+                    <Text style={s.rowDetail} numberOfLines={1}>
+                      {row.detail}
+                    </Text>
+                  ) : null}
+                </View>
+                {row.change ? (
+                  <View style={[s.chip, { backgroundColor: chipBackground(row.direction, colors) }]}>
+                    <Text style={[s.chipText, { color: toneOf(row.direction, colors) }]}>
+                      {row.change}
+                    </Text>
+                  </View>
+                ) : null}
               </View>
             ))}
           </View>
         ))}
-        {model.more ? <Text style={s.more}>{model.more}</Text> : null}
         <Text style={s.footer}>{footer}</Text>
       </View>
     </View>
   );
+}
+
+function groupTone(key: string, colors: ColorPalette): string {
+  if (key === 'progressed') return colors.accent;
+  if (key === 'push') return colors.warning;
+  if (key === 'new') return colors.info;
+  return colors.textMuted;
+}
+
+function chipBackground(direction: ShareCardRow['direction'], colors: ColorPalette): string {
+  if (direction === 'up') return colors.accentSoft;
+  return colors.surfaceRaised;
 }
 
 const createStyles = (colors: ColorPalette) =>
@@ -122,22 +164,30 @@ const createStyles = (colors: ColorPalette) =>
     card: ViewStyle;
     top: ViewStyle;
     brandRow: ViewStyle;
-    brand: TextStyle;
+    brand: ViewStyle;
+    logoTile: ViewStyle;
+    logo: ImageStyle;
+    brandName: TextStyle;
     when: TextStyle;
     title: TextStyle;
     stats: ViewStyle;
     stat: ViewStyle;
     statValue: TextStyle;
+    statUnit: TextStyle;
     statLabel: TextStyle;
-    compare: TextStyle;
+    counts: ViewStyle;
+    count: TextStyle;
+    compared: TextStyle;
+    panel: ViewStyle;
     groupSpaced: ViewStyle;
     groupTitle: TextStyle;
-    panel: ViewStyle;
     row: ViewStyle;
     rowDivided: ViewStyle;
+    rowText: ViewStyle;
     rowName: TextStyle;
     rowDetail: TextStyle;
-    more: TextStyle;
+    chip: ViewStyle;
+    chipText: TextStyle;
     footer: TextStyle;
   }>({
     card: {
@@ -145,28 +195,39 @@ const createStyles = (colors: ColorPalette) =>
       borderRadius: 28,
       // The gradient is a child and would otherwise square off the corners.
       overflow: 'hidden',
-      backgroundColor: colors.accent,
+      backgroundColor: colors.surface,
       ...shadow(colors.shadow).card,
     },
-    top: { paddingHorizontal: 22, paddingTop: 22, paddingBottom: 20, gap: 10 },
+    top: { paddingHorizontal: 20, paddingTop: 18, paddingBottom: 16, gap: 10 },
     brandRow: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
       gap: 10,
     },
+    brand: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    logoTile: {
+      width: 32,
+      height: 32,
+      borderRadius: 10,
+      backgroundColor: '#FFFFFF',
+      alignItems: 'center',
+      justifyContent: 'center',
+      overflow: 'hidden',
+    },
+    logo: { width: 30, height: 30 },
     // Type on the accent is `bg` throughout the app; the card keeps to that.
-    brand: { color: colors.bg, fontSize: 12, fontWeight: '800', letterSpacing: 2.4, opacity: 0.9 },
+    brandName: { color: colors.bg, fontSize: 12, fontWeight: '800', letterSpacing: 2.4 },
     when: { color: colors.bg, fontSize: 12, fontWeight: '500', opacity: 0.85, flexShrink: 1 },
-    title: { color: colors.bg, fontSize: 30, lineHeight: 36, fontWeight: '800', textAlign: 'auto' },
-    stats: { flexDirection: 'row', gap: 8, marginTop: 4 },
+    title: { color: colors.bg, fontSize: 28, lineHeight: 34, fontWeight: '800', textAlign: 'auto' },
+    stats: { flexDirection: 'row', gap: 8 },
     // A pane of the gradient itself, a little lighter — glass on the colour, not a second colour.
     stat: {
       flex: 1,
       borderRadius: radius.lg,
       backgroundColor: 'rgba(255, 255, 255, 0.18)',
-      paddingVertical: 10,
-      paddingHorizontal: 8,
+      paddingVertical: 8,
+      paddingHorizontal: 6,
       alignItems: 'center',
       gap: 1,
     },
@@ -176,59 +237,47 @@ const createStyles = (colors: ColorPalette) =>
       fontWeight: '700',
       fontVariant: ['tabular-nums'],
     },
+    statUnit: { fontSize: 12, fontWeight: '500', opacity: 0.85 },
     statLabel: { color: colors.bg, fontSize: 11, fontWeight: '500', opacity: 0.85 },
-    compare: {
-      color: colors.bg,
+    counts: { flexDirection: 'row', gap: 8 },
+    count: {
+      flex: 1,
+      textAlign: 'center',
       fontSize: 14,
-      lineHeight: 19,
-      fontWeight: '600',
-      textAlign: 'auto',
-      opacity: 0.95,
-    },
-    groupSpaced: { marginTop: 10 },
-    groupTitle: {
-      color: colors.textMuted,
-      fontSize: 11,
       fontWeight: '700',
-      letterSpacing: 0.4,
-      textAlign: 'auto',
-      paddingTop: 4,
+      fontVariant: ['tabular-nums'],
+      paddingVertical: 4,
+      borderRadius: radius.pill,
+      overflow: 'hidden',
+      backgroundColor: colors.surface,
     },
+    compared: { color: colors.bg, fontSize: 11, fontWeight: '500', opacity: 0.85, textAlign: 'center' },
 
     panel: {
       backgroundColor: colors.surface,
-      borderTopStartRadius: 24,
-      borderTopEndRadius: 24,
       paddingHorizontal: 20,
-      paddingTop: 14,
-      paddingBottom: 16,
+      paddingTop: 12,
+      paddingBottom: 14,
     },
+    groupSpaced: { marginTop: 10 },
+    groupTitle: { fontSize: 12, fontWeight: '700', textAlign: 'auto', paddingTop: 2 },
     row: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      gap: 12,
-      paddingVertical: 9,
+      gap: 10,
+      paddingVertical: 7,
     },
     rowDivided: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
-    rowName: {
-      color: colors.text,
-      fontSize: 14,
-      fontWeight: '500',
-      textAlign: 'auto',
-      flexShrink: 1,
-    },
+    rowText: { flexShrink: 1, gap: 1 },
+    rowName: { color: colors.text, fontSize: 14, fontWeight: '500', textAlign: 'auto' },
     rowDetail: {
-      color: colors.accent,
-      fontSize: 14,
-      fontWeight: '700',
-      fontVariant: ['tabular-nums'],
-    },
-    more: { color: colors.textMuted, fontSize: 12, textAlign: 'auto', marginTop: 6 },
-    footer: {
       color: colors.textMuted,
-      fontSize: 11,
-      textAlign: 'center',
-      marginTop: 12,
+      fontSize: 12,
+      fontVariant: ['tabular-nums'],
+      textAlign: 'auto',
     },
+    chip: { borderRadius: radius.pill, paddingVertical: 3, paddingHorizontal: 8 },
+    chipText: { fontSize: 12, fontWeight: '700', fontVariant: ['tabular-nums'] },
+    footer: { color: colors.textMuted, fontSize: 11, textAlign: 'center', marginTop: 10 },
   });

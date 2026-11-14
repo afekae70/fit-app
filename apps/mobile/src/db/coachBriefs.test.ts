@@ -6,7 +6,12 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { SqlExecutor } from './executor.js';
-import { getCoachBrief, saveCoachBrief } from './coachBriefs.js';
+import {
+  getCoachBrief,
+  getWeeklyReviewBetween,
+  saveCoachBrief,
+  saveWeeklyReview,
+} from './coachBriefs.js';
 import { createTestExecutor } from './testUtils.js';
 
 let db: SqlExecutor;
@@ -51,5 +56,25 @@ describe('coach briefs', () => {
     expect(await getCoachBrief(db, USER, '2026-07-30')).toMatchObject({ text: 'Yesterday.' });
     expect(await getCoachBrief(db, USER, '2026-07-31')).toMatchObject({ text: 'Today.' });
     expect(await getCoachBrief(db, 'user-2', '2026-07-31')).toMatchObject({ text: 'Someone else.' });
+  });
+});
+
+describe('the coach review of one week', () => {
+  it('is the latest written in the days asked for, and nothing from outside them', async () => {
+    await saveWeeklyReview(db, USER, newId, '2026-11-06', 'The week before.');
+    await saveWeeklyReview(db, USER, newId, '2026-11-12', 'This week, first.');
+    await saveWeeklyReview(db, USER, newId, '2026-11-14', 'This week, Saturday.');
+    // A daily note on a day of the week is not a weekly review.
+    await saveCoachBrief(db, USER, newId, '2026-11-13', 'A daily note.');
+
+    expect(await getWeeklyReviewBetween(db, USER, '2026-11-08', '2026-11-15')).toEqual({
+      writtenOn: '2026-11-14',
+      text: 'This week, Saturday.',
+    });
+    expect(await getWeeklyReviewBetween(db, USER, '2026-11-01', '2026-11-07')).toMatchObject({
+      text: 'The week before.',
+    });
+    expect(await getWeeklyReviewBetween(db, USER, '2026-10-25', '2026-10-31')).toBeNull();
+    expect(await getWeeklyReviewBetween(db, 'user-2', '2026-11-08', '2026-11-15')).toBeNull();
   });
 });

@@ -17,6 +17,8 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
+import { WEEK_SUMMARY_URL } from './notificationPaths.js';
+
 /** Saturday. `expo-notifications` weekdays are 1-based with Sunday = 1, so Saturday is 7. */
 const SATURDAY = 7;
 const HOUR = 19;
@@ -89,7 +91,9 @@ export async function scheduleWeeklyReminder(copy: ReminderCopy): Promise<boolea
 
     await Notifications.scheduleNotificationAsync({
       identifier: REMINDER_ID,
-      content: { title: copy.title, body: copy.body },
+      // Tapping it opens the week's summary (see notificationRouting.tsx), which ends in the
+      // button to plan the next week — the reminder's first job, still one tap further on.
+      content: { title: copy.title, body: copy.body, data: { url: WEEK_SUMMARY_URL } },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
         weekday: SATURDAY,
@@ -112,6 +116,18 @@ export async function cancelWeeklyReminder(): Promise<void> {
   } catch {
     /* nothing scheduled, or no native module — either way there is nothing to cancel */
   }
+}
+
+/**
+ * Re-schedule the reminder with today's words, if it is on — and only then.
+ *
+ * A scheduled notification keeps the content it was scheduled with. Without this, a phone whose
+ * reminder was turned on before the weekly summary existed would go on showing the old words, and
+ * open the home screen instead of the summary, until someone switched it off and on again. Never
+ * turns it on, and never asks for permission: the reminder being queued already means it was given.
+ */
+export async function refreshWeeklyReminder(copy: ReminderCopy): Promise<void> {
+  if (await isWeeklyReminderScheduled()) await scheduleWeeklyReminder(copy);
 }
 
 /** Whether our reminder is currently queued — what the settings toggle reflects. */

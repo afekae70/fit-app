@@ -36,6 +36,7 @@ import { BrandButton } from '../BrandButton.js';
 import { Pressable } from '../Pressable.js';
 import { Text } from '../Text.js';
 import { useSetText } from '../WorkoutProgressList.js';
+import { SatisfactionScale } from './SatisfactionScale.js';
 import { topOf, verdictColor } from './SessionReviewCard.js';
 
 /*
@@ -68,9 +69,19 @@ export interface FinishReviewModalProps {
   onClose: () => void;
   /** Through to the workout's own page, where the full summary is. */
   onOpenDetails: () => void;
+  /** How satisfied with the workout just finished, 1 to 10, or null while not said. */
+  satisfaction: number | null;
+  /** Say it, or take it back. Saved at once, so the share card already carries it. */
+  onSatisfaction: (value: number | null) => void;
 }
 
-export function FinishReviewModal({ review, onClose, onOpenDetails }: FinishReviewModalProps) {
+export function FinishReviewModal({
+  review,
+  onClose,
+  onOpenDetails,
+  satisfaction,
+  onSatisfaction,
+}: FinishReviewModalProps) {
   const { t, i18n } = useTranslation();
   const { colors } = useTheme();
   const unit = useUnit();
@@ -175,6 +186,13 @@ export function FinishReviewModal({ review, onClose, onOpenDetails }: FinishRevi
           <Text style={styles.title} accessibilityRole="header">
             {t('finishReview.title')}
           </Text>
+
+          {/* First, while the feeling is fresh (the owner, 2026-11-13): how satisfied, 1 to 10.
+              Optional — closing without an answer leaves it unsaid. */}
+          <View style={styles.rating}>
+            <SatisfactionScale value={satisfaction} onChange={onSatisfaction} />
+          </View>
+
           <Text style={styles.headline}>{headline}</Text>
 
           {compared > 0 ? (
@@ -240,6 +258,7 @@ const createStyles = (colors: ColorPalette) =>
     backdrop: ViewStyle;
     card: ViewStyle;
     title: TextStyle;
+    rating: ViewStyle;
     headline: TextStyle;
     chips: ViewStyle;
     chip: ViewStyle;
@@ -281,8 +300,14 @@ const createStyles = (colors: ColorPalette) =>
       fontWeight: fontWeight.bold,
       textAlign: 'auto',
     },
+    rating: {
+      marginTop: spacing.md,
+      paddingBottom: spacing.md,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+    },
     headline: {
-      marginTop: spacing.xs,
+      marginTop: spacing.md,
       color: colors.text,
       fontSize: fontSize.lg,
       fontWeight: fontWeight.bold,

@@ -80,6 +80,43 @@ export async function getLatestWeeklyReview(
   return row ? { writtenOn: row.brief_date.slice(WEEKLY_PREFIX.length), text: row.text } : null;
 }
 
+/**
+ * The latest weekly review written on a local day from `from` to `to`, inclusive — the coach's
+ * words for one week of the weekly summary — or null when none was asked for in it.
+ */
+export async function getWeeklyReviewBetween(
+  db: SqlExecutor,
+  userId: string,
+  from: string,
+  to: string,
+): Promise<WeeklyReview | null> {
+  const row = await db.get<{ brief_date: string; text: string }>(
+    `SELECT brief_date, text FROM coach_briefs
+      WHERE user_id = ? AND brief_date BETWEEN ? AND ?
+      ORDER BY brief_date DESC
+      LIMIT 1`,
+    [userId, `${WEEKLY_PREFIX}${from}`, `${WEEKLY_PREFIX}${to}`],
+  );
+  return row ? { writtenOn: row.brief_date.slice(WEEKLY_PREFIX.length), text: row.text } : null;
+}
+
+/**
+ * Remove the weekly reviews written on the given local days, so the week's review can be written
+ * again. A review is the coach's text cached on this phone — asked for, not typed by anyone — and
+ * is not synced, so this takes nothing that cannot be had again by asking.
+ */
+export async function deleteWeeklyReviews(
+  db: SqlExecutor,
+  userId: string,
+  days: readonly string[],
+): Promise<void> {
+  if (days.length === 0) return;
+  await db.run(
+    `DELETE FROM coach_briefs WHERE user_id = ? AND brief_date IN (${days.map(() => '?').join(', ')})`,
+    [userId, ...days.map((day) => `${WEEKLY_PREFIX}${day}`)],
+  );
+}
+
 export async function saveWeeklyReview(
   db: SqlExecutor,
   userId: string,

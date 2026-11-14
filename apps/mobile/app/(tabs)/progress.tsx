@@ -20,7 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCurrentUserId } from '../../src/auth/CurrentUserProvider.js';
 import { Card, Hint, ScreenHeader, SectionTitle, SkeletonScreen } from '../../src/components/ui.js';
 import { MonthlyReviewCard } from '../../src/components/MonthlyReviewCard.js';
-import { WeeklyReviewCard } from '../../src/components/WeeklyReviewCard.js';
+import { WeekSummaryLink } from '../../src/components/WeekSummaryLink.js';
 import {
   ConsistencyGrid,
   PersonalRecordList,
@@ -142,6 +142,9 @@ export default function ProgressScreen() {
 
       {/* First: every exercise of the month, where it is progressing and where it is stuck,
           and what to try for the stuck ones. Asked for as the heart of this screen. */}
+      {/* The week in a few numbers, a tap away; the Saturday reminder opens it too. */}
+      <WeekSummaryLink />
+
       <MonthlyReviewCard index={0} refreshKey={refreshKey} />
 
       {/* Then the question asked on the way out of the gym: was today's
@@ -153,10 +156,6 @@ export default function ProgressScreen() {
           <WorkoutProgressList lines={workouts} tallies={tallies} />
         </Card>
       ) : null}
-
-      {/* Above the charts it is, in effect, a reading of. Draws nothing when there is neither
-          a review to show nor a way to ask for one. */}
-      <WeeklyReviewCard />
 
       {weekly.some((w) => w.sets > 0) ? (
         <>

@@ -22,6 +22,7 @@
  * of the logo as belongs above someone's training.
  */
 
+import { useSegments } from 'expo-router';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, View, type TextStyle, type ViewStyle } from 'react-native';
@@ -33,12 +34,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../ThemeProvider.js';
 import { fontSize, fontWeight, spacing, type ColorPalette } from '../theme.js';
 import { MenuButton } from './AppMenu.js';
+import { BackPill } from './BackPill.js';
+import { showsBackButton } from './backButtonRule.js';
 
 export function BrandBar() {
   const { t } = useTranslation();
   const { colors, scheme } = useTheme();
   const insets = useSafeAreaInsets();
   const s = useMemo(() => createStyles(colors), [colors]);
+  const segments = useSegments();
 
   return (
     <View style={[s.bar, { paddingTop: insets.top + spacing.sm }]}>
@@ -64,9 +68,9 @@ export function BrandBar() {
           a view rendered later covers one rendered earlier — with the menu first, every tap
           on it landed on the name instead, and the button never opened. Touch goes to the
           topmost view and bubbles to its parents, never sideways to a sibling underneath. */}
-      <View style={s.menu}>
-        <MenuButton />
-      </View>
+      {/* On a screen opened from a tab, the way back takes the menu's place: one control in
+          the corner, and the one that answers "how do I get out of here". See BackPill. */}
+      <View style={s.menu}>{showsBackButton(segments) ? <BackPill /> : <MenuButton />}</View>
     </View>
   );
 }

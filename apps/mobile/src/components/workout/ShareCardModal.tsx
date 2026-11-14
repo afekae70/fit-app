@@ -18,7 +18,7 @@
  * workout not to be shared at all.
  */
 
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, type ReactNode, type Ref } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Modal,
@@ -35,27 +35,22 @@ import { hapticLight } from '../../haptics.js';
 import { isRtlLanguage, type Language } from '../../i18n/index.js';
 import { useTheme } from '../../ThemeProvider.js';
 import { radius, spacing, type ColorPalette } from '../../theme.js';
-import type { ShareCardModel } from '../../workout/shareCard.js';
 import { BrandButton } from '../BrandButton.js';
 import { Text } from '../Text.js';
-import { WorkoutShareCard } from './WorkoutShareCard.js';
+import { SHARE_CARD_WIDTH } from './WorkoutShareCard.js';
 
 export interface ShareCardModalProps {
   visible: boolean;
-  /** What the card says. Null while there is nothing to show; the modal stays shut. */
-  model: ShareCardModel | null;
-  /** The card's last line: where it came from. */
-  footer: string;
+  /**
+   * The card to show and photograph, given the ref the photograph is taken through. A workout
+   * passes its `WorkoutShareCard`, the weekly summary its `WeekShareCard`: one window for both,
+   * so sharing a week feels exactly like sharing a workout.
+   */
+  renderCard: (ref: Ref<View>) => ReactNode;
   onClose: () => void;
-  /** Send the workout as text instead — the fallback, and a choice in its own right. */
-  onShareText: () => void;
-  /** How satisfied with this workout, 1 to 10, or null while not said. */
-  satisfaction: number | null;
-  /** Say it, or take it back with null. Saved with the workout; the card redraws with it. */
-  onSatisfaction: (value: number | null) => void;
+  /** Send it as text instead, where there is a text version; no button without one. */
+  onShareText?: () => void;
 }
-
-const SCALE = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 
 /** Photograph a view and hand the picture to the share sheet. Throws when it cannot. */
 async function shareView(target: View, dialogTitle: string): Promise<void> {
@@ -70,12 +65,9 @@ async function shareView(target: View, dialogTitle: string): Promise<void> {
 
 export function ShareCardModal({
   visible,
-  model,
-  footer,
+  renderCard,
   onClose,
   onShareText,
-  satisfaction,
-  onSatisfaction,
 }: ShareCardModalProps) {
   const { t, i18n } = useTranslation();
   const { colors } = useTheme();
@@ -105,7 +97,7 @@ export function ShareCardModal({
       .finally(() => setBusy(false));
   };
 
-  if (!model) return null;
+  if (!visible) return null;
 
   return (
     <Modal
@@ -123,56 +115,24 @@ export function ShareCardModal({
           ]}
           showsVerticalScrollIndicator={false}
         >
-          {/* Asked here, above the picture and outside it: the answer goes onto the card, the
-              question does not. A second tap on the chosen number takes it back. */}
-          <View style={styles.rating}>
-            <Text style={styles.ratingTitle}>{t('history.satisfactionAsk')}</Text>
-            <View style={styles.scale}>
-              {SCALE.map((value) => {
-                const selected = satisfaction === value;
-                return (
-                  <Pressable
-                    key={value}
-                    onPress={() => {
-                      void hapticLight();
-                      onSatisfaction(selected ? null : value);
-                    }}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                    accessibilityLabel={t('history.satisfactionLabel', { value })}
-                    style={({ pressed }) => [
-                      styles.scaleButton,
-                      selected && styles.scaleButtonOn,
-                      pressed && styles.pressed,
-                    ]}
-                  >
-                    <Text style={[styles.scaleText, selected && styles.scaleTextOn]}>{value}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-            <View style={styles.scaleEnds}>
-              <Text style={styles.scaleEnd}>{t('history.satisfactionLow')}</Text>
-              <Text style={styles.scaleEnd}>{t('history.satisfactionHigh')}</Text>
-            </View>
-          </View>
-
-          <WorkoutShareCard ref={card} model={model} footer={footer} />
+          {renderCard(card)}
 
           <View style={styles.actions}>
             <BrandButton label={t('history.shareImage')} onPress={share} busy={busy} />
             {failed ? <Text style={styles.failed}>{t('history.shareImageFailed')}</Text> : null}
-            <Pressable
-              onPress={() => {
-                void hapticLight();
-                close();
-                onShareText();
-              }}
-              accessibilityRole="button"
-              style={({ pressed }) => [styles.secondary, pressed && styles.pressed]}
-            >
-              <Text style={styles.secondaryText}>{t('history.shareAsText')}</Text>
-            </Pressable>
+            {onShareText ? (
+              <Pressable
+                onPress={() => {
+                  void hapticLight();
+                  close();
+                  onShareText();
+                }}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.secondary, pressed && styles.pressed]}
+              >
+                <Text style={styles.secondaryText}>{t('history.shareAsText')}</Text>
+              </Pressable>
+            ) : null}
             <Pressable
               onPress={close}
               accessibilityRole="button"
@@ -199,35 +159,7 @@ const createStyles = (colors: ColorPalette) =>
     closeButton: ViewStyle;
     closeText: TextStyle;
     pressed: ViewStyle;
-    rating: ViewStyle;
-    ratingTitle: TextStyle;
-    scale: ViewStyle;
-    scaleButton: ViewStyle;
-    scaleButtonOn: ViewStyle;
-    scaleText: TextStyle;
-    scaleTextOn: TextStyle;
-    scaleEnds: ViewStyle;
-    scaleEnd: TextStyle;
   }>({
-    // On the dark backdrop in both schemes, like the close button: fixed light tones.
-    rating: { alignSelf: 'stretch', maxWidth: 360, width: '100%', gap: spacing.sm },
-    ratingTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '700', textAlign: 'center' },
-    scale: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 6 },
-    scaleButton: {
-      width: 44,
-      height: 44,
-      borderRadius: 22,
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderWidth: 1,
-      borderColor: 'rgba(255, 255, 255, 0.35)',
-      backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    },
-    scaleButtonOn: { backgroundColor: colors.accent, borderColor: colors.accent },
-    scaleText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600', fontVariant: ['tabular-nums'] },
-    scaleTextOn: { color: colors.bg, fontWeight: '800' },
-    scaleEnds: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4 },
-    scaleEnd: { color: 'rgba(255, 255, 255, 0.7)', fontSize: 12 },
     // Dark behind the card in both schemes: it is a picture being held up, and the dimmer
     // the room, the truer its colours read.
     backdrop: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.72)' },
@@ -238,7 +170,9 @@ const createStyles = (colors: ColorPalette) =>
       paddingHorizontal: spacing.lg,
       gap: spacing.xl,
     },
-    actions: { alignSelf: 'stretch', gap: spacing.sm, maxWidth: 360, width: '100%' },
+    // Exactly the card's width, so the buttons line up with its edges (asked for, 2026-11-13)
+    // rather than standing out past them on either side.
+    actions: { width: SHARE_CARD_WIDTH, maxWidth: '100%', gap: spacing.sm },
     failed: { color: colors.warning, fontSize: 14, textAlign: 'center' },
     secondary: {
       minHeight: 50,

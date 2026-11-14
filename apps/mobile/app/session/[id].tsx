@@ -41,6 +41,7 @@ import { bestSetIndex, formatSet } from '../../src/workout/setFormat.js';
 import { shareCardModel } from '../../src/workout/shareCard.js';
 import { workoutShareText, type ShareExercise } from '../../src/workout/shareText.js';
 import { ShareCardModal } from '../../src/components/workout/ShareCardModal.js';
+import { WorkoutShareCard } from '../../src/components/workout/WorkoutShareCard.js';
 import { sessionLoad } from '@fit/shared/calculations';
 import { useActionSheet } from '../../src/components/ActionSheetProvider.js';
 import { ExerciseCard, type PreviousSet } from '../../src/components/ExerciseCard.js';
@@ -69,7 +70,6 @@ import {
   renameSession,
   SESSION_NOTE_LIMIT,
   setSessionNotes,
-  setSessionSatisfaction,
   updateSet,
   type SessionExerciseWithSets,
   type WorkoutSessionRow,
@@ -430,20 +430,14 @@ export default function SessionDetailScreen() {
    * The workout as a picture — what the share button opens. Built only while the card is up:
    * it is a list walked and formatted, and nobody is looking at it the rest of the time.
    */
-  /** Say how satisfied you were, 1 to 10, or take it back. Shown at once, then saved. */
-  const saveSatisfaction = (value: number | null) => {
-    setSession((current) => (current ? { ...current, satisfaction: value } : current));
-    void (async () => {
-      await setSessionSatisfaction(await getExecutor(), userId, session.id, value);
-    })();
-  };
-
+  // Given in the summary that opens when the workout is finished; the share window does not ask
+  // (the owner, 2026-11-13), it only shows what was said.
   const satisfaction = session.satisfaction ?? null;
 
   /**
    * The workout as a picture — what the share button opens: where it progressed against the
-   * previous workout of the same kind, how satisfied you were, and no kilograms (see
-   * `workout/shareCard.ts`). Built only while the card is up.
+   * previous workout of the same kind and by how much, where to push next, and how satisfied
+   * you were (see `workout/shareCard.ts`). Built only while the card is up.
    */
   const shareCard = sharing
     ? shareCardModel(
@@ -458,7 +452,15 @@ export default function SessionDetailScreen() {
             return {
               key: exercise.exercise_key,
               name: seed ? (isHebrew ? seed.nameHe : seed.nameEn) : exercise.exercise_key,
-              sets: exercise.sets.filter((set) => set.is_warmup === 0).length,
+              // The sets compared with last time: worked and ticked off, as the comparison reads.
+              sets: exercise.sets
+                .filter((set) => set.is_warmup === 0 && set.done_at !== null)
+                .map((set) => ({
+                  weightKg: set.weight_kg,
+                  reps: set.reps,
+                  durationSeconds: set.duration_seconds,
+                  distanceM: set.distance_m,
+                })),
             };
           }),
           comparison: sameType
@@ -476,22 +478,26 @@ export default function SessionDetailScreen() {
           minutes: t('history.minutes'),
           sets: t('history.sets'),
           satisfaction: t('history.satisfaction'),
-          satisfactionValue: (value) => `${value}/10`,
-          setCount: (count) => `${count} ${t('history.sets')}`,
-          more: (count) => t('history.shareMore', { count }),
-          verdict: {
-            up: t('history.verdict_up'),
-            same: t('history.verdict_same'),
-            down: t('history.verdict_down'),
-            mixed: t('history.verdict_mixed'),
-            new: t('history.verdict_new'),
+          // "85×8" in the reader's units; a bodyweight set by its reps; a timed or distance set
+          // has no line of its own here.
+          formatSet: (set) => {
+            if (set.reps === null) return null;
+            if (set.weightKg !== null && set.weightKg > 0) {
+              return `${kgToDisplay(set.weightKg, unit)}×${set.reps}`;
+            }
+            return t('history.shareRepsOnly', { count: set.reps });
           },
+          previous: (set) => t('history.sharePrevious', { set }),
+          sameAsBefore: t('history.shareSameAsBefore'),
+          reps: (value) => t('history.shareRepsChange', { value }),
+          setsChange: (value) => t('history.shareSetsChange', { value }),
+          setCount: (count) => `${count} ${t('history.sets')}`,
+          satisfactionFrom: (then) => t('history.shareSatisfactionFrom', { then }),
+          comparedWith: (when) => t('history.shareComparedWith', { when }),
           progressedTitle: t('history.shareProgressed'),
-          notProgressedTitle: t('history.shareNotProgressed'),
+          pushTitle: t('history.sharePush'),
           newTitle: t('history.shareNew'),
           exercisesTitle: t('history.exercises'),
-          comparedWith: (args) => t('history.shareComparedWith', args),
-          satisfactionVs: (now, then) => t('history.shareSatisfactionVs', { now, then }),
         },
       )
     : null;
@@ -693,13 +699,14 @@ export default function SessionDetailScreen() {
         ) : null}
       </ScrollView>
       <ShareCardModal
-        visible={sharing}
-        model={shareCard}
-        footer={t('history.shareFooter')}
+        visible={sharing && shareCard !== null}
+        renderCard={(ref) =>
+          shareCard ? (
+            <WorkoutShareCard ref={ref} model={shareCard} footer={t('history.shareFooter')} />
+          ) : null
+        }
         onClose={() => setSharing(false)}
         onShareText={shareAsText}
-        satisfaction={satisfaction}
-        onSatisfaction={saveSatisfaction}
       />
     </KeyboardSafe>
   );

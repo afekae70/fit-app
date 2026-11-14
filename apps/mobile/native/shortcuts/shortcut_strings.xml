@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The app-icon shortcuts' names.
+
+  Native resources, not the app's i18n bundle: the launcher shows them without running any
+  JavaScript. Hebrew, as the widget's are, because that is what the person this is built for
+  reads — whatever language the phone itself is set to.
+
+  Merged into android/app/src/main/res/values/strings.xml by plugins/withAppShortcuts.js.
+  A short label is what most launchers show; the long one is used where there is room.
+-->
+<resources>
+  <string name="shortcut_workout_short">התחל אימון</string>
+  <string name="shortcut_workout_long">התחל את האימון של היום</string>
+  <string name="shortcut_water_short">כוס מים</string>
+  <string name="shortcut_water_long">הוסף כוס מים</string>
+  <string name="shortcut_food_short">רשום אוכל</string>
+  <string name="shortcut_food_long">הוסף אוכל ליומן</string>
+</resources>

@@ -103,6 +103,7 @@ import {
   addWarmupSets,
   setSupersetLink,
   finishSession,
+  setSessionSatisfaction,
   getActiveSession,
   getPreviousBest,
   getPreviousSessionSets,
@@ -252,9 +253,12 @@ export default function WorkoutsScreen() {
    * The workout just finished, against last time — opened once the trophy is gone, and shut
    * by the person. Null when there is nothing to say (no exercise had a set ticked off).
    */
-  const [finishReview, setFinishReview] = useState<{ id: string; review: SessionReview } | null>(
-    null,
-  );
+  const [finishReview, setFinishReview] = useState<{
+    id: string;
+    review: SessionReview;
+    /** How satisfied with it, 1 to 10, as answered in the summary; null while not said. */
+    satisfaction: number | null;
+  } | null>(null);
   /** The number being typed in the bar above the keyboard, or null while nothing is. */
   const [entry, setEntry] = useState<NumberEntryRequest | null>(null);
   // For the keyboard listener below, which subscribes once and must not be told to scroll the
@@ -598,7 +602,9 @@ export default function WorkoutsScreen() {
           sessionId,
           order,
         );
-        if (review.exercises.length > 0) setFinishReview({ id: sessionId, review });
+        if (review.exercises.length > 0) {
+          setFinishReview({ id: sessionId, review, satisfaction: null });
+        }
       } catch {
         setFinishReview(null);
       }
@@ -1415,6 +1421,18 @@ export default function WorkoutsScreen() {
           const id = finishReview.id;
           setFinishReview(null);
           router.push({ pathname: '/session/[id]', params: { id } });
+        }}
+        satisfaction={finishReview.satisfaction}
+        onSatisfaction={(value) => {
+          // Shown at once, saved behind it: the workout's page and its share card read it from
+          // the database, so it is there the moment either is opened.
+          const id = finishReview.id;
+          setFinishReview((current) =>
+            current && current.id === id ? { ...current, satisfaction: value } : current,
+          );
+          void (async () => {
+            await setSessionSatisfaction(await getExecutor(), userId, id, value);
+          })();
         }}
       />
     ) : null;

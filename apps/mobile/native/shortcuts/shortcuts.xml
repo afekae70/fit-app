@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The app-icon shortcuts: what holding the app's icon on the home screen offers.
+
+  Static shortcuts, declared here and attached to the main activity by
+  plugins/withAppShortcuts.js. Each opens a link the app's router receives at
+  app/shortcut/[action].tsx, which does the work (src/shortcuts/appShortcuts.ts).
+
+  The package and activity are spelled out because a shortcut's intent is resolved by the
+  launcher, another app: it has to name exactly what to open. The icon is the app's own.
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+  <shortcut
+    android:shortcutId="start_workout"
+    android:enabled="true"
+    android:icon="@mipmap/ic_launcher"
+    android:shortcutShortLabel="@string/shortcut_workout_short"
+    android:shortcutLongLabel="@string/shortcut_workout_long">
+    <intent
+      android:action="android.intent.action.VIEW"
+      android:targetPackage="com.afeka.fitapp"
+      android:targetClass="com.afeka.fitapp.MainActivity"
+      android:data="fitapp://shortcut/workout" />
+  </shortcut>
+
+  <shortcut
+    android:shortcutId="add_water"
+    android:enabled="true"
+    android:icon="@mipmap/ic_launcher"
+    android:shortcutShortLabel="@string/shortcut_water_short"
+    android:shortcutLongLabel="@string/shortcut_water_long">
+    <intent
+      android:action="android.intent.action.VIEW"
+      android:targetPackage="com.afeka.fitapp"
+      android:targetClass="com.afeka.fitapp.MainActivity"
+      android:data="fitapp://shortcut/water" />
+  </shortcut>
+
+  <shortcut
+    android:shortcutId="log_food"
+    android:enabled="true"
+    android:icon="@mipmap/ic_launcher"
+    android:shortcutShortLabel="@string/shortcut_food_short"
+    android:shortcutLongLabel="@string/shortcut_food_long">
+    <intent
+      android:action="android.intent.action.VIEW"
+      android:targetPackage="com.afeka.fitapp"
+      android:targetClass="com.afeka.fitapp.MainActivity"
+      android:data="fitapp://shortcut/food" />
+  </shortcut>
+</shortcuts>

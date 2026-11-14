@@ -73,6 +73,7 @@
       "react-native-health-connect",
       "./plugins/withHealthConnectNative",
       "./plugins/withHomeWidgets",
+      "./plugins/withAppShortcuts",
       "./plugins/withHeartRateBridge",
       "./plugins/withStoreManifest",
       "./plugins/withStoragePermissions",

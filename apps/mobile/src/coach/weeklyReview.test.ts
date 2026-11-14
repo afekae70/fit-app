@@ -137,6 +137,8 @@ describe('asking for a weekly review', () => {
     expect(request.context.weightTrend.measurementCount).toBe(1);
     expect(request.messages).toHaveLength(1);
     expect(request.messages[0]!.content).toMatch(/weekly review/i);
+    // Five tagged lines the phone splits on, ending with a tip for next week.
+    expect(request.messages[0]!.content).toMatch(/TIP:/);
     // Told not to produce a plan: a review is something to read.
     expect(request.messages[0]!.content).toMatch(/do not call a tool/i);
   });

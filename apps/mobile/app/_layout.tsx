@@ -23,6 +23,7 @@ import { AuthProvider } from '../src/auth/AuthProvider.js';
 import { AnimatedGradientBackground } from '../src/components/AnimatedGradientBackground.js';
 import { BrandBar } from '../src/components/BrandBar.js';
 import { ErrorBoundary } from '../src/components/ErrorBoundary.js';
+import { NotificationRouter } from '../src/components/NotificationRouter.js';
 import { SplashOverlay } from '../src/components/SplashOverlay.js';
 import { initI18n, isRtlLanguage, loadStoredLanguage, type Language } from '../src/i18n/index.js';
 import { ActionSheetProvider } from '../src/components/ActionSheetProvider.js';
@@ -81,6 +82,8 @@ function RootLayoutInner() {
               ScrollView and scrolled away with the page. It owns the top safe-area inset for
               everything below it, which is why no screen pads for the notch any more. */}
           <BrandBar />
+          {/* Draws nothing: opens what a tapped notification points at, once the app is up. */}
+          <NotificationRouter />
           <View style={{ flex: 1 }}>
             <Stack
               screenOptions={{
