@@ -16,7 +16,7 @@
  */
 
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useReducer, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ScrollView,
@@ -43,6 +43,7 @@ import {
 } from '../src/db/food.js';
 import { getExecutor, newId } from '../src/db/provider.js';
 import { localDate } from '../src/db/schedule.js';
+import { foodAddReducer, INITIAL_FOOD_ADD_STATE } from '../src/food/addFoodState.js';
 import {
   macrosFor,
   MAX_CALORIES,
@@ -70,15 +71,19 @@ export default function FoodAddScreen() {
 
   const [query, setQuery] = useState('');
   const [recent, setRecent] = useState<FoodEntryRow[]>([]);
-  const [picked, setPicked] = useState<FoodSeed | null>(null);
-  const [gramsRaw, setGramsRaw] = useState('');
-  const [byHand, setByHand] = useState(false);
+  // The list, a picked food and its amount, or by hand — and whether an entry is being
+  // written: one value, see addFoodState.ts.
+  const [state, dispatch] = useReducer(foodAddReducer, INITIAL_FOOD_ADD_STATE);
+  const picked = state.mode.kind === 'picked' ? state.mode.food : null;
+  const gramsRaw = state.mode.kind === 'picked' ? state.mode.gramsRaw : '';
+  const byHand = state.mode.kind === 'byHand';
+  const saving = state.saving;
+  const setGramsRaw = (raw: string) => dispatch({ type: 'GRAMS_TYPED', raw });
   const [name, setName] = useState('');
   const [caloriesRaw, setCaloriesRaw] = useState('');
   const [proteinRaw, setProteinRaw] = useState('');
   const [carbsRaw, setCarbsRaw] = useState('');
   const [fatRaw, setFatRaw] = useState('');
-  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -98,26 +103,26 @@ export default function FoodAddScreen() {
 
   const log = (entry: Omit<FoodEntryInput, 'eatenOn'>) => {
     if (saving) return;
-    setSaving(true);
+    dispatch({ type: 'SAVE_STARTED' });
     void (async () => {
+      // A write that throws is a write that did not happen: the screen comes back live rather
+      // than staying on a button that spins for good.
       const id = await addFoodEntry(await getExecutor(), userId, newId, {
         ...entry,
         eatenOn: date,
-      });
+      }).catch(() => null);
       if (id) {
         hapticSuccess();
         router.back();
       } else {
-        setSaving(false);
+        dispatch({ type: 'SAVE_FAILED' });
       }
     })();
   };
 
   const pick = (food: FoodSeed) => {
     hapticLight();
-    setPicked(food);
-    setByHand(false);
-    setGramsRaw(String(food.serving?.grams ?? 100));
+    dispatch({ type: 'PICKED', food });
   };
 
   const grams = parseAmount(gramsRaw);
@@ -342,8 +347,7 @@ export default function FoodAddScreen() {
             label={t('food.byHand')}
             variant="secondary"
             onPress={() => {
-              setByHand(true);
-              setPicked(null);
+              dispatch({ type: 'BY_HAND_OPENED' });
               // What was searched for is very likely what it is called.
               if (name === '') setName(query.trim());
             }}
