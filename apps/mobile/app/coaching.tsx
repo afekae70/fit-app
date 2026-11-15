@@ -25,7 +25,7 @@
  */
 
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useReducer, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
@@ -55,11 +55,16 @@ import {
   personLabel,
   type AppointedCoach,
   type CoachingError,
-  type CoachingStatus,
 } from '../src/coaching/api.js';
 import type { Sharing } from '@fit/shared/coaching';
 
 import { useCurrentUserId } from '../src/auth/CurrentUserProvider.js';
+import {
+  coachingErrorOf,
+  coachingScreenReducer,
+  INITIAL_COACHING_SCREEN,
+  type CoachingAction,
+} from '../src/coaching/screenState.js';
 import { currentTargets, targetsSentNow } from '../src/coaching/sharing.js';
 import { coachingErrorKey, useCoachingApi } from '../src/coaching/useCoachingApi.js';
 import { getExecutor } from '../src/db/provider.js';
@@ -78,9 +83,6 @@ import { hapticSuccess } from '../src/haptics.js';
 import { useTheme } from '../src/ThemeProvider.js';
 import { fontSize, fontWeight, radius, spacing, type ColorPalette } from '../src/theme.js';
 
-/** Which change is in flight. A spinner belongs on the button that was pressed. */
-type Pending = 'join' | 'leave' | 'appoint' | 'dismiss' | 'share' | null;
-
 export default function CoachingScreen() {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
@@ -90,37 +92,34 @@ export default function CoachingScreen() {
   const { confirm } = useActionSheet();
   const userId = useCurrentUserId();
 
-  const [status, setStatus] = useState<CoachingStatus | null>(null);
-  const [coaches, setCoaches] = useState<AppointedCoach[] | null>(null);
-  const [error, setError] = useState<CoachingError | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [pending, setPending] = useState<Pending>(null);
+  // What has been read, what is in flight and what went wrong: one value, see screenState.ts.
+  const [state, dispatch] = useReducer(coachingScreenReducer, INITIAL_COACHING_SCREEN);
+  const status = state.kind === 'ready' ? state.status : null;
+  const coaches = state.kind === 'ready' ? state.coaches : null;
+  const pending = state.kind === 'ready' ? state.pending : null;
+  const error = coachingErrorOf(state);
+  const loading = state.kind === 'loading';
   const busy = pending !== null;
   const [code, setCode] = useState('');
   const [email, setEmail] = useState('');
 
   const load = useCallback(async () => {
     if (!api) {
-      setError('not_available');
-      setLoading(false);
+      dispatch({ type: 'READ_FAILED', error: 'not_available' });
       return;
     }
     const result = await api.status();
-    setLoading(false);
     if (!result.ok) {
-      setError(result.error);
+      dispatch({ type: 'READ_FAILED', error: result.error });
       return;
     }
-    setStatus(result.value);
-    setError(null);
+    dispatch({ type: 'STATUS_READ', status: result.value });
 
     // The list of coaches is asked for only by an account the server has just said may see
     // it. Anyone else asking would be refused, and there is no reason to find that out.
     if (result.value.isAdmin) {
       const list = await api.coaches();
-      if (list.ok) setCoaches(list.value);
-    } else {
-      setCoaches(null);
+      if (list.ok) dispatch({ type: 'COACHES_READ', coaches: list.value });
     }
   }, [api]);
 
@@ -134,16 +133,16 @@ export default function CoachingScreen() {
 
   /** Run one change, show what went wrong if it did, and read everything again either way. */
   const run = async (
-    action: Exclude<Pending, null>,
+    action: CoachingAction,
     change: () => Promise<{ ok: boolean; error?: CoachingError }>,
   ) => {
-    if (busy) return false;
-    setPending(action);
-    setError(null);
+    if (state.kind !== 'ready' || busy) return false;
+    dispatch({ type: 'ACTION_STARTED', action });
     const result = await change();
-    if (!result.ok && result.error) setError(result.error);
     await load();
-    setPending(null);
+    // After the read, not before it: the read clears the line at the top when it works, and
+    // this is the line that says why the change did not.
+    dispatch({ type: 'ACTION_FINISHED', error: result.ok ? null : (result.error ?? null) });
     return result.ok;
   };
 
