@@ -21,7 +21,7 @@ import {
 import { ageInYears } from '@fit/shared/calculations';
 import { EQUIPMENT_SEED, EXERCISE_SEED, type ExerciseSeed } from '@fit/shared/catalog';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Animated,
@@ -45,7 +45,7 @@ import type { ExerciseTarget, PreviousSet } from '../../src/components/ExerciseC
 import { FinishedBurst } from '../../src/components/workout/FinishedBurst.js';
 import { FinishReviewModal } from '../../src/components/workout/FinishReviewModal.js';
 import { loadSessionHistory } from '../../src/db/monthlyReview.js';
-import { reviewSession, type SessionReview } from '@fit/shared/progress';
+import { reviewSession } from '@fit/shared/progress';
 import * as SecureStore from 'expo-secure-store';
 
 import { DragReorderList, type DragHandleProps } from '../../src/components/DragReorderList.js';
@@ -84,6 +84,12 @@ import {
   periodStart,
   type HistoryPeriod,
 } from '../../src/workout/historyPeriod.js';
+import {
+  INITIAL_WORKOUT_PHASE,
+  openSessionId,
+  shownSummary,
+  workoutPhaseReducer,
+} from '../../src/workout/workoutPhase.js';
 import {
   getPlanDay,
   listPlanDayExercises,
@@ -178,7 +184,12 @@ export default function WorkoutsScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  /*
+   * Loading, home, a workout open, the trophy, the summary: one value, see workoutPhase.ts.
+   * `sessionId` is read from it and stays set under the trophy, as it always did.
+   */
+  const [phase, dispatch] = useReducer(workoutPhaseReducer, INITIAL_WORKOUT_PHASE);
+  const sessionId = openSessionId(phase);
   // Tell the tab swipe a workout is open, so sideways belongs to the exercises until it ends.
   useEffect(() => {
     setWorkoutActive(sessionId !== null);
@@ -246,19 +257,6 @@ export default function WorkoutsScreen() {
   const liveSet = (setId: string) =>
     liveExercises.current.flatMap((e) => e.sets).find((set) => set.id === setId) ?? null;
   const [previous, setPrevious] = useState<Record<string, PreviousSet[] | null>>({});
-  const [loading, setLoading] = useState(true);
-  /** True from the tap on Finish until the trophy has played out. */
-  const [finishing, setFinishing] = useState(false);
-  /**
-   * The workout just finished, against last time — opened once the trophy is gone, and shut
-   * by the person. Null when there is nothing to say (no exercise had a set ticked off).
-   */
-  const [finishReview, setFinishReview] = useState<{
-    id: string;
-    review: SessionReview;
-    /** How satisfied with it, 1 to 10, as answered in the summary; null while not said. */
-    satisfaction: number | null;
-  } | null>(null);
   /** The number being typed in the bar above the keyboard, or null while nothing is. */
   const [entry, setEntry] = useState<NumberEntryRequest | null>(null);
   // For the keyboard listener below, which subscribes once and must not be told to scroll the
@@ -480,8 +478,8 @@ export default function WorkoutsScreen() {
         if (cancelled) return;
 
         if (active) {
-          setSessionId(active.id);
           await reload(active.id);
+          if (!cancelled) dispatch({ type: 'ADOPTED', sessionId: active.id });
           return;
         }
         await reloadHome();
@@ -501,12 +499,12 @@ export default function WorkoutsScreen() {
       const active = await getActiveSession(db, userId);
       if (cancelled) return;
       if (active) {
-        setSessionId(active.id);
         await reload(active.id);
+        if (!cancelled) dispatch({ type: 'ADOPTED', sessionId: active.id });
       } else {
         await reloadHome();
+        if (!cancelled) dispatch({ type: 'LOADED' });
       }
-      setLoading(false);
     })();
     return () => {
       cancelled = true;
@@ -559,14 +557,13 @@ export default function WorkoutsScreen() {
   const begin = async () => {
     const db = await getExecutor();
     const id = await startSession(db, userId, newId);
-    setSessionId(id);
+    dispatch({ type: 'STARTED', sessionId: id });
     handledParam.current = null;
     celebratedSetIds.current.clear();
     await reload(id);
   };
 
   const closeOut = useCallback(async () => {
-    setSessionId(null);
     setStartedAt(null);
     setSessionName(null);
     setExercises([]);
@@ -586,8 +583,11 @@ export default function WorkoutsScreen() {
    * The session is written here, and `FinishedBurst` plays over it while the screen moves on.
    */
   const finishNow = () => {
-    if (!sessionId || finishing) return;
-    setFinishing(true);
+    // Only from a workout being trained: a second tap while the first saves lands in
+    // `finishing` and is ignored there too.
+    if (phase.kind !== 'active') return;
+    const sessionId = phase.sessionId;
+    dispatch({ type: 'FINISH_TAPPED' });
     const order = exercises.map((exercise) => exercise.exercise_key);
     void (async () => {
       const db = await getExecutor();
@@ -602,11 +602,13 @@ export default function WorkoutsScreen() {
           sessionId,
           order,
         );
-        if (review.exercises.length > 0) {
-          setFinishReview({ id: sessionId, review, satisfaction: null });
-        }
+        dispatch({
+          type: 'REVIEW_READY',
+          sessionId,
+          review: review.exercises.length > 0 ? review : null,
+        });
       } catch {
-        setFinishReview(null);
+        dispatch({ type: 'REVIEW_READY', sessionId, review: null });
       }
       // To the cloud now, not the next time the app happens to be opened. Sync otherwise waits
       // for the app to come back to the front, and the moment after a workout is exactly when
@@ -622,7 +624,7 @@ export default function WorkoutsScreen() {
 
   /** The trophy has had its couple of seconds; leave the session behind. */
   const finishDone = useCallback(() => {
-    setFinishing(false);
+    dispatch({ type: 'TROPHY_DONE' });
     void closeOut();
   }, [closeOut]);
 
@@ -1412,32 +1414,30 @@ export default function WorkoutsScreen() {
 
   // Opens over whatever this screen shows once the trophy has gone, which is normally the
   // workouts home: the session is closed out underneath it.
-  const finishReviewModal =
-    finishReview && !finishing ? (
-      <FinishReviewModal
-        review={finishReview.review}
-        onClose={() => setFinishReview(null)}
-        onOpenDetails={() => {
-          const id = finishReview.id;
-          setFinishReview(null);
-          router.push({ pathname: '/session/[id]', params: { id } });
-        }}
-        satisfaction={finishReview.satisfaction}
-        onSatisfaction={(value) => {
-          // Shown at once, saved behind it: the workout's page and its share card read it from
-          // the database, so it is there the moment either is opened.
-          const id = finishReview.id;
-          setFinishReview((current) =>
-            current && current.id === id ? { ...current, satisfaction: value } : current,
-          );
-          void (async () => {
-            await setSessionSatisfaction(await getExecutor(), userId, id, value);
-          })();
-        }}
-      />
-    ) : null;
+  const summary = shownSummary(phase);
+  const finishReviewModal = summary ? (
+    <FinishReviewModal
+      review={summary.review}
+      onClose={() => dispatch({ type: 'SUMMARY_CLOSED' })}
+      onOpenDetails={() => {
+        const id = summary.sessionId;
+        dispatch({ type: 'SUMMARY_CLOSED' });
+        router.push({ pathname: '/session/[id]', params: { id } });
+      }}
+      satisfaction={summary.satisfaction}
+      onSatisfaction={(value) => {
+        // Shown at once, saved behind it: the workout's page and its share card read it from
+        // the database, so it is there the moment either is opened.
+        const id = summary.sessionId;
+        dispatch({ type: 'SATISFACTION', sessionId: id, value });
+        void (async () => {
+          await setSessionSatisfaction(await getExecutor(), userId, id, value);
+        })();
+      }}
+    />
+  ) : null;
 
-  if (loading) {
+  if (phase.kind === 'loading') {
     return <SkeletonScreen paddingTop={spacing.md} />;
   }
 
@@ -1825,7 +1825,7 @@ export default function WorkoutsScreen() {
       />
 
       {/* Finishing saves straight away; this is the whole of the ceremony. */}
-      {finishing ? <FinishedBurst onDone={finishDone} /> : null}
+      {phase.kind === 'finishing' ? <FinishedBurst onDone={finishDone} /> : null}
       {finishReviewModal}
 
       <ScrollView
