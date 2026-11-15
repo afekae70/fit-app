@@ -25,7 +25,7 @@
 
 import { EXERCISE_SEED, type ExerciseSeed } from '@fit/shared/catalog';
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
@@ -40,7 +40,13 @@ import { Text } from '../../../../src/components/Text.js';
 import { ArrowDown, ArrowUp, Minus, Plus, Trash, X } from 'phosphor-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import type { CoachingError } from '../../../../src/coaching/api.js';
+import {
+  dayEditorBusy,
+  dayEditorDirty,
+  dayEditorError,
+  dayEditorReducer,
+  INITIAL_DAY_EDITOR,
+} from '../../../../src/coaching/dayEditorState.js';
 import {
   addExercise,
   describeTargets,
@@ -50,7 +56,6 @@ import {
   NO_TIMING,
   removeExercise,
   replaceExercise,
-  sameDay,
   stepTarget,
   type CoachDay,
   type CoachExercise,
@@ -96,11 +101,17 @@ export default function TraineeDayScreen() {
   const { trainee, plan, day: dayId, addExercise: picked } = params;
   const isHebrew = i18n.language === 'he';
 
+  // Loading, unreachable, or editing with what the server has, the draft and the save or delete
+  // in flight: one value, see dayEditorState.ts.
+  const [state, dispatch] = useReducer(dayEditorReducer, INITIAL_DAY_EDITOR);
   // What the server had when this was opened; null for a workout that does not exist yet.
-  const [saved, setSaved] = useState<CoachDay | null>(null);
-  const [draft, setDraft] = useState<CoachDay | null>(null);
-  const [error, setError] = useState<CoachingError | null>(null);
-  const [saving, setSaving] = useState(false);
+  const saved = state.kind === 'editing' ? state.saved : null;
+  const draft = state.kind === 'editing' ? state.draft : null;
+  const error = dayEditorError(state);
+  /** Saving or deleting: every control is held still for both. */
+  const saving = dayEditorBusy(state);
+  const deleting = state.kind === 'editing' && state.work.kind === 'deleting';
+  const setDraft = (next: CoachDay) => dispatch({ type: 'EDITED', edit: () => next });
 
   // Read once, when the screen opens. Reading it again on every focus would throw away the
   // edits each time the exercise picker closed.
@@ -111,12 +122,15 @@ export default function TraineeDayScreen() {
       const result = await api.plans(trainee);
       if (cancelled) return;
       if (!result.ok) {
-        setError(result.error);
+        dispatch({ type: 'LOAD_FAILED', error: result.error });
         return;
       }
       const found = findDay(result.value, plan, dayId);
-      setSaved(found?.day ?? null);
-      setDraft(found?.day ?? { id: dayId, name: null, ...NO_TIMING, exercises: [] });
+      dispatch({
+        type: 'LOADED',
+        saved: found?.day ?? null,
+        blank: { id: dayId, name: null, ...NO_TIMING, exercises: [] },
+      });
     })();
     return () => {
       cancelled = true;
@@ -133,14 +147,13 @@ export default function TraineeDayScreen() {
     }
     if (!draft || handled.current === picked) return;
     handled.current = picked;
-    setDraft(addExercise(draft, newExercise(newId(), picked)));
+    const added = newExercise(newId(), picked);
+    dispatch({ type: 'EDITED', edit: (current) => addExercise(current, added) });
     router.setParams({ addExercise: '' });
   }, [picked, draft]);
 
   const isNew = saved === null;
-  const dirty =
-    draft !== null &&
-    (isNew ? draft.exercises.length > 0 || Boolean(draft.name?.trim()) : !sameDay(saved, draft));
+  const dirty = dayEditorDirty(state);
 
   /*
    * Leaving with unsaved changes asks first.
@@ -170,34 +183,31 @@ export default function TraineeDayScreen() {
 
   const save = async () => {
     if (!api || !draft || !trainee || !plan || saving) return;
-    setSaving(true);
-    setError(null);
+    dispatch({ type: 'SAVE_STARTED' });
     const result = await api.saveDay(trainee, plan, draft);
     if (!result.ok) {
-      setSaving(false);
-      setError(result.error);
+      dispatch({ type: 'WORK_FAILED', error: result.error });
       return;
     }
     hapticSuccess();
     // Marked clean before leaving, or the listener above would ask about changes just saved.
     unsaved.current = false;
-    setSaved(draft);
+    dispatch({ type: 'SAVED' });
     router.back();
   };
 
   const removeDay = async () => {
-    if (!api || !trainee || !dayId || isNew) return;
+    if (!api || !trainee || !dayId || isNew || saving) return;
     const sure = await confirm({
       title: t('coaching.deleteWorkoutTitle'),
       message: t('coaching.deleteWorkoutBody'),
       confirmLabel: t('coaching.deleteWorkout'),
     });
     if (!sure) return;
-    setSaving(true);
+    dispatch({ type: 'DELETE_STARTED' });
     const result = await api.deleteDay(trainee, dayId);
     if (!result.ok) {
-      setSaving(false);
-      setError(result.error);
+      dispatch({ type: 'WORK_FAILED', error: result.error });
       return;
     }
     unsaved.current = false;
@@ -206,7 +216,7 @@ export default function TraineeDayScreen() {
 
   const change = useCallback(
     (next: CoachExercise) =>
-      setDraft((current) => (current ? replaceExercise(current, next) : current)),
+      dispatch({ type: 'EDITED', edit: (current) => replaceExercise(current, next) }),
     [],
   );
 
@@ -232,7 +242,7 @@ export default function TraineeDayScreen() {
 
         {error ? <Banner tone="warning">{t(coachingErrorKey(error))}</Banner> : null}
 
-        {!draft && !error ? (
+        {state.kind === 'loading' ? (
           <View style={styles.loading}>
             <ActivityIndicator color={colors.accent} />
           </View>
@@ -345,8 +355,8 @@ export default function TraineeDayScreen() {
           <BrandButton
             label={t('coaching.saveWorkout')}
             onPress={() => void save()}
-            disabled={!dirty}
-            busy={saving}
+            disabled={!dirty || deleting}
+            busy={saving && !deleting}
           />
         </View>
       ) : null}
