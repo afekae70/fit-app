@@ -28,7 +28,7 @@
  * is the one JS-driven animation here — a width — and it has a view to itself.
  */
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Animated,
@@ -112,6 +112,7 @@ import {
   TRAINING_DAYS,
   type TrainingAnswer,
 } from './profileSetup.js';
+import { INITIAL_SETUP_FLOW, setupFlowReducer, setupStepIndex } from './setupFlow.js';
 import { RulerPicker } from './RulerPicker.js';
 import { StepArt } from './StepArt.js';
 
@@ -156,7 +157,11 @@ export function OnboardingFlow({
   const weights = useMemo(() => weightRange(unit), [unit]);
   const heights = useMemo(() => heightRange(unit), [unit]);
 
-  const [index, setIndex] = useState(0);
+  // Which step, and whether the answers are being saved or failed to: see setupFlow.ts.
+  const [flow, dispatch] = useReducer(setupFlowReducer, INITIAL_SETUP_FLOW);
+  const index = setupStepIndex(flow);
+  const saving = flow.kind === 'saving';
+  const failed = flow.kind === 'saveFailed';
   // In the unit on screen. Converted once, at the end, to what the database keeps.
   const [weight, setWeight] = useState(weights.initial);
   const [height, setHeight] = useState(heights.initial);
@@ -168,8 +173,6 @@ export function OnboardingFlow({
   // Yes until told otherwise: an account with no plan is better served by being handed one,
   // and the people who arrive with their own are the ones who will know to say no.
   const [wantsProgram, setWantsProgram] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [failed, setFailed] = useState(false);
 
   const step = SETUP_STEPS[index] ?? 'weight';
 
@@ -242,20 +245,15 @@ export function OnboardingFlow({
 
   /* ------------------------------------------------------------------- moving */
 
-  const forward = () => {
-    setFailed(false);
-    setIndex((current) => Math.min(SETUP_STEPS.length - 1, current + 1));
-  };
+  const forward = () => dispatch({ type: 'NEXT' });
   const back = () => {
-    setFailed(false);
     hapticLight();
-    setIndex((current) => Math.max(0, current - 1));
+    dispatch({ type: 'BACK' });
   };
 
   const finish = () => {
     if (saving) return;
-    setSaving(true);
-    setFailed(false);
+    dispatch({ type: 'SAVE' });
     void (async () => {
       try {
         const db = await getExecutor();
@@ -277,8 +275,7 @@ export function OnboardingFlow({
         onDone({ daysPerWeek: trainingDays, wantsProgram });
       } catch {
         // Still on this screen, with every answer intact and the button live again.
-        setFailed(true);
-        setSaving(false);
+        dispatch({ type: 'SAVE_FAILED' });
       }
     })();
   };
